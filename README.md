@@ -1,5 +1,5 @@
-<p align="center">
-  <img src="assets/logo.svg" alt="refs logo" width="256" height="256">
+<p align="center" style="margin-bottom: 0">
+  <img src="assets/logo.svg" alt="refs logo" width="192" height="192">
 </p>
 
 <p align="center"><strong>Real source code for coding agents.</strong></p>
