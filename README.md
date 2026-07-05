@@ -86,6 +86,19 @@ skill install from the private-phase section above:
 npx skills add kaisers-io/refs
 ```
 
+### Native plugin marketplaces (alternative)
+
+Each agent's own plugin marketplace also works, and pulls in the bundled logo/branding:
+
+- **Claude Code:** `/plugin marketplace add kaisers-io/refs` → `/plugin install refs@refs`
+- **Codex CLI:** `codex plugin marketplace add git@github.com:kaisers-io/refs.git` → install via `/plugins`
+
+The repo is currently private, so both commands only work for accounts with repo access
+(as with the skill install above) — this opens up once `refs` goes public.
+
+When launched **inside** this repo, Codex auto-discovers the skill via the
+`.agents/skills/` symlink — no install step needed.
+
 ## Quickstart
 
 ```bash
