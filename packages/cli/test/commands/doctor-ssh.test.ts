@@ -95,7 +95,7 @@ describe('refs doctor: ssh-auth omitted', () => {
 
 const SHORT_TEST_TIMEOUT_MS = 20;
 
-// Exercises the same normalized shape `ExecaRunner` produces when execa's own `timeout` kills the
+// Exercises the same normalized shape `SpawnRunner` produces when its own `timeoutMs` kills the
 // child (see `core/test/proc/runner.test.ts` for the real-process proof): `exitCode` set to
 // `TIMEOUT_EXIT_CODE` AND `timedOut: true` — the latter is the actual signal `checkSshAuth` branches
 // on (see `doctor-ssh-timeout.test.ts`'s "genuine exit 124" suite for why `exitCode` alone can't be

@@ -10,13 +10,12 @@ import {
   tagExists,
 } from '../../src/git/repo.ts';
 import { describe, expect, it } from 'vitest';
-import { ExecaRunner } from '../../src/proc/runner.ts';
-import { execa } from 'execa';
+import { SpawnRunner } from '../../src/proc/runner.ts';
 import { join } from 'node:path';
 import { resolveHome } from '../../src/home.ts';
 import { tmpdir } from 'node:os';
 
-// Real git integration suite: exercises ExecaRunner against actual git repos ('file://' fixtures),
+// Real git integration suite: exercises SpawnRunner against actual git repos ('file://' fixtures),
 // Never a mock — this is the one place we prove the exact command sequences in git/repo.ts behave
 // The way the design doc (spec §4) says a managed checkout must.
 
@@ -24,7 +23,7 @@ const TEST_TIMEOUT_MS = 30_000;
 const SUCCESS_EXIT_CODE = 0;
 const SUITE_OPTS = { timeout: TEST_TIMEOUT_MS };
 
-const runner = new ExecaRunner();
+const runner = new SpawnRunner();
 
 const makeDest = (): Promise<string> => mkdtemp(join(tmpdir(), 'refs-checkout-'));
 // `ReturnType<typeof resolveHome>` (not a named `RefsHome` type import) sidesteps this repo's
@@ -36,7 +35,7 @@ const makeHome = async (): Promise<ReturnType<typeof resolveHome>> => {
 };
 
 const plainClone = async (url: string, dest: string): Promise<void> => {
-  const result = await execa('git', ['clone', '-q', url, dest], { reject: false });
+  const result = await runner.run('git', ['clone', '-q', url, dest]);
   if (result.exitCode === SUCCESS_EXIT_CODE) {
     return;
   }
@@ -51,11 +50,11 @@ const MANAGED_HOOKS_MARKER = '/managed-checkout-marker';
 
 const managedClone = async (url: string, dest: string): Promise<void> => {
   await plainClone(url, dest);
-  await execa('git', ['config', 'core.hooksPath', MANAGED_HOOKS_MARKER], { cwd: dest });
+  await runner.run('git', ['config', 'core.hooksPath', MANAGED_HOOKS_MARKER], { cwd: dest });
 };
 
 const headSha = async (dir: string): Promise<string> => {
-  const result = await execa('git', ['rev-parse', 'HEAD'], { cwd: dir });
+  const result = await runner.run('git', ['rev-parse', 'HEAD'], { cwd: dir });
   return result.stdout.trim();
 };
 
@@ -64,8 +63,8 @@ const headSha = async (dir: string): Promise<string> => {
 // the cloned checkout fails with "Author identity unknown" before whatever's under test even
 // runs. Local config only, matching this suite's fixture-repo.ts convention.
 const setLocalIdentity = async (dir: string): Promise<void> => {
-  await execa('git', ['config', 'user.email', 'checkout@example.com'], { cwd: dir });
-  await execa('git', ['config', 'user.name', 'Checkout'], { cwd: dir });
+  await runner.run('git', ['config', 'user.email', 'checkout@example.com'], { cwd: dir });
+  await runner.run('git', ['config', 'user.name', 'Checkout'], { cwd: dir });
 };
 
 // Flattened into top-level `describe`s (rather than one nested block) to keep each function body
@@ -86,8 +85,11 @@ describe('cloneRepo()', SUITE_OPTS, () => {
     });
 
     expect(isGitCheckout(dest)).toBe(true);
-    const hooksPath = await execa('git', ['config', 'core.hooksPath'], { cwd: dest });
-    expect(hooksPath.stdout).toBe(home.hooksDir);
+    const hooksPath = await runner.run('git', ['config', 'core.hooksPath'], { cwd: dest });
+    // `SpawnRunner` never strips a trailing newline the way execa's default `stripFinalNewline`
+    // Did — `git config`'s own output always ends in one, so this needs an explicit `.trim()`
+    // Where the old execa-backed assertion didn't.
+    expect(hooksPath.stdout.trim()).toBe(home.hooksDir);
     /*
      * Empirically verified (git 2.50.1, Apple Git-155, macOS): a plain `file://` remote does NOT
      * honour `--filter=blob:none` unless the source repo explicitly sets
@@ -227,7 +229,7 @@ describe('syncRef() managed-checkout guard', SUITE_OPTS, () => {
     const fixture = await createFixtureRepo();
     const dest = await makeDest();
     await plainClone(fixture.url, dest);
-    await execa('git', ['config', '--local', 'core.hooksPath', MANAGED_HOOKS_MARKER], {
+    await runner.run('git', ['config', '--local', 'core.hooksPath', MANAGED_HOOKS_MARKER], {
       cwd: dest,
     });
     const shaBefore = await headSha(dest);
@@ -286,9 +288,8 @@ describe('installHooksGuard()', SUITE_OPTS, () => {
     await writeFile(join(dest, 'README.md'), 'blocked commit content\n');
     await setLocalIdentity(dest);
 
-    const commit = await execa('git', ['commit', '-am', 'should be blocked'], {
+    const commit = await runner.run('git', ['commit', '-am', 'should be blocked'], {
       cwd: dest,
-      reject: false,
     });
 
     expect(commit.exitCode).not.toBe(SUCCESS_EXIT_CODE);

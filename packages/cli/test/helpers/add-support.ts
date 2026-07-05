@@ -1,6 +1,6 @@
 import {
   EXIT,
-  ExecaRunner,
+  SpawnRunner,
   readConfig,
   readState,
   resolveHome,
@@ -50,7 +50,7 @@ const withResetExitCode = async (exercise: () => Promise<void>): Promise<void> =
   }
 };
 
-// A `CliContext` wired to a real git binary (`ExecaRunner`) instead of the scripted `FakeRunner` —
+// A `CliContext` wired to a real git binary (`SpawnRunner`) instead of the scripted `FakeRunner` —
 // `add`'s dry-run/finalize flows shell out to real `git clone`/`git tag`/etc. against `file://`
 // fixtures, which `FakeRunner` can't script realistically. `REFS_ALLOW_FILE_URLS=1` is required for
 // `canonicalizeGitUrl` to accept the fixture's `file://` url at all (real remotes are https/ssh
@@ -59,7 +59,7 @@ const realContextFor = (
   homeDir: string,
 ): { ctx: CliContext; stderr: string[]; stdout: string[] } => {
   const { ctx, stderr, stdout } = testContext();
-  ctx.runner = new ExecaRunner();
+  ctx.runner = new SpawnRunner();
   ctx.env['REFS_HOME'] = homeDir;
   ctx.env['REFS_ALLOW_FILE_URLS'] = '1';
   return { ctx, stderr, stdout };

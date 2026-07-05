@@ -1,9 +1,8 @@
-import { EXIT, ExecaRunner, checkoutPath, resolveHome, zRefKey } from '@kaisers-io/refs-core';
+import { EXIT, SpawnRunner, checkoutPath, resolveHome, zRefKey } from '@kaisers-io/refs-core';
 import { describe, expect, it } from 'vitest';
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
 import type { CliContext } from '../../src/context.ts';
 import { createFixtureRepo } from '../helpers/fixture-repo.ts';
-import { execa } from 'execa';
 import { run } from '../../src/main.ts';
 import { seedConfig } from '../helpers/ref-fixtures.ts';
 import { testContext } from '../helpers/context.ts';
@@ -12,11 +11,10 @@ import { testContext } from '../helpers/context.ts';
 // ref's checkout path (never through `refs add` — `tag` only ever reads via `resolveTag`/
 // `tagExists`, so no managed-checkout marker is required, per the task brief). Test case labels
 // (a)-(d) mirror the task brief's Step 1 list. Config is seeded directly via `seedConfig`
-// (`writeConfig`), mirroring `list.test.ts`/`show.test.ts`.
-
-// Every case below clones a real git fixture in setup — well under 5s alone, but not under the
-// full-workspace parallel `pnpm check` load, so each `it` gets the same generous per-test timeout
-// `add.test.ts`/`sync.test.ts` use for their own real-git cases.
+// (`writeConfig`), mirroring `list.test.ts`/`show.test.ts`. Every case below clones a real git
+// fixture in setup — well under 5s alone, but not under the full-workspace parallel `pnpm check`
+// load, so each `it` gets the same generous per-test timeout `add.test.ts`/`sync.test.ts` use for
+// their own real-git cases.
 const TEST_TIMEOUT_MS = 30_000;
 const REF_KEY = 'github.com/acme/widget';
 const PACKAGE_NAME = 'pkg';
@@ -44,6 +42,8 @@ const REF_ENTRY = {
 const FIXTURE_TAGS = ['v1.0.0', 'pkg@2.0.0'];
 
 const CLONE_SUCCESS_EXIT_CODE = 0;
+// Test-setup-only `SpawnRunner`, mirroring `add-guards-support.ts`'s own local `setupRunner`.
+const setupRunner = new SpawnRunner();
 
 interface TagEnvelope {
   data?: { key: string; ref_path: string; tag: string; version: string };
@@ -63,7 +63,7 @@ const parseSoleEnvelope = (stdout: readonly string[]): TagEnvelope => {
  * a real, unmanaged checkout with real tags, standing in for a `refs add`ed checkout without the
  * overhead of running the full add pipeline. */
 const cloneFixtureInto = async (fixtureDir: string, dest: string): Promise<void> => {
-  const result = await execa('git', ['clone', '-q', fixtureDir, dest], { reject: false });
+  const result = await setupRunner.run('git', ['clone', '-q', fixtureDir, dest]);
   if (result.exitCode !== CLONE_SUCCESS_EXIT_CODE) {
     throw new Error(`test setup: git clone failed: ${result.stderr}`);
   }
@@ -79,7 +79,7 @@ interface TagFixture {
  * checkout — the common setup every `refs tag` case below needs. */
 const setupTagFixture = async (homeDir: string): Promise<TagFixture> => {
   const { ctx, stdout } = testContext();
-  ctx.runner = new ExecaRunner();
+  ctx.runner = new SpawnRunner();
   ctx.env['REFS_HOME'] = homeDir;
   const home = resolveHome(ctx.env);
   const fixture = await createFixtureRepo({ tags: FIXTURE_TAGS });
@@ -94,7 +94,7 @@ const setupTagFixture = async (homeDir: string): Promise<TagFixture> => {
  * later deleted. Used only by the "missing checkout" case below. */
 const setupTagFixtureNoCheckout = async (homeDir: string): Promise<TagFixture> => {
   const { ctx, stdout } = testContext();
-  ctx.runner = new ExecaRunner();
+  ctx.runner = new SpawnRunner();
   ctx.env['REFS_HOME'] = homeDir;
   const home = resolveHome(ctx.env);
   await seedConfig(home, { [REF_KEY]: REF_ENTRY });

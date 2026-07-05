@@ -21,7 +21,7 @@ import { join } from 'node:path';
 import { run } from '../../src/main.ts';
 import { setCheckoutOrigin } from '../helpers/add-guards-support.ts';
 
-// Integration suite for `refs sync`, against real `file://` git fixtures and a real `ExecaRunner`
+// Integration suite for `refs sync`, against real `file://` git fixtures and a real `SpawnRunner`
 // (never `FakeRunner` — `sync` shells out to real `git fetch`/`reset`/`clean`/`clone`). Test case
 // labels (a)-(f) mirror the task brief's Step 1 list. Shared scaffolding (fixture setup, the
 // `refs sync --json` runner, and the (f) assertion helper) lives in `test/helpers/sync-support.ts`.

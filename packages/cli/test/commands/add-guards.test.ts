@@ -222,7 +222,7 @@ describe('refs add: case-collision guard', () => {
         withTempHome(async (homeDir) => {
           // No real git clone happens here: `ensureNoCaseCollision` runs (and throws) before
           // `runDryRunCore` ever touches the runner, so a scripted `FakeRunner` (via `testContext`)
-          // is enough — no `ExecaRunner`/`file://` fixture needed for this guard alone. macOS's
+          // is enough — no `SpawnRunner`/`file://` fixture needed for this guard alone. macOS's
           // default filesystem is case-insensitive but case-PRESERVING (`readdir` returns entries
           // in their originally-created case), so pre-creating `.../Acme/repo` and then resolving
           // a key of `.../acme/repo` genuinely exercises the guard's own case-insensitive

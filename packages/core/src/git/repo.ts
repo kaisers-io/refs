@@ -9,7 +9,7 @@ import { validationError } from '../errors.ts';
 import { writeFileAtomic } from '../fs-atomic.ts';
 
 // Git operations for a "managed checkout": every function takes `runner: Runner` first (real git
-// Via ExecaRunner in production, scripted via FakeRunner in unit tests). Implements the exact
+// Via SpawnRunner in production, scripted via FakeRunner in unit tests). Implements the exact
 // Command sequences from the design doc §4 (clone modes, sync semantics, read-only hook guards).
 
 interface CloneOpts {
