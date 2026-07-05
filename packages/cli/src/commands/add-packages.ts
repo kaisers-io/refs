@@ -46,9 +46,10 @@ const buildProposalPackages = (
 };
 
 /** Only called once `requireAllDescribed` has already guaranteed every package carries a detected
- * description — `pkg.description` is therefore never actually `undefined` here, but the proposal
- * shape (`ProposalPackageEntry`) still types it optional, so the empty-string fallback is purely a
- * type-level escape hatch, never a real value in practice. */
+ * NON-EMPTY description (see `isMissingDescription`) — `pkg.description` is therefore never
+ * actually `undefined` here, but the proposal shape (`ProposalPackageEntry`) still types it
+ * optional, so the empty-string fallback is purely a type-level escape hatch, never a real value
+ * in practice. */
 const toFinalPackageEntry = (pkg: ProposalPackageEntry): PackageEntry => {
   const description = pkg.description ?? '';
   if (pkg.tag_format === undefined) {
@@ -73,6 +74,15 @@ const buildFinalPackages = (
   return Object.fromEntries(entries.map(([name, pkg]) => [name, toFinalPackageEntry(pkg)]));
 };
 
+/** An absent description AND an empty-string one both count as missing, mirroring
+ * `zPackageEntry.description`'s `min(1)` rule exactly (no whitespace-trimming beyond that):
+ * core's `extractPackageDescription` passes ANY manifest string through — including the `""` that
+ * `npm init -y` scaffolds — so an empty string here would otherwise slip past the guard only to
+ * die later in finalize's schema validation with exactly the degraded generic error the guard
+ * exists to prevent. */
+const isMissingDescription = (pkg: ProposalPackageEntry): boolean =>
+  pkg.description === undefined || pkg.description === '';
+
 /** Lists package names (sorted) missing a detected description — the `--description` one-shot has
  * no per-package description input (unlike the two-phase `--proposal` flow's human review step),
  * so it cannot silently fill these in; see `requireAllDescribed`. */
@@ -80,7 +90,7 @@ const packagesMissingDescription = (
   proposalPackages: Record<string, ProposalPackageEntry>,
 ): string[] =>
   Object.entries(proposalPackages)
-    .filter(([, pkg]) => pkg.description === undefined)
+    .filter(([, pkg]) => isMissingDescription(pkg))
     .map(([name]) => name)
     .toSorted();
 

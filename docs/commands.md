@@ -101,12 +101,16 @@ Adds a git reference in **two phases**: propose, then finalize. Exactly one of
 `--description <text>` is a one-shot convenience that runs both phases in one process,
 using `<text>` as the **top-level** ref description and skipping proposal review — for
 when you already know what you want. It only works when every DETECTED package (if any)
-already carries its own description from its manifest: `<text>` is never used as a
-per-package fallback. If one or more detected packages lack a description — including a
-single-package repo whose lone package has none — the one-shot fails with a validation
-error naming every affected package; run the two-phase flow instead, filling in each
-package's description in the proposal file before finalizing. A source with no detected
-packages (a plain, non-workspace repo) is unaffected — there's nothing to check.
+already carries its own **non-empty** description from its manifest (an empty
+`"description": ""` — the `npm init -y` scaffold — counts as missing): `<text>` is never
+used as a per-package fallback. If one or more detected packages lack a description —
+including a single-package repo whose lone package has none — the one-shot fails with a
+validation error naming every affected package; run the two-phase flow instead, filling
+in each package's description in the proposal file before finalizing. A source with no
+detected packages (a plain, non-workspace repo) is unaffected — there's nothing to check.
+Note that an `npm:<pkg>` source without detected workspace packages can effectively never
+use the one-shot: its single seeded package entry is derived from the npm resolution
+alone and never carries a description, so such sources always need the two-phase flow.
 
 ### Examples
 

@@ -84,30 +84,44 @@ const unwrapEnvelope = (value: unknown): unknown => {
 };
 
 const NO_ITEMS = 0;
+const TOP_LEVEL_PATH = '';
 
 type ZodIssue = z.core.$ZodIssue;
+type UnrecognizedKeysIssue = Extract<ZodIssue, { code: 'unrecognized_keys' }>;
 
-const isUnrecognizedKeysIssue = (
-  issue: ZodIssue,
-): issue is Extract<ZodIssue, { code: 'unrecognized_keys' }> => issue.code === 'unrecognized_keys';
+const isUnrecognizedKeysIssue = (issue: ZodIssue): issue is UnrecognizedKeysIssue =>
+  issue.code === 'unrecognized_keys';
 
 const hasEmptyPath = (issue: ZodIssue): boolean => issue.path.length === NO_ITEMS;
 
-/** Aggregates every `unrecognized_keys` issue into ONE named line — the repo's established "list
- * ALL offending keys" precedent (see `resolve.ts`'s multi-ref ambiguity message), rather than
- * surfacing only the first stray key found. `undefined` when there are none. */
-const unrecognizedKeysLine = (issues: readonly ZodIssue[]): string | undefined => {
-  const keys = issues
-    .filter((issue) => isUnrecognizedKeysIssue(issue))
-    .flatMap((issue) => issue.keys);
-  if (keys.length === NO_ITEMS) {
-    return undefined;
-  }
+/** One named line per offending location — the repo's established "list ALL offending keys"
+ * precedent (see `resolve.ts`'s multi-ref ambiguity message). A top-level issue (empty dot-path)
+ * keeps the original wording; a nested one (e.g. a stray key inside a package entry) names its
+ * location too: `unrecognized key(s) in proposal at packages.ms: "bogus"`. */
+const unrecognizedKeysLine = (dotPath: string, keys: readonly string[]): string => {
   const named = keys
     .toSorted()
     .map((key) => `"${key}"`)
     .join(', ');
-  return `✖ unrecognized key(s) in proposal: ${named}`;
+  if (dotPath === TOP_LEVEL_PATH) {
+    return `✖ unrecognized key(s) in proposal: ${named}`;
+  }
+  return `✖ unrecognized key(s) in proposal at ${dotPath}: ${named}`;
+};
+
+/** Groups `unrecognized_keys` issues by their dot-path (`z.core.toDotPath`, the same renderer
+ * `z.prettifyError` uses for its own `→ at <path>` lines) so each location gets one line naming
+ * every stray key found there, sorted by path for deterministic output (the top-level `''` path
+ * sorts first). */
+const unrecognizedKeysLines = (issues: readonly UnrecognizedKeysIssue[]): string[] => {
+  const keysByPath = new Map<string, string[]>();
+  for (const issue of issues) {
+    const dotPath = z.core.toDotPath(issue.path);
+    keysByPath.set(dotPath, [...(keysByPath.get(dotPath) ?? []), ...issue.keys]);
+  }
+  return [...keysByPath.entries()]
+    .toSorted(([pathA], [pathB]) => pathA.localeCompare(pathB))
+    .map(([dotPath, keys]) => unrecognizedKeysLine(dotPath, keys));
 };
 
 /** A non-`unrecognized_keys` issue with an empty path (e.g. the proposal document itself isn't a
@@ -116,34 +130,38 @@ const unrecognizedKeysLine = (issues: readonly ZodIssue[]): string | undefined =
  * as a whole is the best available fallback with no field left to name. */
 const emptyPathLine = (issue: ZodIssue): string => `✖ invalid proposal: ${issue.message}`;
 
-/** Renders every EMPTY-path issue (see the two helpers above) into clear, key-naming lines of our
- * own, and hands every NAMED-path issue to `z.prettifyError` unchanged — it already renders those
- * well (missing/wrong-typed fields get a `→ at <path>` line, e.g. `packages.ms.description`).
- * Falls straight through to a plain `z.prettifyError(error)` when every issue already has a path,
- * so pinned messages for those cases never change.
+/** Renders every `unrecognized_keys` issue (at ANY path) and every other EMPTY-path issue into
+ * clear, key-naming lines of our own, and hands every remaining NAMED-path issue to
+ * `z.prettifyError` unchanged — it already renders those well (missing/wrong-typed fields get a
+ * `→ at <path>` line, e.g. `packages.ms.description`). Falls straight through to a plain
+ * `z.prettifyError(error)` when there is nothing to improve, so pinned messages for those cases
+ * never change.
  *
- * Empty-path issues need their own handling rather than just trusting `z.prettifyError`'s default
+ * These issues need their own handling rather than just trusting `z.prettifyError`'s default
  * rendering: in the CLI's own shipped bundle, `zod`'s `package.json` claims `"sideEffects": false`,
  * which is not true of its module-scope `config(en())` locale registration — tsdown/rolldown takes
  * the claim at face value and tree-shakes that registration away, so every un-customized zod issue
- * in the SHIPPED binary (not in this unbundled test suite) renders as a bare `Invalid input`, with
- * no path and no offending key. Reading `.keys` directly off `unrecognized_keys` issues (populated
- * on the issue object regardless of locale registration) sidesteps that bundler quirk entirely —
- * exactly the failure mode a hand-edited proposal file (a stray top-level key) hits most often. */
+ * in the SHIPPED binary (not in this unbundled test suite) renders as a bare `Invalid input`: no
+ * offending key at any nesting level, and no path at all for top-level issues. Reading `.keys`
+ * directly off `unrecognized_keys` issues (populated on the issue object regardless of locale
+ * registration) sidesteps that bundler quirk entirely — exactly the failure mode a hand-edited
+ * proposal file (a stray key, top-level or inside a package entry) hits most often. */
 const formatProposalError = (error: z.core.$ZodError<FinalProposal>): string => {
-  const emptyPathIssues = error.issues.filter(hasEmptyPath);
-  if (emptyPathIssues.length === NO_ITEMS) {
+  const unrecognized = error.issues.filter((issue): issue is UnrecognizedKeysIssue =>
+    isUnrecognizedKeysIssue(issue),
+  );
+  const rest = error.issues.filter((issue) => !isUnrecognizedKeysIssue(issue));
+  const restEmptyPath = rest.filter((issue) => hasEmptyPath(issue));
+  if (unrecognized.length === NO_ITEMS && restEmptyPath.length === NO_ITEMS) {
     return z.prettifyError(error);
   }
-  const pathedIssues = error.issues.filter((issue) => !hasEmptyPath(issue));
+  const restPathed = rest.filter((issue) => !hasEmptyPath(issue));
   const lines = [
-    unrecognizedKeysLine(emptyPathIssues),
-    ...emptyPathIssues
-      .filter((issue) => !isUnrecognizedKeysIssue(issue))
-      .map((issue) => emptyPathLine(issue)),
-  ].filter((line): line is string => line !== undefined);
-  if (pathedIssues.length > NO_ITEMS) {
-    lines.push(z.prettifyError({ issues: pathedIssues }));
+    ...unrecognizedKeysLines(unrecognized),
+    ...restEmptyPath.map((issue) => emptyPathLine(issue)),
+  ];
+  if (restPathed.length > NO_ITEMS) {
+    lines.push(z.prettifyError({ issues: restPathed }));
   }
   return lines.join('\n');
 };

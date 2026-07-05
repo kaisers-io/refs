@@ -20,17 +20,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `refs add <source> --description <text>` no longer reuses `<text>` as a fallback
   description for detected packages that lack one. `<text>` is now only ever the
   top-level ref description; if one or more detected packages have no manifest
-  description (including a single-package repo whose lone package has none), the
-  one-shot fails (exit 3) naming every affected package and pointing at the two-phase
-  `--dry-run`/`--proposal` flow instead.
+  description (including a single-package repo whose lone package has none, and a
+  package whose manifest carries an empty `"description": ""` — the `npm init -y`
+  scaffold), the one-shot fails (exit 3) naming every affected package and pointing at
+  the two-phase `--dry-run`/`--proposal` flow instead. Consequently, an `npm:<pkg>`
+  source without detected workspace packages can effectively never use the one-shot —
+  its single seeded package entry never carries a description — and always needs the
+  two-phase flow.
 
 ### Fixed
 
 - `refs add --proposal` validation errors now name the offending key(s) for a
-  stray/unrecognized top-level field in the proposal (e.g.
-  `unrecognized key(s) in proposal: "okay"`) instead of a bare, contextless
-  `Invalid input`. Named-field validation errors (missing or wrong-typed fields,
-  including nested package fields like `packages.<name>.description`) are unchanged.
+  stray/unrecognized field in the proposal — top-level (e.g.
+  `unrecognized key(s) in proposal: "okay"`) and nested inside a package entry (e.g.
+  `unrecognized key(s) in proposal at packages.<name>: "bogus"`) — instead of a bare,
+  contextless `Invalid input`. Named-field validation errors (missing or wrong-typed
+  fields, including nested package fields like `packages.<name>.description`) are
+  unchanged.
 
 ## [0.1.2] - 2026-07-05
 

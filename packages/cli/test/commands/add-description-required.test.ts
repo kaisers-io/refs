@@ -50,7 +50,7 @@ interface OneShotResult {
  * `it` stays under the repo's `max-statements` cap and can assert its own subset of the outcome. */
 const runMonorepoOneShot = async (
   homeDir: string,
-  opts: { monorepoAllDescribed?: boolean },
+  opts: { monorepoAllDescribed?: boolean; monorepoEmptyDescription?: boolean },
 ): Promise<OneShotResult> => {
   const { ctx, stdout } = realContextFor(homeDir);
   await initHome(ctx);
@@ -109,6 +109,27 @@ describe('refs add --description: fails when a detected package has no descripti
           const state = await readState(home);
           expect(Object.keys(config.refs)).toHaveLength(NO_REFS);
           expect(Object.keys(state.refs)).toHaveLength(NO_REFS);
+        }),
+      );
+    },
+    TEST_TIMEOUT_MS,
+  );
+});
+
+describe('refs add --description: an empty-string manifest description counts as missing', () => {
+  it(
+    '(l3) a package whose manifest description is "" (the npm init -y scaffold) fails the guard',
+    async () => {
+      expect.hasAssertions();
+      await withResetExitCode(() =>
+        withTempHome(async (homeDir) => {
+          const { stdout } = await runMonorepoOneShot(homeDir, { monorepoEmptyDescription: true });
+
+          expect(process.exitCode).toBe(EXIT.VALIDATION);
+          const envelope = parseLastEnvelope(stdout) as ErrorEnvelope;
+          expect(envelope.ok).toBe(false);
+          expect(envelope.error?.message).toContain('@fixture/b');
+          expect(envelope.error?.message).toMatch(/packages without a detected description/u);
         }),
       );
     },

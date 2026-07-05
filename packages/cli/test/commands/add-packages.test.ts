@@ -68,6 +68,27 @@ describe('listing packages missing a description', () => {
   });
 });
 
+describe('an empty-string manifest description counts as missing', () => {
+  it("treats '' as missing, mirroring zPackageEntry's min(1) rule", () => {
+    expect.hasAssertions();
+    // `extractPackageDescription` (core) returns ANY string from the manifest, including `""` —
+    // exactly what `npm init -y` scaffolds. `zPackageEntry.description` requires `min(1)`, so an
+    // empty string must count as missing here too, or the one-shot would bypass the guard and die
+    // later in finalize with the degraded generic schema error this guard exists to prevent.
+    const detected: WorkspacePackage[] = [
+      { description: '', name: 'scaffolded', path: 'packages/scaffolded' },
+      { description: 'Real description', name: 'described', path: 'packages/described' },
+    ];
+
+    const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
+
+    expect(packagesMissingDescription(packages)).toStrictEqual(['scaffolded']);
+    expect(() => requireAllDescribed(packages)).toThrow(
+      /packages without a detected description: scaffolded/u,
+    );
+  });
+});
+
 describe('the description-required guard', () => {
   it('does not throw once every package has a description', () => {
     expect.hasAssertions();

@@ -1,8 +1,8 @@
 import { ExecaRunner, checkoutPath, readConfig, resolveHome } from '@kaisers-io/refs-core';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
-import type { Proposal, RefEntry, RefsHome } from '@kaisers-io/refs-core';
+import type { Proposal, RefsHome } from '@kaisers-io/refs-core';
 import { access, mkdir, mkdtemp, rename, rm, symlink, writeFile } from 'node:fs/promises';
-import { initHome, parseLastEnvelope, realContextFor, runAddDryRunJson } from './add-support.ts';
+import { initHome, realContextFor, runAddDryRunJson } from './add-support.ts';
 import type { CliContext } from '../../src/context.ts';
 import type { ResolvedSource } from '../../src/commands/add-helpers.ts';
 import { createFixtureRepo } from './fixture-repo.ts';
@@ -10,45 +10,18 @@ import { expect } from 'vitest';
 import { join } from 'node:path';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { resolveAddSource } from '../../src/commands/add-helpers.ts';
-import { run } from '../../src/main.ts';
 import { tmpdir } from 'node:os';
 
 // Scaffolding specific to `add-guards.test.ts`'s review-round regression suite (checkout-identity
 // verification, the corrupt-checkout finalize guard, the pending-proposal race guard, and the
-// repeated-`--dry-run`/`--description`-fallback regressions) — kept out of `add-support.ts` purely
-// to keep both helper files, and `add-guards.test.ts` itself, under the repo's 300-line oxlint cap.
-// Reuses `add-support.ts`'s own scaffolding (`realContextFor`, `initHome`, etc.) rather than
+// repeated-`--dry-run` regression) — kept out of `add-support.ts` purely to keep both helper
+// files, and `add-guards.test.ts` itself, under the repo's 300-line oxlint cap. Reuses
+// `add-support.ts`'s own scaffolding (`realContextFor`, `initHome`, etc.) rather than
 // duplicating it.
 
 const GIT_SUCCESS_EXIT_CODE = 0;
 const MARKER_NAME = '.refs-test-marker';
 const DEFAULT_TAGS = ['v1.0.0'];
-
-interface DescriptionEnvelope {
-  data: { entry: RefEntry; key: string };
-  ok: boolean;
-}
-
-/** Runs `refs add <source> --description <description> --json` and returns the parsed envelope —
- * the one-shot dry-run+finalize flow's json result, typed against the real `RefEntry` shape so
- * callers can inspect `entry.packages` fully. Takes `opts.source`/`opts.description` bundled
- * (rather than two more positional params) to stay under the repo's `max-params` cap. */
-const runAddDescriptionJson = async (
-  ctx: CliContext,
-  stdout: string[],
-  opts: { description: string; source: string },
-): Promise<DescriptionEnvelope> => {
-  await run(ctx, ['node', 'refs', 'add', opts.source, '--description', opts.description, '--json']);
-  return parseLastEnvelope(stdout) as DescriptionEnvelope;
-};
-
-/** Reads back the configured `RefEntry` for `key` under `ctx`'s resolved home — a one-call
- * shorthand so assertion-only tests don't need their own separate `resolveHome`/`readConfig`
- * statements just to reach `entry.packages`. */
-const configuredEntryFor = async (ctx: CliContext, key: string): Promise<RefEntry | undefined> => {
-  const config = await readConfig(resolveHome(ctx.env));
-  return config.refs[key];
-};
 
 const expectRefNotConfigured = async (home: RefsHome, key: string): Promise<void> => {
   const config = await readConfig(home);
@@ -195,7 +168,6 @@ const relocateBehindSymlink = async (dir: string): Promise<string> => {
 };
 
 export {
-  configuredEntryFor,
   corruptCheckoutHead,
   createBogusCheckout,
   createManualCheckout,
@@ -204,7 +176,6 @@ export {
   markCheckout,
   plantSymlinkedAncestor,
   relocateBehindSymlink,
-  runAddDescriptionJson,
   setCheckoutOrigin,
   setupDryRunFixture,
   setupSourceFixture,

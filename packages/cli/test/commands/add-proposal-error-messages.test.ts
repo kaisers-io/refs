@@ -80,6 +80,35 @@ describe('refs add --proposal: more than one stray unrecognized top-level key', 
   );
 });
 
+describe('refs add --proposal: a stray unrecognized key nested inside a package entry', () => {
+  it(
+    'names the key with its package path instead of a bare "Invalid input → at packages.ms"',
+    async () => {
+      expect.hasAssertions();
+      await withResetExitCode(() =>
+        withTempHome(async (homeDir) => {
+          const { ctx, stdout } = realContextFor(homeDir);
+          await initHome(ctx);
+          const proposalWithNestedStrayKey = {
+            ...validFinalProposal('github.com/golf/seven'),
+            packages: { ms: { bogus: true, description: 'A package.', path: '.' } },
+          };
+
+          const envelope = await runFinalizeExpectingValidationError(
+            { ctx, homeDir, stdout },
+            proposalWithNestedStrayKey,
+          );
+
+          expect(envelope.error?.message).toMatch(
+            /unrecognized key\(s\) in proposal at packages\.ms: "bogus"/u,
+          );
+        }),
+      );
+    },
+    TEST_TIMEOUT_MS,
+  );
+});
+
 describe('refs add --proposal: a named-path issue still renders with its full nested path', () => {
   it(
     'a package missing its own required description still names `packages.<name>.description`',
