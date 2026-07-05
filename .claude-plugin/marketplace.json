@@ -11,7 +11,7 @@
       "name": "refs",
       "displayName": "Refs",
       "description": "Real source code for coding agents — manage arbitrary git repositories as local, read-only reference checkouts so agents answer questions about dependencies against real source, not a minified bundle or stale training knowledge. Bundles the refs skill.",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "source": "./",
       "category": "productivity",
       "author": {

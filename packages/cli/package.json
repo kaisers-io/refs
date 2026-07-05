@@ -1,6 +1,6 @@
 {
   "name": "@kaisers-io/refs",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Managed read-only git checkouts of reference repositories for coding agents.",
   "license": "MIT",
   "repository": {
