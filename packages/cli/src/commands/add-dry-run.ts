@@ -4,7 +4,6 @@ import type {
   RefKey,
   RefState,
   RefsHome,
-  Runner,
   TagFormat,
 } from '@kaisers-io/refs-core';
 import {
@@ -34,6 +33,7 @@ import type { CliContext } from '../context.ts';
 import type { ResolvedSource } from './add-helpers.ts';
 import { buildProposalPackages } from './add-packages.ts';
 import { ensureClonedCheckout } from './add-checkout-guards.ts';
+import { progress } from '../output.ts';
 
 // The `--dry-run` core: resolve source → conflict/collision guards → idempotent clone → detect
 // default branch/tags/workspace packages → shape a `Proposal`. Shared by both `refs add --dry-run`
@@ -64,13 +64,14 @@ interface DetectedFields {
 }
 
 const detectProposalFields = async (
-  runner: Runner,
+  ctx: CliContext,
   dest: string,
   resolved: ResolvedSource,
 ): Promise<DetectedFields> => {
-  const defaultBranch = await detectDefaultBranch(runner, dest);
-  const tags = await listTags(runner, dest);
+  const defaultBranch = await detectDefaultBranch(ctx.runner, dest);
+  const tags = await listTags(ctx.runner, dest);
   const tagFormatCandidate = detectTagFormat(tags);
+  progress(ctx, 'detecting workspace packages…');
   const detected = await detectWorkspacePackages(dest);
   const packages = buildProposalPackages(detected, resolved.npmDirectory, resolved.npmPkgName);
   return { defaultBranch, packages, tagFormatCandidate };
@@ -94,7 +95,7 @@ interface CloneAndDetectResult {
 // `refs sync`/`refs add` on the same ref.
 const cloneAndDetect = (ctx: CliContext, opts: CloneAndDetectOpts): Promise<CloneAndDetectResult> =>
   withLock(opts.home, refLockName(opts.resolved.key), async () => {
-    const cloneOutcome = await ensureClonedCheckout(ctx.runner, {
+    const cloneOutcome = await ensureClonedCheckout(ctx, {
       allowFileUrls: allowFileUrlsFrom(ctx.env),
       cloneUrl: opts.resolved.cloneUrl,
       dest: opts.dest,
@@ -102,7 +103,7 @@ const cloneAndDetect = (ctx: CliContext, opts: CloneAndDetectOpts): Promise<Clon
       hooksDir: opts.home.hooksDir,
       mode: opts.cloneMode,
     });
-    const fields = await detectProposalFields(ctx.runner, opts.dest, opts.resolved);
+    const fields = await detectProposalFields(ctx, opts.dest, opts.resolved);
     const result: CloneAndDetectResult = { fields };
     if (cloneOutcome.effectiveMode !== undefined) {
       result.effectiveMode = cloneOutcome.effectiveMode;
