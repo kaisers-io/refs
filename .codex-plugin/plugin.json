@@ -34,7 +34,7 @@
       "How does zod implement refinements? Read the real source from my refs.",
       "Sync my refs and tell me what changed since yesterday."
     ],
-    "brandColor": "#ffffff",
+    "brandColor": "#07D256",
     "composerIcon": "./assets/logo-monogram.svg",
     "logo": "./assets/logo-monogram.png",
     "logoDark": "./assets/logo-monogram.png",
