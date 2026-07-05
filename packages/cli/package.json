@@ -26,7 +26,7 @@
     "@kaisers-io/refs-core": "workspace:*",
     "@types/node": "24.13.2",
     "commander": "15.0.0",
-    "smol-toml": "1.6.1",
+    "smol-toml": "1.7.0",
     "zod": "4.4.3"
   },
   "engines": {
