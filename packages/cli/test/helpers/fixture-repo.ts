@@ -1,5 +1,5 @@
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
-import { execa } from 'execa';
+import { SpawnRunner } from '@kaisers-io/refs-core';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -9,6 +9,8 @@ import { tmpdir } from 'node:os';
 // trip this repo's `import/no-relative-parent-imports` lint rule. This test-only fixture builder
 // creates a throwaway local git repo used as a `file://` "remote" for `add.test.ts`'s integration
 // suite — never the code under test.
+
+const setupRunner = new SpawnRunner();
 
 interface FixtureOpts {
   monorepo?: boolean;
@@ -41,7 +43,7 @@ const JSON_INDENT = 2;
 const SUCCESS_EXIT_CODE = 0;
 
 const git = async (dir: string, args: readonly string[]): Promise<string> => {
-  const result = await execa('git', args, { cwd: dir, reject: false });
+  const result = await setupRunner.run('git', args, { cwd: dir });
   if (result.exitCode === SUCCESS_EXIT_CODE) {
     return result.stdout;
   }

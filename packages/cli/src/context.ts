@@ -1,6 +1,6 @@
 import type { Fetcher, Runner } from '@kaisers-io/refs-core';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
-import { ExecaRunner } from '@kaisers-io/refs-core';
+import { SpawnRunner } from '@kaisers-io/refs-core';
 
 // Every side effect the CLI can perform (reading env, writing stdout/stderr, shelling out,
 // Fetching over HTTP) is captured here. Production code never touches `process`/stdio/`fetch`
@@ -44,7 +44,7 @@ const realContext = (): CliContext => ({
     process.stdout.write(`${line}\n`);
   },
   readStdin: readRealStdin,
-  runner: new ExecaRunner(),
+  runner: new SpawnRunner(),
 });
 
 export { realContext };

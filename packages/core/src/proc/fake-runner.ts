@@ -23,7 +23,7 @@ import type { RunOpts, RunResult, Runner } from './runner.ts';
 // Scripted response.
 //
 // `exitCode: 124` alone never means "timed out" — a real child can exit 124 on its own. Script
-// `{ exitCode: 124, timedOut: true }` for a genuine `ExecaRunner`-style timeout, and plain
+// `{ exitCode: 124, timedOut: true }` for a genuine `SpawnRunner`-style timeout, and plain
 // `{ exitCode: 124 }` (no `timedOut`) for a real command that just happens to exit 124; a caller
 // that branches on `RunResult.timedOut` treats the two differently, per `runner.ts`'s contract.
 
@@ -65,7 +65,7 @@ class FakeRunner implements Runner {
   }
 
   // `opts.timeoutMs` is accepted purely so call sites can pass the same `RunOpts` shape
-  // `ExecaRunner` does — recorded on `calls` for tests that want to assert it was forwarded, but
+  // `SpawnRunner` does — recorded on `calls` for tests that want to assert it was forwarded, but
   // otherwise ignored: `FakeRunner` always resolves synchronously with its scripted response, so
   // there is no real wall-clock wait for a timeout to race against.
   run(cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> {

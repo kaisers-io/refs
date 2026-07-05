@@ -150,8 +150,9 @@ const buildSshArgs = (target: SshTarget): string[] => {
 
 /** `-o BatchMode=yes` prevents an interactive password/passphrase prompt from ever blocking this
  * probe; `-o ConnectTimeout=<n>` is the task brief's "5s timeout" for the connection phase only —
- * `timeoutMs` (passed straight to the injected `Runner`, which `ExecaRunner` wires to execa's own
- * `timeout` option) bounds the whole probe, including anything after the connection succeeds, AND
+ * `timeoutMs` (passed straight to the injected `Runner`, which `SpawnRunner` wires to its own
+ * SIGTERM/SIGKILL escalation) bounds the whole probe, including anything after the connection
+ * succeeds, AND
  * — unlike a hand-rolled race — actually kills the underlying `ssh` child on expiry rather than
  * abandoning it to keep running (and keep this short-lived CLI process alive) after doctor has
  * already reported. Any exit code is accepted: GitHub's own successful `ssh -T` documented
