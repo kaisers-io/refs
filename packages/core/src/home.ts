@@ -1,4 +1,4 @@
-import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { existsSync, realpathSync } from 'node:fs';
 import type { RefKey } from './schemas/primitives.ts';
 import { homedir } from 'node:os';
@@ -16,8 +16,10 @@ interface RefsHome {
   hooksDir: string;
 }
 
+// `resolve()` the configured root so a relative REFS_HOME (e.g. "./refs-home") still yields
+// absolute derived paths — every command and the containment guard above assume absolute paths.
 const resolveHome = (env: NodeJS.ProcessEnv): RefsHome => {
-  const root = env['REFS_HOME'] ?? join(homedir(), '.kaisers-io', 'refs');
+  const root = resolve(env['REFS_HOME'] ?? join(homedir(), '.kaisers-io', 'refs'));
   return {
     configPath: join(root, 'config.toml'),
     hooksDir: join(root, 'hooks'),
@@ -30,6 +32,11 @@ const resolveHome = (env: NodeJS.ProcessEnv): RefsHome => {
 
 const checkoutPath = (home: RefsHome, key: RefKey): string =>
   join(home.sourcesDir, ...key.split('/'));
+
+// Single source of truth for the config-backup suffix — both `config-io.ts` (writing the backup)
+// and the CLI's migrate command (reporting its path) derive it from here rather than each
+// hardcoding `.bak` independently.
+const configBackupPath = (home: RefsHome): string => `${home.configPath}.bak`;
 
 // Walks up from `target` until it finds an existing ancestor, collecting the non-existing suffix segments along the way (deepest-first order for re-joining later).
 const findExistingAncestor = (target: string): { ancestor: string; missing: string[] } => {
@@ -87,5 +94,5 @@ const assertInsideSources = (home: RefsHome, absolutePath: string): void => {
   }
 };
 
-export { assertInsideSources, checkoutPath, resolveHome };
+export { assertInsideSources, checkoutPath, configBackupPath, resolveHome };
 export type { RefsHome };

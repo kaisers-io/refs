@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createRequire } from "node:module";
 import { access, chmod, constants, copyFile, lstat, mkdir, readFile, readdir, realpath, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
-import path, { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import path, { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import fs, { appendFileSync, createReadStream, createWriteStream, existsSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { constants as constants$1, homedir } from "node:os";
@@ -5329,6 +5329,59 @@ const writeFileAtomic = async (path, contents) => {
 };
 
 //#endregion
+//#region ../core/src/home.ts
+const NO_MISSING_SEGMENTS = 0;
+const PARENT_DIR_SEGMENT$1 = "..";
+const resolveHome = (env) => {
+	const root = resolve(env["REFS_HOME"] ?? join(homedir(), ".kaisers-io", "refs"));
+	return {
+		configPath: join(root, "config.toml"),
+		hooksDir: join(root, "hooks"),
+		locksDir: join(root, "locks"),
+		root,
+		sourcesDir: join(root, "sources"),
+		statePath: join(root, "state.json")
+	};
+};
+const checkoutPath = (home, key) => join(home.sourcesDir, ...key.split("/"));
+const configBackupPath = (home) => `${home.configPath}.bak`;
+const findExistingAncestor = (target) => {
+	const missing = [];
+	let current = target;
+	while (!existsSync(current)) {
+		const parent = dirname(current);
+		if (parent === current) break;
+		missing.unshift(basename(current));
+		current = parent;
+	}
+	return {
+		ancestor: current,
+		missing
+	};
+};
+const realpathDeepestExisting = (target) => {
+	const { ancestor, missing } = findExistingAncestor(target);
+	const resolved = realpathSync(ancestor);
+	if (missing.length === NO_MISSING_SEGMENTS) return resolved;
+	return join(resolved, ...missing);
+};
+/**
+* Guarantee: resolves symlinks in the EXISTING path components of both `home.sourcesDir` and
+* `absolutePath` (via realpathDeepestExisting) before comparing. For any non-existing suffix of
+* `absolutePath` the check is point-in-time only — a concurrent writer could plant a symlink in
+* that suffix between this check and a later destructive use, so this guard does not fully close
+* TOCTOU races (that would require openat-style traversal, out of scope for a local single-user
+* tool). Destructive callers (e.g. `refs remove`) MUST call this guard against an existing target
+* immediately before the destructive operation, not earlier, to minimise the race window.
+* `rel === ''` (target is sourcesDir itself) is rejected too.
+*/
+const assertInsideSources = (home, absolutePath) => {
+	const rel = relative(realpathDeepestExisting(home.sourcesDir), realpathDeepestExisting(absolutePath));
+	const isParentOrAbove = rel === PARENT_DIR_SEGMENT$1 || rel.startsWith(PARENT_DIR_SEGMENT$1 + sep);
+	if (!(rel !== "" && !isParentOrAbove && !isAbsolute(rel))) throw validationError(`path escapes sources directory (containment violation): ${absolutePath}`);
+};
+
+//#endregion
 //#region ../core/src/config-io.ts
 const isPlainObject$2 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
 const asRecordOr = (value, fallback) => {
@@ -5393,7 +5446,7 @@ const extractSchemaVersion = (raw) => {
 };
 const assertSupportedSchemaVersion = (raw, path) => {
 	const rawVersion = extractSchemaVersion(raw);
-	if (rawVersion === void 0) throw validationError(`config schema version is missing in ${path} — run: refs migrate`);
+	if (rawVersion === void 0) throw validationError(`config schema version is missing or invalid in ${path} — run: refs migrate`);
 	if (rawVersion > 1) throw validationError(`config schema ${rawVersion} is newer than this CLI supports — upgrade refs`);
 	if (rawVersion < 1) throw validationError(`config schema ${rawVersion} is older than expected ${1} — run: refs migrate`);
 };
@@ -5462,7 +5515,7 @@ const stampCliVersionIfChanged = async (home, raw, cliVersion) => {
 	await writeFileAtomic(home.configPath, stringify(stamped));
 };
 const migrateOlderConfig = async (home, raw, cliVersion) => {
-	await copyFile(home.configPath, `${home.configPath}.bak`);
+	await copyFile(home.configPath, configBackupPath(home));
 	const filled = deepMergeFillMissing(raw, MIGRATION_SKELETON);
 	const filledMeta = asRecordOr(filled["meta"], {});
 	const migrated = {
@@ -5474,7 +5527,7 @@ const migrateOlderConfig = async (home, raw, cliVersion) => {
 		}
 	};
 	const result = zConfig.safeParse(migrated);
-	if (!result.success) throw validationError(`config in ${home.configPath} is malformed beyond automatic migration (backup preserved at ${home.configPath}.bak): ${prettifyError(result.error)}`);
+	if (!result.success) throw validationError(`config in ${home.configPath} is malformed beyond automatic migration (backup preserved at ${configBackupPath(home)}): ${prettifyError(result.error)}`);
 	await writeFileAtomic(home.configPath, stringify(migrated));
 };
 const seedAndReport = async (home, cliVersion) => {
@@ -5975,58 +6028,6 @@ const applyGitTransport = (cloneUrl, transport) => {
 	const scp = SCP_URL.exec(cloneUrl);
 	if (scp?.groups !== void 0) return transformFromScp(scp, context);
 	return transformFromUrlForm(context);
-};
-
-//#endregion
-//#region ../core/src/home.ts
-const NO_MISSING_SEGMENTS = 0;
-const PARENT_DIR_SEGMENT$1 = "..";
-const resolveHome = (env) => {
-	const root = env["REFS_HOME"] ?? join(homedir(), ".kaisers-io", "refs");
-	return {
-		configPath: join(root, "config.toml"),
-		hooksDir: join(root, "hooks"),
-		locksDir: join(root, "locks"),
-		root,
-		sourcesDir: join(root, "sources"),
-		statePath: join(root, "state.json")
-	};
-};
-const checkoutPath = (home, key) => join(home.sourcesDir, ...key.split("/"));
-const findExistingAncestor = (target) => {
-	const missing = [];
-	let current = target;
-	while (!existsSync(current)) {
-		const parent = dirname(current);
-		if (parent === current) break;
-		missing.unshift(basename(current));
-		current = parent;
-	}
-	return {
-		ancestor: current,
-		missing
-	};
-};
-const realpathDeepestExisting = (target) => {
-	const { ancestor, missing } = findExistingAncestor(target);
-	const resolved = realpathSync(ancestor);
-	if (missing.length === NO_MISSING_SEGMENTS) return resolved;
-	return join(resolved, ...missing);
-};
-/**
-* Guarantee: resolves symlinks in the EXISTING path components of both `home.sourcesDir` and
-* `absolutePath` (via realpathDeepestExisting) before comparing. For any non-existing suffix of
-* `absolutePath` the check is point-in-time only — a concurrent writer could plant a symlink in
-* that suffix between this check and a later destructive use, so this guard does not fully close
-* TOCTOU races (that would require openat-style traversal, out of scope for a local single-user
-* tool). Destructive callers (e.g. `refs remove`) MUST call this guard against an existing target
-* immediately before the destructive operation, not earlier, to minimise the race window.
-* `rel === ''` (target is sourcesDir itself) is rejected too.
-*/
-const assertInsideSources = (home, absolutePath) => {
-	const rel = relative(realpathDeepestExisting(home.sourcesDir), realpathDeepestExisting(absolutePath));
-	const isParentOrAbove = rel === PARENT_DIR_SEGMENT$1 || rel.startsWith(PARENT_DIR_SEGMENT$1 + sep);
-	if (!(rel !== "" && !isParentOrAbove && !isAbsolute(rel))) throw validationError(`path escapes sources directory (containment violation): ${absolutePath}`);
 };
 
 //#endregion
@@ -16580,7 +16581,7 @@ const runMigrate = async (ctx) => {
 	const home = resolveHome(ctx.env);
 	const result = await withLock(home, "home", () => migrateConfig(home, version));
 	if (result === "migrated") return {
-		backup: `${home.configPath}.bak`,
+		backup: configBackupPath(home),
 		result
 	};
 	return {
@@ -17536,7 +17537,11 @@ const toResultItem = (settled, key) => {
 * outcome. */
 const syncAll = async (ctx, targets) => {
 	const sem = createSemaphore(SYNC_CONCURRENCY_CAP);
-	return (await Promise.allSettled(targets.map((rsc) => runGated(sem, () => syncOneKey(ctx, rsc))))).map((outcome, index) => toResultItem(outcome, targets[index]?.key ?? "unknown"));
+	return (await Promise.allSettled(targets.map((rsc) => runGated(sem, () => syncOneKey(ctx, rsc))))).map((outcome, index) => {
+		const target = targets[index];
+		if (target === void 0) throw new Error(`internal: sync target at index ${index} is missing`);
+		return toResultItem(outcome, target.key);
+	});
 };
 
 //#endregion

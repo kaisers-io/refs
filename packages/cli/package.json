@@ -1,6 +1,7 @@
 {
   "name": "@kaisers-io/refs",
   "version": "0.1.0",
+  "license": "MIT",
   "bin": {
     "refs": "./bin/refs.mjs"
   },

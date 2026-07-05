@@ -1,5 +1,5 @@
+import { configBackupPath, migrateConfig, resolveHome, withLock } from '@kaisers-io/refs-core';
 import { emit, wrapAction } from '../output.ts';
-import { migrateConfig, resolveHome, withLock } from '@kaisers-io/refs-core';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
 // eslint-disable-next-line import/no-relative-parent-imports -- package.json lives at the package root, one level above src/
@@ -12,13 +12,13 @@ interface MigrateData {
 
 // Pure command body: `migrateConfig` alone decides seed/migrate/noop — this only adds the
 // home-wide lock (matching `init.ts`'s own `withLock(home, 'home', ...)` wrapping of the same
-// call) and derives the on-disk backup path from the result, since `migrateConfig` itself returns
-// only the bare result string, never the backup path.
+// call) and derives the on-disk backup path from the result via the shared `configBackupPath`
+// helper, since `migrateConfig` itself returns only the bare result string, never the backup path.
 const runMigrate = async (ctx: CliContext): Promise<MigrateData> => {
   const home = resolveHome(ctx.env);
   const result = await withLock(home, 'home', () => migrateConfig(home, pkg.version));
   if (result === 'migrated') {
-    return { backup: `${home.configPath}.bak`, result };
+    return { backup: configBackupPath(home), result };
   }
   // eslint-disable-next-line unicorn/no-null -- cross-process JSON contract requires null, not undefined
   return { backup: null, result };

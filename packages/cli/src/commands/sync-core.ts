@@ -99,7 +99,15 @@ const syncAll = async (
   const settled = await Promise.allSettled(
     targets.map((rsc) => runGated(sem, () => syncOneKey(ctx, rsc))),
   );
-  return settled.map((outcome, index) => toResultItem(outcome, targets[index]?.key ?? 'unknown'));
+  return settled.map((outcome, index) => {
+    const target = targets[index];
+    if (target === undefined) {
+      // `settled` is produced by mapping over `targets`, so it is always the same length —
+      // this only guards `noUncheckedIndexedAccess`, it can never actually trigger.
+      throw new Error(`internal: sync target at index ${index} is missing`);
+    }
+    return toResultItem(outcome, target.key);
+  });
 };
 
 export { syncAll };

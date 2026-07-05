@@ -1,4 +1,5 @@
 import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { configBackupPath, resolveHome } from '@kaisers-io/refs-core';
 import { describe, expect, it } from 'vitest';
 import { join } from 'node:path';
 import { run } from '../../src/main.ts';
@@ -70,7 +71,7 @@ describe('refs migrate: json envelope', () => {
         expect(stderr).toHaveLength(NO_LINES);
         expect(stdout).toHaveLength(ONE_LINE);
         const parsed = parseSoleEnvelope(stdout);
-        const backup = join(homeDir, 'config.toml.bak');
+        const backup = configBackupPath(resolveHome({ REFS_HOME: homeDir }));
         expect(parsed).toMatchObject({ data: { backup, result: 'migrated' }, ok: true });
         await expect(access(backup)).resolves.toBeUndefined();
       }),
