@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo-wordmark-horizontal.svg" alt="refs logo" width="500">
+  <img src="assets/logo-wordmark-horizontal.svg" alt="refs logo" width="400">
 </p>
 
 <p align="center"><strong>Real source code for coding agents.</strong></p>
