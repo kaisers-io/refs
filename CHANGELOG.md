@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Updated the bundled `smol-toml` TOML parser/serializer from 1.6.1 to 1.7.0 (faster
+  single-pass string decoding; integers beyond the safe range now serialize as floats;
+  no breaking changes).
 - `refs add <source> --description <text>` no longer reuses `<text>` as a fallback
   description for detected packages that lack one. `<text>` is now only ever the
   top-level ref description; if one or more detected packages have no manifest
