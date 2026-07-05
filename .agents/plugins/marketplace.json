@@ -1,0 +1,20 @@
+{
+  "name": "refs",
+  "interface": {
+    "displayName": "Refs"
+  },
+  "plugins": [
+    {
+      "name": "refs",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

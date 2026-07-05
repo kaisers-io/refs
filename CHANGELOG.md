@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Plugin manifests for the Codex app/CLI (`.codex-plugin/plugin.json`) and Claude Code's
+  plugin marketplace (`.claude-plugin/plugin.json` + `marketplace.json`), plus a
+  `.agents/plugins/marketplace.json` mirror for Codex's own marketplace. A
+  `.agents/skills/refs` symlink to `skills/refs/` gives Codex repo-local
+  auto-discovery of the skill when run inside this checkout.
+
 ## [0.1.2] - 2026-07-05
 
 ### Added

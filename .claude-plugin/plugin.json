@@ -1,0 +1,25 @@
+{
+  "name": "refs",
+  "displayName": "Refs",
+  "version": "0.1.2",
+  "description": "Local, read-only reference checkouts of dependency sources for agents and humans.",
+  "author": {
+    "name": "Kaisers IO",
+    "url": "https://github.com/kaisers-io"
+  },
+  "homepage": "https://github.com/kaisers-io/refs",
+  "repository": "https://github.com/kaisers-io/refs",
+  "license": "MIT",
+  "keywords": [
+    "refs",
+    "dependencies",
+    "source-code",
+    "reference",
+    "git",
+    "cli",
+    "agent-skills",
+    "claude-code",
+    "codex"
+  ],
+  "skills": "./skills/"
+}
