@@ -5,6 +5,7 @@ import {
   checkoutPath,
   isGitCheckout,
   readConfig,
+  redactUrl,
   resolveHome,
   usageError,
   validationError,
@@ -66,8 +67,11 @@ const unknownFieldMessage = (field: string): string =>
 const isRefField = (field: string): field is keyof typeof zRefEntry.shape =>
   Object.hasOwn(zRefEntry.shape, field);
 
+// `cloneUrl` is redacted even though it passed canonicalization: a password-less ssh USERNAME
+// legally survives it (only passwords are rejected), so a token-shaped username would otherwise
+// land in this error and in logs.
 const remoteRewriteFailedMessage = (dest: string, cloneUrl: string, stderr: string): string =>
-  `failed to rewrite git remote at ${dest} to '${cloneUrl}': ${stderr.trim()}`;
+  `failed to rewrite git remote at ${dest} to '${redactUrl(cloneUrl)}': ${stderr.trim()}`;
 
 /** Rewrites `dest`'s `origin` remote to `cloneUrl` via `git remote set-url origin <url>` — but
  * only when `dest` is actually a checkout (an added-but-never-synced ref, or one whose checkout
