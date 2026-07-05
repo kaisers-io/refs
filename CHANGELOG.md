@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one-shot fails (exit 3) naming every affected package and pointing at the two-phase
   `--dry-run`/`--proposal` flow instead.
 
+### Fixed
+
+- `refs add --proposal` validation errors now name the offending key(s) for a
+  stray/unrecognized top-level field in the proposal (e.g.
+  `unrecognized key(s) in proposal: "okay"`) instead of a bare, contextless
+  `Invalid input`. Named-field validation errors (missing or wrong-typed fields,
+  including nested package fields like `packages.<name>.description`) are unchanged.
+
 ## [0.1.2] - 2026-07-05
 
 ### Added
