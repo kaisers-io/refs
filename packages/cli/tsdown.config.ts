@@ -4,8 +4,10 @@ import { defineConfig } from 'tsdown';
 const BUNDLE_PATH = 'bin/refs.mjs';
 const EXECUTABLE_MODE = 0o755;
 
-// Deterministic single-file ESM bundle: no minify/hashes so the committed bundle can be
-// freshness-checked with `git diff --exit-code` in CI.
+// Deterministic single-file ESM bundle: no hashes in the filename so the committed bundle can be
+// freshness-checked with `git diff --exit-code` in CI. Minification is still deterministic for a
+// fixed input (rolldown/oxc's minifier has no randomness/timestamps), so it doesn't break that
+// check — verified by building twice and comparing `shasum -a 256` output, see task-31-32-report.md.
 //
 // Entry is `src/index.ts`, not `src/main.ts`: `main.ts` only exports `run` (a library module), the
 // `if (import.meta.main)` self-invocation that actually executes the CLI when run as a script
@@ -25,7 +27,12 @@ export default defineConfig({
   dts: false,
   entry: { refs: 'src/index.ts' },
   format: 'esm',
-  minify: false,
+  // The GitHub repo is private but the npm package is public: an unminified bundle would ship
+  // every source comment (including design/security rationale) to anyone who runs `npm view` or
+  // unpacks the tarball. `true` is tsdown 0.22's default full minification (mangle + compress +
+  // strip comments, per its `MinifyOptions`); revert to `false` once the repo goes public and
+  // shipping readable source is no longer a concern.
+  minify: true,
   onSuccess: async () => {
     await chmod(BUNDLE_PATH, EXECUTABLE_MODE);
   },
