@@ -72,10 +72,17 @@ cp -r <path-to-this-repo>/skills/refs ~/.codex/skills/refs
 
 ### After public release
 
-Once `refs` is published, install it like any other CLI:
+Once the package is published to npm, install the CLI like any other tool:
 
 ```bash
 npm i -g @kaisers-io/refs
+```
+
+The skill install below additionally needs this GitHub repository to be public
+(`skills add` fetches from the repo, not from npm) — until then, use the local-clone
+skill install from the private-phase section above:
+
+```bash
 npx skills add kaisers-io/refs
 ```
 
