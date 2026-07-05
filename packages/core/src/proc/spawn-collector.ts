@@ -55,8 +55,14 @@ const createCollector = (): StreamCollector => {
 
 // Appends `note` to `text` rather than replacing it — a child's own partial output (if it produced
 // any before being killed/erroring/truncating) stays visible alongside the reason it's incomplete.
-const appendNote = (text: string, note: string): string =>
-  [text, note].filter((part) => part !== '').join('\n');
+// ONE trailing newline is stripped from `text` first (only here, at note-append time — `RunResult`
+// output is otherwise never trimmed), so `"partial\n"` joins as `"partial\n<note>"` rather than
+// stacking a blank line (`"partial\n\n<note>"`) — matching what the previous, final-newline-
+// stripping runner produced.
+const appendNote = (text: string, note: string): string => {
+  const base = text.replace(/\n$/u, '');
+  return [base, note].filter((part) => part !== '').join('\n');
+};
 
 // Truncation note(s) always land on `stderr`, regardless of which stream actually overflowed — the
 // same place the timeout note (runner.ts) lands, so anything reading `stderr` for "why is this

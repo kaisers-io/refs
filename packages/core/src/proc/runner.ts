@@ -102,6 +102,25 @@ const startChild = (
   return { child, stderrCollector, stdoutCollector, timeout };
 };
 
+// The never-throw contract's last hole: `spawn()` itself can throw SYNCHRONOUSLY on an invalid
+// argument shape (e.g. an empty `cmd` throws ERR_INVALID_ARG_VALUE) — before any `error` event
+// could ever fire. Unreachable from today's call sites (all pass literal 'git'/'ssh'), but the
+// `Runner` contract is frozen: no input may escape `run()` as a rejection. Normalized to the same
+// `SPAWN_ERROR_EXIT_CODE` shape as the async `error`-event path (`waitForClose`'s catch below).
+const startChildSafely = (
+  cmd: string,
+  args: readonly string[],
+  opts: RunOpts | undefined,
+): RunningChild | RunResult => {
+  try {
+    return startChild(cmd, args, opts);
+  } catch (error) {
+    return { exitCode: SPAWN_ERROR_EXIT_CODE, stderr: errorMessageOf(error), stdout: '' };
+  }
+};
+
+const isRunResult = (value: RunningChild | RunResult): value is RunResult => !('child' in value);
+
 interface CloseOutcome {
   code: number | null;
   errorMessage?: string;
@@ -175,7 +194,10 @@ const buildCloseResult = (ctx: CloseContext): RunResult => {
 class SpawnRunner implements Runner {
   async run(cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> {
     installCleanupOnce();
-    const running = startChild(cmd, args, opts);
+    const running = startChildSafely(cmd, args, opts);
+    if (isRunResult(running)) {
+      return running;
+    }
     const outcome = await waitForClose(running.child);
     activeChildren.delete(running.child);
     running.timeout.clear();
