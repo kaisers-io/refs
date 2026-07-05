@@ -121,8 +121,7 @@ interface SyncEnvelope {
 
 /** Runs `refs sync [...opts.refKeys] --json` (`--stale-only` optionally appended) and returns the
  * parsed envelope. Takes `opts.refKeys`/`opts.staleOnly` bundled (rather than two more positional
- * params) to stay under the repo's `max-params` cap, mirroring `add-guards-support.ts`'s own
- * `runAddDescriptionJson`. */
+ * params) to stay under the repo's `max-params` cap. */
 const runSyncJson = async (
   ctx: CliContext,
   stdout: string[],
