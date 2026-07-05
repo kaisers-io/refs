@@ -6,33 +6,28 @@
 // `git remote get-url origin` value that may itself carry a credentialed origin) share ONE
 // implementation instead of duplicating the regex.
 
-// Matches a userinfo segment right after a `//` (any scheme, even a malformed one the WHATWG
-// parser itself rejected — the whole point is this can fire on strings that never got that far).
-const SCHEME_USERINFO_PATTERN = /\/\/[^\s/@]*@/u;
-const REDACTED_SCHEME_USERINFO = '//<redacted>@';
-
-// Matches a bare `user@`/`user:pass@` prefix with no scheme at all — the scp form (`git@host:path`).
-// Anchored to the START only: once the scheme-form replacement above has already fired, nothing
-// starting at index 0 can still end in an unescaped `@` before its first `/`, so this never
-// double-fires on the same userinfo segment.
-const BARE_USERINFO_PATTERN = /^[^\s/@]+@/u;
-const REDACTED_BARE_USERINFO = '<redacted>@';
+// Redacts everything from the start of the string up to (and including) the LAST `@`, preserving
+// only a well-formed leading `scheme://` when one exists. Deliberately maximal (review round 2):
+// the first implementation's precise, non-global, start-anchored userinfo patterns were PROVEN to
+// leak on inputs that aren't a single well-formed url — a second credentialed url later in the
+// string, a bare `user:pass@` not at index 0, whitespace inside the would-be userinfo. Redaction
+// here may be lossy on garbage input (the accepted trade-off); a candidate secret must never
+// survive just because it contains a space, slash, or an extra url before it.
+const THROUGH_LAST_AT_PATTERN = /^(?<scheme>[a-z][a-z0-9+.-]*:\/\/)?[\s\S]*@/iu;
+const REDACTED_THROUGH_LAST_AT = '$<scheme><redacted>@';
 
 const MAX_REDACTED_LENGTH = 200;
 const TRUNCATION_START = 0;
 const TRUNCATION_SUFFIX = '…';
 
-/** Strips any userinfo from `raw` (`scheme://user:pass@host/...` → `scheme://<redacted>@host/...`;
- * `git@host:path` → `<redacted>@host:path`) and truncates the result to a sane length — for use
- * whenever an otherwise-untrusted, possibly-credentialed string must still appear (in redacted
- * form) inside an error/log message. Urls without any userinfo pass through unchanged (aside from
- * truncation). */
+/** Strips any potential userinfo from `raw` (`scheme://user:pass@host/...` →
+ * `scheme://<redacted>@host/...`; `git@host:path` → `<redacted>@host:path`; on multi-url or
+ * garbage input everything up to the LAST `@` is redacted — lossy by design, see the pattern
+ * comment above) and truncates the result to a sane length — for use whenever an
+ * otherwise-untrusted, possibly-credentialed string must still appear (in redacted form) inside an
+ * error/log message. Strings without any `@` pass through unchanged (aside from truncation). */
 const redactUrl = (raw: string): string => {
-  const withoutSchemeUserinfo = raw.replace(SCHEME_USERINFO_PATTERN, REDACTED_SCHEME_USERINFO);
-  const withoutCredentials = withoutSchemeUserinfo.replace(
-    BARE_USERINFO_PATTERN,
-    REDACTED_BARE_USERINFO,
-  );
+  const withoutCredentials = raw.replace(THROUGH_LAST_AT_PATTERN, REDACTED_THROUGH_LAST_AT);
   if (withoutCredentials.length <= MAX_REDACTED_LENGTH) {
     return withoutCredentials;
   }

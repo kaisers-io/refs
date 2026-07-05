@@ -22,12 +22,13 @@ import { mkdir } from 'node:fs/promises';
 
 const SUCCESS_EXIT_CODE = 0;
 
-// `actual` comes straight from `git remote get-url origin` — a real checkout's origin may itself
-// carry embedded credentials (`https://token@host/...`), so it is redacted before ever landing in
-// this message; `expectedUrl` is whatever the caller already typed/proposed, never a secret it
-// doesn't already know, so it is rendered verbatim.
+// BOTH url slots are redacted: `actual` comes straight from `git remote get-url origin` — a real
+// checkout's origin may itself carry embedded credentials (`https://token@host/...`) — and
+// `expectedUrl` can carry them too (review round 2): a `refs add --proposal` payload's `url` is
+// only checked to be a non-empty string by `zFinalProposal`, so a credentialed url reaches this
+// message verbatim; this error also lands in logs, not just the invoking terminal.
 const originMismatchMessage = (dest: string, actual: string, expectedUrl: string): string =>
-  `checkout at ${dest} points at '${redactUrl(actual)}' — expected '${expectedUrl}'; ` +
+  `checkout at ${dest} points at '${redactUrl(actual)}' — expected '${redactUrl(expectedUrl)}'; ` +
   'remove the checkout directory or run refs remove before retrying';
 
 const NO_ORIGIN_MARKER = '(no origin remote)';

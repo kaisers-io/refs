@@ -5872,20 +5872,19 @@ const resolveTag = async (runner, dir, format, version) => {
 
 //#endregion
 //#region ../core/src/git-url-redact.ts
-const SCHEME_USERINFO_PATTERN = /\/\/[^\s/@]*@/u;
-const REDACTED_SCHEME_USERINFO = "//<redacted>@";
-const BARE_USERINFO_PATTERN = /^[^\s/@]+@/u;
-const REDACTED_BARE_USERINFO = "<redacted>@";
+const THROUGH_LAST_AT_PATTERN = /^(?<scheme>[a-z][a-z0-9+.-]*:\/\/)?[\s\S]*@/iu;
+const REDACTED_THROUGH_LAST_AT = "$<scheme><redacted>@";
 const MAX_REDACTED_LENGTH = 200;
 const TRUNCATION_START = 0;
 const TRUNCATION_SUFFIX = "…";
-/** Strips any userinfo from `raw` (`scheme://user:pass@host/...` → `scheme://<redacted>@host/...`;
-* `git@host:path` → `<redacted>@host:path`) and truncates the result to a sane length — for use
-* whenever an otherwise-untrusted, possibly-credentialed string must still appear (in redacted
-* form) inside an error/log message. Urls without any userinfo pass through unchanged (aside from
-* truncation). */
+/** Strips any potential userinfo from `raw` (`scheme://user:pass@host/...` →
+* `scheme://<redacted>@host/...`; `git@host:path` → `<redacted>@host:path`; on multi-url or
+* garbage input everything up to the LAST `@` is redacted — lossy by design, see the pattern
+* comment above) and truncates the result to a sane length — for use whenever an
+* otherwise-untrusted, possibly-credentialed string must still appear (in redacted form) inside an
+* error/log message. Strings without any `@` pass through unchanged (aside from truncation). */
 const redactUrl = (raw) => {
-	const withoutCredentials = raw.replace(SCHEME_USERINFO_PATTERN, REDACTED_SCHEME_USERINFO).replace(BARE_USERINFO_PATTERN, REDACTED_BARE_USERINFO);
+	const withoutCredentials = raw.replace(THROUGH_LAST_AT_PATTERN, REDACTED_THROUGH_LAST_AT);
 	if (withoutCredentials.length <= MAX_REDACTED_LENGTH) return withoutCredentials;
 	return `${withoutCredentials.slice(TRUNCATION_START, MAX_REDACTED_LENGTH)}${TRUNCATION_SUFFIX}`;
 };
@@ -5907,7 +5906,7 @@ const hasBackslash = (raw) => raw.includes("\\");
 const hasPercentEncoding = (raw) => raw.includes("%");
 const parseAsRefKey = (candidate) => {
 	const parsed = zRefKey.safeParse(candidate);
-	if (!parsed.success) throw validationError(`not a supported git url: derived key '${candidate}' is invalid`);
+	if (!parsed.success) throw validationError(`not a supported git url: derived key '${redactUrl(candidate)}' is invalid`);
 	return parsed.data;
 };
 const hostSegmentFor = ({ host, port, protocol }) => {
@@ -17279,7 +17278,7 @@ const runGated = async (sem, fn) => {
 //#endregion
 //#region src/commands/add-checkout-guards.ts
 const SUCCESS_EXIT_CODE$1 = 0;
-const originMismatchMessage = (dest, actual, expectedUrl) => `checkout at ${dest} points at '${redactUrl(actual)}' — expected '${expectedUrl}'; remove the checkout directory or run refs remove before retrying`;
+const originMismatchMessage = (dest, actual, expectedUrl) => `checkout at ${dest} points at '${redactUrl(actual)}' — expected '${redactUrl(expectedUrl)}'; remove the checkout directory or run refs remove before retrying`;
 const NO_ORIGIN_MARKER = "(no origin remote)";
 /** Verifies `opts.dest`'s `origin` remote points at `opts.expectedUrl` — guards against reusing or
 * finalizing against a directory that merely happens to occupy the derived checkout path but is an

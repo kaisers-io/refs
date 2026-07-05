@@ -37,10 +37,15 @@ const hasBackslash = (raw: string): boolean => raw.includes('\\');
 // Rather than decode-and-recheck every path segment, we reject any `%` in non-file forms outright: git hosts virtually never need percent-encoded paths, and zRefKey's SAFE_SEGMENT already forbids `%` in stored keys, so encoding here can only ever cause normalization surprises.
 const hasPercentEncoding = (raw: string): boolean => raw.includes('%');
 
+// The candidate is redacted (review round 2): an authority-less `ssh:/user:pass@host/...` url
+// parses with EMPTY username/password (WHATWG folds the credentials into pathname), so
+// `assertNoCredentials` never fires and the secret lands here — same for `buildFileKey`'s path.
 const parseAsRefKey = (candidate: string): RefKey => {
   const parsed = zRefKey.safeParse(candidate);
   if (!parsed.success) {
-    throw validationError(`not a supported git url: derived key '${candidate}' is invalid`);
+    throw validationError(
+      `not a supported git url: derived key '${redactUrl(candidate)}' is invalid`,
+    );
   }
   return parsed.data;
 };

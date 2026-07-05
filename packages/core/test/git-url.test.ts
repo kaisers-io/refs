@@ -86,6 +86,12 @@ const CREDENTIALED_LEAK_CASES: readonly [string, string][] = [
     'percent-encoding guard fires before the credentials guard',
   ],
   ['ht!tp://user:sekrit@host/a/b', 'an unparseable url still echoes raw input by default'],
+  [
+    'ssh:/user:sekrit@host/owner/repo',
+    'authority-less ssh url (review round 2) — WHATWG parses the credentials into pathname ' +
+      '(username/password stay empty, so assertNoCredentials never fires) and parseAsRefKey ' +
+      'used to echo the derived key verbatim',
+  ],
 ];
 
 const messageOf = (error: unknown): string => {
@@ -125,6 +131,17 @@ describe('canonicalizeGitUrl never echoes embedded credentials', () => {
   it.each(CREDENTIALED_LEAK_CASES)('rejects %s without leaking the password (%s)', (bad) => {
     expect.hasAssertions();
     const message = throwMessage(() => canonicalizeGitUrl(bad));
+    expect(message).toMatch(/not a supported git url/u);
+    expect(message).not.toContain('sekrit');
+  });
+
+  // The parseAsRefKey echo is also reachable through the buildFileKey caller (review round 2) —
+  // a file url whose decoded path fails zRefKey used to land verbatim in the derived-key message.
+  it('rejects a credentialed-looking file url path without leaking it (allowFileUrls)', () => {
+    expect.hasAssertions();
+    const message = throwMessage(() =>
+      canonicalizeGitUrl('file:///tmp/user:sekrit@x/repo', { allowFileUrls: true }),
+    );
     expect(message).toMatch(/not a supported git url/u);
     expect(message).not.toContain('sekrit');
   });
