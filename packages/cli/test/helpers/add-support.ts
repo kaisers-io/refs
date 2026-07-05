@@ -1,4 +1,11 @@
-import { ExecaRunner, readConfig, readState, zProposal } from '@kaisers-io/refs-core';
+import {
+  EXIT,
+  ExecaRunner,
+  readConfig,
+  readState,
+  resolveHome,
+  zProposal,
+} from '@kaisers-io/refs-core';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { Proposal, RefsHome } from '@kaisers-io/refs-core';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -8,6 +15,11 @@ import { join } from 'node:path';
 import { run } from '../../src/main.ts';
 import { testContext } from './context.ts';
 import { tmpdir } from 'node:os';
+
+interface ErrorEnvelope {
+  error?: { code: string; message: string };
+  ok: boolean;
+}
 
 // Shared scaffolding + assertion helpers for `add.test.ts`'s real-git integration suite — kept
 // separate purely to keep that file under the repo's 300-line oxlint cap and each individual test
@@ -98,6 +110,53 @@ const finalizeViaStdinProposal = async (ctx: CliContext, completed: unknown): Pr
   await run(ctx, ['node', 'refs', 'add', '--proposal', '-', '--json']);
 };
 
+// A hand-built `FinalProposal`-shaped object — every field `zFinalProposal` requires, notably
+// `key` (envelope bodies never carry one). Used by the envelope-detection edge-case tests, which
+// never need a real checkout: those cases are all rejected by `loadFinalProposal` before
+// `runAddProposal` ever resolves `home` or checks out.
+const validFinalProposal = (key: string): Record<string, unknown> => ({
+  default_branch: 'main',
+  description: 'A hand-built proposal.',
+  key,
+  packages: {},
+  tag_format_candidate: 'v{version}',
+  url: `https://${key}.git`,
+});
+
+interface AddTestHarness {
+  ctx: CliContext;
+  homeDir: string;
+  stdout: string[];
+}
+
+/** Writes `body` to a proposal file, finalizes via `--proposal`, and asserts the common
+ * validation-failure shape (exit 3, `ok: false`, `code: 'validation'`) — the three assertions
+ * every envelope-detection edge case shares, returning the envelope so callers can add their own
+ * message-specific assertions on top without re-deriving it. */
+const runFinalizeExpectingValidationError = async (
+  harness: AddTestHarness,
+  body: unknown,
+): Promise<ErrorEnvelope> => {
+  const { ctx, homeDir, stdout } = harness;
+  await finalizeViaProposalFile(ctx, homeDir, body);
+  expect(process.exitCode).toBe(EXIT.VALIDATION);
+  const envelope = parseLastEnvelope(stdout) as ErrorEnvelope;
+  expect(envelope.ok).toBe(false);
+  expect(envelope.error?.code).toBe('validation');
+  return envelope;
+};
+
+/** Asserts none of `keys` were finalized into `config.refs` — used to prove a rejected proposal
+ * file (e.g. a hybrid envelope/proposal that fails strict-schema validation) never reached the
+ * config write path for either its top-level or nested proposal. */
+const expectKeysAbsentFromConfig = async (ctx: CliContext, keys: string[]): Promise<void> => {
+  const home = resolveHome(ctx.env);
+  const config = await readConfig(home);
+  for (const key of keys) {
+    expect(config.refs[key]).toBeUndefined();
+  }
+};
+
 // Also asserts `effective_clone_mode` is already `'full'` right after the dry-run's own clone
 // (see `expectFinalizedState`'s comment) — proving `writePendingProposal` captures the real clone
 // result rather than leaving it to be guessed later at finalize time.
@@ -143,6 +202,7 @@ const expectNoPackagesTable = async (home: RefsHome, key: string): Promise<void>
 
 export {
   expectFinalizedState,
+  expectKeysAbsentFromConfig,
   expectNoPackagesTable,
   expectPackagesWithDescriptions,
   expectPendingProposal,
@@ -152,6 +212,9 @@ export {
   parseLastEnvelope,
   realContextFor,
   runAddDryRunJson,
+  runFinalizeExpectingValidationError,
+  validFinalProposal,
   withResetExitCode,
   withTempHome,
 };
+export type { ErrorEnvelope };

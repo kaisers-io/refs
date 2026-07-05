@@ -43,21 +43,33 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 
 const FAILED_ENVELOPE_MESSAGE =
   'proposal file contains a failed refs envelope (ok is false) — re-run the dry-run';
+const NO_USABLE_DATA_MESSAGE =
+  'proposal file is a refs envelope without a usable data object — re-run the dry-run';
 
 /** `refs ... --json` always emits a top-level `ok` field (see `output.ts`'s `SuccessEnvelope`/
- * `ErrorEnvelope`), which a bare `FinalProposal` never has — used as the single signal that
- * `raw` is the whole `--json` envelope (piped straight from `refs add --dry-run --json`) rather
- * than a hand-edited bare proposal. */
+ * `ErrorEnvelope`), which a bare `FinalProposal` never has — but `ok` alone over-triggers: a
+ * hand-edited proposal can pick up a stray top-level `ok` key (e.g. a copy-paste mistake) without
+ * being an envelope at all. `key` is the disambiguator: `zFinalProposal` requires it (see
+ * `schemas/proposal.ts`'s `zProposalBase`) so every real proposal has one, and no `refs --json`
+ * envelope (`{ok, data, warnings}` / `{ok, error}`) ever puts `key` at its top level — that only
+ * ever appears nested inside `data`. So "has `ok`, lacks `key`" is the sound envelope signal;
+ * anything else (including a bare proposal with a stray `ok`) is left for the strict `zFinalProposal`
+ * schema to reject on its own terms. */
 const looksLikeEnvelope = (value: unknown): value is Record<string, unknown> =>
-  isPlainObject(value) && 'ok' in value;
+  isPlainObject(value) && 'ok' in value && !('key' in value);
 
 /** Unwraps a `refs --json` envelope down to its `data` payload so the exact stdout of
  * `refs add --dry-run --json` can be piped straight into `--proposal` (see docs/commands.md's
  * pipe example) without hand-stripping the envelope first. A failed envelope (`ok: false`) — the
  * dry-run itself errored, so there is no proposal to unwrap — throws a clear message instead of
- * letting the bare `{error, ok}` shape fall through to a confusing zod field-by-field dump. Any
- * other shape (a bare `FinalProposal`, or something envelope-ish but missing a usable `data`
- * object) passes through unchanged for `parseFinalProposal` to validate as-is. */
+ * letting the bare `{error, ok}` shape fall through to a confusing zod field-by-field dump.
+ * Once something is envelope-shaped and didn't fail, its `data` MUST be a usable object — a
+ * missing or non-object `data` (`{"ok":true,"warnings":[]}`, `{"ok":true,"data":"nope"}`) also
+ * throws a clear message rather than handing `parseFinalProposal` a value the user never wrote
+ * (e.g. validating the literal string `"nope"` and producing a six-field zod dump about it).
+ * Anything NOT envelope-shaped (a bare `FinalProposal`, including one with a stray `ok` key)
+ * passes through unchanged for `parseFinalProposal` to validate — and reject, via the strict
+ * schema, on its own terms. */
 const unwrapEnvelope = (value: unknown): unknown => {
   if (!looksLikeEnvelope(value)) {
     return value;
@@ -68,7 +80,7 @@ const unwrapEnvelope = (value: unknown): unknown => {
   if (isPlainObject(value['data'])) {
     return value['data'];
   }
-  return value;
+  throw validationError(NO_USABLE_DATA_MESSAGE);
 };
 
 /** Validates the parsed JSON against `zFinalProposal`, rendering a zod "pretty" error on failure —
