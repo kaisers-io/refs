@@ -16590,7 +16590,7 @@ const runMigrate = async (ctx) => {
 	};
 };
 const migrateHuman = (data) => {
-	if (data.result === "migrated") return "config migrated (backup: config.toml.bak)";
+	if (data.result === "migrated" && data.backup !== null) return `config migrated (backup: ${basename(data.backup)})`;
 	if (data.result === "seeded") return "config seeded";
 	return "config up to date";
 };
