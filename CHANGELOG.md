@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its single seeded package entry never carries a description — and always needs the
   two-phase flow.
 
+- Replaced the `execa` dependency with a small hand-rolled `node:child_process`-based
+  process runner. No behavior change — `git`/`ssh` invocations, timeouts, and error
+  handling all work exactly as before. The published CLI bundle is smaller as a
+  result (`bin/refs.mjs`: 304,098 → 195,005 bytes raw, 89,376 → 55,444 bytes gzipped).
+
 ### Fixed
 
 - `refs add --proposal` validation errors now name the offending key(s) for a

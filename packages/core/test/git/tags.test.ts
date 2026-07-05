@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { detectTagFormat, renderTag, resolveTag } from '../../src/git/tags.ts';
-import { ExecaRunner } from '../../src/proc/runner.ts';
+import { SpawnRunner } from '../../src/proc/runner.ts';
 import { createFixtureRepo } from '../helpers/fixture-repo.ts';
 
-const runner = new ExecaRunner();
+const runner = new SpawnRunner();
 
 // Real git work (fixture repo creation + tag resolution) under parallel suite load can exceed
 // vitest's 5s default — mirrors `git/repo.test.ts`'s own `SUITE_OPTS` idiom.

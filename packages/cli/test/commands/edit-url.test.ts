@@ -9,7 +9,6 @@ import {
 import { describe, expect, it } from 'vitest';
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
 import type { CliContext } from '../../src/context.ts';
-import { execa } from 'execa';
 import { join } from 'node:path';
 import { relocateBehindSymlink } from '../helpers/add-guards-support.ts';
 import { run } from '../../src/main.ts';
@@ -44,7 +43,7 @@ const assertUrlRewritten = async (
   const config = await readConfig(home);
   expect(config.refs[REF_KEY]?.url).toBe(newUrl);
   const dest = checkoutPath(home, zRefKey.parse(REF_KEY));
-  const remote = await execa('git', ['remote', 'get-url', 'origin'], { cwd: dest });
+  const remote = await ctx.runner.run('git', ['remote', 'get-url', 'origin'], { cwd: dest });
   expect(remote.stdout.trim()).toBe(newUrl);
 };
 
@@ -118,7 +117,9 @@ const assertEditRefusedUntouched = async (
   expect(envelope.error?.message).toMatch(/containment/u);
   const config = await readConfig(resolveHome(ctx.env));
   expect(config.refs[REF_KEY]?.url).toBe(REF_ENTRY.url);
-  const originAfter = await execa('git', ['remote', 'get-url', 'origin'], { cwd: opts.dest });
+  const originAfter = await ctx.runner.run('git', ['remote', 'get-url', 'origin'], {
+    cwd: opts.dest,
+  });
   expect(originAfter.stdout).toBe(opts.originBefore);
 };
 
@@ -133,7 +134,9 @@ describe('refs edit: url, containment guard', () => {
           const home = resolveHome(ctx.env);
           const relocated = await relocateBehindSymlink(join(home.sourcesDir, 'github.com'));
           const dest = join(relocated, 'acme', 'widget');
-          const originBefore = await execa('git', ['remote', 'get-url', 'origin'], { cwd: dest });
+          const originBefore = await ctx.runner.run('git', ['remote', 'get-url', 'origin'], {
+            cwd: dest,
+          });
 
           await run(ctx, [
             'node',
@@ -167,7 +170,7 @@ describe('refs edit: url, rewrite-failure message', () => {
           const home = resolveHome(ctx.env);
           const dest = checkoutPath(home, zRefKey.parse(REF_KEY));
           // Force `git remote set-url origin` to fail: no origin remote to rewrite.
-          await execa('git', ['remote', 'remove', 'origin'], { cwd: dest });
+          await ctx.runner.run('git', ['remote', 'remove', 'origin'], { cwd: dest });
 
           await run(ctx, [
             'node',

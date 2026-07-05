@@ -1,15 +1,23 @@
-import { ExecaRunner, TIMEOUT_EXIT_CODE } from '../../src/proc/runner.ts';
+import {
+  SIGNAL_KILLED_EXIT_CODE,
+  SPAWN_ERROR_EXIT_CODE,
+  SpawnRunner,
+  TIMEOUT_EXIT_CODE,
+} from '../../src/proc/runner.ts';
 import { access, mkdtemp } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { setTimeout as delay } from 'node:timers/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-// Real `execa` integration suite for `ExecaRunner`'s `timeoutMs` option (never a mock — this is the
-// one place proving `run()` actually kills a hung child rather than merely racing it). Fixes the
-// review finding that a timed-out `ssh` probe kept running after `raceWithTimeout` gave up on it,
-// which kept the whole short-lived CLI process (and, in this suite, the test process itself) alive
-// long after doctor had already printed its results.
+// Real child-process integration suite for `SpawnRunner` — a hand-rolled `node:child_process`-
+// based `Runner` that replaces `execa` (never a mock — this is the one place proving `run()`
+// actually spawns, waits for, and (when asked) kills a real process rather than merely racing it).
+// Includes the original timeout-normalization suite (fixes the review finding that a timed-out
+// `ssh` probe kept running after `raceWithTimeout` gave up on it) plus new red-first coverage added
+// while replacing `ExecaRunner`: non-zero exit as data, `ENOENT` resolving instead of throwing,
+// full capture of large/interleaved output, signal-killed exit code normalization, and resolution
+// waiting for the child's `close` event (streams drained) rather than its `exit` event.
 
 const TEST_TIMEOUT_MS = 30_000;
 const SUITE_OPTS = { timeout: TEST_TIMEOUT_MS };
@@ -18,10 +26,11 @@ const RESOLVE_MARGIN_MS = 2000;
 const SLEEP_SECONDS = '5';
 const CHILD_DELAY_SECONDS = '1';
 const KILL_CHECK_DELAY_MS = 1500;
+const SUCCESS_EXIT_CODE = 0;
 
-const runner = new ExecaRunner();
+const runner = new SpawnRunner();
 
-describe('timeoutMs (ExecaRunner)', SUITE_OPTS, () => {
+describe('timeoutMs (SpawnRunner)', SUITE_OPTS, () => {
   it('resolves quickly with a normalized timeout result instead of waiting out the child', async () => {
     expect.hasAssertions();
     const start = Date.now();
@@ -64,5 +73,84 @@ describe('timeoutMs (ExecaRunner)', SUITE_OPTS, () => {
 
     expect(result.exitCode).toBe(TIMEOUT_EXIT_CODE);
     expect(result.timedOut).not.toBe(true);
+  });
+});
+
+describe('non-zero exit', () => {
+  it('reports a non-zero exit as data instead of throwing', async () => {
+    expect.hasAssertions();
+    const EXPECTED_EXIT_CODE = 3;
+
+    const result = await runner.run('sh', ['-c', `exit ${String(EXPECTED_EXIT_CODE)}`]);
+
+    expect(result.exitCode).toBe(EXPECTED_EXIT_CODE);
+    expect(result.timedOut).not.toBe(true);
+  });
+});
+
+describe('spawn failure (ENOENT)', () => {
+  it('resolves instead of throwing when the binary does not exist', async () => {
+    expect.hasAssertions();
+
+    const result = await runner.run('refs-runner-test-no-such-binary', []);
+
+    expect(result.exitCode).toBe(SPAWN_ERROR_EXIT_CODE);
+    expect(result.stderr).toMatch(/ENOENT/u);
+    expect(result.timedOut).not.toBe(true);
+  });
+});
+
+describe('signal-killed (non-timeout)', () => {
+  it('normalizes a self-inflicted SIGTERM to exitCode 1, never timedOut', async () => {
+    expect.hasAssertions();
+
+    // The shell sends itself SIGTERM directly (never through our own `timeoutMs` machinery) —
+    // exercises the plain "killed by signal" path `hardResetToBranch`-style callers never script.
+    const result = await runner.run('sh', ['-c', 'kill -TERM $$']);
+
+    expect(result.exitCode).toBe(SIGNAL_KILLED_EXIT_CODE);
+    expect(result.timedOut).not.toBe(true);
+  });
+});
+
+describe('large / interleaved output', () => {
+  it('captures the full content of large, interleaved stdout and stderr writes', async () => {
+    expect.hasAssertions();
+    const CHUNK_COUNT = 400;
+    const CHUNK_LENGTH = 512;
+    const script = `
+      const chunk = 'x'.repeat(${String(CHUNK_LENGTH)});
+      for (let i = 0; i < ${String(CHUNK_COUNT)}; i += 1) {
+        process.stdout.write(chunk);
+        process.stderr.write(chunk);
+      }
+    `;
+
+    const result = await runner.run(process.execPath, ['-e', script]);
+
+    expect(result.exitCode).toBe(SUCCESS_EXIT_CODE);
+    expect(result.stdout).toHaveLength(CHUNK_COUNT * CHUNK_LENGTH);
+    expect(result.stderr).toHaveLength(CHUNK_COUNT * CHUNK_LENGTH);
+  });
+});
+
+describe('resolution waits for close, not exit', () => {
+  it('does not resolve until a backgrounded grandchild releases the inherited stdout pipe', async () => {
+    expect.hasAssertions();
+    const start = Date.now();
+    const GRANDCHILD_DELAY_SECONDS = '0.3';
+    const MIN_ELAPSED_MS = 250;
+
+    // The `sh` process itself exits ~immediately (`exit 0`); a backgrounded subshell it spawned
+    // keeps the SAME inherited stdout pipe open for another ~300ms. Node's `exit` event would fire
+    // as soon as `sh` terminates; `close` (what `SpawnRunner` resolves on) waits for every process
+    // holding that pipe open to release it — proving `run()` really waits for `close`, not `exit`.
+    const result = await runner.run('sh', [
+      '-c',
+      `(sleep ${GRANDCHILD_DELAY_SECONDS} && echo late-grandchild-output) & exit 0`,
+    ]);
+
+    expect(Date.now() - start).toBeGreaterThanOrEqual(MIN_ELAPSED_MS);
+    expect(result.stdout).toContain('late-grandchild-output');
   });
 });

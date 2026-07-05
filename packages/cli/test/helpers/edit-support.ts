@@ -1,7 +1,6 @@
-import { ExecaRunner, checkoutPath, resolveHome, zRefKey } from '@kaisers-io/refs-core';
+import { SpawnRunner, checkoutPath, resolveHome, zRefKey } from '@kaisers-io/refs-core';
 import type { CliContext } from '../../src/context.ts';
 import { createFixtureRepo } from './fixture-repo.ts';
-import { execa } from 'execa';
 import { seedConfig } from './ref-fixtures.ts';
 import { testContext } from './context.ts';
 
@@ -80,15 +79,15 @@ const setupEditFixtureWithSettingsSuffixRef = async (homeDir: string): Promise<E
 };
 
 /** Like `setupEditFixture`, but also clones a real fixture repo directly into `REF_KEY`'s checkout
- * path and swaps in a real `ExecaRunner` — for the `url` edit case that must actually rewrite the
+ * path and swaps in a real `SpawnRunner` — for the `url` edit case that must actually rewrite the
  * checkout's `origin` remote. */
 const setupEditFixtureWithCheckout = async (homeDir: string): Promise<EditFixture> => {
   const { ctx, stderr, stdout } = await setupEditFixture(homeDir);
-  ctx.runner = new ExecaRunner();
+  ctx.runner = new SpawnRunner();
   const home = resolveHome(ctx.env);
   const fixture = await createFixtureRepo();
   const dest = checkoutPath(home, zRefKey.parse(REF_KEY));
-  const result = await execa('git', ['clone', '-q', fixture.dir, dest], { reject: false });
+  const result = await ctx.runner.run('git', ['clone', '-q', fixture.dir, dest]);
   if (result.exitCode !== CLONE_SUCCESS_EXIT_CODE) {
     throw new Error(`test setup: git clone failed: ${result.stderr}`);
   }
