@@ -2,7 +2,9 @@
   <img src="assets/logo.svg" alt="refs logo" width="220" height="220">
 </p>
 
-<p align="center"><strong>Real source code for coding agents.</strong></p>
+<p align="center"><strong>
+    $${\color{#00FF00}Real source code for coding agents.}$$
+</strong></p>
 
 `refs` manages arbitrary git repositories (GitHub, GitLab, self-hosted) as local, managed
 read-only source-code references, so that coding agents answer questions about
