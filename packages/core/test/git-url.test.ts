@@ -72,6 +72,41 @@ const FILE_URL_CASES: readonly [string, string][] = [
   ['file:///tmp/a/b/', 'local/a/b'],
 ];
 
+// Secret-echo regression (Task 30): `assertNoBackslash`/`assertNoPercentEncodingUnlessFile`/
+// `parseUrl` all run BEFORE `assertNoCredentials` ever gets a chance to reject an embedded
+// password, so a url combining one of those guard triggers WITH embedded credentials must still
+// never echo the password into the thrown message.
+const CREDENTIALED_LEAK_CASES: readonly [string, string][] = [
+  [
+    String.raw`https://user:sekrit@github.com/a\..\b`,
+    'backslash guard fires before the credentials guard',
+  ],
+  [
+    'https://user:sekrit@github.com/a/%2e%2e/c',
+    'percent-encoding guard fires before the credentials guard',
+  ],
+  ['ht!tp://user:sekrit@host/a/b', 'an unparseable url still echoes raw input by default'],
+];
+
+const messageOf = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+};
+
+// Runs `thunk`, returning the thrown error's message rather than letting it propagate — every
+// `CREDENTIALED_LEAK_CASES` entry is known to throw, so a thunk that DOESN'T throw is itself a
+// test failure (surfaced here rather than via a silently-vacuous assertion below).
+const throwMessage = (thunk: () => unknown): string => {
+  try {
+    thunk();
+  } catch (error) {
+    return messageOf(error);
+  }
+  throw new Error('expected thunk to throw');
+};
+
 describe('canonicalizeGitUrl accepted forms', () => {
   it.each(ACCEPTED_CASES)('%s → key %s', (input, key, cloneUrl) => {
     expect.hasAssertions();
@@ -83,6 +118,15 @@ describe('canonicalizeGitUrl rejected forms', () => {
   it.each(REJECTED_CASES)('rejects %s (%s)', (bad) => {
     expect.hasAssertions();
     expect(() => canonicalizeGitUrl(bad)).toThrow(/not a supported git url|validation/iu);
+  });
+});
+
+describe('canonicalizeGitUrl never echoes embedded credentials', () => {
+  it.each(CREDENTIALED_LEAK_CASES)('rejects %s without leaking the password (%s)', (bad) => {
+    expect.hasAssertions();
+    const message = throwMessage(() => canonicalizeGitUrl(bad));
+    expect(message).toMatch(/not a supported git url/u);
+    expect(message).not.toContain('sekrit');
   });
 });
 
@@ -123,6 +167,9 @@ const TRANSPORT_CASES: readonly [string, 'https' | 'ssh', string][] = [
   // Rewriting https → ssh yields the scp form with a .git suffix (spec §3 amended transport rule).
   ['https://github.com/example/demo.git', 'ssh', 'git@github.com:example/demo.git'],
   ['https://github.com/vercel/next.js', 'ssh', 'git@github.com:vercel/next.js.git'],
+  // Host is lowercased in the rewrite target; path case is preserved verbatim (mirrors the base
+  // canonicalizeGitUrl suite's own uppercase-host `ACCEPTED_CASES` entry).
+  ['https://GitHub.com/Owner/repo', 'ssh', 'git@github.com:Owner/repo.git'],
   [
     'https://gitlab.mycompany.io/gitlab/group/sub/repo',
     'ssh',

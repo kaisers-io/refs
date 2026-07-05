@@ -5,6 +5,7 @@ import {
   cloneRepo,
   conflictError,
   isGitCheckout,
+  redactUrl,
   validationError,
   zRefState,
   // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
@@ -21,8 +22,12 @@ import { mkdir } from 'node:fs/promises';
 
 const SUCCESS_EXIT_CODE = 0;
 
+// `actual` comes straight from `git remote get-url origin` — a real checkout's origin may itself
+// carry embedded credentials (`https://token@host/...`), so it is redacted before ever landing in
+// this message; `expectedUrl` is whatever the caller already typed/proposed, never a secret it
+// doesn't already know, so it is rendered verbatim.
 const originMismatchMessage = (dest: string, actual: string, expectedUrl: string): string =>
-  `checkout at ${dest} points at '${actual}' — expected '${expectedUrl}'; ` +
+  `checkout at ${dest} points at '${redactUrl(actual)}' — expected '${expectedUrl}'; ` +
   'remove the checkout directory or run refs remove before retrying';
 
 const NO_ORIGIN_MARKER = '(no origin remote)';

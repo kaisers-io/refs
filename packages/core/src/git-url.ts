@@ -1,4 +1,5 @@
 import type { GitTransport, RefKey } from './schemas/primitives.ts';
+import { redactUrl } from './git-url-redact.ts';
 import { validationError } from './errors.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { zRefKey } from './schemas/primitives.ts';
@@ -75,7 +76,7 @@ const parseUrl = (cloneUrl: string, original: string): URL => {
   try {
     return new URL(cloneUrl);
   } catch {
-    throw validationError(`not a supported git url: ${original}`);
+    throw validationError(`not a supported git url: ${redactUrl(original)}`);
   }
 };
 
@@ -112,16 +113,20 @@ const resolveKeyFromUrl = (url: URL, allowFileUrls: boolean): RefKey => {
 // Guards for the scp-style `git@host:path` form, which is parsed with a regexp rather than the WHATWG URL parser, and so needs its own ambiguity checks.
 const assertSafeScpPath = (scpPath: string, input: string): void => {
   if (hasPercentEncoding(scpPath)) {
-    throw validationError(`not a supported git url: percent-encoding not supported in ${input}`);
+    throw validationError(
+      `not a supported git url: percent-encoding not supported in ${redactUrl(input)}`,
+    );
   }
   if (scpPath.includes(':')) {
     throw validationError(
-      `not a supported git url: ambiguous ':' in scp-style path ${input}; use the ssh:// url form instead`,
+      `not a supported git url: ambiguous ':' in scp-style path ${redactUrl(input)}; use the ` +
+        'ssh:// url form instead',
     );
   }
   if (scpPath.startsWith('/') || scpPath.startsWith('~')) {
     throw validationError(
-      `not a supported git url: ambiguous absolute/home-relative scp path in ${input}; use the ssh:// url form instead`,
+      `not a supported git url: ambiguous absolute/home-relative scp path in ${redactUrl(input)}; ` +
+        'use the ssh:// url form instead',
     );
   }
 };
@@ -134,20 +139,22 @@ const resolveScpKey = (scp: RegExpExecArray, input: string): RefKey => {
 
 const assertNoBackslash = (cloneUrl: string, input: string): void => {
   if (hasBackslash(cloneUrl)) {
-    throw validationError(`not a supported git url: backslash not allowed in ${input}`);
+    throw validationError(`not a supported git url: backslash not allowed in ${redactUrl(input)}`);
   }
 };
 
 const assertNoDotSegment = (cloneUrl: string, input: string): void => {
   if (hasDotSegment(cloneUrl)) {
-    throw validationError(`not a supported git url: path traversal segment in ${input}`);
+    throw validationError(`not a supported git url: path traversal segment in ${redactUrl(input)}`);
   }
 };
 
 // Percent-encoding is only meaningful for `file:` urls (which encode filesystem-legal characters like spaces); https/ssh forms never need it, so any `%` there is rejected.
 const assertNoPercentEncodingUnlessFile = (url: URL, cloneUrl: string, input: string): void => {
   if (url.protocol !== 'file:' && hasPercentEncoding(cloneUrl)) {
-    throw validationError(`not a supported git url: percent-encoding not supported in ${input}`);
+    throw validationError(
+      `not a supported git url: percent-encoding not supported in ${redactUrl(input)}`,
+    );
   }
 };
 

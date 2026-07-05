@@ -5871,6 +5871,26 @@ const resolveTag = async (runner, dir, format, version) => {
 };
 
 //#endregion
+//#region ../core/src/git-url-redact.ts
+const SCHEME_USERINFO_PATTERN = /\/\/[^\s/@]*@/u;
+const REDACTED_SCHEME_USERINFO = "//<redacted>@";
+const BARE_USERINFO_PATTERN = /^[^\s/@]+@/u;
+const REDACTED_BARE_USERINFO = "<redacted>@";
+const MAX_REDACTED_LENGTH = 200;
+const TRUNCATION_START = 0;
+const TRUNCATION_SUFFIX = "…";
+/** Strips any userinfo from `raw` (`scheme://user:pass@host/...` → `scheme://<redacted>@host/...`;
+* `git@host:path` → `<redacted>@host:path`) and truncates the result to a sane length — for use
+* whenever an otherwise-untrusted, possibly-credentialed string must still appear (in redacted
+* form) inside an error/log message. Urls without any userinfo pass through unchanged (aside from
+* truncation). */
+const redactUrl = (raw) => {
+	const withoutCredentials = raw.replace(SCHEME_USERINFO_PATTERN, REDACTED_SCHEME_USERINFO).replace(BARE_USERINFO_PATTERN, REDACTED_BARE_USERINFO);
+	if (withoutCredentials.length <= MAX_REDACTED_LENGTH) return withoutCredentials;
+	return `${withoutCredentials.slice(TRUNCATION_START, MAX_REDACTED_LENGTH)}${TRUNCATION_SUFFIX}`;
+};
+
+//#endregion
 //#region ../core/src/git-url.ts
 const SCP_URL = /^git@(?<host>[^:/\s]+):(?<path>[^\s]+)$/u;
 const GIT_PLUS_PREFIX = /^git\+/u;
@@ -5910,7 +5930,7 @@ const parseUrl = (cloneUrl, original) => {
 	try {
 		return new URL(cloneUrl);
 	} catch {
-		throw validationError(`not a supported git url: ${original}`);
+		throw validationError(`not a supported git url: ${redactUrl(original)}`);
 	}
 };
 const assertNoCredentials = (url) => {
@@ -5932,9 +5952,9 @@ const resolveKeyFromUrl = (url, allowFileUrls) => {
 	});
 };
 const assertSafeScpPath = (scpPath, input) => {
-	if (hasPercentEncoding(scpPath)) throw validationError(`not a supported git url: percent-encoding not supported in ${input}`);
-	if (scpPath.includes(":")) throw validationError(`not a supported git url: ambiguous ':' in scp-style path ${input}; use the ssh:// url form instead`);
-	if (scpPath.startsWith("/") || scpPath.startsWith("~")) throw validationError(`not a supported git url: ambiguous absolute/home-relative scp path in ${input}; use the ssh:// url form instead`);
+	if (hasPercentEncoding(scpPath)) throw validationError(`not a supported git url: percent-encoding not supported in ${redactUrl(input)}`);
+	if (scpPath.includes(":")) throw validationError(`not a supported git url: ambiguous ':' in scp-style path ${redactUrl(input)}; use the ssh:// url form instead`);
+	if (scpPath.startsWith("/") || scpPath.startsWith("~")) throw validationError(`not a supported git url: ambiguous absolute/home-relative scp path in ${redactUrl(input)}; use the ssh:// url form instead`);
 };
 const resolveScpKey = (scp, input) => {
 	const scpPath = scp.groups?.["path"] ?? "";
@@ -5947,13 +5967,13 @@ const resolveScpKey = (scp, input) => {
 	});
 };
 const assertNoBackslash = (cloneUrl, input) => {
-	if (hasBackslash(cloneUrl)) throw validationError(`not a supported git url: backslash not allowed in ${input}`);
+	if (hasBackslash(cloneUrl)) throw validationError(`not a supported git url: backslash not allowed in ${redactUrl(input)}`);
 };
 const assertNoDotSegment = (cloneUrl, input) => {
-	if (hasDotSegment(cloneUrl)) throw validationError(`not a supported git url: path traversal segment in ${input}`);
+	if (hasDotSegment(cloneUrl)) throw validationError(`not a supported git url: path traversal segment in ${redactUrl(input)}`);
 };
 const assertNoPercentEncodingUnlessFile = (url, cloneUrl, input) => {
-	if (url.protocol !== "file:" && hasPercentEncoding(cloneUrl)) throw validationError(`not a supported git url: percent-encoding not supported in ${input}`);
+	if (url.protocol !== "file:" && hasPercentEncoding(cloneUrl)) throw validationError(`not a supported git url: percent-encoding not supported in ${redactUrl(input)}`);
 };
 const canonicalizeGitUrl = (input, opts) => {
 	const allowFileUrls = opts?.allowFileUrls ?? false;
@@ -17259,7 +17279,7 @@ const runGated = async (sem, fn) => {
 //#endregion
 //#region src/commands/add-checkout-guards.ts
 const SUCCESS_EXIT_CODE$1 = 0;
-const originMismatchMessage = (dest, actual, expectedUrl) => `checkout at ${dest} points at '${actual}' — expected '${expectedUrl}'; remove the checkout directory or run refs remove before retrying`;
+const originMismatchMessage = (dest, actual, expectedUrl) => `checkout at ${dest} points at '${redactUrl(actual)}' — expected '${expectedUrl}'; remove the checkout directory or run refs remove before retrying`;
 const NO_ORIGIN_MARKER = "(no origin remote)";
 /** Verifies `opts.dest`'s `origin` remote points at `opts.expectedUrl` — guards against reusing or
 * finalizing against a directory that merely happens to occupy the derived checkout path but is an

@@ -6,6 +6,7 @@ import {
   expectPackagesWithDescriptions,
   expectPendingProposal,
   finalizeViaProposalFile,
+  finalizeViaStdinProposal,
   initHome,
   parseLastEnvelope,
   realContextFor,
@@ -107,6 +108,27 @@ describe('refs add --proposal', () => {
 
           const home = resolveHome(ctx.env);
           await expectPackagesWithDescriptions(home, proposal.key, TWO_PACKAGES);
+          await expectFinalizedState(home, proposal.key);
+        }),
+      );
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    '(b2) finalizes a completed proposal read from stdin (`--proposal -`, Task 16 gap)',
+    async () => {
+      expect.hasAssertions();
+      await withResetExitCode(() =>
+        withTempHome(async (homeDir) => {
+          const { ctx, stdout } = realContextFor(homeDir);
+          await initHome(ctx);
+          const fixture = await createFixtureRepo({ tags: ['v1.0.0'] });
+          const proposal = await runAddDryRunJson(ctx, stdout, fixture.url);
+
+          await finalizeViaStdinProposal(ctx, completeProposal(proposal));
+
+          const home = resolveHome(ctx.env);
           await expectFinalizedState(home, proposal.key);
         }),
       );
