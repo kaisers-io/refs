@@ -1,9 +1,9 @@
+import { configBackupPath, resolveHome } from '../src/home.ts';
 import { describe, expect, it } from 'vitest';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { migrateConfig, readConfig, seedConfig, writeConfig } from '../src/config-io.ts';
-import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { SCHEMA_VERSION } from '../src/schemas/config.ts';
 import { join } from 'node:path';
-import { resolveHome } from '../src/home.ts';
 import { tmpdir } from 'node:os';
 
 // eslint-disable-next-line node/no-sync, unicorn/max-nested-calls -- test fixture setup, sync is fine
@@ -93,8 +93,8 @@ describe('migrate', () => {
       refs: { 'github.com/a/b': { description: 'x' } },
       settings: { clone_mode: 'full' },
     });
-    // eslint-disable-next-line node/no-sync -- assertion reads dir written by the impl under test
-    expect(readdirSync(home.root)).toContain('config.toml.bak');
+    // eslint-disable-next-line node/no-sync -- assertion reads the backup written by the impl under test
+    expect(existsSync(configBackupPath(home))).toBe(true);
   });
 
   it('absent config → seeds', async () => {
@@ -137,12 +137,15 @@ describe('migrate — malformed schema_version handling', () => {
     expect(config.meta.schema_version).toBe(SCHEMA_VERSION);
   });
 
-  it('readConfig reports a fractional schema_version as malformed, not newer', async () => {
+  it('readConfig reports a fractional schema_version as missing or invalid, not newer', async () => {
     expect.hasAssertions();
     const home = freshHome();
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     writeFileSync(home.configPath, '[meta]\nschema_version = 1.5\ncli_version = "0.0.1"\n');
-    await expect(readConfig(home)).rejects.toThrow(/refs migrate/u);
+    // A present-but-invalid value (fractional here) is indistinguishable from a truly absent one
+    // once parsed, but must not be reported as bare "missing" — that would misdescribe a config
+    // that DOES have a schema_version key, just not a valid one.
+    await expect(readConfig(home)).rejects.toThrow(/missing or invalid.*refs migrate/u);
   });
 });
 

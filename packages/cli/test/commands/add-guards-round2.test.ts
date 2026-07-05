@@ -150,6 +150,37 @@ describe('refs add: checkout identity — unparseable expected url', () => {
   );
 });
 
+describe('refs add: checkout identity — credentialed expected url is redacted', () => {
+  it(
+    '(q) finalize with a credentialed proposal url never echoes its password into the conflict message',
+    async () => {
+      expect.hasAssertions();
+      await withResetExitCode(() =>
+        withTempHome(async (homeDir) => {
+          const { ctx, home, proposal, stdout } = await setupDryRunFixture(homeDir);
+          // Only a non-empty string is required by `zFinalProposal`, so a credentialed url
+          // reaches `ensureCheckoutOrigin` as `expectedUrl` verbatim (review round 2, Task 30).
+          const completed = {
+            ...proposal,
+            description: 'A fixture repo.',
+            url: 'https://token:sekrit2@example.com/acme/widgets.git',
+          };
+
+          await finalizeViaProposalFile(ctx, homeDir, completed);
+
+          expect(process.exitCode).toBe(EXIT.CONFLICT);
+          const envelope = parseLastEnvelope(stdout) as ErrorEnvelope;
+          expect(envelope.ok).toBe(false);
+          expect(envelope.error?.message).not.toContain('sekrit2');
+          expect(envelope.error?.message).toContain('<redacted>@example.com');
+          await expectRefNotConfigured(home, proposal.key);
+        }),
+      );
+    },
+    TEST_TIMEOUT_MS,
+  );
+});
+
 describe('refs add: checkout identity — cosmetic url variance', () => {
   it(
     '(n) finalize does NOT conflict when the proposal url differs from the checkout origin only by a trailing .git',

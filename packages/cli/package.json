@@ -1,6 +1,12 @@
 {
   "name": "@kaisers-io/refs",
   "version": "0.1.0",
+  "description": "Managed read-only git checkouts of reference repositories for coding agents.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kaisers-io/refs.git"
+  },
   "bin": {
     "refs": "./bin/refs.mjs"
   },
@@ -8,6 +14,9 @@
     "bin"
   ],
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsdown"

@@ -1,3 +1,6 @@
+# macOS
+.DS_Store
+
 _local
 node_modules
 coverage

@@ -155,3 +155,38 @@ describe('refs edit: url, containment guard', () => {
     TEST_TIMEOUT_MS,
   );
 });
+
+describe('refs edit: url, rewrite-failure message', () => {
+  it(
+    'never echoes userinfo when the remote rewrite fails (username-only ssh urls pass the same-key check)',
+    async () => {
+      expect.hasAssertions();
+      await withResetExitCode(() =>
+        withTempHome(async (homeDir) => {
+          const { ctx, stdout } = await setupEditFixtureWithCheckout(homeDir);
+          const home = resolveHome(ctx.env);
+          const dest = checkoutPath(home, zRefKey.parse(REF_KEY));
+          // Force `git remote set-url origin` to fail: no origin remote to rewrite.
+          await execa('git', ['remote', 'remove', 'origin'], { cwd: dest });
+
+          await run(ctx, [
+            'node',
+            'refs',
+            'edit',
+            REF_KEY,
+            'url',
+            'ssh://sekrit@github.com/acme/widget.git',
+            '--json',
+          ]);
+
+          expect(process.exitCode).toBe(EXIT.VALIDATION);
+          const envelope = parseSoleEnvelope(stdout);
+          expect(envelope.ok).toBe(false);
+          expect(envelope.error?.message).toMatch(/failed to rewrite git remote/u);
+          expect(envelope.error?.message).not.toContain('sekrit');
+        }),
+      );
+    },
+    TEST_TIMEOUT_MS,
+  );
+});

@@ -1,4 +1,5 @@
 import type { GitTransport, RefKey } from './schemas/primitives.ts';
+import { redactUrl } from './git-url-redact.ts';
 import { validationError } from './errors.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { zRefKey } from './schemas/primitives.ts';
@@ -36,10 +37,15 @@ const hasBackslash = (raw: string): boolean => raw.includes('\\');
 // Rather than decode-and-recheck every path segment, we reject any `%` in non-file forms outright: git hosts virtually never need percent-encoded paths, and zRefKey's SAFE_SEGMENT already forbids `%` in stored keys, so encoding here can only ever cause normalization surprises.
 const hasPercentEncoding = (raw: string): boolean => raw.includes('%');
 
+// The candidate is redacted (review round 2): an authority-less `ssh:/user:pass@host/...` url
+// parses with EMPTY username/password (WHATWG folds the credentials into pathname), so
+// `assertNoCredentials` never fires and the secret lands here — same for `buildFileKey`'s path.
 const parseAsRefKey = (candidate: string): RefKey => {
   const parsed = zRefKey.safeParse(candidate);
   if (!parsed.success) {
-    throw validationError(`not a supported git url: derived key '${candidate}' is invalid`);
+    throw validationError(
+      `not a supported git url: derived key '${redactUrl(candidate)}' is invalid`,
+    );
   }
   return parsed.data;
 };
@@ -75,7 +81,7 @@ const parseUrl = (cloneUrl: string, original: string): URL => {
   try {
     return new URL(cloneUrl);
   } catch {
-    throw validationError(`not a supported git url: ${original}`);
+    throw validationError(`not a supported git url: ${redactUrl(original)}`);
   }
 };
 
@@ -112,16 +118,20 @@ const resolveKeyFromUrl = (url: URL, allowFileUrls: boolean): RefKey => {
 // Guards for the scp-style `git@host:path` form, which is parsed with a regexp rather than the WHATWG URL parser, and so needs its own ambiguity checks.
 const assertSafeScpPath = (scpPath: string, input: string): void => {
   if (hasPercentEncoding(scpPath)) {
-    throw validationError(`not a supported git url: percent-encoding not supported in ${input}`);
+    throw validationError(
+      `not a supported git url: percent-encoding not supported in ${redactUrl(input)}`,
+    );
   }
   if (scpPath.includes(':')) {
     throw validationError(
-      `not a supported git url: ambiguous ':' in scp-style path ${input}; use the ssh:// url form instead`,
+      `not a supported git url: ambiguous ':' in scp-style path ${redactUrl(input)}; use the ` +
+        'ssh:// url form instead',
     );
   }
   if (scpPath.startsWith('/') || scpPath.startsWith('~')) {
     throw validationError(
-      `not a supported git url: ambiguous absolute/home-relative scp path in ${input}; use the ssh:// url form instead`,
+      `not a supported git url: ambiguous absolute/home-relative scp path in ${redactUrl(input)}; ` +
+        'use the ssh:// url form instead',
     );
   }
 };
@@ -134,20 +144,22 @@ const resolveScpKey = (scp: RegExpExecArray, input: string): RefKey => {
 
 const assertNoBackslash = (cloneUrl: string, input: string): void => {
   if (hasBackslash(cloneUrl)) {
-    throw validationError(`not a supported git url: backslash not allowed in ${input}`);
+    throw validationError(`not a supported git url: backslash not allowed in ${redactUrl(input)}`);
   }
 };
 
 const assertNoDotSegment = (cloneUrl: string, input: string): void => {
   if (hasDotSegment(cloneUrl)) {
-    throw validationError(`not a supported git url: path traversal segment in ${input}`);
+    throw validationError(`not a supported git url: path traversal segment in ${redactUrl(input)}`);
   }
 };
 
 // Percent-encoding is only meaningful for `file:` urls (which encode filesystem-legal characters like spaces); https/ssh forms never need it, so any `%` there is rejected.
 const assertNoPercentEncodingUnlessFile = (url: URL, cloneUrl: string, input: string): void => {
   if (url.protocol !== 'file:' && hasPercentEncoding(cloneUrl)) {
-    throw validationError(`not a supported git url: percent-encoding not supported in ${input}`);
+    throw validationError(
+      `not a supported git url: percent-encoding not supported in ${redactUrl(input)}`,
+    );
   }
 };
 
@@ -191,27 +203,27 @@ const httpsFormOf = (host: string, path: string): string =>
 const scpFormOf = (host: string, path: string): string =>
   `git@${host.toLowerCase()}:${ensureGitSuffix(trimPathSlashes(path))}`;
 
-const transportOfProtocol = (protocol: string, input: string): GitTransport => {
+const transportOfProtocol = (protocol: string): GitTransport => {
   if (protocol === 'https:') {
     return 'https';
   }
   if (protocol === 'ssh:') {
     return 'ssh';
   }
-  // Unreachable in practice: `canonicalizeGitUrl` above only admits https:/ssh:/file:, and file:
-  // returned early — kept as a hard error rather than a silent fall-through.
-  throw validationError(`not a supported git url: unsupported protocol ${protocol} in ${input}`);
+  // Unreachable in practice (`canonicalizeGitUrl` only admits https:/ssh:/file:) — and echoes
+  // no input: a password-less ssh USERNAME survives canonicalization, so no message in this
+  // family may carry the raw url.
+  throw validationError(`not a supported git url: unsupported protocol ${protocol}`);
 };
 
-// A port only survives canonicalization by being non-default (default ports are stripped from the
-// key), and neither rewrite target can carry it faithfully: the scp form has no port syntax at
-// all, and stamping an ssh port onto an https url (or vice versa) would produce a url for a
-// different endpoint. Rejecting is the only honest option (spec §3).
+// A port only survives canonicalization by being non-default (default ports are stripped from
+// the key), and neither rewrite target can carry it faithfully (the scp form has no port syntax;
+// stamping an ssh port onto an https url targets a different endpoint) — reject per spec §3.
 const rejectNonDefaultPort = (url: URL, transport: GitTransport, input: string): void => {
   const defaultPort = DEFAULT_PORTS[url.protocol];
   if (url.port !== '' && url.port !== defaultPort) {
     throw validationError(
-      `cannot apply git_transport=${transport} to ${input}: its non-default port ${url.port} ` +
+      `cannot apply git_transport=${transport} to ${redactUrl(input)}: its non-default port ${url.port} ` +
         `cannot be expressed in the ${transport} url form — add the repo with an explicit url instead`,
     );
   }
@@ -230,7 +242,7 @@ const assertKeyInvariant = (input: string, transformed: string, originalKey: Ref
   const transformedKey = canonicalizeGitUrl(transformed).key;
   if (transformedKey !== originalKey) {
     throw validationError(
-      `git_transport transform changed repo identity: '${input}' → '${transformed}' ` +
+      `git_transport transform changed repo identity: '${redactUrl(input)}' → '${transformed}' ` +
         `(key '${originalKey}' → '${transformedKey}')`,
     );
   }
@@ -257,7 +269,7 @@ const transformFromScp = (scp: RegExpExecArray, ctx: TransformContext): string =
 // The WHATWG-url branch of `applyGitTransport` (https:// and ssh:// forms).
 const transformFromUrlForm = (ctx: TransformContext): string => {
   const url = parseUrl(ctx.cloneUrl, ctx.cloneUrl);
-  if (transportOfProtocol(url.protocol, ctx.cloneUrl) === ctx.transport) {
+  if (transportOfProtocol(url.protocol) === ctx.transport) {
     return ctx.cloneUrl;
   }
   rejectNonDefaultPort(url, ctx.transport, ctx.cloneUrl);
