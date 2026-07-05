@@ -20,8 +20,9 @@ prints a **proposal** on stdout — nothing is written to config yet. The propos
 
 `description` starts empty (`""`); a package that has no detected description simply
 has **no `description` key at all** (never `null` — check with "is the key present",
-not "is it falsy"). Save this JSON payload's `data` object to a file — it's what you'll
-edit and eventually pass back via `--proposal`.
+not "is it falsy"). Save this JSON payload to a file — either the whole `--json` output
+(`{ok, data, warnings}`) as-is, or just its `data` object; `--proposal` accepts both. It's
+what you'll edit and eventually pass back via `--proposal`.
 
 ### npm fallback (exit 4, no repository field)
 

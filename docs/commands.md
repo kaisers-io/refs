@@ -167,7 +167,10 @@ this; a `null` candidate makes `--description` fail too, with a validation error
 The file passed to `--proposal` must validate as a `FinalProposal`: `key`, `url`,
 `default_branch`, `tag_format_candidate` (must be a real tag format, not `null`, by this
 point), a non-empty `description`, and a `packages` map whose entries each have a
-non-empty `description` and a `path`.
+non-empty `description` and a `path`. `--proposal` accepts either that bare object, or the
+full `--json` envelope wrapping it (`{ok, data, warnings}`) — the exact stdout of
+`refs add ... --dry-run --json`, so it can be piped straight through without stripping the
+envelope first.
 
 Exit codes: `2` (neither/more than one of `--dry-run`/`--proposal`/`--description` given,
 or `<source>` missing), `3` (invalid proposal JSON/shape, missing `tag_format`), `4`
