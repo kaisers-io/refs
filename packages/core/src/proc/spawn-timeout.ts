@@ -18,7 +18,10 @@ const noopTimeout: TimeoutHandle = { clear: () => {}, markedTimedOut: () => fals
 
 // Arms a `SIGTERM` at `timeoutMs`, escalating to `SIGKILL` after `KILL_GRACE_MS` if the child is
 // still alive — both timers are cleared as soon as the child's `close` event fires, whichever
-// comes first (see `runner.ts#SpawnRunner.run`). `timeoutMs === undefined` arms nothing.
+// comes first (see `runner.ts#SpawnRunner.run`). `timeoutMs === undefined` arms nothing. Both
+// signals target only the DIRECT child, never its whole process tree: a descendant it forked that
+// inherited the stdio pipes can keep them open (delaying `close`) after the child itself is dead —
+// empirically verified to be the exact kill scope of the previous runner, not a regression.
 const armTimeout = (child: ChildProcess, timeoutMs: number | undefined): TimeoutHandle => {
   if (timeoutMs === undefined) {
     return noopTimeout;

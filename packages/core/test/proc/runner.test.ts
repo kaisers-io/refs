@@ -26,6 +26,7 @@ const RESOLVE_MARGIN_MS = 2000;
 const SLEEP_SECONDS = '5';
 const CHILD_DELAY_SECONDS = '1';
 const KILL_CHECK_DELAY_MS = 1500;
+const STDERR_NOTE_TIMEOUT_MS = 3000;
 const SUCCESS_EXIT_CODE = 0;
 
 const runner = new SpawnRunner();
@@ -76,6 +77,27 @@ describe('timeoutMs (SpawnRunner)', SUITE_OPTS, () => {
   });
 });
 
+describe('timeout note joining (SpawnRunner)', SUITE_OPTS, () => {
+  it('joins partial stderr ending in a newline to the timeout note with a SINGLE newline', async () => {
+    expect.hasAssertions();
+
+    // The child writes `partial\n` within its first few ms, then `exec`s into `sleep` — the
+    // direct child IS the hang (no forked grandchild ever holds the stderr pipe open past the
+    // kill). The 3s timeout is pure margin for the write to land under full parallel suite load
+    // (a 500ms margin was empirically flaky there; a plain-node child took >500ms just to start).
+    // The note must replace the trailing newline, not stack a blank line on top of it
+    // (`partial\n\nrefs: ...`) — matching what the previous, final-newline-stripping runner
+    // produced.
+    const result = await runner.run('sh', ['-c', `printf 'partial\\n' >&2; exec sleep 30`], {
+      timeoutMs: STDERR_NOTE_TIMEOUT_MS,
+    });
+
+    expect(result.stderr).toBe(
+      `partial\nrefs: command timed out after ${String(STDERR_NOTE_TIMEOUT_MS)}ms`,
+    );
+  });
+});
+
 describe('non-zero exit', () => {
   it('reports a non-zero exit as data instead of throwing', async () => {
     expect.hasAssertions();
@@ -96,6 +118,23 @@ describe('spawn failure (ENOENT)', () => {
 
     expect(result.exitCode).toBe(SPAWN_ERROR_EXIT_CODE);
     expect(result.stderr).toMatch(/ENOENT/u);
+    expect(result.timedOut).not.toBe(true);
+  });
+});
+
+describe('spawn failure (synchronous throw)', () => {
+  it('resolves instead of rejecting when spawn() itself throws synchronously (empty cmd)', async () => {
+    expect.hasAssertions();
+
+    // `spawn('', [])` throws ERR_INVALID_ARG_VALUE SYNCHRONOUSLY — before any `error` event could
+    // ever fire — so this pins the never-throw contract's last hole: no argument shape may escape
+    // `run()` as a rejection. Unreachable from today's call sites (all pass literal 'git'/'ssh'),
+    // but the `Runner` contract is frozen and the old execa-backed runner (reject: false) resolved
+    // here too.
+    const result = await runner.run('', []);
+
+    expect(result.exitCode).toBe(SPAWN_ERROR_EXIT_CODE);
+    expect(result.stderr).not.toBe('');
     expect(result.timedOut).not.toBe(true);
   });
 });
