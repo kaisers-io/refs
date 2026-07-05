@@ -1,0 +1,56 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.1.2] - 2026-07-05
+
+### Added
+
+- `refs add` now emits progress lines on stderr while it works (`refs: resolving npm
+  package '…'…`, `refs: cloning …`, `refs: detecting workspace packages…`) in both
+  human and `--json` mode, so long clones no longer look like a hang. stdout is
+  unaffected and stays exactly the parseable envelope in `--json` mode.
+
+### Fixed
+
+- `refs add --proposal` now accepts the full `--json` envelope that
+  `refs add … --dry-run --json` prints, so the documented pipe workflow
+  (`refs add npm:x --dry-run --json > f.json` → edit → `refs add --proposal f.json`)
+  works without hand-stripping the `data` wrapper. Bare proposal documents keep
+  working unchanged.
+- A proposal file containing a failed (`ok: false`) or malformed (no usable `data`
+  object) envelope now fails with a clear message instead of a field-by-field
+  validation dump.
+
+## [0.1.1] - 2026-07-05
+
+No user-facing changes. First tag-driven release, validating the OIDC
+trusted-publishing pipeline end to end.
+
+## [0.1.0] - 2026-07-05
+
+### Added
+
+- Initial release of the `refs` CLI: manage local, read-only checkouts of reference
+  repositories ("refs") for agents and humans — `init`, `add` (two-phase
+  proposal/finalize or one-shot `--description`), `list`, `show`, `resolve`, `sync`,
+  `edit`, `remove`, `migrate`, and `doctor`.
+- npm-source resolution (`refs add npm:<package>`), workspace package detection
+  (npm/yarn/pnpm monorepos), tag-format detection, blobless clones with full-clone
+  fallback, and a configurable git transport (`https`/`ssh`).
+- Machine-readable `--json` output with a stable `{ok, data, warnings}` /
+  `{ok, error}` envelope on every command, plus stable exit codes.
+- Containment-guarded destructive operations, credential redaction in every
+  URL-carrying message, and read-only enforcement of managed checkouts via
+  installed git hooks.
+- Agent skill (`skills/refs/`) documenting the investigate/add/maintain workflows.
+
+[Unreleased]: https://github.com/kaisers-io/refs/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/kaisers-io/refs/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/kaisers-io/refs/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/kaisers-io/refs/releases/tag/v0.1.0
