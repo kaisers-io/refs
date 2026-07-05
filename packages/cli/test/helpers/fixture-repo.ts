@@ -12,6 +12,11 @@ import { tmpdir } from 'node:os';
 
 interface FixtureOpts {
   monorepo?: boolean;
+  // When `true` (alongside `monorepo: true`), `@fixture/b` also ships a description — the "the
+  // one-shot succeeds because every detected package already has one" fixture. Default
+  // (`false`/omitted) keeps the original asymmetric monorepo, whose `@fixture/b` deliberately
+  // ships WITHOUT one (see `seedMonorepo`'s own comment).
+  monorepoAllDescribed?: boolean;
   objectFormat?: 'sha256';
   tags?: string[];
 }
@@ -76,10 +81,11 @@ const writePackage = async (root: string, spec: PackageSpec): Promise<void> => {
   await writeFile(join(dir, 'README.md'), `# ${spec.pkgName}\n`);
 };
 
-// `@fixture/b` deliberately ships WITHOUT a description, mirroring core's fixture — `add.test.ts`
-// relies on this exact asymmetry to exercise the "fill in the missing description" step of the
-// two-phase proposal flow.
-const seedMonorepo = async (dir: string): Promise<void> => {
+// `@fixture/b` deliberately ships WITHOUT a description by default, mirroring core's fixture —
+// `add.test.ts` relies on this exact asymmetry to exercise the "fill in the missing description"
+// step of the two-phase proposal flow. `allDescribed: true` gives it one too, for the fixture
+// where the one-shot `--description` flow should succeed outright (every package already described).
+const seedMonorepo = async (dir: string, allDescribed: boolean): Promise<void> => {
   await writePackageJson(dir, {
     name: 'fixture-root',
     private: true,
@@ -87,6 +93,14 @@ const seedMonorepo = async (dir: string): Promise<void> => {
     workspaces: ['packages/*'],
   });
   await writePackage(dir, { description: 'Fixture package A', folder: 'a', pkgName: '@fixture/a' });
+  if (allDescribed) {
+    await writePackage(dir, {
+      description: 'Fixture package B',
+      folder: 'b',
+      pkgName: '@fixture/b',
+    });
+    return;
+  }
   await writePackage(dir, { folder: 'b', pkgName: '@fixture/b' });
 };
 
@@ -94,13 +108,14 @@ const seedMonorepo = async (dir: string): Promise<void> => {
  * the "remote" for `add.test.ts`'s integration suite: `refs add <file-url>` clones/fetches point at
  * its `file://` url. Seeds one README commit; with `opts.monorepo` also seeds a root
  * `package.json` (workspaces) plus `packages/a` (`@fixture/a`, with description) and `packages/b`
- * (`@fixture/b`, without) — and creates any requested tags on the initial commit. */
+ * (`@fixture/b`, without a description unless `opts.monorepoAllDescribed` is set) — and creates any
+ * requested tags on the initial commit. */
 const createFixtureRepo = async (opts?: FixtureOpts): Promise<FixtureRepo> => {
   const dir = await mkdtemp(join(tmpdir(), 'refs-cli-fixture-'));
   await initFixtureGit(dir, opts?.objectFormat);
   await writeFile(join(dir, 'README.md'), '# fixture repo\n');
   if (opts?.monorepo === true) {
-    await seedMonorepo(dir);
+    await seedMonorepo(dir, opts.monorepoAllDescribed === true);
   }
   await commitAll(dir, 'init');
   await Promise.all((opts?.tags ?? []).map((tag) => git(dir, ['tag', tag])));

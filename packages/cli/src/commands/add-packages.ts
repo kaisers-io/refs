@@ -45,32 +45,59 @@ const buildProposalPackages = (
   return {};
 };
 
-const toFinalPackageEntry = (
-  pkg: ProposalPackageEntry,
-  fallbackDescription: string,
-): PackageEntry => {
-  const description = pkg.description ?? fallbackDescription;
+/** Only called once `requireAllDescribed` has already guaranteed every package carries a detected
+ * description — `pkg.description` is therefore never actually `undefined` here, but the proposal
+ * shape (`ProposalPackageEntry`) still types it optional, so the empty-string fallback is purely a
+ * type-level escape hatch, never a real value in practice. */
+const toFinalPackageEntry = (pkg: ProposalPackageEntry): PackageEntry => {
+  const description = pkg.description ?? '';
   if (pkg.tag_format === undefined) {
     return { description, path: pkg.path };
   }
   return { description, path: pkg.path, tag_format: pkg.tag_format };
 };
 
-/** Only used by the `--description` one-shot flow: fills any package missing a detected
- * description with the ref's own `--description` text, so the one-shot command never fails
- * `zPackageEntry`'s non-empty-description requirement just because detection found a name/path but
- * no description (see `workspaces.ts`'s deliberately-description-less fixture package). An empty
- * `packages` record means a plain reference repo — omitted entirely (`undefined`), not `{}`. */
+/** An empty `packages` record means a plain reference repo — omitted entirely (`undefined`), not
+ * `{}`. Callers (the `--description` one-shot flow) must call `requireAllDescribed` on the same
+ * `proposalPackages` first: unlike the `--proposal` flow (whose packages already went through
+ * human review as full `zPackageEntry`s), a one-shot has no per-package description input, so any
+ * package still missing one at this point would otherwise silently finalize with an empty
+ * description string. */
 const buildFinalPackages = (
   proposalPackages: Record<string, ProposalPackageEntry>,
-  fallbackDescription: string,
 ): Record<string, PackageEntry> | undefined => {
   const entries = Object.entries(proposalPackages);
   if (entries.length === NO_ITEMS) {
     return undefined;
   }
-  return Object.fromEntries(
-    entries.map(([name, pkg]) => [name, toFinalPackageEntry(pkg, fallbackDescription)]),
+  return Object.fromEntries(entries.map(([name, pkg]) => [name, toFinalPackageEntry(pkg)]));
+};
+
+/** Lists package names (sorted) missing a detected description — the `--description` one-shot has
+ * no per-package description input (unlike the two-phase `--proposal` flow's human review step),
+ * so it cannot silently fill these in; see `requireAllDescribed`. */
+const packagesMissingDescription = (
+  proposalPackages: Record<string, ProposalPackageEntry>,
+): string[] =>
+  Object.entries(proposalPackages)
+    .filter(([, pkg]) => pkg.description === undefined)
+    .map(([name]) => name)
+    .toSorted();
+
+/** Fails closed — before any write — when the `--description` one-shot's detected packages include
+ * any missing a description, naming ALL of them (the repo's established "list every offending key"
+ * precedent — see `resolve.ts`'s multi-ref ambiguity message) rather than just the first. Mirrors
+ * `requireTagFormat`'s "validate before finalize" placement: called from `add.ts#buildDescriptionRef`
+ * before `finalizeRef` ever runs, so a rejection here writes nothing to config or state. */
+const requireAllDescribed = (proposalPackages: Record<string, ProposalPackageEntry>): void => {
+  const missing = packagesMissingDescription(proposalPackages);
+  if (missing.length === NO_ITEMS) {
+    return;
+  }
+  throw validationError(
+    `packages without a detected description: ${missing.join(', ')} — run the two-phase flow ` +
+      'instead: refs add <source> --dry-run --json > proposal.json, fill in the package ' +
+      'descriptions, then refs add --proposal proposal.json',
   );
 };
 
@@ -132,6 +159,8 @@ export {
   buildProposalPackages,
   buildRefEntry,
   finalProposalPackages,
+  packagesMissingDescription,
+  requireAllDescribed,
   requireTagFormat,
 };
 export type { FinalizedRefInput, ProposalPackageEntry };

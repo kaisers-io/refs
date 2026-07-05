@@ -2,13 +2,11 @@ import type { CloneMode, Proposal } from '@kaisers-io/refs-core';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { EXIT, readConfig, resolveHome, writeConfig } from '@kaisers-io/refs-core';
 import {
-  configuredEntryFor,
   corruptCheckoutHead,
   createBogusCheckout,
   expectCheckoutReused,
   expectRefNotConfigured,
   markCheckout,
-  runAddDescriptionJson,
   setCheckoutOrigin,
   setupDryRunFixture,
   setupSourceFixture,
@@ -31,17 +29,17 @@ import { writePendingProposal } from '../../src/commands/add-dry-run.ts';
 // Review-round regression suite for `refs add`'s two-phase flow, covering the guards added on top
 // of Task 16's original implementation: atomic/checked finalize (rev-parse under the ref lock,
 // never nested with the home lock), checkout-identity verification (reused checkouts and
-// finalize targets must still point at the expected origin), the dry-run/finalize race guard, a
-// permanent repeated-`--dry-run` regression test, and the `--description` monorepo fallback. Kept
-// out of `add.test.ts` (cases (a)-(e)) purely to keep both files under the repo's 300-line oxlint
-// cap; shared scaffolding lives in `test/helpers/add-support.ts`.
+// finalize targets must still point at the expected origin), the dry-run/finalize race guard, and
+// a permanent repeated-`--dry-run` regression test. Kept out of `add.test.ts` (cases (a)-(e))
+// purely to keep both files under the repo's 300-line oxlint cap; shared scaffolding lives in
+// `test/helpers/add-support.ts`. (The former `--description` monorepo-fallback case now lives in
+// `add-description-required.test.ts` — that fallback was removed; see its own header comment.)
 
 const TEST_TIMEOUT_MS = 30_000;
 const BOGUS_ORIGIN = 'https://example.com/someone/else.git';
 // A `git remote get-url origin` value carrying an embedded credential — the secret-echo case
 // (Task 30) for the origin-mismatch conflict message below.
 const CREDENTIALED_BOGUS_ORIGIN = 'https://token:sekrit@example.com/someone/else.git';
-const FALLBACK_DESCRIPTION = 'Fallback description text.';
 // A named `CloneMode | undefined` value rather than a literal `undefined` at the call site below
 // (the race-guard test calls `writePendingProposal` directly, whose third parameter is required
 // but typed to allow `undefined` — mirroring `add.ts`'s own `--proposal` finalize path, which never
@@ -248,34 +246,6 @@ describe('refs add: case-collision guard', () => {
           const envelope = parseLastEnvelope(stdout) as ErrorEnvelope;
           expect(envelope.ok).toBe(false);
           expect(envelope.error?.code).toBe('conflict');
-        }),
-      );
-    },
-    TEST_TIMEOUT_MS,
-  );
-});
-
-describe('refs add --description: monorepo fallback', () => {
-  it(
-    '(j) --description text fills in a package missing a detected description',
-    async () => {
-      expect.hasAssertions();
-      await withResetExitCode(() =>
-        withTempHome(async (homeDir) => {
-          const { ctx, sourceUrl, stdout } = await setupDryRunFixture(homeDir, { monorepo: true });
-          // `setupDryRunFixture` already ran one dry-run to seed the fixture repo; the one-shot
-          // `--description` flow below runs its own independent dry-run+finalize against the same
-          // source (idempotent clone reuse), so this is not testing the race guard above.
-
-          const envelope = await runAddDescriptionJson(ctx, stdout, {
-            description: FALLBACK_DESCRIPTION,
-            source: sourceUrl,
-          });
-
-          expect(envelope.ok).toBe(true);
-          const entry = await configuredEntryFor(ctx, envelope.data.key);
-          expect(entry?.packages?.['@fixture/b']?.description).toBe(FALLBACK_DESCRIPTION);
-          expect(entry?.packages?.['@fixture/a']?.description).toBe('Fixture package A');
         }),
       );
     },
