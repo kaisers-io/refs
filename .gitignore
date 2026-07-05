@@ -1,0 +1,5 @@
+_local
+node_modules
+coverage
+.collab
+.superpowers

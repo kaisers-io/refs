@@ -1,0 +1,169 @@
+import type {
+  CloneMode,
+  Config,
+  RefEntry,
+  RefKey,
+  RefsHome,
+  Settings,
+  State,
+} from '@kaisers-io/refs-core';
+import {
+  checkoutPath,
+  durationToMs,
+  isGitCheckout,
+  notFoundError,
+  readConfig,
+  readState,
+  resolveHome,
+  resolveSetting,
+  usageError,
+  zRefKey,
+  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
+} from '@kaisers-io/refs-core';
+import { emit, wrapAction } from '../output.ts';
+import type { CliContext } from '../context.ts';
+import type { RefsCommand } from './registry.ts';
+import { isStale } from './ref-status.ts';
+
+// `refs list` prints one row per configured ref with resolved staleness/missing status. This file
+// also exports `matchRefKey`, the suffix-matching resolver `show` (and `sync`/Tasks 20-22's
+// edit/remove/tag) reuse to turn a full ref key or a unique suffix into an exact key. The
+// staleness check itself (`isStale`) lives in `ref-status.ts`, shared with `sync.ts`'s
+// `--stale-only` filter.
+
+interface ListItem {
+  clone_mode: CloneMode;
+  description: string;
+  key: string;
+  missing: boolean;
+  packages: string[];
+  stale: boolean;
+}
+
+const EMPTY_LENGTH = 0;
+const SINGLE_MATCH = 1;
+
+interface ListArgs {
+  config: Config;
+  home: RefsHome;
+  now: number;
+  state: State;
+}
+
+interface ItemArgs {
+  home: RefsHome;
+  now: number;
+  settings: Settings;
+  state: State;
+}
+
+const buildListItem = (args: ItemArgs, key: string, ref: RefEntry): ListItem => {
+  const refState = args.state.refs[key];
+  const ttlMs = durationToMs(resolveSetting('sync_ttl', ref, args.settings));
+  return {
+    clone_mode: resolveSetting('clone_mode', ref, args.settings),
+    description: ref.description,
+    key,
+    missing: !isGitCheckout(checkoutPath(args.home, zRefKey.parse(key))),
+    packages: Object.keys(ref.packages ?? {}).toSorted(),
+    stale: isStale(refState?.last_fetched_at, ttlMs, args.now),
+  };
+};
+
+const listItems = (args: ListArgs): ListItem[] => {
+  const itemArgs: ItemArgs = {
+    home: args.home,
+    now: args.now,
+    settings: args.config.settings,
+    state: args.state,
+  };
+  const items = Object.entries(args.config.refs).map(([key, ref]) =>
+    buildListItem(itemArgs, key, ref),
+  );
+  return items.toSorted((left, right) => left.key.localeCompare(right.key));
+};
+
+const runList = async (ctx: CliContext): Promise<ListItem[]> => {
+  const home = resolveHome(ctx.env);
+  const config = await readConfig(home);
+  const state = await readState(home);
+  return listItems({ config, home, now: Date.now(), state });
+};
+
+const suffixesFor = (item: ListItem): string => {
+  const suffixes: string[] = [];
+  if (item.stale) {
+    suffixes.push('[stale]');
+  }
+  if (item.missing) {
+    suffixes.push('[missing]');
+  }
+  if (suffixes.length === EMPTY_LENGTH) {
+    return '';
+  }
+  return ` ${suffixes.join(' ')}`;
+};
+
+const NO_REFS_LINE = 'no refs configured — run: refs add <source>';
+
+const listHuman = (items: readonly ListItem[]): string[] => {
+  if (items.length === EMPTY_LENGTH) {
+    return [NO_REFS_LINE];
+  }
+  return items.map((item) => `${item.key}  ${item.description}${suffixesFor(item)}`);
+};
+
+// Suffix matching, shared by `show` (and future resolve/sync/edit/remove/tag commands) ------------
+
+const keySegments = (key: string): string[] => key.split('/');
+
+const matchesQuery = (key: string, querySegments: readonly string[]): boolean => {
+  const segments = keySegments(key);
+  if (querySegments.length > segments.length) {
+    return false;
+  }
+  const offset = segments.length - querySegments.length;
+  return querySegments.every((segment, index) => segment === segments[offset + index]);
+};
+
+/** Resolves `query` (a full ref key, or a unique suffix matched on segment boundaries from the
+ * right — e.g. `next.js` or `vercel/next.js` both match `github.com/vercel/next.js`) against
+ * `config.refs`. An exact full-key match wins immediately, even when some other configured key's
+ * suffix also happens to equal `query` (e.g. `github.com/vercel/next.js` vs.
+ * `corp-mirror/github.com/vercel/next.js`) — otherwise a ref would be unresolvable by its own full
+ * key. Throws `usageError` (listing every candidate) when more than one key matches, and
+ * `notFoundError` when none do. */
+const matchRefKey = (config: Config, query: string): RefKey => {
+  if (Object.hasOwn(config.refs, query)) {
+    return zRefKey.parse(query);
+  }
+  const querySegments = keySegments(query);
+  const matches = Object.keys(config.refs)
+    .filter((key) => matchesQuery(key, querySegments))
+    .toSorted();
+  const [first] = matches;
+  if (first === undefined) {
+    throw notFoundError(`no ref matches '${query}'`);
+  }
+  if (matches.length > SINGLE_MATCH) {
+    throw usageError(`'${query}' matches more than one ref: ${matches.join(', ')}`);
+  }
+  return zRefKey.parse(first);
+};
+
+const registerList = (program: RefsCommand, ctx: CliContext): void => {
+  program
+    .command('list')
+    .description('List configured refs with their staleness/missing checkout status.')
+    .action((_localOpts, command) => {
+      const globals = command.optsWithGlobals();
+      const opts = { json: globals.json === true, verbose: globals.verbose === true };
+      return wrapAction(ctx, opts, async () => {
+        const items = await runList(ctx);
+        emit(ctx, opts, listHuman(items), items);
+      })();
+    });
+};
+
+export { matchRefKey, registerList, runList };
+export type { ListItem };

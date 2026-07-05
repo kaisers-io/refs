@@ -1,0 +1,52 @@
+name: ci
+on:
+  push: { branches: [main] }
+  pull_request:
+# PR-controlled code runs in every job (install/build/test) — keep the ambient token read-only.
+permissions:
+  contents: read
+jobs:
+  check:
+    strategy:
+      matrix: { os: [ubuntu-latest, macos-latest] }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .node-version, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+  bundle-freshness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .node-version, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/check-bundle-freshness.sh
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .node-version, cache: pnpm }
+      - run: pnpm install --frozen-lockfile && pnpm build
+      - name: smoke test against a file:// fixture
+        run: |
+          set -euo pipefail
+          npm pack ./packages/cli --pack-destination /tmp
+          npm install -g /tmp/kaisers-io-refs-*.tgz
+          export REFS_ALLOW_FILE_URLS=1
+          export REFS_HOME="$(mktemp -d)"
+          refs init --json
+          FIX="$(mktemp -d)"; git -C "$FIX" init -qb main
+          git -C "$FIX" -c user.email=ci@refs -c user.name=ci commit -qm init --allow-empty
+          git -C "$FIX" tag v1.0.0
+          refs add "file://$FIX" --description "smoke fixture" --json
+          refs list --json | grep -q '"ok":true'
+          refs sync --json
+          refs remove "$(refs list --json | node -e 'let d="";process.stdin.on("data",(c)=>d+=c).on("end",()=>console.log(JSON.parse(d).data[0].key))')" --json
+# NOTE: no publish job — private phase (spec §8). Added only at go-public.

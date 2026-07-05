@@ -1,0 +1,29 @@
+{
+  "name": "refs-workspace",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.9.0",
+  "engines": { "node": ">=24.12 <25" },
+  "scripts": {
+    "lint": "oxlint",
+    "fmt": "oxfmt packages skills",
+    "fmt:check": "oxfmt --check packages",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "build": "pnpm -r run build",
+    "check": "pnpm lint && pnpm fmt:check && pnpm typecheck && pnpm test"
+  },
+  "devDependencies": {
+    "@tsconfig/node24": "24.0.4",
+    "@tsconfig/strictest": "2.0.8",
+    "@types/node": "24.13.2",
+    "@vitest/coverage-v8": "4.1.9",
+    "oxfmt": "0.57.0",
+    "oxlint": "1.72.0",
+    "tsdown": "0.22.3",
+    "typescript": "6.0.3",
+    "vite": "8.1.3",
+    "vitest": "4.1.9"
+  }
+}

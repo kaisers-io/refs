@@ -1,0 +1,119 @@
+import type { Config, RefEntry, RefKey } from '@kaisers-io/refs-core';
+import {
+  checkoutPath,
+  isGitCheckout,
+  notFoundError,
+  readConfig,
+  resolveHome,
+  resolveTag,
+  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
+} from '@kaisers-io/refs-core';
+import { emit, wrapAction } from '../output.ts';
+import type { CliContext } from '../context.ts';
+import type { RefsCommand } from './registry.ts';
+import { matchRefKey } from './list.ts';
+
+// `refs tag <ref> <version> [--package <name>]` — resolves a semver-ish `<version>` to the actual
+// git tag it corresponds to, by rendering the applicable `tag_format` and verifying the rendered
+// tag exists in the ref's checkout (core's `resolveTag`, itself built on `tagExists`/`renderTag`).
+// `--package <name>` targets one of the ref's registered packages instead of the ref itself; its
+// `tag_format` inherits the ref's own when the package does not override one (spec §3):
+// `package.tag_format ?? ref.tag_format`. An unresolvable `--package` name is a `notFoundError`,
+// exactly like an unresolvable `<ref>` is (via `matchRefKey`).
+
+interface TagData {
+  key: string;
+  ref_path: string;
+  tag: string;
+  version: string;
+}
+
+interface TagOptions {
+  packageName?: string;
+}
+
+interface TagArgs {
+  opts: TagOptions;
+  query: string;
+  version: string;
+}
+
+// `matchRefKey` only ever returns a key it found among `Object.keys(config.refs)`, so this lookup
+// can never actually miss — the throw exists purely to satisfy `noUncheckedIndexedAccess`,
+// mirroring `show.ts`'s `requireEntry`.
+const requireEntry = (config: Config, key: RefKey): RefEntry => {
+  const entry = config.refs[key];
+  if (entry === undefined) {
+    throw new Error(`internal: matched ref key '${key}' is missing from config.refs`);
+  }
+  return entry;
+};
+
+/** Resolves the `tag_format` to render `version` against: the named package's own override when
+ * `packageName` is given and it has one, else the ref's own `tag_format` — the inheritance rule
+ * from spec §3. An unregistered `packageName` is a `notFoundError`, not a silent ref-level
+ * fallback. */
+const formatFor = (entry: RefEntry, key: RefKey, packageName: string | undefined): string => {
+  if (packageName === undefined) {
+    return entry.tag_format;
+  }
+  const pkg = entry.packages?.[packageName];
+  if (pkg === undefined) {
+    throw notFoundError(`no package '${packageName}' registered on ref '${key}'`);
+  }
+  return pkg.tag_format ?? entry.tag_format;
+};
+
+/** Guards against a configured ref whose checkout directory is missing — first-class state
+ * elsewhere (`refs list` reports it, `refs sync` repairs it) that would otherwise surface here as
+ * a low-level git/cwd error out of `resolveTag`. */
+const requireCheckout = (dest: string, key: RefKey): void => {
+  if (!isGitCheckout(dest)) {
+    throw notFoundError(`checkout for '${key}' is missing — run: refs sync ${key}`);
+  }
+};
+
+const runTag = async (ctx: CliContext, args: TagArgs): Promise<TagData> => {
+  const home = resolveHome(ctx.env);
+  const config = await readConfig(home);
+  const key = matchRefKey(config, args.query);
+  const entry = requireEntry(config, key);
+  const format = formatFor(entry, key, args.opts.packageName);
+  const dest = checkoutPath(home, key);
+  requireCheckout(dest, key);
+  const tag = await resolveTag(ctx.runner, dest, format, args.version);
+  return { key, ref_path: `refs/tags/${tag}`, tag, version: args.version };
+};
+
+const tagHuman = (data: TagData): string[] => [`${data.key}@${data.version} -> ${data.tag}`];
+
+// `exactOptionalPropertyTypes` forbids assigning a possibly-`undefined` value directly onto an
+// optional property — mirrors `add.ts`'s `buildAddOptions`.
+const buildTagOptions = (localOpts: { package?: string }): TagOptions => {
+  const opts: TagOptions = {};
+  if (localOpts.package !== undefined) {
+    opts.packageName = localOpts.package;
+  }
+  return opts;
+};
+
+const registerTag = (program: RefsCommand, ctx: CliContext): void => {
+  program
+    .command('tag')
+    .description("Resolve a version to its git tag, via the ref's (or a package's) tag_format.")
+    .argument('<ref>', 'full ref key or a unique suffix, e.g. next.js')
+    .argument('<version>', 'version to resolve, e.g. 15.3.0')
+    .option('--package <name>', "resolve against this package's tag_format instead of the ref's")
+    // eslint-disable-next-line max-params -- fixed 4-arg shape commander gives a 2-argument command
+    .action((ref, version, localOpts, command) => {
+      const globals = command.optsWithGlobals();
+      const opts = { json: globals.json === true, verbose: globals.verbose === true };
+      return wrapAction(ctx, opts, async () => {
+        const data = await runTag(ctx, { opts: buildTagOptions(localOpts), query: ref, version });
+        emit(ctx, opts, tagHuman(data), data);
+      })();
+    });
+};
+
+export { registerTag, runTag };
+export type { TagData };
