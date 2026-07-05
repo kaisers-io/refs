@@ -35,6 +35,42 @@ const parseProposalJson = (text: string): unknown => {
   }
 };
 
+// Repo-wide idiom for "is this a JSON object, not an array/null" (mirrors core's own
+// `isPlainObject` in `config-io.ts`/`workspaces-parse.ts` — not exported from core, so
+// re-declared locally rather than reaching into an internal module).
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const FAILED_ENVELOPE_MESSAGE =
+  'proposal file contains a failed refs envelope (ok is false) — re-run the dry-run';
+
+/** `refs ... --json` always emits a top-level `ok` field (see `output.ts`'s `SuccessEnvelope`/
+ * `ErrorEnvelope`), which a bare `FinalProposal` never has — used as the single signal that
+ * `raw` is the whole `--json` envelope (piped straight from `refs add --dry-run --json`) rather
+ * than a hand-edited bare proposal. */
+const looksLikeEnvelope = (value: unknown): value is Record<string, unknown> =>
+  isPlainObject(value) && 'ok' in value;
+
+/** Unwraps a `refs --json` envelope down to its `data` payload so the exact stdout of
+ * `refs add --dry-run --json` can be piped straight into `--proposal` (see docs/commands.md's
+ * pipe example) without hand-stripping the envelope first. A failed envelope (`ok: false`) — the
+ * dry-run itself errored, so there is no proposal to unwrap — throws a clear message instead of
+ * letting the bare `{error, ok}` shape fall through to a confusing zod field-by-field dump. Any
+ * other shape (a bare `FinalProposal`, or something envelope-ish but missing a usable `data`
+ * object) passes through unchanged for `parseFinalProposal` to validate as-is. */
+const unwrapEnvelope = (value: unknown): unknown => {
+  if (!looksLikeEnvelope(value)) {
+    return value;
+  }
+  if (value['ok'] === false) {
+    throw validationError(FAILED_ENVELOPE_MESSAGE);
+  }
+  if (isPlainObject(value['data'])) {
+    return value['data'];
+  }
+  return value;
+};
+
 /** Validates the parsed JSON against `zFinalProposal`, rendering a zod "pretty" error on failure —
  * the two-phase contract's whole point is that a human (or agent) may have hand-edited this file,
  * so validation failures need to be legible, not a raw zod issue dump. */
@@ -46,10 +82,12 @@ const parseFinalProposal = (raw: unknown): FinalProposal => {
   return parsed.data;
 };
 
-/** Reads `location` (a file path, or `-` for stdin) and parses+validates it as a `FinalProposal`. */
+/** Reads `location` (a file path, or `-` for stdin) and parses+validates it as a `FinalProposal` —
+ * accepting either a bare proposal object or the full `refs ... --dry-run --json` envelope
+ * wrapping one (see `unwrapEnvelope`). */
 const loadFinalProposal = async (ctx: CliContext, location: string): Promise<FinalProposal> => {
   const text = await readProposalText(ctx, location);
-  return parseFinalProposal(parseProposalJson(text));
+  return parseFinalProposal(unwrapEnvelope(parseProposalJson(text)));
 };
 
 export { loadFinalProposal };
