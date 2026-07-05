@@ -28,6 +28,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its single seeded package entry never carries a description — and always needs the
   two-phase flow.
 
+- Replaced the `execa` dependency with a small hand-rolled `node:child_process`-based
+  process runner. `git`/`ssh` invocations, timeouts, and error handling work as
+  before, with two minor observable differences: a command that fails to spawn at
+  all (e.g. `git` missing from `PATH`) now reports exit code 127 instead of 1, and
+  its OS error message (e.g. `spawn git ENOENT`) now lands on stderr — improving
+  `refs doctor`'s failure detail for a missing `git` binary. The published CLI
+  bundle is smaller as a result (`bin/refs.mjs`: 305,188 → 196,249 bytes raw,
+  89,740 → 55,864 bytes gzipped).
+
 ### Fixed
 
 - `refs add --proposal` validation errors now name the offending key(s) for a

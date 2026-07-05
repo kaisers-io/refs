@@ -1,12 +1,11 @@
 import type { RefEntry, RefsHome } from '@kaisers-io/refs-core';
-import { initHome, parseLastEnvelope, realContextFor } from './add-support.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
-import { readConfig, readState, resolveHome } from '@kaisers-io/refs-core';
+import { SpawnRunner, readConfig, readState, resolveHome } from '@kaisers-io/refs-core';
+import { initHome, parseLastEnvelope, realContextFor } from './add-support.ts';
 import type { CliContext } from '../../src/context.ts';
 import type { FixtureRepo } from './fixture-repo.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { createFixtureRepo } from './fixture-repo.ts';
-import { execa } from 'execa';
 import { expect } from 'vitest';
 import { join } from 'node:path';
 import { run } from '../../src/main.ts';
@@ -19,17 +18,20 @@ import { writeFile } from 'node:fs/promises';
 
 const GIT_SUCCESS_EXIT_CODE = 0;
 const DEFAULT_TAGS = ['v1.0.0'];
+const setupRunner = new SpawnRunner();
 
-/** Runs a git command for test SETUP only (never the code under test) — a throwaway `execa` call
- * rather than pulling in `ExecaRunner`, mirroring `fixture-repo.ts`/`add-guards-support.ts`'s own
- * local `git` helpers (duplicated here for the same reason: no cross-file test-only dependency,
- * and each helper file stays self-contained). */
+/** Runs a git command for test SETUP only (never the code under test) — a throwaway `SpawnRunner`
+ * instance, mirroring `fixture-repo.ts`/`add-guards-support.ts`'s own local `git` helpers
+ * (duplicated here for the same reason: no cross-file test-only dependency, and each helper file
+ * stays self-contained). `.trim()`s stdout — `SpawnRunner` never strips a trailing newline the way
+ * execa's default `stripFinalNewline` did, and every caller here (`headShaOf` in particular) wants
+ * the bare value. */
 const gitFor = async (dir: string, args: readonly string[]): Promise<string> => {
-  const result = await execa('git', args, { cwd: dir, reject: false });
+  const result = await setupRunner.run('git', args, { cwd: dir });
   if (result.exitCode !== GIT_SUCCESS_EXIT_CODE) {
     throw new Error(`test setup: git ${args.join(' ')} failed: ${result.stderr}`);
   }
-  return result.stdout;
+  return result.stdout.trim();
 };
 
 /** Commits a new file directly into the upstream fixture repo (`dir` — the "remote" `refs add`

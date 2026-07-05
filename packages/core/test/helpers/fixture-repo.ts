@@ -1,11 +1,14 @@
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
-import { execa } from 'execa';
+import { SpawnRunner } from '../../src/proc/runner.ts';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 // Test-only fixture builder: a real local git repo used as a `file://` "remote" for the
-// Integration suite in `test/git/repo.test.ts`. Uses execa directly (not the production Runner
-// Abstraction) because this is test infrastructure, not code under test — see the task brief.
+// Integration suite in `test/git/repo.test.ts`. Uses a throwaway `SpawnRunner` directly (rather
+// Than pulling in a raw `child_process`/`execa`-shaped helper of its own) purely so this file's
+// distinct-module count stays low — it is still test infrastructure, not code under test.
+
+const setupRunner = new SpawnRunner();
 
 interface FixtureOpts {
   monorepo?: boolean;
@@ -30,7 +33,7 @@ const SUCCESS_EXIT_CODE = 0;
 // Stderr on failure so a broken fixture fails loudly at setup time rather than surfacing as a
 // Confusing failure deep in the code under test.
 const git = async (dir: string, args: readonly string[]): Promise<string> => {
-  const result = await execa('git', args, { cwd: dir, reject: false });
+  const result = await setupRunner.run('git', args, { cwd: dir });
   if (result.exitCode === SUCCESS_EXIT_CODE) {
     return result.stdout;
   }

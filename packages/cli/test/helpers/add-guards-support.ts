@@ -1,6 +1,6 @@
-import { ExecaRunner, checkoutPath, readConfig, resolveHome } from '@kaisers-io/refs-core';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { Proposal, RefsHome } from '@kaisers-io/refs-core';
+// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
+import { SpawnRunner, checkoutPath, readConfig, resolveHome } from '@kaisers-io/refs-core';
 import { access, mkdir, mkdtemp, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { initHome, realContextFor, runAddDryRunJson } from './add-support.ts';
 import type { CliContext } from '../../src/context.ts';
@@ -88,9 +88,9 @@ const setupSourceFixture = async (homeDir: string): Promise<SourceFixture> => {
 };
 
 // Reused for test SETUP git calls only (never the code under test) — a second, throwaway
-// `ExecaRunner` rather than pulling in the `execa` package directly, purely to keep this file's
+// `SpawnRunner` rather than a raw `child_process` call of its own, purely to keep this file's
 // distinct-module count under the repo's `max-dependencies` cap.
-const setupRunner = new ExecaRunner();
+const setupRunner = new SpawnRunner();
 
 /** Runs a git command for test SETUP only (never the code under test) — mirrors
  * `fixture-repo.ts`'s own local `git` helper, duplicated here for the same reason (see that
