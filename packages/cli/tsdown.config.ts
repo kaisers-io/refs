@@ -4,10 +4,10 @@ import { defineConfig } from 'tsdown';
 const BUNDLE_PATH = 'bin/refs.mjs';
 const EXECUTABLE_MODE = 0o755;
 
-// Deterministic single-file ESM bundle: no hashes in the filename so the committed bundle can be
-// freshness-checked with `git diff --exit-code` in CI. Minification is still deterministic for a
-// fixed input (rolldown/oxc's minifier has no randomness/timestamps), so it doesn't break that
-// check — verified by building twice and comparing `shasum -a 256` output, see task-31-32-report.md.
+// Deterministic single-file ESM bundle: no hashes in the filename so CI can prove the build is
+// reproducible (scripts/check-bundle-determinism.sh builds twice and compares sha256 output).
+// Minification is still deterministic for a fixed input (rolldown/oxc's minifier has no
+// randomness/timestamps), so it doesn't break that check.
 //
 // Entry is `src/index.ts`, not `src/main.ts`: `main.ts` only exports `run` (a library module), the
 // `if (import.meta.main)` self-invocation that actually executes the CLI when run as a script
