@@ -90,6 +90,14 @@ const finalizeViaProposalFile = async (
   await run(ctx, ['node', 'refs', 'add', '--proposal', proposalPath, '--json']);
 };
 
+/** Stubs `ctx.readStdin` to resolve with `completed` (a filled-in proposal, JSON-stringified) and
+ * runs `refs add --proposal - --json` against it — the `readStdin '-'` branch (Task 16 gap)
+ * mirrors `finalizeViaProposalFile` above but through the stdin seam instead of a real file. */
+const finalizeViaStdinProposal = async (ctx: CliContext, completed: unknown): Promise<void> => {
+  ctx.readStdin = () => Promise.resolve(JSON.stringify(completed));
+  await run(ctx, ['node', 'refs', 'add', '--proposal', '-', '--json']);
+};
+
 // Also asserts `effective_clone_mode` is already `'full'` right after the dry-run's own clone
 // (see `expectFinalizedState`'s comment) — proving `writePendingProposal` captures the real clone
 // result rather than leaving it to be guessed later at finalize time.
@@ -139,6 +147,7 @@ export {
   expectPackagesWithDescriptions,
   expectPendingProposal,
   finalizeViaProposalFile,
+  finalizeViaStdinProposal,
   initHome,
   parseLastEnvelope,
   realContextFor,

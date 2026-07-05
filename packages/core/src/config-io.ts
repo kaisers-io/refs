@@ -4,6 +4,8 @@ import { TomlError, parse, stringify } from 'smol-toml';
 import { copyFile, readFile, stat } from 'node:fs/promises';
 import { isEnoent, writeFileAtomic } from './fs-atomic.ts';
 import type { RefsHome } from './home.ts';
+// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
+import { configBackupPath } from './home.ts';
 import { z } from 'zod';
 
 type JsonRecord = Record<string, unknown>;
@@ -110,7 +112,9 @@ const extractSchemaVersion = (raw: JsonRecord): number | undefined => {
 const assertSupportedSchemaVersion = (raw: JsonRecord, path: string): void => {
   const rawVersion = extractSchemaVersion(raw);
   if (rawVersion === undefined) {
-    throw validationError(`config schema version is missing in ${path} — run: refs migrate`);
+    throw validationError(
+      `config schema version is missing or invalid in ${path} — run: refs migrate`,
+    );
   }
   if (rawVersion > SCHEMA_VERSION) {
     throw validationError(
@@ -235,7 +239,7 @@ const migrateOlderConfig = async (
   // Best-effort, not atomic: a crash between this copy and the writeFileAtomic below could in
   // Theory race a concurrent migration, but .bak is a convenience safety net, not the durability
   // Guarantee (writeFileAtomic below is what protects the actual config from a torn write).
-  await copyFile(home.configPath, `${home.configPath}.bak`);
+  await copyFile(home.configPath, configBackupPath(home));
   const filled = deepMergeFillMissing(raw, MIGRATION_SKELETON);
   const filledMeta = asRecordOr(filled['meta'], {});
   const migrated = {
@@ -251,7 +255,7 @@ const migrateOlderConfig = async (
   if (!result.success) {
     throw validationError(
       `config in ${home.configPath} is malformed beyond automatic migration ` +
-        `(backup preserved at ${home.configPath}.bak): ${z.prettifyError(result.error)}`,
+        `(backup preserved at ${configBackupPath(home)}): ${z.prettifyError(result.error)}`,
     );
   }
   await writeFileAtomic(home.configPath, stringify(migrated));

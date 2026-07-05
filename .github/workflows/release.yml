@@ -1,0 +1,115 @@
+name: release
+on:
+  push:
+    tags: ['v*']
+# No pull_request/workflow_dispatch trigger on this file — the only way to reach the `publish`
+# job (which mints an npm OIDC token) is a tag push, and only after the `verify` job passes.
+permissions:
+  contents: read
+jobs:
+  # Gate: re-runs the full CI check suite against the exact tagged commit, plus release-only
+  # guards (tag/version match, branch containment, tarball content allowlist) and a smoke test
+  # of the packed tarball. Holds only read permissions — no publish credentials live here.
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@a15d269cd4658e1107c09f1fabf4cbd7bd1f308a # v4.4.0
+      # No `cache: pnpm` in this workflow (unlike ci.yml): a poisoned or stale restore-key cache
+      # is a plausible supply-chain vector for the one workflow with publish reach, so the
+      # release pipeline always installs clean.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version-file: .node-version }
+      - name: Guard — tag matches packages/cli/package.json version
+        # `github.ref_name` is attacker-controlled text once the repo is public (anyone who can
+        # push a tag controls it) — it goes into env, never directly into the script body, so it
+        # can't be spliced into the shell command.
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          PKG_VERSION="$(node -p "require('./packages/cli/package.json').version")"
+          if [ "$VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::tag $TAG (version $VERSION) does not match packages/cli/package.json version $PKG_VERSION" >&2
+            exit 1
+          fi
+          echo "tag $TAG matches package version $PKG_VERSION"
+      - name: Guard — tagged commit is reachable from origin/main
+        # A tag pushed from a random branch/fork must not be able to publish. `GITHUB_SHA` is
+        # the runner-assigned commit SHA (not attacker-suppliable text like ref_name), so it's
+        # safe to reference directly.
+        run: |
+          set -euo pipefail
+          # No --depth here: a shallow fetch would write .git/shallow and narrow the ancestor
+          # check to "tag is the exact current tip" — tagging an older main commit must stay legal.
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::tagged commit $GITHUB_SHA is not reachable from origin/main — refusing to publish from a stray branch" >&2
+            exit 1
+          fi
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm check
+      - run: bash scripts/check-bundle-freshness.sh
+      - name: Guard — pack the tarball, verify its contents, smoke-test the install
+        run: |
+          set -euo pipefail
+          PACK_DIR="$(mktemp -d)"
+          PACK_JSON="$(npm pack ./packages/cli --json --pack-destination "$PACK_DIR")"
+          # Regression net for "no source code in the tarball": the tarball must contain EXACTLY
+          # this file set — extras (leaked source) and missing files (dropped LICENSE) both fail.
+          # Shipping a new file (e.g. a package README) requires deliberately updating this set.
+          node -e '
+            const pack = JSON.parse(process.argv[1])[0];
+            const expected = ["LICENSE", "bin/refs.mjs", "package.json"];
+            const actual = pack.files.map((f) => f.path).sort();
+            if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+              console.error("tarball shape mismatch — expected exactly:", expected.join(", "));
+              console.error("actual:", actual.join(", "));
+              process.exit(1);
+            }
+            console.log("tarball contents OK:", actual.join(", "));
+          ' "$PACK_JSON"
+          TARBALL="$PACK_DIR/$(node -e 'console.log(JSON.parse(process.argv[1])[0].filename)' "$PACK_JSON")"
+          PREFIX="$(mktemp -d)"
+          npm install -g --prefix "$PREFIX" "$TARBALL"
+          export PATH="$PREFIX/bin:$PATH"
+          REFS_HOME="$(mktemp -d)"
+          export REFS_HOME
+          refs --version
+          refs init
+  # Publish: the only job with OIDC (`id-token: write`) reach. Runs only after `verify` passes,
+  # against the same tagged commit. Deliberately minimal: the published bundle is the COMMITTED
+  # bin/refs.mjs (bundle-freshness in `verify` proved committed == rebuilt), so no dependency
+  # install and no build runs while the OIDC permission is in scope — any step in a job can mint
+  # the job's OIDC identity, so repo-controlled build tooling must never execute here.
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .node-version
+          # Required for npm's Trusted Publishing (OIDC) exchange to target the right registry —
+          # npm CLI >= 11.5.1 is required, which is what ships with the pinned Node version above
+          # (verified locally: node v24.12.0 bundles npm 11.6.2).
+          registry-url: 'https://registry.npmjs.org'
+      - name: Publish to npm via Trusted Publishing (OIDC)
+        working-directory: packages/cli
+        # No NPM_TOKEN / secrets.* anywhere: authentication is the short-lived OIDC token GitHub
+        # mints from `id-token: write` above, exchanged by npm CLI for a publish token. This
+        # requires a ONE-TIME manual step by the package owner: configure this repo + this exact
+        # workflow file as a Trusted Publisher for `@kaisers-io/refs` on npmjs.com. Until that is
+        # done, this step fails with an auth error — that failure is expected and safe (there is
+        # no fallback long-lived token to leak).
+        # `--ignore-scripts`: no lifecycle scripts run at publish time.
+        # No `--provenance`: while the GitHub repo is private, a provenance attestation would
+        # link to a 404 repository URL. Add `--provenance` once the repo goes public.
+        run: npm publish --ignore-scripts

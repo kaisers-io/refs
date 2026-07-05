@@ -3,6 +3,7 @@ export * from './errors.ts';
 export * from './fs-atomic.ts';
 export * from './git/repo.ts';
 export * from './git/tags.ts';
+export * from './git-url-redact.ts';
 export * from './git-url.ts';
 export * from './home.ts';
 export * from './lock.ts';

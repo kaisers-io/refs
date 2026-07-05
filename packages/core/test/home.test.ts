@@ -1,7 +1,7 @@
-import { assertInsideSources, checkoutPath, resolveHome } from '../src/home.ts';
+import { assertInsideSources, checkoutPath, configBackupPath, resolveHome } from '../src/home.ts';
 import { describe, expect, it } from 'vitest';
+import { isAbsolute, join } from 'node:path';
 import { mkdirSync, mkdtempSync, symlinkSync } from 'node:fs';
-import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { zRefKey } from '../src/schemas/primitives.ts';
 
@@ -29,6 +29,22 @@ describe('resolveHome', () => {
   it('defaults to ~/.kaisers-io/refs', () => {
     expect.hasAssertions();
     expect(resolveHome({}).root.endsWith('/.kaisers-io/refs')).toBe(true);
+  });
+
+  it('resolves a relative REFS_HOME to absolute paths', () => {
+    expect.hasAssertions();
+    const home = resolveHome({ REFS_HOME: 'relative/dir' });
+    expect(isAbsolute(home.root)).toBe(true);
+    expect(isAbsolute(home.sourcesDir)).toBe(true);
+    expect(home.root.endsWith(join('relative', 'dir'))).toBe(true);
+  });
+});
+
+describe('home: configBackupPath', () => {
+  it('derives the single shared backup path from configPath', () => {
+    expect.hasAssertions();
+    const home = resolveHome({ REFS_HOME: '/x/y' });
+    expect(configBackupPath(home)).toBe('/x/y/config.toml.bak');
   });
 });
 

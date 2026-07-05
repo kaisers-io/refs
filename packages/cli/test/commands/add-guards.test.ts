@@ -38,6 +38,9 @@ import { writePendingProposal } from '../../src/commands/add-dry-run.ts';
 
 const TEST_TIMEOUT_MS = 30_000;
 const BOGUS_ORIGIN = 'https://example.com/someone/else.git';
+// A `git remote get-url origin` value carrying an embedded credential — the secret-echo case
+// (Task 30) for the origin-mismatch conflict message below.
+const CREDENTIALED_BOGUS_ORIGIN = 'https://token:sekrit@example.com/someone/else.git';
 const FALLBACK_DESCRIPTION = 'Fallback description text.';
 // A named `CloneMode | undefined` value rather than a literal `undefined` at the call site below
 // (the race-guard test calls `writePendingProposal` directly, whose third parameter is required
@@ -120,6 +123,34 @@ describe('refs add: checkout identity verification', () => {
           expect(envelope.ok).toBe(false);
           expect(envelope.error?.code).toBe('conflict');
           await expectRefNotConfigured(home, proposal.key);
+        }),
+      );
+    },
+    TEST_TIMEOUT_MS,
+  );
+});
+
+// Secret-echo regression (Task 30): kept in its own `describe` (rather than folded into "checkout
+// identity verification" above) purely to keep that block's function under the repo's
+// 50-line-per-function oxlint cap.
+describe('refs add: origin-mismatch message redacts embedded credentials', () => {
+  it(
+    '(i) the origin-mismatch message redacts embedded credentials from the actual checkout origin',
+    async () => {
+      expect.hasAssertions();
+      await withResetExitCode(() =>
+        withTempHome(async (homeDir) => {
+          const { ctx, dest, sourceUrl, stdout } = await setupSourceFixture(homeDir);
+          await createBogusCheckout(dest, CREDENTIALED_BOGUS_ORIGIN);
+
+          await run(ctx, ['node', 'refs', 'add', sourceUrl, '--dry-run', '--json']);
+
+          expect(process.exitCode).toBe(EXIT.CONFLICT);
+          const envelope = parseLastEnvelope(stdout) as ErrorEnvelope;
+          expect(envelope.ok).toBe(false);
+          expect(envelope.error?.code).toBe('conflict');
+          expect(envelope.error?.message).not.toContain('sekrit');
+          expect(envelope.error?.message).toContain('<redacted>@example.com');
         }),
       );
     },

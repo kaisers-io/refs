@@ -30,6 +30,15 @@ const soleLine = (lines: readonly string[]): string => {
   return line;
 };
 
+interface UsageEnvelope {
+  error: { code: string; message: string };
+  ok: boolean;
+}
+
+// Typed parse of a single `--json` error-envelope line — kept out of the `it` body below purely to
+// stay under the repo's max-statements/max-expects caps.
+const parseUsageEnvelope = (line: string): UsageEnvelope => JSON.parse(line) as UsageEnvelope;
+
 // Envelope-contract tests (spec §4 HIGH-fix): every Commander parsing failure class must still
 // Come out through `emitError`'s single-line json envelope when `--json` was requested, even
 // Though parsing failed before the program's own action code ever ran. Registry is empty in this
@@ -179,6 +188,27 @@ describe('cli envelope contract: --verbose on unexpected errors (finding 3)', ()
       expect(process.exitCode).toBe(EXIT.UNEXPECTED);
       expect(stderr).toHaveLength(ONE_LINE);
       expect(soleLine(stderr)).toContain('at ');
+    });
+  });
+});
+
+// Task 14 gap: `--json` and `--verbose` combined on a Commander parsing failure (never a thrown
+// `RefsError`) must still produce exactly one envelope, with the appended stack safely
+// `JSON.stringify`d (its embedded newlines escaped to the two-character `\n` sequence) rather than
+// breaking the single-line-on-stdout contract.
+describe('cli envelope contract: --json + --verbose combined on a parse failure (Task 14 gap)', () => {
+  it('unknown option embeds a JSON-escaped stack inside one envelope', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(async () => {
+      const { ctx, stdout } = testContext();
+      await run(ctx, ['node', 'refs', '--json', '--verbose', '--definitely-not-a-flag']);
+      expect(process.exitCode).toBe(EXIT.USAGE);
+      expect(stdout).toHaveLength(ONE_LINE);
+      const rawLine = soleLine(stdout);
+      expect(rawLine).toContain(String.raw`\n`);
+      const envelope = parseUsageEnvelope(rawLine);
+      expect(envelope).toMatchObject({ error: { code: 'usage' }, ok: false });
+      expect(envelope.error.message).toMatch(/\n[\s\S]*at /u);
     });
   });
 });
