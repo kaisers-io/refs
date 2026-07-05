@@ -94,9 +94,12 @@ point — finalize will reject an incomplete one) and writes the config entry. R
 per repo for a batch add; each finalize is independent.
 
 Simple, non-agent shortcut (for the record, not the default agent path):
-`refs add <url> --description "…"` does dry-run + finalize in one step, applying a
-single description everywhere one is missing. Skip this for monorepos or whenever
-per-package descriptions matter — it doesn't let you set them individually.
+`refs add <url> --description "…"` does dry-run + finalize in one step, using `"…"` as
+only the top-level description. It does NOT set per-package descriptions — it requires
+every detected package to already have one from its own manifest, and fails (exit 3,
+naming every package still missing one) otherwise. Skip this for monorepos or any source
+where a detected package lacks a description; use the two-phase flow instead so each
+package's description can be filled in individually.
 
 ## 5. Report
 

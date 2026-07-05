@@ -1,4 +1,9 @@
-import { buildFinalPackages, finalProposalPackages, requireTagFormat } from './add-packages.ts';
+import {
+  buildFinalPackages,
+  finalProposalPackages,
+  requireAllDescribed,
+  requireTagFormat,
+} from './add-packages.ts';
 import {
   checkoutPath,
   isGitCheckout,
@@ -82,7 +87,13 @@ const runAddProposal = async (ctx: CliContext, location: string): Promise<AddOut
   return { data: { entry, key }, human: finalizeHuman(key), warnings: [] };
 };
 
+// `requireAllDescribed` runs FIRST, before anything else here (including `requireTagFormat`'s own
+// validation) and before `finalizeRef` is ever reached — the one-shot `--description` text is only
+// ever the top-level ref's own description, never a per-package fallback (see that function's own
+// doc comment), so any package still missing a detected description must fail closed here, with no
+// config/state write having happened yet.
 const buildDescriptionRef = (outcome: DryRunOutcome, description: string): FinalizedRefInput => {
+  requireAllDescribed(outcome.proposal.packages);
   const ref: FinalizedRefInput = {
     default_branch: outcome.proposal.default_branch,
     description,
@@ -90,7 +101,7 @@ const buildDescriptionRef = (outcome: DryRunOutcome, description: string): Final
     tag_format: requireTagFormat(outcome.proposal.tag_format_candidate),
     url: outcome.proposal.url,
   };
-  const packages = buildFinalPackages(outcome.proposal.packages, description);
+  const packages = buildFinalPackages(outcome.proposal.packages);
   if (packages !== undefined) {
     ref.packages = packages;
   }
