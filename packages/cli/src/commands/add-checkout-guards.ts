@@ -10,8 +10,10 @@ import {
   zRefState,
   // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
+import type { CliContext } from '../context.ts';
 import { dirname } from 'node:path';
 import { mkdir } from 'node:fs/promises';
+import { progress } from '../output.ts';
 
 // Checkout-identity + head-sha guards for `add-helpers.ts`'s idempotent clone/finalize flow —
 // split out purely to keep `add-helpers.ts` under the repo's 300-line oxlint cap. Source
@@ -118,33 +120,47 @@ const ensureManagedCheckout = async (
  * write outside the managed tree, or make the reuse branch ADOPT a checkout that physically lives
  * outside it (`isGitCheckout`'s existsSync follows symlinked ancestors) — every later sync would
  * then operate out there. */
-const ensureClonedCheckout = async (
-  runner: Runner,
-  opts: {
-    allowFileUrls: boolean;
-    cloneUrl: string;
-    dest: string;
-    home: RefsHome;
-    hooksDir: string;
-    mode: CloneMode;
-  },
+interface CloneCheckoutOpts {
+  allowFileUrls: boolean;
+  cloneUrl: string;
+  dest: string;
+  home: RefsHome;
+  hooksDir: string;
+  mode: CloneMode;
+}
+
+// The fresh-clone branch of `ensureClonedCheckout` (`dest` doesn't exist as a checkout yet) —
+// split out purely to keep that function under the repo's 10-statement oxlint cap. Creates
+// `dest`'s parent directories, emits the `cloning …` progress line (see `output.ts#progress`),
+// then clones.
+const cloneFresh = async (
+  ctx: CliContext,
+  opts: CloneCheckoutOpts,
 ): Promise<{ effectiveMode?: CloneMode; warning?: string }> => {
-  assertInsideSources(opts.home, opts.dest);
-  if (isGitCheckout(opts.dest)) {
-    await ensureCheckoutOrigin(runner, {
-      allowFileUrls: opts.allowFileUrls,
-      dest: opts.dest,
-      expectedUrl: opts.cloneUrl,
-    });
-    await ensureManagedCheckout(runner, { dest: opts.dest, hooksDir: opts.hooksDir });
-    return {};
-  }
   await mkdir(dirname(opts.dest), { recursive: true });
-  const result = await cloneRepo(runner, opts);
+  progress(ctx, `cloning ${redactUrl(opts.cloneUrl)} into ${opts.dest}…`);
+  const result = await cloneRepo(ctx.runner, opts);
   if (result.warning === undefined) {
     return { effectiveMode: result.effectiveMode };
   }
   return { effectiveMode: result.effectiveMode, warning: result.warning };
+};
+
+const ensureClonedCheckout = async (
+  ctx: CliContext,
+  opts: CloneCheckoutOpts,
+): Promise<{ effectiveMode?: CloneMode; warning?: string }> => {
+  assertInsideSources(opts.home, opts.dest);
+  if (isGitCheckout(opts.dest)) {
+    await ensureCheckoutOrigin(ctx.runner, {
+      allowFileUrls: opts.allowFileUrls,
+      dest: opts.dest,
+      expectedUrl: opts.cloneUrl,
+    });
+    await ensureManagedCheckout(ctx.runner, { dest: opts.dest, hooksDir: opts.hooksDir });
+    return {};
+  }
+  return cloneFresh(ctx, opts);
 };
 
 const revParseFailedMessage = (key: RefKey, dest: string): string =>

@@ -12,6 +12,7 @@ import {
 import type { CliContext } from '../context.ts';
 import type { Dirent } from 'node:fs';
 import { join } from 'node:path';
+import { progress } from '../output.ts';
 import { readdir } from 'node:fs/promises';
 
 // Source resolution + pre-clone guards for `add.ts` — split out purely to keep that file under the
@@ -51,6 +52,7 @@ const resolveNpmSource = async (ctx: CliContext, pkgName: string): Promise<Resol
   if (pkgName === '') {
     throw usageError('refs add npm: requires a package name, e.g. npm:left-pad');
   }
+  progress(ctx, `resolving npm package '${pkgName}'…`);
   const resolved = await resolveNpmPackage(ctx.fetcher, pkgName);
   const result: ResolvedSource = {
     cloneUrl: resolved.cloneUrl,

@@ -72,6 +72,15 @@ const emitError = (
   ctx.errLine(`refs: ${rendered.message}`);
 };
 
+// A short, unconditional `refs: <message>` progress line to stderr — fires in BOTH `--json` and
+// Human mode (unlike `emit`'s warnings, which only reach stderr in human mode; json warnings fold
+// Into the final envelope instead). Used by long-running steps of `refs add` (npm resolution,
+// Cloning, package detection) that would otherwise print nothing for minutes. Deliberately dumb:
+// No spinner, no TTY detection, no timer — just a line, written as the step starts.
+const progress = (ctx: CliContext, message: string): void => {
+  ctx.errLine(`refs: ${message}`);
+};
+
 // Shared action wrapper for every `registerX` command: run the pure action body, and on any
 // Thrown error (a `RefsError` or otherwise) render it, emit the envelope, and set the process
 // Exit code — exactly once, right here. Command actions themselves never touch `process` or
@@ -88,4 +97,4 @@ const wrapAction =
     }
   };
 
-export { emit, emitError, wrapAction };
+export { emit, emitError, progress, wrapAction };
