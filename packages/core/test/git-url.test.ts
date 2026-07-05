@@ -248,4 +248,17 @@ describe('applyGitTransport url rewriting', () => {
       /not a supported git url/u,
     );
   });
+
+  // A password-less ssh USERNAME legally survives canonicalization (only passwords are
+  // rejected), so applyGitTransport's own error messages are a reachable echo path for a
+  // token-shaped username (review round 3) — e.g. a registry-resolved ssh url with a
+  // non-default port under git_transport=https.
+  it('never echoes userinfo in the non-default-port rejection', () => {
+    expect.hasAssertions();
+    const message = throwMessage(() =>
+      applyGitTransport('ssh://sekrit@example.com:2222/acme/widgets.git', 'https'),
+    );
+    expect(message).toMatch(/port/u);
+    expect(message).not.toContain('sekrit');
+  });
 });

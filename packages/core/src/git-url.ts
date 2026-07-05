@@ -203,27 +203,27 @@ const httpsFormOf = (host: string, path: string): string =>
 const scpFormOf = (host: string, path: string): string =>
   `git@${host.toLowerCase()}:${ensureGitSuffix(trimPathSlashes(path))}`;
 
-const transportOfProtocol = (protocol: string, input: string): GitTransport => {
+const transportOfProtocol = (protocol: string): GitTransport => {
   if (protocol === 'https:') {
     return 'https';
   }
   if (protocol === 'ssh:') {
     return 'ssh';
   }
-  // Unreachable in practice: `canonicalizeGitUrl` above only admits https:/ssh:/file:, and file:
-  // returned early — kept as a hard error rather than a silent fall-through.
-  throw validationError(`not a supported git url: unsupported protocol ${protocol} in ${input}`);
+  // Unreachable in practice (`canonicalizeGitUrl` only admits https:/ssh:/file:) — and echoes
+  // no input: a password-less ssh USERNAME survives canonicalization, so no message in this
+  // family may carry the raw url.
+  throw validationError(`not a supported git url: unsupported protocol ${protocol}`);
 };
 
-// A port only survives canonicalization by being non-default (default ports are stripped from the
-// key), and neither rewrite target can carry it faithfully: the scp form has no port syntax at
-// all, and stamping an ssh port onto an https url (or vice versa) would produce a url for a
-// different endpoint. Rejecting is the only honest option (spec §3).
+// A port only survives canonicalization by being non-default (default ports are stripped from
+// the key), and neither rewrite target can carry it faithfully (the scp form has no port syntax;
+// stamping an ssh port onto an https url targets a different endpoint) — reject per spec §3.
 const rejectNonDefaultPort = (url: URL, transport: GitTransport, input: string): void => {
   const defaultPort = DEFAULT_PORTS[url.protocol];
   if (url.port !== '' && url.port !== defaultPort) {
     throw validationError(
-      `cannot apply git_transport=${transport} to ${input}: its non-default port ${url.port} ` +
+      `cannot apply git_transport=${transport} to ${redactUrl(input)}: its non-default port ${url.port} ` +
         `cannot be expressed in the ${transport} url form — add the repo with an explicit url instead`,
     );
   }
@@ -242,7 +242,7 @@ const assertKeyInvariant = (input: string, transformed: string, originalKey: Ref
   const transformedKey = canonicalizeGitUrl(transformed).key;
   if (transformedKey !== originalKey) {
     throw validationError(
-      `git_transport transform changed repo identity: '${input}' → '${transformed}' ` +
+      `git_transport transform changed repo identity: '${redactUrl(input)}' → '${transformed}' ` +
         `(key '${originalKey}' → '${transformedKey}')`,
     );
   }
@@ -269,7 +269,7 @@ const transformFromScp = (scp: RegExpExecArray, ctx: TransformContext): string =
 // The WHATWG-url branch of `applyGitTransport` (https:// and ssh:// forms).
 const transformFromUrlForm = (ctx: TransformContext): string => {
   const url = parseUrl(ctx.cloneUrl, ctx.cloneUrl);
-  if (transportOfProtocol(url.protocol, ctx.cloneUrl) === ctx.transport) {
+  if (transportOfProtocol(url.protocol) === ctx.transport) {
     return ctx.cloneUrl;
   }
   rejectNonDefaultPort(url, ctx.transport, ctx.cloneUrl);
