@@ -96,6 +96,21 @@ describe('timeout note joining (SpawnRunner)', SUITE_OPTS, () => {
       `partial\nrefs: command timed out after ${String(STDERR_NOTE_TIMEOUT_MS)}ms`,
     );
   });
+
+  it('strips a CRLF terminator as one unit (no dangling carriage return before the note)', async () => {
+    expect.hasAssertions();
+
+    // Same construction as above, but the child's stderr ends in `\r\n` — the previous runner
+    // stripped the CRLF pair as one terminator, so a dangling `\r` before the note would be a
+    // silent behavior drift for CRLF-emitting children.
+    const result = await runner.run('sh', ['-c', `printf 'partial\\r\\n' >&2; exec sleep 30`], {
+      timeoutMs: STDERR_NOTE_TIMEOUT_MS,
+    });
+
+    expect(result.stderr).toBe(
+      `partial\nrefs: command timed out after ${String(STDERR_NOTE_TIMEOUT_MS)}ms`,
+    );
+  });
 });
 
 describe('non-zero exit', () => {
