@@ -83,13 +83,79 @@ const unwrapEnvelope = (value: unknown): unknown => {
   throw validationError(NO_USABLE_DATA_MESSAGE);
 };
 
-/** Validates the parsed JSON against `zFinalProposal`, rendering a zod "pretty" error on failure —
- * the two-phase contract's whole point is that a human (or agent) may have hand-edited this file,
- * so validation failures need to be legible, not a raw zod issue dump. */
+const NO_ITEMS = 0;
+
+type ZodIssue = z.core.$ZodIssue;
+
+const isUnrecognizedKeysIssue = (
+  issue: ZodIssue,
+): issue is Extract<ZodIssue, { code: 'unrecognized_keys' }> => issue.code === 'unrecognized_keys';
+
+const hasEmptyPath = (issue: ZodIssue): boolean => issue.path.length === NO_ITEMS;
+
+/** Aggregates every `unrecognized_keys` issue into ONE named line — the repo's established "list
+ * ALL offending keys" precedent (see `resolve.ts`'s multi-ref ambiguity message), rather than
+ * surfacing only the first stray key found. `undefined` when there are none. */
+const unrecognizedKeysLine = (issues: readonly ZodIssue[]): string | undefined => {
+  const keys = issues
+    .filter((issue) => isUnrecognizedKeysIssue(issue))
+    .flatMap((issue) => issue.keys);
+  if (keys.length === NO_ITEMS) {
+    return undefined;
+  }
+  const named = keys
+    .toSorted()
+    .map((key) => `"${key}"`)
+    .join(', ');
+  return `✖ unrecognized key(s) in proposal: ${named}`;
+};
+
+/** A non-`unrecognized_keys` issue with an empty path (e.g. the proposal document itself isn't a
+ * JSON object at all) has no field name for a `→ at <path>` line to point to, so it would
+ * otherwise render as a bare, contextless `Invalid input`. Framing it as being about the proposal
+ * as a whole is the best available fallback with no field left to name. */
+const emptyPathLine = (issue: ZodIssue): string => `✖ invalid proposal: ${issue.message}`;
+
+/** Renders every EMPTY-path issue (see the two helpers above) into clear, key-naming lines of our
+ * own, and hands every NAMED-path issue to `z.prettifyError` unchanged — it already renders those
+ * well (missing/wrong-typed fields get a `→ at <path>` line, e.g. `packages.ms.description`).
+ * Falls straight through to a plain `z.prettifyError(error)` when every issue already has a path,
+ * so pinned messages for those cases never change.
+ *
+ * Empty-path issues need their own handling rather than just trusting `z.prettifyError`'s default
+ * rendering: in the CLI's own shipped bundle, `zod`'s `package.json` claims `"sideEffects": false`,
+ * which is not true of its module-scope `config(en())` locale registration — tsdown/rolldown takes
+ * the claim at face value and tree-shakes that registration away, so every un-customized zod issue
+ * in the SHIPPED binary (not in this unbundled test suite) renders as a bare `Invalid input`, with
+ * no path and no offending key. Reading `.keys` directly off `unrecognized_keys` issues (populated
+ * on the issue object regardless of locale registration) sidesteps that bundler quirk entirely —
+ * exactly the failure mode a hand-edited proposal file (a stray top-level key) hits most often. */
+const formatProposalError = (error: z.core.$ZodError<FinalProposal>): string => {
+  const emptyPathIssues = error.issues.filter(hasEmptyPath);
+  if (emptyPathIssues.length === NO_ITEMS) {
+    return z.prettifyError(error);
+  }
+  const pathedIssues = error.issues.filter((issue) => !hasEmptyPath(issue));
+  const lines = [
+    unrecognizedKeysLine(emptyPathIssues),
+    ...emptyPathIssues
+      .filter((issue) => !isUnrecognizedKeysIssue(issue))
+      .map((issue) => emptyPathLine(issue)),
+  ].filter((line): line is string => line !== undefined);
+  if (pathedIssues.length > NO_ITEMS) {
+    lines.push(z.prettifyError({ issues: pathedIssues }));
+  }
+  return lines.join('\n');
+};
+
+/** Validates the parsed JSON against `zFinalProposal`, rendering a legible error on failure — the
+ * two-phase contract's whole point is that a human (or agent) may have hand-edited this file, so
+ * validation failures need to name what's wrong, not print a raw zod issue dump (see
+ * `formatProposalError`). */
 const parseFinalProposal = (raw: unknown): FinalProposal => {
   const parsed = zFinalProposal.safeParse(raw);
   if (!parsed.success) {
-    throw validationError(z.prettifyError(parsed.error));
+    throw validationError(formatProposalError(parsed.error));
   }
   return parsed.data;
 };
