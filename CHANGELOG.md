@@ -15,6 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `.agents/skills/refs` symlink to `skills/refs/` gives Codex repo-local
   auto-discovery of the skill when run inside this checkout.
 
+### Changed
+
+- `refs add <source> --description <text>` no longer reuses `<text>` as a fallback
+  description for detected packages that lack one. `<text>` is now only ever the
+  top-level ref description; if one or more detected packages have no manifest
+  description (including a single-package repo whose lone package has none), the
+  one-shot fails (exit 3) naming every affected package and pointing at the two-phase
+  `--dry-run`/`--proposal` flow instead.
+
 ## [0.1.2] - 2026-07-05
 
 ### Added

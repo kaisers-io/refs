@@ -99,8 +99,14 @@ Adds a git reference in **two phases**: propose, then finalize. Exactly one of
    ref into `config.toml`/`state.json`.
 
 `--description <text>` is a one-shot convenience that runs both phases in one process,
-using `<text>` as the description and skipping proposal review — for when you already
-know what you want.
+using `<text>` as the **top-level** ref description and skipping proposal review — for
+when you already know what you want. It only works when every DETECTED package (if any)
+already carries its own description from its manifest: `<text>` is never used as a
+per-package fallback. If one or more detected packages lack a description — including a
+single-package repo whose lone package has none — the one-shot fails with a validation
+error naming every affected package; run the two-phase flow instead, filling in each
+package's description in the proposal file before finalizing. A source with no detected
+packages (a plain, non-workspace repo) is unaffected — there's nothing to check.
 
 ### Examples
 
@@ -115,8 +121,9 @@ refs add --proposal proposal.json --json
 # or finalize from stdin:
 cat proposal.json | refs add --proposal - --json
 
-# One-shot (skips proposal review):
-refs add npm:left-pad --description "Left-pad a string." --json
+# One-shot (skips proposal review; works here because left-pad is a plain,
+# non-workspace repo — there are no per-package descriptions to check):
+refs add https://github.com/stevemao/left-pad --description "Left-pad a string." --json
 ```
 
 ### `--json` data shape
@@ -173,8 +180,9 @@ full `--json` envelope wrapping it (`{ok, data, warnings}`) — the exact stdout
 envelope first.
 
 Exit codes: `2` (neither/more than one of `--dry-run`/`--proposal`/`--description` given,
-or `<source>` missing), `3` (invalid proposal JSON/shape, missing `tag_format`), `4`
-(finalizing a source whose checkout is missing), `5` (the ref is already configured).
+or `<source>` missing), `3` (invalid proposal JSON/shape, missing `tag_format`, or —
+`--description` only — one or more detected packages lack a description), `4` (finalizing
+a source whose checkout is missing), `5` (the ref is already configured).
 
 ---
 
