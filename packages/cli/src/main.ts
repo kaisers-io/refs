@@ -11,7 +11,7 @@ const HELP_TEXT_AFTER = [
   'Examples:',
   '  $ refs list --json',
   '  $ refs sync --stale-only --json',
-  '  $ refs resolve next/navigation --json',
+  '  $ refs resolve zod/mini --json',
   '',
   'Every command accepts --json for structured output and --verbose for stack traces on error.',
 ].join('\n');

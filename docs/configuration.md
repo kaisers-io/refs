@@ -88,17 +88,17 @@ fully-populated ref entry, including a registered package and a per-ref settings
 override, looks like this:
 
 ```toml
-[refs."github.com/vercel/next.js"]
-description = "The React Framework"
-url = "https://github.com/vercel/next.js.git"
-default_branch = "canary"
+[refs."github.com/colinhacks/zod"]
+description = "TypeScript-first schema validation"
+url = "https://github.com/colinhacks/zod.git"
+default_branch = "main"
 tag_format = "v{version}"
 # Per-ref override: this ref always uses a full clone, regardless of [settings].clone_mode.
 clone_mode = "full"
 
-[refs."github.com/vercel/next.js".packages.next]
-description = "The React Framework"
-path = "packages/next"
+[refs."github.com/colinhacks/zod".packages.zod]
+description = "TypeScript-first schema validation"
+path = "packages/zod"
 # A package can override the ref's own tag_format; omitted here, so it inherits the ref's.
 ```
 
@@ -131,7 +131,7 @@ There is no way for a setting to exist globally without also being expressible p
 adding a new global setting to `zSettings` automatically makes it per-ref overridable too.
 
 A per-ref override lives directly inside that ref's `[refs."..."]` table (see the
-`next.js` example above, which overrides `clone_mode`). Resolution is: **ref override, if
+`zod` example above, which overrides `clone_mode`). Resolution is: **ref override, if
 present, else the global setting** — this is `resolveSetting(key, ref, settings)`,
 consumed identically everywhere a setting is read (`add`, `list`, `sync`, `resolve`,
 `tag`).

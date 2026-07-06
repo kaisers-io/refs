@@ -241,7 +241,7 @@ const registerRemove = (program: RefsCommand, ctx: CliContext): void => {
   program
     .command('remove')
     .description('Remove a configured ref: its config/state entry AND its checkout directory.')
-    .argument('<ref>', 'full ref key or a unique suffix, e.g. next.js')
+    .argument('<ref>', 'full ref key or a unique suffix, e.g. zod')
     .action((ref, _localOpts, command) => {
       const globals = command.optsWithGlobals();
       const opts = { json: globals.json === true, verbose: globals.verbose === true };

@@ -127,10 +127,10 @@ const matchesQuery = (key: string, querySegments: readonly string[]): boolean =>
 };
 
 /** Resolves `query` (a full ref key, or a unique suffix matched on segment boundaries from the
- * right — e.g. `next.js` or `vercel/next.js` both match `github.com/vercel/next.js`) against
+ * right — e.g. `zod` or `colinhacks/zod` both match `github.com/colinhacks/zod`) against
  * `config.refs`. An exact full-key match wins immediately, even when some other configured key's
- * suffix also happens to equal `query` (e.g. `github.com/vercel/next.js` vs.
- * `corp-mirror/github.com/vercel/next.js`) — otherwise a ref would be unresolvable by its own full
+ * suffix also happens to equal `query` (e.g. `github.com/colinhacks/zod` vs.
+ * `corp-mirror/github.com/colinhacks/zod`) — otherwise a ref would be unresolvable by its own full
  * key. Throws `usageError` (listing every candidate) when more than one key matches, and
  * `notFoundError` when none do. */
 const matchRefKey = (config: Config, query: string): RefKey => {
