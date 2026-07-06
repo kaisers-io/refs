@@ -10,10 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `packages/cli/bin/refs.mjs` is now a committed, zero-dependency stub (not build output): it
-  checks the Node.js version, then loads and runs the tsdown bundle from `dist/refs.mjs`, failing
-  loudly with an actionable message (exit 1) if that bundle hasn't been built yet. The tsdown
-  bundle itself moved from `bin/refs.mjs` to `dist/refs.mjs`, and remains gitignored build output
-  produced by `pnpm build`.
+  checks the Node.js version, then loads and runs the tsdown bundle from `dist/refs.mjs`. If the
+  bundle is missing but sources and dependencies are present, it falls back to running the CLI
+  directly from TypeScript source via Node's native type stripping. It fails loudly with an
+  actionable message (exit 1) only if neither the bundle nor the source fallback can load. The
+  tsdown bundle itself moved from `bin/refs.mjs` to `dist/refs.mjs`, and remains gitignored build
+  output produced by `pnpm build`.
 
 ## [0.1.3] - 2026-07-05
 
