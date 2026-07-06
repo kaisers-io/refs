@@ -23,13 +23,32 @@ if (major !== REQUIRED_NODE_MAJOR || minor < REQUIRED_NODE_MINOR_MIN) {
   process.exit(EXIT_FAILURE);
 }
 
+// Dev fallback: run the TypeScript source directly via Node's native type stripping
+// (stable in the exact engine range this package requires). Works only in a workspace
+// checkout where ../src exists; the published package always ships dist/.
+const loadFromSource = async () => {
+  const srcMain = join(import.meta.dirname, '../src/main.ts');
+  // eslint-disable-next-line node/no-sync -- one-shot startup check before any I/O; simplest correct option for a zero-dependency stub
+  if (!existsSync(srcMain)) {
+    console.error('refs is not built — the CLI bundle (dist/refs.mjs) is missing.');
+    console.error(
+      'Run: pnpm install && pnpm build   (or `pnpm dev` in packages/cli for watch mode)',
+    );
+    process.exit(EXIT_FAILURE);
+  }
+  const { run } = await import(pathToFileURL(srcMain).href);
+  const { realContext } = await import(
+    pathToFileURL(join(import.meta.dirname, '../src/context.ts')).href
+  );
+  return { realContext, run };
+};
+
 const bundle = join(import.meta.dirname, '../dist/refs.mjs');
+let loadModules = loadFromSource;
 // eslint-disable-next-line node/no-sync -- one-shot startup check before any I/O; simplest correct option for a zero-dependency stub
-if (!existsSync(bundle)) {
-  console.error('refs is not built in this checkout — the CLI bundle (dist/refs.mjs) is missing.');
-  console.error('Run: pnpm install && pnpm build   (or `pnpm dev` in packages/cli for watch mode)');
-  process.exit(EXIT_FAILURE);
+if (existsSync(bundle)) {
+  loadModules = () => import(pathToFileURL(bundle).href);
 }
 
-const { realContext, run } = await import(pathToFileURL(bundle).href);
+const { realContext, run } = await loadModules();
 await run(realContext(), process.argv);

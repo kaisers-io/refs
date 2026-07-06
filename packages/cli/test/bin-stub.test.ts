@@ -15,7 +15,9 @@ export async function run(_ctx, argv) {
 `;
 
 // Builds a temp directory mimicking the package layout (`bin/refs.mjs` + optional `dist/refs.mjs`)
-// so the test is independent of whether this checkout is built.
+// so the test is independent of whether this checkout is built. The layout never contains a
+// `src/` tree, so the missing-bundle case also exercises the "no source fallback available"
+// path (the fresh-clone src-fallback behavior is verified manually, not simulated here).
 const layout = (withBundle: boolean): { binPath: string; home: string } => {
   // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
   const home = mkdtempSync(join(tmpdir(), 'refs-stub-'));
@@ -33,7 +35,7 @@ const layout = (withBundle: boolean): { binPath: string; home: string } => {
 };
 
 describe('bin stub', () => {
-  it('fails loudly when the bundle is missing', () => {
+  it('fails loudly when neither the bundle nor the source tree is present', () => {
     expect.hasAssertions();
     const { binPath, home } = layout(false);
     try {
