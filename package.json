@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "build": "pnpm -r run build",
-    "check": "pnpm lint && pnpm fmt:check && pnpm typecheck && pnpm test"
+    "check": "pnpm lint && pnpm fmt:check && pnpm typecheck && pnpm test",
+    "refs": "pnpm --filter @kaisers-io/refs build && node packages/cli/bin/refs.mjs"
   },
   "devDependencies": {
     "@tsconfig/node24": "24.0.4",

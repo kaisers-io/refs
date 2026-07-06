@@ -11,7 +11,8 @@
     "refs": "./bin/refs.mjs"
   },
   "files": [
-    "bin"
+    "bin",
+    "dist"
   ],
   "type": "module",
   "publishConfig": {
@@ -19,7 +20,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsdown"
+    "build": "tsdown",
+    "dev": "tsdown --watch"
   },
   "devDependencies": {
     "@commander-js/extra-typings": "15.0.0",

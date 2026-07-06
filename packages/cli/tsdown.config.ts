@@ -1,7 +1,7 @@
 import { chmod } from 'node:fs/promises';
 import { defineConfig } from 'tsdown';
 
-const BUNDLE_PATH = 'bin/refs.mjs';
+const BUNDLE_PATH = 'dist/refs.mjs';
 const EXECUTABLE_MODE = 0o755;
 
 // Deterministic single-file ESM bundle: no hashes in the filename so CI can prove the build is
@@ -36,7 +36,7 @@ export default defineConfig({
   onSuccess: async () => {
     await chmod(BUNDLE_PATH, EXECUTABLE_MODE);
   },
-  outDir: 'bin',
+  outDir: 'dist',
   outExtensions: () => ({ js: '.mjs' }),
   outputOptions: { banner: '#!/usr/bin/env node' },
   platform: 'node',
