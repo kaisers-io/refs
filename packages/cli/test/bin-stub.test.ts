@@ -38,7 +38,9 @@ const writeUnresolvableSrc = (home: string): void => {
 // Builds a temp directory mimicking the package layout (`bin/refs.mjs` + optional `dist/refs.mjs`
 // and/or `src/`) so the test is independent of whether this checkout is built. The default layout
 // never contains a `src/` tree, so the missing-bundle case also exercises the "no source fallback
-// available" path (the fresh-clone src-fallback behavior is verified manually, not simulated here).
+// available" path (the fresh-clone src-fallback behavior is verified manually, not simulated here;
+// the wrong-Node engine-guard path is also verified manually: running the stub under Node 22 prints
+// the `>=24.12 <25` engine message and exits 1).
 const layout = (
   withBundle: boolean,
   withUnresolvableSrc = false,
