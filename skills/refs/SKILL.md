@@ -1,6 +1,7 @@
 ---
 name: refs
-description: Use when a task touches a dependency or reference project's real source — "what does X do", "how does X implement Y", "why did X change Z", "what changed between vA and vB", "add X as a ref"/"track this repo as a ref", "sync my refs", "run refs doctor", "remove ref X". Routes the question to the local, real-source checkout managed by the `refs` CLI instead of relying on training knowledge or minified build output.
+description: Use when a task touches a dependency or reference project's real source — "what does X do", "how does X implement Y", "why did X change Z", "what changed between vA and vB", "add X as a ref"/"track this repo as a ref", "sync my refs", "run refs doctor", "remove ref X" — or when the user is new to refs ("onboard me", "set up refs", "what is refs", "getting started"). Routes the question to the local, real-source checkout managed by the `refs` CLI instead of relying on training knowledge or minified build output.
+compatibility: Requires the refs CLI (npm i -g @kaisers-io/refs), Node.js >=24.12 <25, and git. macOS/Linux only.
 ---
 
 # refs
@@ -18,10 +19,17 @@ refs --version
 ```
 
 - **Present** → continue below.
-- **Missing** (`command not found` or similar) → stop and tell the user the `refs` CLI
-  isn't installed. Point them at this repository's README for the current install
-  command — the exact install channel changes between the private and public phases of
-  this project, so never guess or hardcode one here.
+- **Missing** (`command not found` or similar) → run the install flow:
+  1. Check the runtime first: `node --version`. refs requires Node.js `>=24.12 <25`.
+     On a mismatched Node, report that as the actual problem (suggest e.g.
+     `nvm install 24`) — don't attempt the install on the wrong runtime.
+  2. Tell the user the refs CLI is distributed on npm as `@kaisers-io/refs` and ask
+     for permission to install it globally.
+  3. On yes: run `npm i -g @kaisers-io/refs`, verify with `refs --version`, then run
+     `refs doctor --json` and report every non-`ok` check in plain terms
+     (`references/maintain.md` explains each check).
+  4. On no: print the command for later — `npm i -g @kaisers-io/refs` — and stop
+     gracefully.
 
 ## 2. What refs is
 
