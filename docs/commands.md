@@ -116,7 +116,7 @@ alone and never carries a description, so such sources always need the two-phase
 
 ```bash
 # Phase 1: propose
-refs add npm:next --dry-run --json > proposal.json
+refs add npm:zod --dry-run --json > proposal.json
 
 # (edit proposal.json — fill in description, and tag_format_candidate if it's null)
 
@@ -214,9 +214,9 @@ ref key (use `refs remove` + `refs add` to re-key a ref); if a checkout already 
 
 ```bash
 refs edit settings sync_ttl 2h --json
-refs edit next.js description "The React Framework" --json
-refs edit next.js clone_mode full --json          # per-ref settings override
-refs edit next.js description "..." --package next --json
+refs edit zod description "TypeScript-first schema validation" --json
+refs edit zod clone_mode full --json          # per-ref settings override
+refs edit zod description "..." --package zod --json
 ```
 
 ### `--json` data shape
@@ -233,7 +233,7 @@ refs edit next.js description "..." --package next --json
 {
   "ok": true,
   "data": {
-    "key": "github.com/vercel/next.js",
+    "key": "github.com/colinhacks/zod",
     "field": "description",
     "old": "...",
     "new": "..."
@@ -271,12 +271,12 @@ refs list --json
   "ok": true,
   "data": [
     {
-      "key": "github.com/vercel/next.js",
-      "description": "The React Framework",
+      "key": "github.com/colinhacks/zod",
+      "description": "TypeScript-first schema validation",
       "clone_mode": "blobless",
       "missing": false,
       "stale": false,
-      "packages": ["@next/env", "next"]
+      "packages": ["zod"]
     }
   ],
   "warnings": []
@@ -386,13 +386,13 @@ against `sources/`), then the config/state entry is dropped; if the checkout was
 missing, that's reported as a warning, not an error, and removal still proceeds.
 
 ```bash
-refs remove next.js --json
+refs remove zod --json
 ```
 
 ```json
 {
   "ok": true,
-  "data": { "key": "github.com/vercel/next.js", "removed_checkout": true },
+  "data": { "key": "github.com/colinhacks/zod", "removed_checkout": true },
   "warnings": []
 }
 ```
@@ -409,14 +409,14 @@ refs resolve <query>
 ```
 
 The agent-routing command: resolves a git URL, an exact npm package name, an import path
-(e.g. `@next/env/foo`), or a unique ref-key suffix to the one ref (and, where applicable,
+(e.g. `@scope/pkg/sub/path`), or a unique ref-key suffix to the one ref (and, where applicable,
 package) it denotes. Precedence, in order: (1) a parseable git URL, matched against a
 configured ref's canonical identity; (2) an exact package-name match; (3) a longest
 segment-prefix package match (so `react/jsx-runtime` resolves to package `react`); (4) a
 unique ref-key suffix match (same rule `refs show`/`refs remove`/`refs tag` use).
 
 ```bash
-refs resolve next/navigation --json
+refs resolve zod/mini --json
 refs resolve left-pad --json
 refs resolve https://github.com/stevemao/left-pad --json
 ```
@@ -504,7 +504,7 @@ re-cloned regardless of TTL).
 
 ```bash
 refs sync --json
-refs sync next.js left-pad --json
+refs sync zod left-pad --json
 refs sync --stale-only --json
 ```
 
@@ -514,7 +514,7 @@ refs sync --stale-only --json
   "data": {
     "results": [
       { "key": "github.com/stevemao/left-pad", "status": "fresh" },
-      { "key": "github.com/vercel/next.js", "status": "updated" }
+      { "key": "github.com/colinhacks/zod", "status": "updated" }
     ]
   },
   "warnings": []
@@ -542,13 +542,13 @@ aborts the whole command before any sync runs.
 refs tag <ref> <version> [--package <name>]
 ```
 
-Resolves a version (e.g. `15.3.0`) to the actual git tag it corresponds to, by rendering
+Resolves a version (e.g. `4.1.0`) to the actual git tag it corresponds to, by rendering
 the applicable `tag_format` (`--package <name>`'s own `tag_format`, or else the ref's) and
 verifying the rendered tag exists in the checkout.
 
 ```bash
 refs tag left-pad 1.3.0 --json
-refs tag next.js 15.3.0 --package next --json
+refs tag zod 4.1.0 --package zod --json
 ```
 
 ```json

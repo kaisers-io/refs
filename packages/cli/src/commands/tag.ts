@@ -101,8 +101,8 @@ const registerTag = (program: RefsCommand, ctx: CliContext): void => {
   program
     .command('tag')
     .description("Resolve a version to its git tag, via the ref's (or a package's) tag_format.")
-    .argument('<ref>', 'full ref key or a unique suffix, e.g. next.js')
-    .argument('<version>', 'version to resolve, e.g. 15.3.0')
+    .argument('<ref>', 'full ref key or a unique suffix, e.g. zod')
+    .argument('<version>', 'version to resolve, e.g. 4.1.0')
     .option('--package <name>', "resolve against this package's tag_format instead of the ref's")
     // eslint-disable-next-line max-params -- fixed 4-arg shape commander gives a 2-argument command
     .action((ref, version, localOpts, command) => {
