@@ -9,4 +9,4 @@ coverage
 
 # Build output, not source: `pnpm build` regenerates it, and CI proves the build is
 # deterministic (scripts/check-bundle-determinism.sh) instead of diffing a committed copy.
-packages/cli/bin/
+packages/cli/dist/

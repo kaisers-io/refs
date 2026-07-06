@@ -3,12 +3,12 @@ set -euo pipefail
 # Paths below are repo-root relative — make invocation from any subdirectory work.
 cd "$(git rev-parse --show-toplevel)"
 
-# `bin/refs.mjs` is build output (gitignored, not committed) — there is nothing to diff it
+# `dist/refs.mjs` is build output (gitignored, not committed) — there is nothing to diff it
 # against anymore. Instead, this proves the build itself is reproducible: build twice in a row
 # and require byte-identical output (compared via sha256, computed through node so it's portable
 # across CI's ubuntu/macos runners without depending on either `sha256sum` (Linux) or `shasum`
 # (macOS) being present).
-BUNDLE="packages/cli/bin/refs.mjs"
+BUNDLE="packages/cli/dist/refs.mjs"
 
 hash_bundle() {
   node -e '
