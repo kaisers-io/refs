@@ -72,6 +72,7 @@ working copy**:
 | Anything about a dependency's/reference repo's source, behavior, design, or history ("how does X implement Y", "why did X do Z", "what changed between vA and vB") | `references/investigate.md` |
 | To start tracking a new repo ("add X as a ref", "track this repo", batch-adding several repos)                                                                     | `references/add.md`         |
 | To refresh or check the health of existing refs ("sync my refs", "run doctor", "remove ref X")                                                                     | `references/maintain.md`    |
+| To get started with refs at all ("onboard me", "set up refs", "what is refs", "getting started")                                                                   | `references/onboarding.md`  |
 
 Read only the reference file(s) the task needs — they're kept thin on purpose because
 the CLI, not this skill, does the deterministic work.
