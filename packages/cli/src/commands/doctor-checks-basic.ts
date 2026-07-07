@@ -37,8 +37,8 @@ interface ParsedNodeVersion {
 }
 
 // Parses only the major/minor out of `process.version` (e.g. `v24.12.0`) — deliberately without a
-// `semver` dependency, per the task brief: the supported range (`>=24.12 <25`) only ever needs
-// major/minor comparison, never patch or prerelease handling.
+// `semver` dependency, per the task brief: the supported range (`>=24.12`, open-ended) only ever
+// needs major/minor comparison, never patch or prerelease handling.
 const parseNodeVersion = (version: string): ParsedNodeVersion | undefined => {
   const match = NODE_VERSION_PATTERN.exec(version);
   const majorText = match?.groups?.['major'];
@@ -49,27 +49,29 @@ const parseNodeVersion = (version: string): ParsedNodeVersion | undefined => {
   return { major: Number(majorText), minor: Number(minorText) };
 };
 
-// `>=24.12 <25` collapses to exactly "major is 24, minor is at least 12": the upper bound excludes
-// every 25.x release outright, and the lower bound excludes every 24.x release below .12 — there is
-// no major value for which any minor would satisfy both ends at once other than 24.
+// `>=24.12` is open-ended: any major above 24 is accepted outright, major 24 needs minor >= 12,
+// and anything below that (older 24.x minors, or any earlier major) is rejected.
 const satisfiesSupportedRange = (parsed: ParsedNodeVersion | undefined): boolean => {
   if (parsed === undefined) {
     return false;
+  }
+  if (parsed.major > MIN_SUPPORTED_MAJOR) {
+    return true;
   }
   return parsed.major === MIN_SUPPORTED_MAJOR && parsed.minor >= MIN_SUPPORTED_MINOR;
 };
 
 // Reads `ctx.nodeVersion` — never `process.version` directly — per `context.ts`'s own invariant
 // that `realContext()` is the ONLY place touching real globals; this is what lets the fail
-// branches below (a too-old or too-new Node) be exercised with an arbitrary version string instead
-// of only ever observing whatever interpreter the test happens to run under.
+// branch below (a too-old Node) be exercised with an arbitrary version string instead of only
+// ever observing whatever interpreter the test happens to run under.
 const checkNode = (ctx: CliContext): CheckResult => {
   const { nodeVersion: version } = ctx;
   if (satisfiesSupportedRange(parseNodeVersion(version))) {
     return { detail: version, name: 'node', status: 'ok' };
   }
   return {
-    detail: `${version} does not satisfy the required range >=24.12 <25`,
+    detail: `${version} does not satisfy the required range >=24.12`,
     name: 'node',
     status: 'fail',
   };
