@@ -105,6 +105,10 @@ help is the authoritative, always-current reference.
 
 ## Development
 
+Development requires pnpm 11 or newer (enforced via `engines.pnpm`; `corepack enable`
+picks the pinned version automatically). The published CLI itself has no pnpm
+requirement.
+
 ```bash
 git clone https://github.com/kaisers-io/refs.git
 cd refs

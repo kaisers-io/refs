@@ -4,7 +4,7 @@
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@11.9.0",
-  "engines": { "node": ">=24.12 <25" },
+  "engines": { "node": ">=24.12 <25", "pnpm": ">=11" },
   "scripts": {
     "lint": "oxlint",
     "fmt": "oxfmt packages skills",
