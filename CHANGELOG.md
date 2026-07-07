@@ -7,8 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-07
+
+### Added
+
+- Onboarding flow for the agent skill (`skills/refs/references/onboarding.md`, triggered by
+  "onboard me" / "set up refs" / "what is refs"): health check via `refs doctor --json`, a
+  consented `refs init` where needed, the three core jobs explained with copyable example
+  prompts, and a first-ref suggestion drawn from the project's own dependency manifests.
+- Install flow in the skill's capability gate: when the `refs` CLI is missing, the agent now
+  checks the Node version, asks the user for consent, installs `@kaisers-io/refs` from npm,
+  verifies with `refs --version`, and runs `refs doctor --json` automatically. A new
+  `compatibility` frontmatter field declares the CLI dependency.
+
 ### Changed
 
+- All example content (docs, skill references, README, CLI help text) switched from next.js to
+  zod (`github.com/colinhacks/zod`) — every example validated against a real zod checkout via
+  refs itself.
+- Development now requires pnpm 11 or newer (`engines.pnpm` at the workspace root); the
+  published CLI has no pnpm requirement.
 - The user-facing supported Node range relaxed from `>=24.12 <25` to `>=24.12` (open-ended),
   verified working on Node 25.9 and 26.4 (build, tests, stub, and source fallback). Development
   stays pinned to Node 24.12 via `.node-version`; CI and the root `packageManager` field are
@@ -115,7 +133,8 @@ trusted-publishing pipeline end to end.
   installed git hooks.
 - Agent skill (`skills/refs/`) documenting the investigate/add/maintain workflows.
 
-[Unreleased]: https://github.com/kaisers-io/refs/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/kaisers-io/refs/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/kaisers-io/refs/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/kaisers-io/refs/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/kaisers-io/refs/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/kaisers-io/refs/compare/v0.1.0...v0.1.1
