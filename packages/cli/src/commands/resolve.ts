@@ -24,7 +24,7 @@ import { join } from 'node:path';
 import { matchRefKey } from './list.ts';
 
 // `refs resolve <query>` — the agent-routing command. Turns a git url, an exact npm package name,
-// an import path (e.g. `@next/env/foo`), or a unique ref-key suffix into the one configured ref (and,
+// an import path (e.g. `@scope/pkg/sub/path`), or a unique ref-key suffix into the one configured ref (and,
 // where applicable, the one package within it) the query denotes, per spec §5's deterministic
 // four-step precedence (see `routeQuery` below). No match at all → `notFoundError` with the fixed
 // "no ref matches" message every step below ultimately funnels into.
@@ -173,8 +173,8 @@ const findPackageByName = (
 // Step 3: import-path longest-prefix on segment boundaries. Tries decreasing-length segment
 // prefixes of `query` (excluding the full string, already tried by step 2) against every ref's
 // package names, so the FIRST hit found is necessarily the longest matching one — this naturally
-// resolves `react/jsx-runtime` to `react` (a 1-segment prefix) and `@next/env/foo` to `@next/env`
-// (a 2-segment prefix) without hard-coding scoped-vs-unscoped segment counts.
+// resolves `react/jsx-runtime` to `react` (a 1-segment prefix) and `@scope/pkg/sub/path` to
+// `@scope/pkg` (a 2-segment prefix) without hard-coding scoped-vs-unscoped segment counts.
 const findPackageByPrefix = (config: Config, query: string): PackageMatch | undefined => {
   const segments = query.split('/');
   for (let length = segments.length - PREFIX_STEP; length >= PREFIX_STEP; length -= PREFIX_STEP) {

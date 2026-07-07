@@ -26,7 +26,7 @@ refs resolve <query> --json
 
 `<query>` can be an npm package name, an import path (`react/jsx-runtime`,
 `@scope/pkg/sub/path` — longest matching prefix wins), a git URL, or a ref-key
-suffix (`next.js`). This returns `{key, local_path, package, stale, missing}`;
+suffix (`zod`). This returns `{key, local_path, package, stale, missing}`;
 `package` is `null` when the query resolves to the ref itself rather than one of
 its packages.
 

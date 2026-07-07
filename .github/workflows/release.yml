@@ -10,10 +10,10 @@ jobs:
   # Gate: re-runs the full CI check suite against the exact tagged commit, plus release-only
   # guards (tag/version match, branch containment, tarball content allowlist) and a smoke test
   # of the packed tarball. Holds only read permissions — no publish credentials live here. This
-  # is also where the CLI bundle is built: `bin/refs.mjs` is gitignored build output (not
-  # committed), so this unprivileged job builds it, proves the build is reproducible, guards its
-  # shape, and hands it to `publish` as a workflow artifact — see the `publish` job comment below
-  # for why that handoff is what keeps `id-token: write` safe.
+  # is also where the CLI bundle is built: `dist/refs.mjs` is gitignored build output (not
+  # committed; `bin/refs.mjs` is the committed stub), so this unprivileged job builds it, proves
+  # the build is reproducible, guards its shape, and hands it to `publish` as a workflow artifact
+  # — see the `publish` job comment below for why that handoff is what keeps `id-token: write` safe.
   verify:
     runs-on: ubuntu-latest
     permissions:
@@ -69,7 +69,7 @@ jobs:
           # Shipping a new file (e.g. a package README) requires deliberately updating this set.
           node -e '
             const pack = JSON.parse(process.argv[1])[0];
-            const expected = ["LICENSE", "bin/refs.mjs", "package.json"];
+            const expected = ["LICENSE", "bin/refs.mjs", "dist/refs.mjs", "package.json"];
             const actual = pack.files.map((f) => f.path).sort();
             if (JSON.stringify(actual) !== JSON.stringify(expected)) {
               console.error("tarball shape mismatch — expected exactly:", expected.join(", "));
@@ -87,13 +87,13 @@ jobs:
           refs --version
           refs init
       - name: Upload the built CLI bundle for the publish job
-        # This is the ONLY channel that gets `bin/refs.mjs` into `publish`: the artifact built,
+        # This is the ONLY channel that gets `dist/refs.mjs` into `publish`: the artifact built,
         # determinism-checked, and shape-guarded above by this unprivileged (no id-token) job.
         # Short retention — it only needs to survive until `publish` downloads it moments later.
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: cli-bundle
-          path: packages/cli/bin/refs.mjs
+          path: packages/cli/dist/refs.mjs
           if-no-files-found: error
           retention-days: 1
   # Publish: the only job with OIDC (`id-token: write`) reach. Runs only after `verify` passes,
@@ -120,15 +120,15 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: cli-bundle
-          path: packages/cli/bin
+          path: packages/cli/dist
       - name: Guard — restore the executable bit stripped by artifact zipping
         # actions/upload-artifact zips its payload, and zip does not preserve the Unix mode bits
         # (see upstream's "Permission Loss" note) — every file lands back at plain 644. Re-apply
-        # the mode tsdown set at build time and confirm it stuck before this ships as `bin/refs.mjs`.
+        # the mode tsdown set at build time and confirm it stuck before this ships as `dist/refs.mjs`.
         run: |
           set -euo pipefail
-          chmod 755 packages/cli/bin/refs.mjs
-          test -x packages/cli/bin/refs.mjs
+          chmod 755 packages/cli/dist/refs.mjs
+          test -x packages/cli/dist/refs.mjs
       - name: Publish to npm via Trusted Publishing (OIDC)
         working-directory: packages/cli
         # No NPM_TOKEN / secrets.* anywhere: authentication is the short-lived OIDC token GitHub
