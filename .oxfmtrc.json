@@ -3,6 +3,5 @@
   "printWidth": 100,
   "singleQuote": true,
   "semi": true,
-  "trailingComma": "all",
-  "ignorePatterns": ["packages/cli/bin"]
+  "trailingComma": "all"
 }

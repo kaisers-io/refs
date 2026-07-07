@@ -117,7 +117,7 @@ const registerShow = (program: RefsCommand, ctx: CliContext): void => {
   program
     .command('show')
     .description('Show a configured ref: full entry, state, local path, and sample tags.')
-    .argument('<ref>', 'full ref key or a unique suffix, e.g. next.js')
+    .argument('<ref>', 'full ref key or a unique suffix, e.g. zod')
     .action((ref, _localOpts, command) => {
       const globals = command.optsWithGlobals();
       const opts = { json: globals.json === true, verbose: globals.verbose === true };

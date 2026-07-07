@@ -13,8 +13,9 @@ import {
 // (there's no field to point a `→ at <path>` line at), and — worse — the CLI's own shipped bundle
 // degrades even the issue's default MESSAGE too: `zod`'s `package.json` claims `"sideEffects":
 // false`, which is not true of its module-scope default-locale registration, so tsdown/rolldown
-// tree-shakes that registration out of `bin/refs.mjs` and every un-customized zod issue in the
-// shipped binary renders as a bare `Invalid input` there — no path, no offending key, no detail
+// tree-shakes that registration out of `dist/refs.mjs` (the tsdown bundle; `bin/refs.mjs` is only
+// the committed stub that loads it) and every un-customized zod issue in the shipped binary
+// renders as a bare `Invalid input` there — no path, no offending key, no detail
 // (this unbundled test suite never reproduces that particular degradation, since it runs against
 // source; `formatProposalError`'s job is to stop depending on `.message` at all for exactly this
 // case, reading `.keys` off the issue object instead, which is unaffected by the bug either way).

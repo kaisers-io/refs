@@ -9,7 +9,7 @@
     "style": "error"
   },
   "env": { "node": true },
-  "ignorePatterns": ["node_modules", "coverage", "dist", "packages/cli/bin"],
+  "ignorePatterns": ["node_modules", "coverage", "dist"],
   "overrides": [
     {
       "files": ["**/*.test.ts"],
