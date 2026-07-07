@@ -182,8 +182,11 @@ describe('refs doctor: per-check isolation on an unexpected throw', () => {
 });
 
 // `node` check (finding: it must read `ctx.nodeVersion`, never `process.version`, so its fail
-// branches — a too-old or too-new Node — are actually testable).
-describe('refs doctor: node version out of range', () => {
+// branch — a too-old Node — is actually testable). The supported range is open-ended
+// (`>=24.12`): only versions below 24.12 (an older 24.x minor, or an earlier major) are `fail`.
+// Split across two `describe` blocks purely to keep each callback under the repo's
+// max-lines-per-function cap.
+describe('refs doctor: node version below the supported floor', () => {
   it('reports fail for a minor below the supported floor (v24.9.0)', async () => {
     expect.hasAssertions();
     await withResetExitCode(() =>
@@ -199,21 +202,39 @@ describe('refs doctor: node version out of range', () => {
     );
   });
 
-  it('reports fail for a major above the supported ceiling (v25.0.0)', async () => {
+  it('reports fail for a minor just below the supported floor (v24.11.0)', async () => {
     expect.hasAssertions();
     await withResetExitCode(() =>
       withTempHome(async (homeDir) => {
         const { ctx, runner, stdout } = await setupInitializedHome(homeDir);
-        ctx.nodeVersion = 'v25.0.0';
+        ctx.nodeVersion = 'v24.11.0';
         expectGitVersion(runner);
 
         const envelope = await runDoctorJson(ctx, stdout);
 
-        expectCheck(envelope, 'node', { detailContains: 'v25.0.0', status: 'fail' });
+        expectCheck(envelope, 'node', { detailContains: 'v24.11.0', status: 'fail' });
       }),
     );
   });
 
+  it('reports fail for an older major (v22.0.0)', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, runner, stdout } = await setupInitializedHome(homeDir);
+        ctx.nodeVersion = 'v22.0.0';
+        expectGitVersion(runner);
+
+        const envelope = await runDoctorJson(ctx, stdout);
+
+        expectCheck(envelope, 'node', { detailContains: 'v22.0.0', status: 'fail' });
+      }),
+    );
+  });
+});
+
+// Open range has no ceiling: any major above 24 (or 24.12+) is `ok`.
+describe('refs doctor: node version at or above the supported floor', () => {
   it('reports ok for a supported version (v24.13.1)', async () => {
     expect.hasAssertions();
     await withResetExitCode(() =>
@@ -225,6 +246,36 @@ describe('refs doctor: node version out of range', () => {
         const envelope = await runDoctorJson(ctx, stdout);
 
         expectCheck(envelope, 'node', { detailContains: 'v24.13.1', status: 'ok' });
+      }),
+    );
+  });
+
+  it('reports ok for a major above the ceiling with no upper bound (v25.0.0)', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, runner, stdout } = await setupInitializedHome(homeDir);
+        ctx.nodeVersion = 'v25.0.0';
+        expectGitVersion(runner);
+
+        const envelope = await runDoctorJson(ctx, stdout);
+
+        expectCheck(envelope, 'node', { detailContains: 'v25.0.0', status: 'ok' });
+      }),
+    );
+  });
+
+  it('reports ok for Node 26.x (v26.4.0)', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, runner, stdout } = await setupInitializedHome(homeDir);
+        ctx.nodeVersion = 'v26.4.0';
+        expectGitVersion(runner);
+
+        const envelope = await runDoctorJson(ctx, stdout);
+
+        expectCheck(envelope, 'node', { detailContains: 'v26.4.0', status: 'ok' });
       }),
     );
   });

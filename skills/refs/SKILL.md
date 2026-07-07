@@ -1,7 +1,7 @@
 ---
 name: refs
 description: Use when a task touches a dependency or reference project's real source — "what does X do", "how does X implement Y", "why did X change Z", "what changed between vA and vB", "add X as a ref"/"track this repo as a ref", "sync my refs", "run refs doctor", "remove ref X" — or when the user is new to refs ("onboard me", "set up refs", "what is refs", "getting started"). Routes the question to the local, real-source checkout managed by the `refs` CLI instead of relying on training knowledge or minified build output.
-compatibility: Requires the refs CLI (npm i -g @kaisers-io/refs), Node.js >=24.12 <25, and git. macOS/Linux only.
+compatibility: Requires the refs CLI (npm i -g @kaisers-io/refs), Node.js >=24.12, and git. macOS/Linux only.
 ---
 
 # refs
@@ -20,7 +20,7 @@ refs --version
 
 - **Present** → continue below.
 - **Missing** (`command not found` or similar) → run the install flow:
-  1. Check the runtime first: `node --version`. refs requires Node.js `>=24.12 <25`.
+  1. Check the runtime first: `node --version`. refs requires Node.js `>=24.12`.
      On a mismatched Node, report that as the actual problem (suggest e.g.
      `nvm install 24`) — don't attempt the install on the wrong runtime.
   2. Tell the user the refs CLI is distributed on npm as `@kaisers-io/refs` and ask

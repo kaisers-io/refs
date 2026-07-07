@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The user-facing supported Node range relaxed from `>=24.12 <25` to `>=24.12` (open-ended),
+  verified working on Node 25.9 and 26.4 (build, tests, stub, and source fallback). Development
+  stays pinned to Node 24.12 via `.node-version`; CI and the root `packageManager` field are
+  unchanged.
 - `packages/cli/bin/refs.mjs` is now a committed, zero-dependency stub (not build output): it
   checks the Node.js version, then loads and runs the tsdown bundle from `dist/refs.mjs`. If the
   bundle is missing but sources and dependencies are present, it falls back to running the CLI

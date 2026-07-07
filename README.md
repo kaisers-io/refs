@@ -29,7 +29,7 @@ only orchestrates the agent work (routing questions, dispatching subagents) on t
 
 ## Install
 
-Requirements: Node.js `>=24.12 <25`, git, macOS or Linux (Windows is not supported).
+Requirements: Node.js `>=24.12`, git, macOS or Linux (Windows is not supported).
 
 ```bash
 npm i -g @kaisers-io/refs

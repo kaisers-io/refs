@@ -40,7 +40,7 @@ const writeUnresolvableSrc = (home: string): void => {
 // never contains a `src/` tree, so the missing-bundle case also exercises the "no source fallback
 // available" path (the fresh-clone src-fallback behavior is verified manually, not simulated here;
 // the wrong-Node engine-guard path is also verified manually: running the stub under Node 22 prints
-// the `>=24.12 <25` engine message and exits 1).
+// the `>=24.12` engine message and exits 1).
 const layout = (
   withBundle: boolean,
   withUnresolvableSrc = false,

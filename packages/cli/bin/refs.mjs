@@ -25,9 +25,12 @@ const SOURCE_LOAD_ERROR_CODES = new Set([
 const [major = FALLBACK_VERSION_PART, minor = FALLBACK_VERSION_PART] = process.versions.node
   .split('.')
   .map(Number);
-if (major !== REQUIRED_NODE_MAJOR || minor < REQUIRED_NODE_MINOR_MIN) {
+if (
+  major < REQUIRED_NODE_MAJOR ||
+  (major === REQUIRED_NODE_MAJOR && minor < REQUIRED_NODE_MINOR_MIN)
+) {
   console.error(
-    `refs requires Node.js >=24.12 <25 — you are running Node.js ${process.versions.node}.`,
+    `refs requires Node.js >=24.12 — you are running Node.js ${process.versions.node}.`,
   );
   console.error('Install a matching version, e.g.: nvm install 24');
   process.exit(EXIT_FAILURE);
