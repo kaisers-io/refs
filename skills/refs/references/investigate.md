@@ -66,9 +66,9 @@ without syncing first (a missing checkout re-clones on sync).
 Analyze the checkout **locally** — never paste large excerpts or diffs into your own
 context. Dose subagents per the rule in `SKILL.md` §5: one repo + one clear question =
 one worker; a multi-repo or multi-angle question = propose a split first. For a
-simple, single-file question the worker bootstrap can cost more than it saves —
-investigating inline is fine as long as you keep the excerpts you pull into
-context small.
+simple question — one file, or one tight call chain across a few files — the
+worker bootstrap can cost more than it saves; investigating inline is fine as
+long as you keep the excerpts you pull into context small.
 
 **Recommended search funnel** — usually the cheapest path to the answer; if it
 doesn't surface what you need, widen: whole-file reads and broad searches are
@@ -168,12 +168,20 @@ the raw source yourself into the main thread.
 
    Add `--package <name>` when the versions belong to one package of a monorepo
    ref (tag conventions can differ per package). A `4` exit means a tag doesn't
-   exist for one of the versions under the applicable tag_format — double-check
-   the version strings before assuming the release doesn't exist.
+   exist for one of the versions under the applicable tag_format — before
+   assuming the release doesn't exist, double-check the version strings and list
+   nearby tags (`git tag -l '<prefix><major>.<minor>*' --sort=-version:refname`
+   in the checkout); some releases are only reachable as version-bump commits in
+   `git log`, not as tags.
 
    The digest is a map, not a source: check its `truncated` flags before treating
    any list as complete, and cite commits/files from the checkout, never from the
-   digest itself.
+   digest itself. **Sanity-check implausible digests.** Tags can lie: a
+   similarly-named tag may predate the actual release. If a digest looks wrong
+   for a claimed release range (e.g. a zero diff), verify the resolved tag's
+   content before trusting it —
+   `git show refs/tags/<tag>:<path-to-manifest>` should report the version you
+   asked about.
 
 3. Where the digest was truncated or too coarse, drill into the range **locally**,
    read-only (worker or inline, per the dosing rule), with raw git. For that you
