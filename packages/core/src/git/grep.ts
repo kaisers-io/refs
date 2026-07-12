@@ -30,6 +30,7 @@ const MATCHES_EXIT_CODE = 0;
 const NO_MATCHES_EXIT_CODE = 1;
 const NO_PATHSPECS = 0;
 const SNIPPET_START = 0;
+const LAST_LINE = -1;
 /** Hard cap on each returned snippet, so one pathological (e.g. minified) line cannot blow up the
  * structured output a coding agent has to ingest. */
 const MAX_SNIPPET_LENGTH = 200;
@@ -65,10 +66,31 @@ const parseGrepOutput = (stdout: string, limit: number): GrepResult => {
   return { matches, truncated: lines.length > limit };
 };
 
-// `-e <pattern>` (never a bare positional) so a pattern beginning with `-` can never be parsed as
-// A git option; the `--` separator likewise guards option-looking pathspecs.
+// When the runner's byte cap cut stdout mid-stream (`RunResult.stdoutTruncated`), the LAST line
+// May be an incomplete fragment of a real match — drop it rather than parse a garbled
+// Path/snippet, and report `truncated: true` unconditionally: with output missing, the line
+// Count alone can no longer prove there was nothing beyond `limit`.
+const parseByteCappedOutput = (stdout: string, limit: number): GrepResult => {
+  const whole = stdout.split('\n').slice(SNIPPET_START, LAST_LINE).join('\n');
+  const { matches } = parseGrepOutput(whole, limit);
+  return { matches, truncated: true };
+};
+
+// `-c core.quotePath=false` (a git-level flag, so it must precede the subcommand) stops git from
+// Octal-escaping non-ASCII bytes in paths (`"caf\303\251.txt"`) — matches come back with the
+// Real file name. `-e <pattern>` (never a bare positional) so a pattern beginning with `-` can
+// Never be parsed as a git option; the `--` separator likewise guards option-looking pathspecs.
 const buildGrepArgs = (opts: GrepOpts): string[] => {
-  const args = ['grep', '-n', '-I', '--extended-regexp', '-e', opts.pattern];
+  const args = [
+    '-c',
+    'core.quotePath=false',
+    'grep',
+    '-n',
+    '-I',
+    '--extended-regexp',
+    '-e',
+    opts.pattern,
+  ];
   if (opts.pathspecs.length > NO_PATHSPECS) {
     args.push('--', ...opts.pathspecs);
   }
@@ -77,11 +99,15 @@ const buildGrepArgs = (opts: GrepOpts): string[] => {
 
 /** Runs `git grep -n -I --extended-regexp` in `opts.dir`, scoped to `opts.pathspecs` (when any)
  * and bounded to `opts.limit` matches; `truncated` reports whether git produced more match lines
- * than the limit. Exit 1 (no matches) is a clean empty result; any exit other than 0/1 throws
- * `validationError` with git's stderr. */
+ * than the limit — or, when the runner byte-capped stdout, that the output itself is incomplete
+ * (the possibly-partial last line is dropped, never parsed). Exit 1 (no matches) is a clean
+ * empty result; any exit other than 0/1 throws `validationError` with git's stderr. */
 const grepCheckout = async (runner: Runner, opts: GrepOpts): Promise<GrepResult> => {
   const result = await runner.run('git', buildGrepArgs(opts), { cwd: opts.dir });
   if (result.exitCode === MATCHES_EXIT_CODE) {
+    if (result.stdoutTruncated === true) {
+      return parseByteCappedOutput(result.stdout, opts.limit);
+    }
     return parseGrepOutput(result.stdout, opts.limit);
   }
   if (result.exitCode === NO_MATCHES_EXIT_CODE) {

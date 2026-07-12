@@ -15,8 +15,8 @@ import type { RangeEnvelope } from '../helpers/range-support.ts';
 
 // Integration suite for `refs range`, against the real two-tag git fixture built by
 // `range-support.ts` (v1.0.0 → CHANGELOG commit → packages/pkg commit → v2.0.0). Drives the
-// command through `runRangeCli` (a manually-registered program — `registerRange` is deliberately
-// not wired into the registry yet) with the same temp-home/exit-code hygiene as `tag.test.ts`.
+// command through `runRangeCli` (the registry-built program — `registerRange` is wired in via
+// `registrars-extra.ts`) with the same temp-home/exit-code hygiene as `tag.test.ts`.
 // Assertion bundles live in module-level helpers to respect the per-test expect cap. Every case
 // clones a real fixture, so each `it` gets the same generous per-test timeout the other real-git
 // suites use.

@@ -1,7 +1,6 @@
 import type {
   ChangedPath,
   ChangelogQuery,
-  Config,
   RangeCommit,
   RangeDiffOpts,
   RangeShortstat,
@@ -12,18 +11,21 @@ import {
   changelogAtTag,
   checkoutPath,
   countRangeCommits,
-  isGitCheckout,
   listRangeCommits,
-  notFoundError,
   rangeNameStatus,
   rangeShortstat,
   readConfig,
   resolveHome,
   resolveTag,
-  usageError,
   // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
 import { emit, wrapAction } from '../output.ts';
+import {
+  parsePositiveLimit,
+  requireCheckout,
+  requireEntry,
+  requirePackage,
+} from './ref-context.ts';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
 import { matchRefKey } from './list.ts';
@@ -38,7 +40,6 @@ import { matchRefKey } from './list.ts';
 // Queries are additionally scoped to the package's configured `path`.
 
 const DEFAULT_COMMIT_LIMIT = 50;
-const MIN_COMMIT_LIMIT = 1;
 const CHANGED_PATHS_LIMIT = 200;
 const CHANGELOG_MAX_CHARS = 4000;
 
@@ -77,24 +78,6 @@ interface RangeArgs {
   query: string;
 }
 
-// `matchRefKey` only ever returns a key found among `Object.keys(config.refs)` — the throw exists
-// purely to satisfy `noUncheckedIndexedAccess`, mirroring `tag.ts`'s `requireEntry`.
-const requireEntry = (config: Config, key: RefKey): RefEntry => {
-  const entry = config.refs[key];
-  if (entry === undefined) {
-    throw new Error(`internal: matched ref key '${key}' is missing from config.refs`);
-  }
-  return entry;
-};
-
-/** Guards against a configured ref whose checkout directory is missing — first-class state
- * elsewhere (`refs list`/`refs sync`), same message as `tag.ts`'s `requireCheckout`. */
-const requireCheckout = (dest: string, key: RefKey): void => {
-  if (!isGitCheckout(dest)) {
-    throw notFoundError(`checkout for '${key}' is missing — run: refs sync ${key}`);
-  }
-};
-
 interface PackageScope {
   format: string;
   path?: string;
@@ -103,7 +86,7 @@ interface PackageScope {
 /** Resolves the tag_format AND diff path scope for the request: `--package` uses the package's
  * own `tag_format` when set, else inherits the ref's (spec §3, exactly like `tag.ts`'s
  * `formatFor`), and contributes its configured `path` as the diff scope. An unregistered package
- * name is a `notFoundError`, exactly like an unresolvable `<ref>`. */
+ * name is a `notFoundError` (via `requirePackage`), exactly like an unresolvable `<ref>`. */
 const packageScope = (
   entry: RefEntry,
   key: RefKey,
@@ -112,10 +95,7 @@ const packageScope = (
   if (packageName === undefined) {
     return { format: entry.tag_format };
   }
-  const pkg = entry.packages?.[packageName];
-  if (pkg === undefined) {
-    throw notFoundError(`no package '${packageName}' registered on ref '${key}'`);
-  }
+  const pkg = requirePackage(entry, key, packageName);
   return { format: pkg.tag_format ?? entry.tag_format, path: pkg.path };
 };
 
@@ -201,8 +181,12 @@ const orNull = <Value>(value: Value | undefined): Value | null => {
 };
 
 const buildRangeData = async (ctx: CliContext, build: BuildOpts): Promise<RangeData> => {
-  const digest = await collectDigest(ctx, digestOpts(build));
-  const changelog = await changelogAtTag(ctx.runner, build.dest, changelogQuery(build));
+  // The changelog lookup needs only `newTag` (known before any digest query runs), so it joins
+  // The digest's read-only query wave instead of serializing after it.
+  const [digest, changelog] = await Promise.all([
+    collectDigest(ctx, digestOpts(build)),
+    changelogAtTag(ctx.runner, build.dest, changelogQuery(build)),
+  ]);
   return {
     changed_paths: digest.paths.paths,
     changelog: orNull(changelog?.excerpt),
@@ -229,8 +213,11 @@ const runRange = async (ctx: CliContext, args: RangeArgs): Promise<RangeData> =>
   const scope = packageScope(entry, key, args.opts.packageName);
   const dest = checkoutPath(home, key);
   requireCheckout(dest, key);
-  const oldTag = await resolveTag(ctx.runner, dest, scope.format, args.oldVersion);
-  const newTag = await resolveTag(ctx.runner, dest, scope.format, args.newVersion);
+  // Two independent read-only tag lookups against the same checkout — resolved concurrently.
+  const [oldTag, newTag] = await Promise.all([
+    resolveTag(ctx.runner, dest, scope.format, args.oldVersion),
+    resolveTag(ctx.runner, dest, scope.format, args.newVersion),
+  ]);
   return buildRangeData(ctx, { args, dest, key, newTag, oldTag, scope });
 };
 
@@ -251,19 +238,10 @@ const rangeHuman = (data: RangeData): string[] => [
   changelogLine(data),
 ];
 
-const parseLimit = (raw: string | undefined): number => {
-  if (raw === undefined) {
-    return DEFAULT_COMMIT_LIMIT;
-  }
-  const limit = Number(raw);
-  if (!Number.isInteger(limit) || limit < MIN_COMMIT_LIMIT) {
-    throw usageError(`--limit must be a positive integer, got '${raw}'`);
-  }
-  return limit;
-};
-
 const buildRangeOptions = (localOpts: { limit?: string; package?: string }): RangeOptions => {
-  const opts: RangeOptions = { limit: parseLimit(localOpts.limit) };
+  const opts: RangeOptions = {
+    limit: parsePositiveLimit(localOpts.limit, { def: DEFAULT_COMMIT_LIMIT }),
+  };
   if (localOpts.package !== undefined) {
     opts.packageName = localOpts.package;
   }

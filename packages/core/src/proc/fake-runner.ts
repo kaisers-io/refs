@@ -32,6 +32,10 @@ interface FakeResult {
   stderr?: string;
   exitCode?: number;
   timedOut?: boolean;
+  // Mirrors `RunResult.stdoutTruncated` (runner.ts): script `{ stdoutTruncated: true }` to
+  // simulate a child whose stdout hit `SpawnRunner`'s byte cap; omitted otherwise, exactly as
+  // `SpawnRunner` itself omits the flag.
+  stdoutTruncated?: true;
 }
 
 interface FakeRunnerCall {
@@ -71,12 +75,16 @@ class FakeRunner implements Runner {
   run(cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> {
     this.#record(cmd, args, opts);
     const next = this.#matchNext([cmd, ...args].join(' '), opts);
-    return Promise.resolve({
+    const result: RunResult = {
       exitCode: next.exitCode ?? DEFAULT_EXIT_CODE,
       stderr: next.stderr ?? DEFAULT_STDERR,
       stdout: next.stdout ?? DEFAULT_STDOUT,
       timedOut: next.timedOut ?? DEFAULT_TIMED_OUT,
-    });
+    };
+    if (next.stdoutTruncated === true) {
+      result.stdoutTruncated = true;
+    }
+    return Promise.resolve(result);
   }
 
   // Appends this invocation to `calls` — always, whether or not it goes on to match the next
