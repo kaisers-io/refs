@@ -29,53 +29,92 @@ interface GrepResult {
 const MATCHES_EXIT_CODE = 0;
 const NO_MATCHES_EXIT_CODE = 1;
 const NO_PATHSPECS = 0;
-const NO_FIELDS = 0;
 const SNIPPET_START = 0;
-const LAST_LINE = -1;
+const NOT_FOUND = -1;
+const FIRST_TOKEN = 0;
+const SECOND_TOKEN = 1;
+const TOKENS_PER_RECORD = 2;
+const NEXT_CHAR = 1;
 /** Hard cap on each returned snippet, so one pathological (e.g. minified) line cannot blow up the
  * structured output a coding agent has to ingest. */
 const MAX_SNIPPET_LENGTH = 200;
 
 // With `-z`, one `git grep -z -n` record is `<path> NUL <line> NUL <content> NEWLINE` (verified
 // Empirically against git 2.50: BOTH separators become NUL, and path quoting is disabled
-// Entirely, so a path containing `:` — legal in a tracked repo — or non-ASCII bytes comes back
-// Verbatim). Content can never contain a NUL itself: `-I` skips binary files.
+// Entirely, so a path containing `:` or even a real NEWLINE — both legal in a tracked repo — or
+// Non-ASCII bytes comes back verbatim). That rules out splitting the stream on newlines: the
+// Only safe walk is over NUL tokens, where token 3k is a path glued to the previous record's
+// Content ("<content> NEWLINE <path>" — content runs to the FIRST newline, because a matched
+// Line can never contain one; everything after it, newlines included, is the next path). Content
+// Can never contain a NUL either: `-I` skips binary files.
 const FIELD_SEPARATOR = '\0';
 const LINE_NUMBER = /^\d+$/u;
 
-const parseMatchLine = (raw: string): GrepMatch | undefined => {
-  const [path, line, ...contentParts] = raw.split(FIELD_SEPARATOR);
-  if (path === undefined || line === undefined || contentParts.length === NO_FIELDS) {
+interface GrepRecord {
+  match: GrepMatch;
+  nextPath: string;
+}
+
+// One record assembled from the pending `path` plus the two tokens at `index` (line number and
+// The mixed "<content> NEWLINE <next-path>" token), or `undefined` when any of the three pieces
+// — or the record-terminating newline inside the mixed token — is missing: an incomplete tail
+// Fragment (empirically what every byte-cap cut point produces), dropped, never parsed.
+const takeRecord = (
+  tokens: readonly string[],
+  index: number,
+  path: string,
+): GrepRecord | undefined => {
+  const line = tokens[index];
+  const mixed = tokens[index + SECOND_TOKEN];
+  if (line === undefined || mixed === undefined || !LINE_NUMBER.test(line)) {
     return undefined;
   }
-  if (!LINE_NUMBER.test(line)) {
+  const newlineAt = mixed.indexOf('\n');
+  if (newlineAt === NOT_FOUND) {
     return undefined;
   }
+  const content = mixed.slice(SNIPPET_START, newlineAt);
   return {
-    line: Number(line),
-    path,
-    snippet: contentParts.join(FIELD_SEPARATOR).trim().slice(SNIPPET_START, MAX_SNIPPET_LENGTH),
+    match: {
+      line: Number(line),
+      path,
+      snippet: content.trim().slice(SNIPPET_START, MAX_SNIPPET_LENGTH),
+    },
+    nextPath: mixed.slice(newlineAt + NEXT_CHAR),
   };
 };
 
-// Counts ALL produced lines first (that is what keeps `truncated` honest), then parses only the
-// First `limit` of them — reading just enough to know more exists without shipping it.
-const parseGrepOutput = (stdout: string, limit: number): GrepResult => {
-  const lines = stdout.split('\n').filter((line) => line !== '');
-  const matches = lines
-    .slice(SNIPPET_START, limit)
-    .map((raw) => parseMatchLine(raw))
-    .filter((match) => match !== undefined);
-  return { matches, truncated: lines.length > limit };
+// State machine over the NUL tokens: each record consumes the pending path plus two tokens (see
+// `takeRecord`), and each mixed token's post-newline remainder becomes the NEXT record's path.
+const parseRecords = (stdout: string): GrepMatch[] => {
+  const tokens = stdout.split(FIELD_SEPARATOR);
+  const records: GrepMatch[] = [];
+  let path = tokens[FIRST_TOKEN] ?? '';
+  for (let index = SECOND_TOKEN; index < tokens.length; index += TOKENS_PER_RECORD) {
+    const record = takeRecord(tokens, index, path);
+    if (record === undefined) {
+      break;
+    }
+    records.push(record.match);
+    path = record.nextPath;
+  }
+  return records;
 };
 
-// When the runner's byte cap cut stdout mid-stream (`RunResult.stdoutTruncated`), the LAST line
-// May be an incomplete fragment of a real match — drop it rather than parse a garbled
-// Path/snippet, and report `truncated: true` unconditionally: with output missing, the line
-// Count alone can no longer prove there was nothing beyond `limit`.
+// Counts ALL complete records first (that is what keeps `truncated` honest), then returns only
+// The first `limit` of them — reading just enough to know more exists without shipping it.
+const parseGrepOutput = (stdout: string, limit: number): GrepResult => {
+  const records = parseRecords(stdout);
+  return { matches: records.slice(SNIPPET_START, limit), truncated: records.length > limit };
+};
+
+// When the runner's byte cap cut stdout mid-stream (`RunResult.stdoutTruncated`), the trailing
+// Record may be an incomplete fragment of a real match — the state machine above already drops
+// It (a cut record always lacks a delimiter, verified empirically at every cut position), and
+// `truncated: true` is reported unconditionally: with output missing, the record count alone can
+// No longer prove there was nothing beyond `limit`.
 const parseByteCappedOutput = (stdout: string, limit: number): GrepResult => {
-  const whole = stdout.split('\n').slice(SNIPPET_START, LAST_LINE).join('\n');
-  const { matches } = parseGrepOutput(whole, limit);
+  const { matches } = parseGrepOutput(stdout, limit);
   return { matches, truncated: true };
 };
 

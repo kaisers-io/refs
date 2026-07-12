@@ -116,4 +116,16 @@ describe('rangeShortstat: fail-closed parsing', () => {
       /git diff --shortstat returned unrecognized output: 3 Dateien geändert/u,
     );
   });
+
+  it('rejects a valid-looking shortstat embedded in surrounding garbage (anchored match)', async () => {
+    expect.hasAssertions();
+    const runner = new FakeRunner();
+    runner.expect('git diff --shortstat', {
+      stdout: 'warning: partial output\n 2 files changed, 3 insertions(+)\ntrailing garbage\n',
+    });
+
+    await expect(rangeShortstat(runner, DIR, BOUNDS)).rejects.toThrow(
+      /git diff --shortstat returned unrecognized output: warning: partial output/u,
+    );
+  });
 });

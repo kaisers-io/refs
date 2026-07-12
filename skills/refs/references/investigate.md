@@ -184,21 +184,23 @@ the raw source yourself into the main thread.
    ```
 
    which returns `{ key, version, tag, ref_path }` (`ref_path` is a git ref,
-   e.g. `refs/tags/<tag>`, not a filesystem path). Don't call it before `refs
-range` — range already resolves both versions on its own.
+   e.g. `refs/tags/<tag>`, not a filesystem path). Don't call it before
+   `refs range` — range already resolves both versions on its own.
 
    **Recommended diff funnel** — start cheap, drill down only where the question
-   points; if the funnel doesn't answer it, a full diff is always available:
+   points; if the funnel doesn't answer it, a full diff is always available.
+   Always spell tags fully qualified as `refs/tags/<tag>` (the returned
+   `ref_path`) — a tag starting with `-` would otherwise parse as an option:
 
    ```bash
    # 1. The same data the digest showed, raw and unbounded:
-   git show <new-tag>:CHANGELOG.md
-   git log <old-tag>..<new-tag> --oneline --no-merges
-   git diff <old-tag>..<new-tag> --stat        # add -- <package-path> in monorepos
+   git show refs/tags/<new-tag>:CHANGELOG.md
+   git log refs/tags/<old-tag>..refs/tags/<new-tag> --oneline --no-merges
+   git diff refs/tags/<old-tag>..refs/tags/<new-tag> --stat   # add -- <package-path> in monorepos
 
    # 2. Only then, targeted content:
    git show <sha> -- <path>
-   git diff <old-tag>..<new-tag> -- <path>
+   git diff refs/tags/<old-tag>..refs/tags/<new-tag> -- <path>
    ```
 
    Scope to the package path (`-- packages/<name>`) in monorepos — most of a wide
