@@ -30,8 +30,11 @@ const NEXT_FIELD = 1;
 // Cap on how much unparseable git output a thrown error message carries.
 const ERROR_DETAIL_LENGTH = 200;
 const DETAIL_START = 0;
+// Anchored to the WHOLE output (only surrounding whitespace/newlines tolerated): a
+// Valid-looking shortstat embedded in warnings or trailing garbage must fail closed too, never
+// Be fished out of output the parser does not actually understand.
 const SHORTSTAT_PATTERN =
-  /(?<files>\d+) files? changed(?:, (?<insertions>\d+) insertions?\(\+\))?(?:, (?<deletions>\d+) deletions?\(-\))?/u;
+  /^\s*(?<files>\d+) files? changed(?:, (?<insertions>\d+) insertions?\(\+\))?(?:, (?<deletions>\d+) deletions?\(-\))?\s*$/u;
 
 const countOf = (raw: string | undefined): number => {
   if (raw === undefined) {

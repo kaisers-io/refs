@@ -3,6 +3,7 @@ import {
   BRACKETS_PACKAGE_NAME,
   COLON_MATCH,
   GHOST_PACKAGE_NAME,
+  NEWLINE_MATCH,
   PKG_DOC_MATCH,
   ROOT_DOC_MATCH,
   SEARCH_PACKAGE_NAME,
@@ -21,7 +22,8 @@ import { EXIT } from '@kaisers-io/refs-core';
 // path parsing. Case labels continue search.test.ts's (a)-(g): (h) package+glob intersect, (i)
 // glob wrapping, (j) a metacharacter package path stays literal, (k) pathspec magic in --glob is
 // a usage error, (l) colon file names survive the `-z` parsing, (m) a package directory absent
-// from the checkout is a clean not_found.
+// from the checkout is a clean not_found, (n) newline file names survive the NUL-token record
+// walk. The traversal/containment guards continue as (o)-(r) in `search-guards.test.ts`.
 
 const TEST_TIMEOUT_MS = 30_000;
 
@@ -184,6 +186,28 @@ describe('refs search: delimiter-bearing file names', () => {
           const envelope = parseSoleSearchEnvelope(stdout);
           expect(envelope.ok).toBe(true);
           expect(envelope.data).toStrictEqual(expectedSearchData('needle_colon', [COLON_MATCH]));
+        }),
+      );
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    '(n) a match in a file name containing a real newline reports the full path verbatim',
+    async () => {
+      expect.hasAssertions();
+      await withResetExitCode(() =>
+        withTempHome(async (homeDir) => {
+          const { ctx, stdout } = await setupSearchFixture(homeDir);
+
+          await runSearchCli(ctx, [SEARCH_REF_KEY, 'needle_newline', '--json']);
+
+          const envelope = parseSoleSearchEnvelope(stdout);
+          expect(envelope.ok).toBe(true);
+          // A newline-splitting parser would drop the `src/li\n` prefix and report `ne.ts`.
+          expect(envelope.data).toStrictEqual(
+            expectedSearchData('needle_newline', [NEWLINE_MATCH]),
+          );
         }),
       );
     },

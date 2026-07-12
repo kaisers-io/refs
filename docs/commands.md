@@ -628,10 +628,13 @@ more matches exist. Vendored/generated paths (`dist`, `build`, `node_modules`, l
 …) are excluded by default; the exact pathspecs applied are echoed in `excludes_applied`,
 and `--no-default-excludes` turns them off (some questions are only answerable in build
 output). `--glob` takes a plain glob pattern (`*` stops at `/`, `**` crosses it) — never a
-raw git pathspec: a value starting with `:` is rejected as a usage error. `--package` is a
-hard boundary: the search runs inside that package's registered path, and any `--glob`
-patterns apply relative to the package directory (intersection with the package scope,
-never a union); matched paths are still reported relative to the checkout root.
+raw git pathspec: a value starting with `:` is rejected as a usage error, as is any
+pattern that could leave the search root (absolute, or carrying a `..` path segment —
+`..` inside a name like `a..b` stays legal). `--package` is a hard boundary: the search
+runs inside that package's registered path, and any `--glob` patterns apply relative to
+the package directory (intersection with the package scope, never a union); matched paths
+are still reported relative to the checkout root. A package directory that physically
+resolves outside the checkout (a symlink) is refused as a validation error.
 
 No matches is a success (`ok: true`, empty `matches`), not an error. Search results are
 hints for locating code — read the actual files before citing them.
@@ -658,5 +661,6 @@ refs search tanstack-query "retryDelay" --package @tanstack/query-core --json
 ```
 
 Exit codes: `4` (ref/package not found, checkout or package directory missing), `2`
-(ambiguous suffix, invalid `--limit`, a `--glob` value carrying pathspec magic), `3` (git
-grep failed for a reason other than "no matches").
+(ambiguous suffix, invalid `--limit`, a `--glob` value carrying pathspec magic or
+escaping the search root), `3` (git grep failed for a reason other than "no matches", or
+a symlinked package directory escaping the checkout).

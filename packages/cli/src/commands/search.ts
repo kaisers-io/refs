@@ -1,14 +1,15 @@
 import type { GrepMatch, GrepResult, RefEntry, RefKey } from '@kaisers-io/refs-core';
 import {
+  assertInsideDir,
   checkoutPath,
   grepCheckout,
   notFoundError,
   readConfig,
   resolveHome,
-  usageError,
   // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
 import { emit, wrapAction } from '../output.ts';
+import { excludePathspecs, toGlobPathspec } from './search-pathspec.ts';
 import {
   parsePositiveLimit,
   requireCheckout,
@@ -31,8 +32,10 @@ import { matchRefKey } from './list.ts';
 // (empty when disabled), so nothing is ever filtered invisibly. `--package` is a hard boundary:
 // The search runs WITH THE PACKAGE DIRECTORY AS CWD (never by passing the configured path to git
 // As a pathspec, where fnmatch metacharacters could expand it), so user `--glob` patterns apply
-// Relative to — and strictly inside — the package. Registered into the command registry via
-// `registrars-extra.ts`, alongside `range.ts`.
+// Relative to — and strictly inside — the package: absolute and `..`-segment glob patterns are
+// Rejected up front (git resolves parent-relative pathspecs against the cwd), and a package
+// Directory that physically resolves outside the checkout (symlink) is a containment violation.
+// Registered into the command registry via `registrars-extra.ts`, alongside `range.ts`.
 
 interface SearchData {
   excludes_applied: string[];
@@ -65,47 +68,6 @@ const NO_GLOBS: string[] = [];
 // eslint-disable-next-line unicorn/no-null -- see comment above
 const JSON_NULL = null;
 
-// Directories and file patterns a coding agent almost never wants grep hits from: build output,
-// Vendored/installed dependencies, coverage reports, minified bundles, and lockfiles. Three
-// Shapes, each verified against real git pathspec semantics:
-// - directory names use `:(glob,exclude)**/<dir>/**` so NESTED occurrences
-//   (`packages/foo/dist/…`) are filtered too — a bare `:(exclude)dist` only matches the
-//   repo-root directory, and glob's leading `**/` also matches at the root, so one pattern
-//   covers both;
-// - wildcard file patterns stay bare `:(exclude)` — fnmatch's `*` crosses `/`, so `*.lock`
-//   already matches `packages/foo/nested.lock`;
-// - literal file names need the same `**/` glob treatment as directories — a bare
-//   `:(exclude)package-lock.json` only matches at the repo root.
-const EXCLUDED_DIRS = ['dist', 'build', 'out', 'vendor', 'node_modules', 'coverage'] as const;
-const EXCLUDED_FILE_WILDCARDS = ['*.min.*', '*.lock'] as const;
-const EXCLUDED_FILE_NAMES = ['package-lock.json', 'pnpm-lock.yaml', 'yarn.lock'] as const;
-
-const DEFAULT_EXCLUDE_PATHSPECS: readonly string[] = [
-  ...EXCLUDED_DIRS.map((dir) => `:(glob,exclude)**/${dir}/**`),
-  ...EXCLUDED_FILE_WILDCARDS.map((pattern) => `:(exclude)${pattern}`),
-  ...EXCLUDED_FILE_NAMES.map((name) => `:(glob,exclude)**/${name}`),
-];
-
-// Returns the exact pathspec entries handed to git — the same strings surfaced verbatim as
-// `excludes_applied`, so the agent sees precisely what was filtered, not a paraphrase of it.
-const excludePathspecs = (defaultExcludes: boolean): string[] => {
-  if (!defaultExcludes) {
-    return [];
-  }
-  return [...DEFAULT_EXCLUDE_PATHSPECS];
-};
-
-// `--glob` accepts a PLAIN glob pattern, never raw pathspec magic: a leading `:` is rejected so
-// A caller can never smuggle `:(exclude)`/`:(top)`/... through, and the accepted pattern is
-// Wrapped as `:(glob)<pattern>` ourselves (glob semantics: `*` stops at `/`, `**` crosses it).
-const PATHSPEC_MAGIC_PREFIX = ':';
-const toGlobPathspec = (pattern: string): string => {
-  if (pattern.startsWith(PATHSPEC_MAGIC_PREFIX)) {
-    throw usageError('--glob takes a plain glob pattern, not a git pathspec');
-  }
-  return `:(glob)${pattern}`;
-};
-
 /** The registered `path` of the named package, or `undefined` when `--package` was not given. An
  * unregistered name is a `notFoundError` (via `requirePackage`), exactly like an unresolvable
  * `<ref>` is. */
@@ -133,13 +95,20 @@ const searchDir = (dest: string, packagePath: string | undefined): string => {
 
 /** Guards the resolved search directory: a configured package path that is missing from the
  * checkout (config drift, stale checkout) surfaces as a first-class not_found — never as a
- * low-level spawn/cwd error from running git inside a nonexistent directory. */
-const requireSearchDir = (dir: string, key: RefKey): void => {
+ * low-level spawn/cwd error from running git inside a nonexistent directory — and one that
+ * exists but PHYSICALLY resolves outside the checkout (a symlinked package directory: checkout
+ * content is upstream-controlled, and `existsSync` follows links) is a containment violation
+ * via core's `assertInsideDir` — git must never be spawned with an external cwd, possibly a
+ * different repository entirely. */
+const requireSearchDir = (dir: string, dest: string, key: RefKey): void => {
   // eslint-disable-next-line node/no-sync -- cheap synchronous existence check, mirrors core's isGitCheckout
   if (!existsSync(dir)) {
     throw notFoundError(
       `package path '${dir}' is missing from the checkout — run: refs sync ${key}`,
     );
+  }
+  if (dir !== dest) {
+    assertInsideDir(dest, dir, `checkout for '${key}'`);
   }
 };
 
@@ -203,7 +172,7 @@ const runSearch = async (ctx: CliContext, args: SearchArgs): Promise<SearchData>
   const packagePath = packagePathOf(entry, key, args.opts.packageName);
   const excludes = excludePathspecs(args.opts.defaultExcludes);
   const dir = searchDir(dest, packagePath);
-  requireSearchDir(dir, key);
+  requireSearchDir(dir, dest, key);
   const raw = await grepCheckout(ctx.runner, {
     dir,
     limit: args.opts.limit,

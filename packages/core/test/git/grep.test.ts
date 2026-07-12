@@ -7,7 +7,8 @@ import { grepCheckout } from '../../src/git/grep.ts';
 // Search suites; this suite pins the exit-code contract (0 = matches, 1 = clean no-match,
 // Anything else = validationError) and the parsing/bounding rules (NUL-field `-z` records,
 // Limit, truncation flag, snippet trim + cap) against scripted output. One `git grep -z -n`
-// Record is `<path> NUL <line> NUL <content> NEWLINE` (empirically verified layout).
+// Record is `<path> NUL <line> NUL <content> NEWLINE` (empirically verified layout), where the
+// Path may itself contain newlines — records must be walked via NUL tokens, never split on `\n`.
 
 const DIR = '/tmp/checkout';
 const SMALL_LIMIT = 2;
@@ -58,6 +59,28 @@ describe('grepCheckout: match parsing', () => {
 
     expect(result.truncated).toBe(false);
     expect(result.matches).toStrictEqual([{ line: 3, path: 'src/a:b.ts', snippet: 'alpha here' }]);
+  });
+});
+
+describe('grepCheckout: newline-bearing file names', () => {
+  it('returns paths containing newlines verbatim (records are NUL-walked, never newline-split)', async () => {
+    expect.hasAssertions();
+    const runner = new FakeRunner();
+    // A newline-bearing path sits inside its NUL token; a newline-splitting parser would report
+    // The bogus tail (`b.ts`) as the path and silently drop the `src/a\n` prefix.
+    runner.expect(
+      'git grep',
+      { stdout: zRecord('src/a\nb.ts', '3', 'alpha here') + zRecord('x\ny\nz.md', '1', 'alpha') },
+      { cwd: DIR },
+    );
+
+    const result = await grepCheckout(runner, optsFor(BIG_LIMIT));
+
+    expect(result.truncated).toBe(false);
+    expect(result.matches).toStrictEqual([
+      { line: 3, path: 'src/a\nb.ts', snippet: 'alpha here' },
+      { line: 1, path: 'x\ny\nz.md', snippet: 'alpha' },
+    ]);
   });
 });
 

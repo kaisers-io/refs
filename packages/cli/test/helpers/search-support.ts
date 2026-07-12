@@ -21,11 +21,17 @@ const BRACKETS_PACKAGE_PATH = 'packages/br[a]ckets';
 // A registered package whose configured path exists in NO fixture file — its directory is
 // Absent from the checkout, pinning the config-drift guard (not_found, never a spawn error).
 const GHOST_PACKAGE_NAME = 'ghost';
+// A registered package whose directory the guards suite replaces with a SYMLINK pointing
+// Outside the checkout — pinning the physical-containment guard (validation, never an external
+// Cwd handed to git). No fixture file creates it; the test plants the link itself.
+const ESCAPE_PACKAGE_NAME = 'escape';
+const ESCAPE_PACKAGE_PATH = 'packages/escape';
 const SEARCH_REF_ENTRY = {
   default_branch: 'main',
   description: 'Widget',
   packages: {
     [BRACKETS_PACKAGE_NAME]: { description: 'Brackets package', path: BRACKETS_PACKAGE_PATH },
+    [ESCAPE_PACKAGE_NAME]: { description: 'Escape package', path: ESCAPE_PACKAGE_PATH },
     [GHOST_PACKAGE_NAME]: { description: 'Ghost package', path: 'packages/ghost' },
     [SEARCH_PACKAGE_NAME]: { description: 'Widget package', path: 'packages/pkg' },
   },
@@ -85,6 +91,9 @@ const FIXTURE_FILES: Record<string, string> = {
   // Non-ASCII file name: with quoting in effect the match path would come back octal-escaped
   // ("src/caf\303\251.txt"); the command must return the real name (`-z` disables quoting).
   'src/café.txt': 'needle_utf8\n',
+  // A real NEWLINE in a tracked file name is legal on POSIX too — pins the NUL-token record
+  // Walk (a newline-splitting parser would report the bogus `ne.ts` tail as the path).
+  'src/li\nne.ts': 'needle_newline\n',
 };
 
 const ALPHA_MATCHES = [
@@ -105,6 +114,7 @@ const PKG_MATCH = {
 };
 const UTF8_MATCH = { line: 1, path: 'src/café.txt', snippet: 'needle_utf8' };
 const COLON_MATCH = { line: 1, path: 'src/a:b.ts', snippet: 'needle_colon' };
+const NEWLINE_MATCH = { line: 1, path: 'src/li\nne.ts', snippet: 'needle_newline' };
 const ROOT_DOC_MATCH = { line: 1, path: 'README.md', snippet: 'needle_docs' };
 const PKG_DOC_MATCH = { line: 1, path: 'packages/pkg/doc.md', snippet: 'needle_docs' };
 const BRACKETS_MATCH = {
@@ -227,8 +237,11 @@ export {
   BRACKETS_PACKAGE_NAME,
   COLON_MATCH,
   DIST_MATCH,
+  ESCAPE_PACKAGE_NAME,
+  ESCAPE_PACKAGE_PATH,
   GHOST_PACKAGE_NAME,
   NESTED_DIST_MATCH,
+  NEWLINE_MATCH,
   PKG_DOC_MATCH,
   PKG_MATCH,
   ROOT_DOC_MATCH,
