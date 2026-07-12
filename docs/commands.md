@@ -566,3 +566,90 @@ refs tag zod 4.1.0 --package zod --json
 
 Exit codes: `4` (ref/package not found, checkout missing, or the rendered tag doesn't
 exist in the checkout), `2` (ambiguous suffix).
+
+## `refs range`
+
+```
+refs range <ref> <old-version> <new-version> [--package <name>] [--limit <n>]
+```
+
+A bounded version-diff digest: resolves both versions to git tags (same `tag_format`
+inheritance as `refs tag`), then returns commit count, the newest `--limit` (default 50)
+non-merge commit subjects, diff stats, changed paths (capped at 200), and a changelog
+excerpt extracted at the new tag — in one call. With `--package`, the diff/paths/changelog
+queries are scoped to that package's path; the commit log stays repo-wide.
+
+Every bounded list carries a flag in `truncated` — when a flag is `true` there is more
+data than shown, and the full history remains available via plain git in the checkout.
+The digest is a starting point, not a source: cite commits and files from the checkout,
+not from this output.
+
+```bash
+refs range zod 3.24.1 4.0.0 --json
+refs range tanstack-query 5.0.0 5.20.0 --package @tanstack/query-core --json
+```
+
+```json
+{
+  "ok": true,
+  "data": {
+    "key": "github.com/colinhacks/zod",
+    "package": null,
+    "old": { "version": "3.24.1", "tag": "v3.24.1" },
+    "new": { "version": "4.0.0", "tag": "v4.0.0" },
+    "commit_count": 437,
+    "commits": [{ "sha": "abc1234", "date": "2026-04-02", "subject": "feat!: rewrite core parser" }],
+    "diff": { "files_changed": 312, "insertions": 41200, "deletions": 38900 },
+    "changed_paths": [{ "path": "src/types.ts", "status": "M" }],
+    "changelog": "## 4.0.0 ...",
+    "truncated": { "commits": true, "paths": false, "changelog": false }
+  },
+  "warnings": []
+}
+```
+
+`changelog` is `null` when no CHANGELOG heading matching the new version exists (the file
+is never dumped wholesale).
+
+Exit codes: `4` (ref/package not found, checkout missing, or a tag doesn't exist for a
+version), `2` (ambiguous suffix, invalid `--limit`).
+
+## `refs search`
+
+```
+refs search <ref> <pattern> [--package <name>] [--limit <n>] [--glob <pathspec>...] [--no-default-excludes]
+```
+
+Bounded structured code search over a ref's checkout — wraps `git grep -n -I
+--extended-regexp` and returns `{path, line, snippet}` matches (snippets trimmed, capped
+at 200 chars), at most `--limit` (default 50) of them, with `truncated: true` whenever
+more matches exist. Vendored/generated paths (`dist`, `build`, `node_modules`, lockfiles,
+…) are excluded by default; the exact pathspecs applied are echoed in `excludes_applied`,
+and `--no-default-excludes` turns them off (some questions are only answerable in build
+output). `--glob` adds git pathspecs; `--package` scopes to that package's path.
+
+No matches is a success (`ok: true`, empty `matches`), not an error. Search results are
+hints for locating code — read the actual files before citing them.
+
+```bash
+refs search zod "coerce" --limit 20 --json
+refs search tanstack-query "retryDelay" --package @tanstack/query-core --json
+```
+
+```json
+{
+  "ok": true,
+  "data": {
+    "key": "github.com/colinhacks/zod",
+    "pattern": "coerce",
+    "matches": [{ "path": "src/types.ts", "line": 4211, "snippet": "export const coerce = { ... }" }],
+    "match_count": 1,
+    "truncated": false,
+    "excludes_applied": [":(exclude)dist", ":(exclude)node_modules"]
+  },
+  "warnings": []
+}
+```
+
+Exit codes: `4` (ref/package not found, checkout missing), `2` (ambiguous suffix, invalid
+`--limit`), `3` (git grep failed for a reason other than "no matches").
