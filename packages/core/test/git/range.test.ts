@@ -12,9 +12,11 @@ import { SpawnRunner } from '../../src/proc/runner.ts';
 
 // Integration suite for the bounded range queries (git/range.ts) and the changelog excerpt
 // helpers (git/changelog.ts), against one shared real git fixture: `v1.0.0` on the initial
-// commit, then a CHANGELOG.md commit and a feature.txt commit, then `v2.0.0` — so
-// `v1.0.0..v2.0.0` spans exactly two commits with two added files. The fixture is built once at
-// module load and shared read-only across every case (all queries here are read-only by design).
+// commit, then a CHANGELOG.md commit, a feature.txt commit, and a commit adding a file whose
+// name embeds a literal TAB (legal on APFS/POSIX — pins the NUL-delimited `--name-status -z`
+// parsing), then `v2.0.0` — so `v1.0.0..v2.0.0` spans exactly three commits with three added
+// files. The fixture is built once at module load and shared read-only across every case (all
+// queries here are read-only by design).
 
 const runner = new SpawnRunner();
 
@@ -26,7 +28,8 @@ const SUITE_OPTS = { timeout: TEST_TIMEOUT_MS };
 const OLD_TAG = 'v1.0.0';
 const NEW_TAG = 'v2.0.0';
 const BOUNDS = { newTag: NEW_TAG, oldTag: OLD_TAG };
-const RANGE_COMMITS = 2;
+const RANGE_COMMITS = 3;
+const TAB_FILE = 'ta\tb.txt';
 const SINGLE = 1;
 const NONE = 0;
 const WIDE_LIMIT = 200;
@@ -58,6 +61,7 @@ const buildRangeFixture = async (): Promise<string> => {
   const fixture = await createFixtureRepo({ tags: [OLD_TAG] });
   await addCommit(fixture.dir, 'CHANGELOG.md', CHANGELOG);
   await addCommit(fixture.dir, 'feature.txt', 'feature\n');
+  await addCommit(fixture.dir, TAB_FILE, 'tabbed\n');
   await gitTag(fixture.dir, NEW_TAG);
   return fixture.dir;
 };
@@ -86,6 +90,7 @@ describe('countRangeCommits() / listRangeCommits()', SUITE_OPTS, () => {
     expect.hasAssertions();
     const commits = await listRangeCommits(runner, fixtureDir, { ...BOUNDS, limit: WIDE_LIMIT });
     expect(commits.map((commit) => commit.subject)).toStrictEqual([
+      `update ${TAB_FILE}`,
       'update feature.txt',
       'update CHANGELOG.md',
     ]);
@@ -98,7 +103,7 @@ describe('countRangeCommits() / listRangeCommits()', SUITE_OPTS, () => {
   it('bounds the list to the given limit', async () => {
     expect.hasAssertions();
     const commits = await listRangeCommits(runner, fixtureDir, { ...BOUNDS, limit: SINGLE });
-    expect(commits.map((commit) => commit.subject)).toStrictEqual(['update feature.txt']);
+    expect(commits.map((commit) => commit.subject)).toStrictEqual([`update ${TAB_FILE}`]);
   });
 });
 
@@ -128,9 +133,11 @@ describe('rangeNameStatus()', SUITE_OPTS, () => {
     expect.hasAssertions();
     const result = await rangeNameStatus(runner, fixtureDir, { ...BOUNDS, limit: WIDE_LIMIT });
     expect(result.truncated).toBe(false);
+    // The TAB-in-name entry comes back verbatim — `-z` NUL parsing, no C-quoting.
     expect(result.paths).toStrictEqual([
       { path: 'CHANGELOG.md', status: 'A' },
       { path: 'feature.txt', status: 'A' },
+      { path: TAB_FILE, status: 'A' },
     ]);
   });
 

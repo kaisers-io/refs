@@ -14,10 +14,19 @@ import { testContext } from './context.ts';
 
 const SEARCH_REF_KEY = 'github.com/acme/widget';
 const SEARCH_PACKAGE_NAME = 'pkg';
+// A package whose configured path embeds fnmatch metacharacters — `--package` must treat it as
+// A literal directory (never a glob: as a pathspec, `br[a]ckets` would match `brackets`).
+const BRACKETS_PACKAGE_NAME = 'brackets';
+const BRACKETS_PACKAGE_PATH = 'packages/br[a]ckets';
+// A registered package whose configured path exists in NO fixture file — its directory is
+// Absent from the checkout, pinning the config-drift guard (not_found, never a spawn error).
+const GHOST_PACKAGE_NAME = 'ghost';
 const SEARCH_REF_ENTRY = {
   default_branch: 'main',
   description: 'Widget',
   packages: {
+    [BRACKETS_PACKAGE_NAME]: { description: 'Brackets package', path: BRACKETS_PACKAGE_PATH },
+    [GHOST_PACKAGE_NAME]: { description: 'Ghost package', path: 'packages/ghost' },
     [SEARCH_PACKAGE_NAME]: { description: 'Widget package', path: 'packages/pkg' },
   },
   tag_format: 'v{version}',
@@ -55,15 +64,26 @@ const ALPHA_SOURCE = [
 ].join('\n');
 
 const FIXTURE_FILES: Record<string, string> = {
+  // `needle_docs` lives in a root-level .md AND a package-level .md — `--package pkg --glob
+  // '*.md'` must return only the latter (intersection, never a pathspec union).
+  'README.md': 'needle_docs\n',
   'dist/bundle.js': 'var needle_dist = 1;\n',
+  // The literal `br[a]ckets` directory and its glob-expansion decoy `brackets`: if the package
+  // Path ever reached git as a pathspec, fnmatch would match the DECOY instead.
+  [`${BRACKETS_PACKAGE_PATH}/inner.ts`]: "const inner = 'needle_brackets';\n",
+  'packages/brackets/decoy.ts': "const decoy = 'needle_brackets';\n",
   'packages/other/gamma.ts': "const gamma = 'needle_scoped';\n",
   'packages/pkg/beta.ts': "const beta = 'needle_scoped';\n",
+  'packages/pkg/doc.md': 'needle_docs\n',
   // A needle under a NESTED dist/ — a bare `:(exclude)dist` pathspec would miss it, so it pins
   // The glob-magic default excludes filtering build output at any depth.
   'packages/pkg2/dist/nested.js': 'var needle_nested = 1;\n',
+  // Colon in a tracked file name is legal on POSIX — pins the NUL-delimited `git grep -z`
+  // Parsing (a colon-splitting parser would garble this path).
+  'src/a:b.ts': 'needle_colon\n',
   'src/alpha.ts': ALPHA_SOURCE,
-  // Non-ASCII file name: with git's default `core.quotePath=true` the match path would come back
-  // Octal-escaped ("src/caf\303\251.txt"); the command must return the real name.
+  // Non-ASCII file name: with quoting in effect the match path would come back octal-escaped
+  // ("src/caf\303\251.txt"); the command must return the real name (`-z` disables quoting).
   'src/café.txt': 'needle_utf8\n',
 };
 
@@ -84,6 +104,14 @@ const PKG_MATCH = {
   snippet: "const beta = 'needle_scoped';",
 };
 const UTF8_MATCH = { line: 1, path: 'src/café.txt', snippet: 'needle_utf8' };
+const COLON_MATCH = { line: 1, path: 'src/a:b.ts', snippet: 'needle_colon' };
+const ROOT_DOC_MATCH = { line: 1, path: 'README.md', snippet: 'needle_docs' };
+const PKG_DOC_MATCH = { line: 1, path: 'packages/pkg/doc.md', snippet: 'needle_docs' };
+const BRACKETS_MATCH = {
+  line: 1,
+  path: `${BRACKETS_PACKAGE_PATH}/inner.ts`,
+  snippet: "const inner = 'needle_brackets';",
+};
 
 const SUCCESS_EXIT_CODE = 0;
 // Test-setup-only `SpawnRunner`, mirroring `tag.test.ts`'s own local `setupRunner`.
@@ -195,9 +223,15 @@ const expectedSearchData = (
 
 export {
   ALPHA_MATCHES,
+  BRACKETS_MATCH,
+  BRACKETS_PACKAGE_NAME,
+  COLON_MATCH,
   DIST_MATCH,
+  GHOST_PACKAGE_NAME,
   NESTED_DIST_MATCH,
+  PKG_DOC_MATCH,
   PKG_MATCH,
+  ROOT_DOC_MATCH,
   SEARCH_PACKAGE_NAME,
   SEARCH_REF_KEY,
   UTF8_MATCH,

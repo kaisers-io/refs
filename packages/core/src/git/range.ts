@@ -1,3 +1,6 @@
+import type { ChangedPath, RangeShortstat } from './range-parse.ts';
+// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
+import { parseNameStatusStream, parseShortstat } from './range-parse.ts';
 import type { Runner } from '../proc/runner.ts';
 import { validationError } from '../errors.ts';
 
@@ -6,8 +9,16 @@ import { validationError } from '../errors.ts';
 // Path), and file content at a tag (which changelog.ts builds its capped CHANGELOG excerpt on).
 // Every list here is bounded by an explicit caller-supplied limit so the CLI's one-envelope
 // Contract stays token-efficient regardless of range size — and truncation is reported alongside
-// The data, never silently applied. Same `Runner` seam as repo.ts: real git via SpawnRunner in
-// Production, FakeRunner in unit tests.
+// The data, never silently applied. Output parsing lives in range-parse.ts (split for the
+// Per-file line cap, like changelog.ts). Same `Runner` seam as repo.ts: real git via SpawnRunner
+// In production, FakeRunner in unit tests.
+//
+// Hardening rules applied to every git invocation here:
+// - Tags enter argv only as fully qualified `refs/tags/<tag>` revisions behind
+//   `--end-of-options`, so a valid tag beginning with `-` (git accepts `refs/tags/-v1.0.0`) can
+//   Never be parsed as an option. User-facing JSON keeps the bare tag names.
+// - A configured package path enters argv only as a `:(literal)` pathspec, so fnmatch
+//   Metacharacters in the configured path (`packages/br[a]ckets`) are never glob-expanded.
 
 interface RangeBounds {
   newTag: string;
@@ -32,17 +43,6 @@ interface RangeCommit {
   subject: string;
 }
 
-interface RangeShortstat {
-  deletions: number;
-  files_changed: number;
-  insertions: number;
-}
-
-interface ChangedPath {
-  path: string;
-  status: string;
-}
-
 interface BoundedChangedPaths {
   paths: ChangedPath[];
   truncated: boolean;
@@ -50,16 +50,9 @@ interface BoundedChangedPaths {
 
 const SUCCESS_EXIT_CODE = 0;
 const NONE = 0;
-const LAST_FIELD = -1;
-const STATUS_START = 0;
-const STATUS_LENGTH = 1;
-// A name-status line is at least `<status>\t<path>`; anything shorter is not a diff entry.
-const MIN_NAME_STATUS_FIELDS = 2;
 // `%h<TAB>%ad<TAB>%s` — tab separators survive any subject except one that itself embeds tabs,
 // Which `parseCommitLine` handles by re-joining the trailing fields.
 const LOG_FORMAT = '--pretty=format:%h%x09%ad%x09%s';
-const SHORTSTAT_PATTERN =
-  /(?<files>\d+) files? changed(?:, (?<insertions>\d+) insertions?\(\+\))?(?:, (?<deletions>\d+) deletions?\(-\))?/u;
 
 interface CommandSpec {
   action: string;
@@ -78,14 +71,17 @@ const gitOrThrow = async (runner: Runner, spec: CommandSpec): Promise<string> =>
   throw validationError(`${spec.action} failed: ${detail}`);
 };
 
-const spanOf = (bounds: RangeBounds): string => `${bounds.oldTag}..${bounds.newTag}`;
+const qualifyTag = (tag: string): string => `refs/tags/${tag}`;
 
-// `-- <path>` scoping for the diff queries; empty when the caller wants the whole tree.
+const spanOf = (bounds: RangeBounds): string =>
+  `${qualifyTag(bounds.oldTag)}..${qualifyTag(bounds.newTag)}`;
+
+// `-- :(literal)<path>` scoping for the diff queries; empty when the caller wants the whole tree.
 const scopeArgs = (pathScope: string | undefined): string[] => {
   if (pathScope === undefined) {
     return [];
   }
-  return ['--', pathScope];
+  return ['--', `:(literal)${pathScope}`];
 };
 
 const nonEmptyLines = (stdout: string): string[] =>
@@ -100,7 +96,7 @@ const countRangeCommits = async (
 ): Promise<number> => {
   const stdout = await gitOrThrow(runner, {
     action: 'git rev-list --count',
-    args: ['rev-list', '--count', '--no-merges', spanOf(bounds)],
+    args: ['rev-list', '--count', '--no-merges', '--end-of-options', spanOf(bounds)],
     cwd: dir,
   });
   return Number(stdout.trim());
@@ -129,6 +125,7 @@ const listRangeCommits = async (
       `--max-count=${String(opts.limit)}`,
       LOG_FORMAT,
       '--date=short',
+      '--end-of-options',
       spanOf(opts),
     ],
     cwd: dir,
@@ -136,28 +133,6 @@ const listRangeCommits = async (
   return nonEmptyLines(stdout)
     .map((line) => parseCommitLine(line))
     .filter((commit): commit is RangeCommit => commit !== undefined);
-};
-
-const countOf = (raw: string | undefined): number => {
-  if (raw === undefined) {
-    return NONE;
-  }
-  return Number(raw);
-};
-
-// An empty `--shortstat` output (identical trees, or nothing under the path scope) is a valid
-// All-zero result, not a parse failure.
-const parseShortstat = (stdout: string): RangeShortstat => {
-  const match = SHORTSTAT_PATTERN.exec(stdout);
-  if (match === null) {
-    return { deletions: NONE, files_changed: NONE, insertions: NONE };
-  }
-  const { deletions, files, insertions } = match.groups ?? {};
-  return {
-    deletions: countOf(deletions),
-    files_changed: countOf(files),
-    insertions: countOf(insertions),
-  };
 };
 
 /** Aggregate diff stats for `<oldTag>..<newTag>`, optionally scoped to `opts.pathScope`. */
@@ -168,22 +143,10 @@ const rangeShortstat = async (
 ): Promise<RangeShortstat> => {
   const stdout = await gitOrThrow(runner, {
     action: 'git diff --shortstat',
-    args: ['diff', '--shortstat', spanOf(opts), ...scopeArgs(opts.pathScope)],
+    args: ['diff', '--shortstat', '--end-of-options', spanOf(opts), ...scopeArgs(opts.pathScope)],
     cwd: dir,
   });
   return parseShortstat(stdout);
-};
-
-// A rename/copy line is `R<score>\t<old>\t<new>` — the LAST field is always the path the file
-// Lives at in the new tree, and the status letter is the first character (`R100` → `R`).
-const parsePathLine = (line: string): ChangedPath | undefined => {
-  const fields = line.split('\t');
-  const [status] = fields;
-  const path = fields.at(LAST_FIELD);
-  if (status === undefined || path === undefined || fields.length < MIN_NAME_STATUS_FIELDS) {
-    return undefined;
-  }
-  return { path, status: status.slice(STATUS_START, STATUS_LENGTH) };
 };
 
 /** Changed paths in `<oldTag>..<newTag>` (optionally scoped), bounded to `opts.limit` entries with
@@ -193,24 +156,19 @@ const rangeNameStatus = async (
   dir: string,
   opts: RangePathsOpts,
 ): Promise<BoundedChangedPaths> => {
-  // `-c core.quotePath=false` (a git-level flag, so it must precede the subcommand) stops git
-  // From octal-escaping non-ASCII bytes in paths (`"caf\303\251.txt"`) — the returned entries
-  // Carry the real file names.
   const stdout = await gitOrThrow(runner, {
     action: 'git diff --name-status',
     args: [
-      '-c',
-      'core.quotePath=false',
       'diff',
       '--name-status',
+      '-z',
+      '--end-of-options',
       spanOf(opts),
       ...scopeArgs(opts.pathScope),
     ],
     cwd: dir,
   });
-  const paths = nonEmptyLines(stdout)
-    .map((line) => parsePathLine(line))
-    .filter((entry): entry is ChangedPath => entry !== undefined);
+  const paths = parseNameStatusStream(stdout);
   return { paths: paths.slice(NONE, opts.limit), truncated: paths.length > opts.limit };
 };
 
@@ -220,22 +178,24 @@ interface FileAtTag {
 }
 
 // `git show <tag>:<path>` exits non-zero both for a genuinely absent file (absence is data here,
-// See `showFileAtTag`'s contract) and for real failures (corrupt object store, unreadable
-// Checkout, ...). Only stderr matching one of git's known "that path/object isn't there"
-// Messages may map to `undefined`; anything else must surface as an error, or a transient
-// Failure would silently masquerade as "no changelog at this tag".
-const ABSENT_AT_TAG_PATTERN =
-  /does not exist in|exists on disk, but not in|invalid object name|bad revision|Not a valid object name/iu;
+// See `showFileAtTag`'s contract) and for real failures (unresolvable revision, corrupt object
+// Store, unreadable checkout, ...). Only stderr matching one of git's PATH-absence messages may
+// Map to `undefined`; anything else — including revision-level failures like `invalid object
+// Name` or `bad revision` — must surface as an error, or a transient failure would silently
+// Masquerade as "no changelog at this tag".
+const ABSENT_AT_TAG_PATTERN = /does not exist in|exists on disk, but not in/iu;
 
-/** Content of `target.path` as committed at `target.tag` (`git show <tag>:<path>`), or
+/** Content of `target.path` as committed at `target.tag` (`git show refs/tags/<tag>:<path>`), or
  * `undefined` when the file does not exist at that tag — absence is data here, not an error.
- * Any OTHER `git show` failure throws `validationError` carrying git's stderr. */
+ * Any OTHER `git show` failure (including an unresolvable tag) throws `validationError` carrying
+ * git's stderr. */
 const showFileAtTag = async (
   runner: Runner,
   dir: string,
   target: FileAtTag,
 ): Promise<string | undefined> => {
-  const result = await runner.run('git', ['show', `${target.tag}:${target.path}`], { cwd: dir });
+  const rev = `${qualifyTag(target.tag)}:${target.path}`;
+  const result = await runner.run('git', ['show', '--end-of-options', rev], { cwd: dir });
   if (result.exitCode === SUCCESS_EXIT_CODE) {
     return result.stdout;
   }
@@ -249,11 +209,10 @@ const showFileAtTag = async (
 export { countRangeCommits, listRangeCommits, rangeNameStatus, rangeShortstat, showFileAtTag };
 export type {
   BoundedChangedPaths,
-  ChangedPath,
   RangeBounds,
   RangeCommit,
   RangeDiffOpts,
   RangeLogOpts,
   RangePathsOpts,
-  RangeShortstat,
 };
+export type { ChangedPath, RangeShortstat } from './range-parse.ts';

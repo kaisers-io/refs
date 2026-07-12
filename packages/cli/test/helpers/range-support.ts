@@ -116,6 +116,41 @@ const setupRangeFixture = async (
   return { ctx, stdout };
 };
 
+// A ref whose tag_format renders LEADING-DASH tags ('-v1.0.0') — git accepts such refs
+// (`refs/tags/-v1.0.0` is valid), so the range queries must never let them be parsed as
+// Options. `git tag` itself refuses the name; `git update-ref` creates it.
+const DASH_REF_KEY = 'github.com/acme/dashes';
+const DASH_REF_ENTRY = {
+  default_branch: 'main',
+  description: 'Dashes',
+  tag_format: '-v{version}',
+  url: 'https://github.com/acme/dashes',
+};
+
+/** Builds a one-commit-range fixture whose two tags both start with `-`: `-v1.0.0` on the
+ * initial commit, one `dash change` commit, then `-v2.0.0`. */
+const buildDashTagFixture = async (): Promise<string> => {
+  const fixture = await createFixtureRepo();
+  await git(fixture.dir, ['update-ref', 'refs/tags/-v1.0.0', 'HEAD']);
+  await writeFile(join(fixture.dir, 'dash.txt'), 'dash v2\n');
+  await commitAll(fixture.dir, 'dash change');
+  await git(fixture.dir, ['update-ref', 'refs/tags/-v2.0.0', 'HEAD']);
+  return fixture.dir;
+};
+
+/** Bootstraps a fresh temp home and seeds `DASH_REF_KEY` (tag_format `-v{version}`) with the
+ * dash-tag fixture cloned into its checkout. */
+const setupDashRangeFixture = async (homeDir: string): Promise<RangeTestFixture> => {
+  const { ctx, stdout } = testContext();
+  ctx.runner = new SpawnRunner();
+  ctx.env['REFS_HOME'] = homeDir;
+  const home = resolveHome(ctx.env);
+  const fixtureDir = await buildDashTagFixture();
+  await cloneFixtureInto(fixtureDir, checkoutPath(home, zRefKey.parse(DASH_REF_KEY)));
+  await seedConfig(home, { [DASH_REF_KEY]: DASH_REF_ENTRY });
+  return { ctx, stdout };
+};
+
 /** Seeds `REF_KEY` WITHOUT cloning anything into its checkout path — the "missing checkout"
  * case, mirroring `tag.test.ts`'s `setupTagFixtureNoCheckout`. */
 const setupRangeFixtureNoCheckout = async (homeDir: string): Promise<RangeTestFixture> => {
@@ -148,10 +183,12 @@ const parseSoleEnvelope = (stdout: readonly string[]): RangeEnvelope => {
 };
 
 export {
+  DASH_REF_KEY,
   PACKAGE_NAME,
   parseSoleEnvelope,
   REF_KEY,
   runRangeCli,
+  setupDashRangeFixture,
   setupRangeFixture,
   setupRangeFixtureNoCheckout,
   UNKNOWN_PACKAGE_NAME,
