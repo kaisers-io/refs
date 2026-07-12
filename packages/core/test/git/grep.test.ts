@@ -27,7 +27,7 @@ describe('grepCheckout: match parsing', () => {
     const runner = new FakeRunner();
     const longLine = 'x'.repeat(LONG_LINE_LENGTH);
     runner.expect(
-      'git grep',
+      'git -c core.quotePath=false grep',
       { stdout: `src/a.ts:3:   const alpha = true;\nsrc/b.ts:7:${longLine}\n` },
       { cwd: DIR },
     );
@@ -44,12 +44,16 @@ describe('grepCheckout: match parsing', () => {
   it('passes the pattern via -e and appends pathspecs after the -- separator', async () => {
     expect.hasAssertions();
     const runner = new FakeRunner();
-    runner.expect('git grep', { exitCode: 1 });
+    runner.expect('git -c core.quotePath=false grep', { exitCode: 1 });
 
     await grepCheckout(runner, optsFor(BIG_LIMIT, ['packages/pkg', ':(exclude)dist']));
 
     const [firstCall] = runner.calls;
+    // `-c core.quotePath=false` must precede the subcommand (it is a git-level flag) so matches
+    // Carry real, un-escaped non-ASCII file names.
     expect(firstCall?.args).toStrictEqual([
+      '-c',
+      'core.quotePath=false',
       'grep',
       '-n',
       '-I',
@@ -67,7 +71,7 @@ describe('grepCheckout: limit and truncation', () => {
   it('returns at most `limit` matches and flags truncation when git produced more lines', async () => {
     expect.hasAssertions();
     const runner = new FakeRunner();
-    runner.expect('git grep', {
+    runner.expect('git -c core.quotePath=false grep', {
       stdout: 'src/a.ts:1:alpha one\nsrc/a.ts:2:alpha two\nsrc/a.ts:3:alpha three\n',
     });
 
@@ -79,13 +83,33 @@ describe('grepCheckout: limit and truncation', () => {
       { line: 2, path: 'src/a.ts', snippet: 'alpha two' },
     ]);
   });
+
+  it('reports truncated and drops the partial last line when the runner byte-capped stdout', async () => {
+    expect.hasAssertions();
+    const runner = new FakeRunner();
+    // The line count (three lines) sits UNDER the limit — only `stdoutTruncated` reveals that
+    // Output is missing; the trailing `src/c.ts:9:al` fragment was cut mid-line by the byte cap
+    // And must never be parsed as a match.
+    runner.expect('git -c core.quotePath=false grep', {
+      stdout: 'src/a.ts:1:alpha one\nsrc/b.ts:2:alpha two\nsrc/c.ts:9:al',
+      stdoutTruncated: true,
+    });
+
+    const result = await grepCheckout(runner, optsFor(BIG_LIMIT));
+
+    expect(result.truncated).toBe(true);
+    expect(result.matches).toStrictEqual([
+      { line: 1, path: 'src/a.ts', snippet: 'alpha one' },
+      { line: 2, path: 'src/b.ts', snippet: 'alpha two' },
+    ]);
+  });
 });
 
 describe('grepCheckout: exit codes', () => {
   it('treats exit 1 (no matches) as a clean empty result, not an error', async () => {
     expect.hasAssertions();
     const runner = new FakeRunner();
-    runner.expect('git grep', { exitCode: 1 });
+    runner.expect('git -c core.quotePath=false grep', { exitCode: 1 });
 
     const result = await grepCheckout(runner, optsFor(BIG_LIMIT));
 
@@ -95,7 +119,7 @@ describe('grepCheckout: exit codes', () => {
   it('surfaces any other non-zero exit as a validationError carrying stderr', async () => {
     expect.hasAssertions();
     const runner = new FakeRunner();
-    runner.expect('git grep', {
+    runner.expect('git -c core.quotePath=false grep', {
       exitCode: GREP_ERROR_EXIT_CODE,
       stderr: 'fatal: unrecognized argument\n',
     });

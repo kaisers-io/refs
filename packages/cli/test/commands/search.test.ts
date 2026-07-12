@@ -1,9 +1,11 @@
 import {
   ALPHA_MATCHES,
   DIST_MATCH,
+  NESTED_DIST_MATCH,
   PKG_MATCH,
   SEARCH_PACKAGE_NAME,
   SEARCH_REF_KEY,
+  UTF8_MATCH,
   expectedSearchData,
   parseSoleSearchEnvelope,
   runSearchCli,
@@ -15,10 +17,10 @@ import { EXIT } from '@kaisers-io/refs-core';
 
 // Integration suite for `refs search`, against a real git fixture committed directly at the
 // ref's checkout path (see `search-support.ts` — `git grep` only searches tracked files). Test
-// case labels (a)-(g) mirror the task brief's coverage list. The command is driven through a
-// locally-built program because `search` is deliberately not registered in `registry.ts` yet.
-// Every case builds a real git fixture in setup, so each `it` gets the same generous per-test
-// timeout `tag.test.ts` uses for its own real-git cases.
+// case labels (a)-(g) mirror the task brief's coverage list. The command is driven through the
+// registry-built program (`search` is registered via `registrars-extra.ts`). Every case builds
+// a real git fixture in setup, so each `it` gets the same generous per-test timeout
+// `tag.test.ts` uses for its own real-git cases.
 const TEST_TIMEOUT_MS = 30_000;
 const FIRST_INDEX = 0;
 const LIMIT_TWO = 2;
@@ -38,7 +40,8 @@ describe('refs search: happy path', () => {
 
           const envelope = parseSoleSearchEnvelope(stdout);
           expect(envelope.ok).toBe(true);
-          // No `package` key at all: an unscoped search omits the field from the envelope.
+          // An unscoped search reports an explicit `package: null` (baked into the helper's
+          // Default payload), mirroring `range`/`resolve` — never a dropped key.
           expect(envelope.data).toStrictEqual(expectedSearchData('needle_alpha', ALPHA_MATCHES));
         }),
       );
@@ -131,6 +134,74 @@ describe('refs search: default excludes', () => {
           expect(envelope.data).toStrictEqual(
             expectedSearchData('needle_dist', [DIST_MATCH], { excludes_applied: [] }),
           );
+        }),
+      );
+    },
+    TEST_TIMEOUT_MS,
+  );
+});
+
+describe('refs search: nested default excludes', () => {
+  it(
+    '(c2) a needle under a NESTED dist/ is filtered by default (glob magic, not root-only)',
+    async () => {
+      expect.hasAssertions();
+      await withResetExitCode(() =>
+        withTempHome(async (homeDir) => {
+          const { ctx, stdout } = await setupSearchFixture(homeDir);
+
+          await runSearchCli(ctx, [SEARCH_REF_KEY, 'needle_nested', '--json']);
+
+          const envelope = parseSoleSearchEnvelope(stdout);
+          expect(envelope.ok).toBe(true);
+          expect(envelope.data).toStrictEqual(expectedSearchData('needle_nested', []));
+        }),
+      );
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    '(d2) --no-default-excludes finds the nested dist/ needle',
+    async () => {
+      expect.hasAssertions();
+      await withResetExitCode(() =>
+        withTempHome(async (homeDir) => {
+          const { ctx, stdout } = await setupSearchFixture(homeDir);
+
+          await runSearchCli(ctx, [
+            SEARCH_REF_KEY,
+            'needle_nested',
+            '--no-default-excludes',
+            '--json',
+          ]);
+
+          const envelope = parseSoleSearchEnvelope(stdout);
+          expect(envelope.ok).toBe(true);
+          expect(envelope.data).toStrictEqual(
+            expectedSearchData('needle_nested', [NESTED_DIST_MATCH], { excludes_applied: [] }),
+          );
+        }),
+      );
+    },
+    TEST_TIMEOUT_MS,
+  );
+});
+
+describe('refs search: non-ASCII paths', () => {
+  it(
+    '(c3) a match in a non-ASCII file name reports the real path, not an octal-escaped one',
+    async () => {
+      expect.hasAssertions();
+      await withResetExitCode(() =>
+        withTempHome(async (homeDir) => {
+          const { ctx, stdout } = await setupSearchFixture(homeDir);
+
+          await runSearchCli(ctx, [SEARCH_REF_KEY, 'needle_utf8', '--json']);
+
+          const envelope = parseSoleSearchEnvelope(stdout);
+          expect(envelope.ok).toBe(true);
+          expect(envelope.data).toStrictEqual(expectedSearchData('needle_utf8', [UTF8_MATCH]));
         }),
       );
     },

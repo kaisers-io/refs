@@ -193,9 +193,19 @@ const rangeNameStatus = async (
   dir: string,
   opts: RangePathsOpts,
 ): Promise<BoundedChangedPaths> => {
+  // `-c core.quotePath=false` (a git-level flag, so it must precede the subcommand) stops git
+  // From octal-escaping non-ASCII bytes in paths (`"caf\303\251.txt"`) — the returned entries
+  // Carry the real file names.
   const stdout = await gitOrThrow(runner, {
     action: 'git diff --name-status',
-    args: ['diff', '--name-status', spanOf(opts), ...scopeArgs(opts.pathScope)],
+    args: [
+      '-c',
+      'core.quotePath=false',
+      'diff',
+      '--name-status',
+      spanOf(opts),
+      ...scopeArgs(opts.pathScope),
+    ],
     cwd: dir,
   });
   const paths = nonEmptyLines(stdout)
@@ -209,18 +219,31 @@ interface FileAtTag {
   tag: string;
 }
 
+// `git show <tag>:<path>` exits non-zero both for a genuinely absent file (absence is data here,
+// See `showFileAtTag`'s contract) and for real failures (corrupt object store, unreadable
+// Checkout, ...). Only stderr matching one of git's known "that path/object isn't there"
+// Messages may map to `undefined`; anything else must surface as an error, or a transient
+// Failure would silently masquerade as "no changelog at this tag".
+const ABSENT_AT_TAG_PATTERN =
+  /does not exist in|exists on disk, but not in|invalid object name|bad revision|Not a valid object name/iu;
+
 /** Content of `target.path` as committed at `target.tag` (`git show <tag>:<path>`), or
- * `undefined` when the file does not exist at that tag — absence is data here, not an error. */
+ * `undefined` when the file does not exist at that tag — absence is data here, not an error.
+ * Any OTHER `git show` failure throws `validationError` carrying git's stderr. */
 const showFileAtTag = async (
   runner: Runner,
   dir: string,
   target: FileAtTag,
 ): Promise<string | undefined> => {
   const result = await runner.run('git', ['show', `${target.tag}:${target.path}`], { cwd: dir });
-  if (result.exitCode !== SUCCESS_EXIT_CODE) {
+  if (result.exitCode === SUCCESS_EXIT_CODE) {
+    return result.stdout;
+  }
+  if (ABSENT_AT_TAG_PATTERN.test(result.stderr)) {
     return undefined;
   }
-  return result.stdout;
+  const detail = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
+  throw validationError(`git show failed: ${detail}`);
 };
 
 export { countRangeCommits, listRangeCommits, rangeNameStatus, rangeShortstat, showFileAtTag };

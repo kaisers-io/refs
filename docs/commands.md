@@ -612,7 +612,8 @@ refs range tanstack-query 5.0.0 5.20.0 --package @tanstack/query-core --json
 is never dumped wholesale).
 
 Exit codes: `4` (ref/package not found, checkout missing, or a tag doesn't exist for a
-version), `2` (ambiguous suffix, invalid `--limit`).
+version), `2` (ambiguous suffix, invalid `--limit`), `3` (a range git query failed, e.g.
+broken checkout).
 
 ## `refs search`
 
@@ -641,11 +642,12 @@ refs search tanstack-query "retryDelay" --package @tanstack/query-core --json
   "ok": true,
   "data": {
     "key": "github.com/colinhacks/zod",
+    "package": null,
     "pattern": "coerce",
     "matches": [{ "path": "src/types.ts", "line": 4211, "snippet": "export const coerce = { ... }" }],
     "match_count": 1,
     "truncated": false,
-    "excludes_applied": [":(exclude)dist", ":(exclude)node_modules"]
+    "excludes_applied": [":(glob,exclude)**/dist/**", ":(glob,exclude)**/node_modules/**", ":(exclude)*.lock"]
   },
   "warnings": []
 }

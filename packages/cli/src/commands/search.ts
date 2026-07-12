@@ -1,15 +1,18 @@
-import type { Config, GrepMatch, GrepResult, RefEntry, RefKey } from '@kaisers-io/refs-core';
+import type { GrepMatch, GrepResult, RefEntry, RefKey } from '@kaisers-io/refs-core';
 import {
   checkoutPath,
   grepCheckout,
-  isGitCheckout,
-  notFoundError,
   readConfig,
   resolveHome,
-  usageError,
   // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
 import { emit, wrapAction } from '../output.ts';
+import {
+  parsePositiveLimit,
+  requireCheckout,
+  requireEntry,
+  requirePackage,
+} from './ref-context.ts';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
 import { matchRefKey } from './list.ts';
@@ -19,17 +22,17 @@ import { matchRefKey } from './list.ts';
 // Agents: a hint tool, not a gate. It wraps core's `grepCheckout` (`git grep -n -I
 // --extended-regexp`), caps the returned matches at `--limit` (default 50), and ALWAYS reports
 // `truncated` so an agent knows when more matches exist than it was shown. Build artifacts and
-// Lockfiles are filtered by default via `:(exclude)` pathspec magic; `--no-default-excludes`
+// Lockfiles are filtered by default via git exclude pathspec magic; `--no-default-excludes`
 // Lifts that filter, and `excludes_applied` in the output always states exactly what was applied
-// (empty when disabled), so nothing is ever filtered invisibly. NOTE: deliberately not wired into
-// `registry.ts`/`registrars-more.ts` yet — the orchestrator adds the registration separately.
+// (empty when disabled), so nothing is ever filtered invisibly. Registered into the command
+// Registry via `registrars-extra.ts`, alongside `range.ts`.
 
 interface SearchData {
   excludes_applied: string[];
   key: string;
   match_count: number;
   matches: GrepMatch[];
-  package?: string;
+  package: string | null;
   pattern: string;
   truncated: boolean;
 }
@@ -48,25 +51,33 @@ interface SearchArgs {
 }
 
 const DEFAULT_LIMIT = 50;
-const MIN_LIMIT = 1;
 const NO_GLOBS: string[] = [];
 
+// JSON contract: an absent `--package` serializes as an explicit `null`, never a dropped key —
+// Mirroring `range.ts`/`resolve.ts`, so agents can branch on the field without existence checks.
+// eslint-disable-next-line unicorn/no-null -- see comment above
+const JSON_NULL = null;
+
 // Directories and file patterns a coding agent almost never wants grep hits from: build output,
-// Vendored/installed dependencies, coverage reports, minified bundles, and lockfiles. Applied as
-// `:(exclude)` pathspec-magic entries (git's own exclude syntax) unless `--no-default-excludes`.
-const DEFAULT_EXCLUDES = [
-  'dist',
-  'build',
-  'out',
-  'vendor',
-  'node_modules',
-  'coverage',
-  '*.min.*',
-  '*.lock',
-  'package-lock.json',
-  'pnpm-lock.yaml',
-  'yarn.lock',
-] as const;
+// Vendored/installed dependencies, coverage reports, minified bundles, and lockfiles. Three
+// Shapes, each verified against real git pathspec semantics:
+// - directory names use `:(glob,exclude)**/<dir>/**` so NESTED occurrences
+//   (`packages/foo/dist/…`) are filtered too — a bare `:(exclude)dist` only matches the
+//   repo-root directory, and glob's leading `**/` also matches at the root, so one pattern
+//   covers both;
+// - wildcard file patterns stay bare `:(exclude)` — fnmatch's `*` crosses `/`, so `*.lock`
+//   already matches `packages/foo/nested.lock`;
+// - literal file names need the same `**/` glob treatment as directories — a bare
+//   `:(exclude)package-lock.json` only matches at the repo root.
+const EXCLUDED_DIRS = ['dist', 'build', 'out', 'vendor', 'node_modules', 'coverage'] as const;
+const EXCLUDED_FILE_WILDCARDS = ['*.min.*', '*.lock'] as const;
+const EXCLUDED_FILE_NAMES = ['package-lock.json', 'pnpm-lock.yaml', 'yarn.lock'] as const;
+
+const DEFAULT_EXCLUDE_PATHSPECS: readonly string[] = [
+  ...EXCLUDED_DIRS.map((dir) => `:(glob,exclude)**/${dir}/**`),
+  ...EXCLUDED_FILE_WILDCARDS.map((pattern) => `:(exclude)${pattern}`),
+  ...EXCLUDED_FILE_NAMES.map((name) => `:(glob,exclude)**/${name}`),
+];
 
 // Returns the exact pathspec entries handed to git — the same strings surfaced verbatim as
 // `excludes_applied`, so the agent sees precisely what was filtered, not a paraphrase of it.
@@ -74,41 +85,17 @@ const excludePathspecs = (defaultExcludes: boolean): string[] => {
   if (!defaultExcludes) {
     return [];
   }
-  return DEFAULT_EXCLUDES.map((entry) => `:(exclude)${entry}`);
-};
-
-// `matchRefKey` only ever returns a key it found among `Object.keys(config.refs)`, so this lookup
-// can never actually miss — the throw exists purely to satisfy `noUncheckedIndexedAccess`,
-// mirroring `show.ts`/`tag.ts`'s `requireEntry`.
-const requireEntry = (config: Config, key: RefKey): RefEntry => {
-  const entry = config.refs[key];
-  if (entry === undefined) {
-    throw new Error(`internal: matched ref key '${key}' is missing from config.refs`);
-  }
-  return entry;
-};
-
-/** Guards against a configured ref whose checkout directory is missing — first-class state
- * elsewhere (`refs list` reports it, `refs sync` repairs it) that would otherwise surface here as
- * a low-level git/cwd error out of `grepCheckout`. Mirrors `tag.ts`'s `requireCheckout`. */
-const requireCheckout = (dest: string, key: RefKey): void => {
-  if (!isGitCheckout(dest)) {
-    throw notFoundError(`checkout for '${key}' is missing — run: refs sync ${key}`);
-  }
+  return [...DEFAULT_EXCLUDE_PATHSPECS];
 };
 
 /** The pathspec scoping the search to the named package's registered `path`, or none when
- * `--package` was not given. An unregistered name is a `notFoundError`, exactly like an
- * unresolvable `<ref>` is — mirroring `tag.ts`'s `formatFor`. */
+ * `--package` was not given. An unregistered name is a `notFoundError` (via `requirePackage`),
+ * exactly like an unresolvable `<ref>` is. */
 const packageScope = (entry: RefEntry, key: RefKey, packageName: string | undefined): string[] => {
   if (packageName === undefined) {
     return [];
   }
-  const pkg = entry.packages?.[packageName];
-  if (pkg === undefined) {
-    throw notFoundError(`no package '${packageName}' registered on ref '${key}'`);
-  }
-  return [pkg.path];
+  return [requirePackage(entry, key, packageName).path];
 };
 
 interface SearchOutcome {
@@ -117,23 +104,22 @@ interface SearchOutcome {
   result: GrepResult;
 }
 
-// `exactOptionalPropertyTypes` forbids assigning a possibly-`undefined` value onto the optional
-// `package` property, so it is only set when `--package` was actually given — an unscoped
-// Search's envelope simply omits the field (never `null`, per repo style).
-const buildSearchData = (args: SearchArgs, outcome: SearchOutcome): SearchData => {
-  const data: SearchData = {
-    excludes_applied: outcome.excludes,
-    key: outcome.key,
-    match_count: outcome.result.matches.length,
-    matches: outcome.result.matches,
-    pattern: args.pattern,
-    truncated: outcome.result.truncated,
-  };
-  if (args.opts.packageName !== undefined) {
-    data.package = args.opts.packageName;
+const orNull = <Value>(value: Value | undefined): Value | null => {
+  if (value === undefined) {
+    return JSON_NULL;
   }
-  return data;
+  return value;
 };
+
+const buildSearchData = (args: SearchArgs, outcome: SearchOutcome): SearchData => ({
+  excludes_applied: outcome.excludes,
+  key: outcome.key,
+  match_count: outcome.result.matches.length,
+  matches: outcome.result.matches,
+  package: orNull(args.opts.packageName),
+  pattern: args.pattern,
+  truncated: outcome.result.truncated,
+});
 
 const runSearch = async (ctx: CliContext, args: SearchArgs): Promise<SearchData> => {
   const home = resolveHome(ctx.env);
@@ -173,20 +159,6 @@ const searchHuman = (data: SearchData): string[] => [
 /** Accumulates repeated `--glob` flags; commander hands the previous array back each time. */
 const collectGlob = (value: string, previous: string[]): string[] => [...previous, value];
 
-// Deliberately parsed here rather than via commander's parseArg seam: throwing in a parseArg
-// Surfaces as a CommanderError, not the standard usage-error envelope — parsing inside the action
-// Keeps a bad `--limit` on `wrapAction`'s ordinary error-rendering path.
-const parseLimit = (raw: string | undefined): number => {
-  if (raw === undefined) {
-    return DEFAULT_LIMIT;
-  }
-  const limit = Number(raw);
-  if (!Number.isInteger(limit) || limit < MIN_LIMIT) {
-    throw usageError(`--limit must be a positive integer, got '${raw}'`);
-  }
-  return limit;
-};
-
 interface LocalSearchOptions {
   defaultExcludes: boolean;
   glob: string[];
@@ -200,7 +172,7 @@ const buildSearchOptions = (localOpts: LocalSearchOptions): SearchOptions => {
   const opts: SearchOptions = {
     defaultExcludes: localOpts.defaultExcludes,
     globs: localOpts.glob,
-    limit: parseLimit(localOpts.limit),
+    limit: parsePositiveLimit(localOpts.limit, { def: DEFAULT_LIMIT }),
   };
   if (localOpts.package !== undefined) {
     opts.packageName = localOpts.package;

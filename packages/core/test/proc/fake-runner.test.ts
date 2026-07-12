@@ -29,3 +29,18 @@ describe('queued-response ordering (FakeRunner)', () => {
     expect(runner.calls).toHaveLength(THREE_CALLS);
   });
 });
+
+describe('stdoutTruncated passthrough (FakeRunner)', () => {
+  it('mirrors SpawnRunner: present-and-true only when scripted, absent otherwise', async () => {
+    expect.hasAssertions();
+    const runner = new FakeRunner();
+    runner.expect('git grep', { stdout: 'partial', stdoutTruncated: true });
+    runner.expect('git grep', { stdout: 'complete' });
+
+    const capped = await runner.run('git', ['grep']);
+    const clean = await runner.run('git', ['grep']);
+
+    expect(capped.stdoutTruncated).toBe(true);
+    expect('stdoutTruncated' in clean).toBe(false);
+  });
+});
