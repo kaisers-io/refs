@@ -16,8 +16,9 @@ default you may deviate from when the situation calls for it.
    commit shas/tags from the checkout — never a summary, digest, or search result
    as if it were the source.
 3. **Never present truncated output as complete.** If a command's output was
-   bounded (`--oneline` on a huge range, a capped grep, a `truncated` flag in
-   JSON), either widen the search or say explicitly what you did not inspect.
+   bounded or capped (`git log --max-count=<n>`, a capped grep, a `truncated`
+   flag in JSON), either widen the search or say explicitly what you did not
+   inspect.
 4. **Ground answers in the checkout, not training knowledge.** If the ref isn't
    tracked or the checkout can't answer the question, say so instead of filling
    the gap from memory.
@@ -155,49 +156,50 @@ the raw source yourself into the main thread.
    manifest (`package.json` + `package-lock.json`/`pnpm-lock.yaml`/`npm-shrinkwrap.json`
    for npm; the equivalent lockfile for other ecosystems). This is the project being
    worked on, not the ref checkout.
-2. Resolve each version to a concrete tag via the ref's (or package's) `tag_format`:
+2. Get the one-call digest first — `refs range` resolves both versions to tags
+   itself (same `tag_format` rules as `refs tag`, including the package-level
+   override), so no separate tag-resolution step is needed:
 
    ```bash
-   refs tag <ref> <old-version> --json
-   refs tag <ref> <new-version> --json
+   # Commit count + subjects, diff stats, changed paths, and the changelog
+   # excerpt between the two versions, in one envelope:
+   refs range <ref> <old-version> <new-version> --json   # --package <name> in monorepos
    ```
 
-   Add `--package <name>` when the version belongs to one package of a monorepo ref
-   (tag conventions can differ per package). Each call returns:
+   Add `--package <name>` when the versions belong to one package of a monorepo
+   ref (tag conventions can differ per package). A `4` exit means a tag doesn't
+   exist for one of the versions under the applicable tag_format — double-check
+   the version strings before assuming the release doesn't exist.
 
+   The digest is a map, not a source: check its `truncated` flags before treating
+   any list as complete, and cite commits/files from the checkout, never from the
+   digest itself.
+
+3. Where the digest was truncated or too coarse, drill into the range **locally**,
+   read-only (worker or inline, per the dosing rule), with raw git. For that you
+   need concrete tag names — resolve each version once via:
+
+   ```bash
+   refs tag <ref> <version> --json   # --package <name> in monorepos
    ```
-   { key, version, tag, ref_path }
-   ```
 
-   `ref_path` is a git ref (e.g. `refs/tags/<tag>`), not a filesystem path.
-
-   A `4` exit means the tag doesn't exist for that version/tag_format — double-check
-   the version string before assuming the release doesn't exist.
-
-3. Inspect the range **locally**, read-only (worker or inline, per the dosing rule).
+   which returns `{ key, version, tag, ref_path }` (`ref_path` is a git ref,
+   e.g. `refs/tags/<tag>`, not a filesystem path). Don't call it before `refs
+range` — range already resolves both versions on its own.
 
    **Recommended diff funnel** — start cheap, drill down only where the question
    points; if the funnel doesn't answer it, a full diff is always available:
 
    ```bash
-   # 1. One-call digest: commit count + subjects, diff stats, changed paths, and
-   #    the changelog excerpt between the two versions (steps 2 of "Version
-   #    questions" is built in — it resolves both versions itself):
-   refs range <ref> <old-version> <new-version> --json   # --package <name> in monorepos
-
-   # 2. Where the digest was truncated or too coarse, the same data raw:
+   # 1. The same data the digest showed, raw and unbounded:
    git show <new-tag>:CHANGELOG.md
    git log <old-tag>..<new-tag> --oneline --no-merges
    git diff <old-tag>..<new-tag> --stat        # add -- <package-path> in monorepos
 
-   # 3. Only then, targeted content:
+   # 2. Only then, targeted content:
    git show <sha> -- <path>
    git diff <old-tag>..<new-tag> -- <path>
    ```
-
-   The digest is a map, not a source: check its `truncated` flags before treating
-   any list as complete, and cite commits/files from the checkout, never from the
-   digest itself.
 
    Scope to the package path (`-- packages/<name>`) in monorepos — most of a wide
    range's noise is usually other packages. The worker still returns only the

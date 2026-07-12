@@ -3,9 +3,11 @@ import { FakeRunner } from '../../src/proc/fake-runner.ts';
 import { grepCheckout } from '../../src/git/grep.ts';
 
 // Scripted-runner unit suite for `grepCheckout` — real-git behaviour (tracked files, pathspec
-// Excludes, package scoping) is covered end-to-end by the CLI's `search.test.ts`; this suite pins
-// The exit-code contract (0 = matches, 1 = clean no-match, anything else = validationError) and
-// The parsing/bounding rules (limit, truncation flag, snippet trim + cap) against scripted output.
+// Excludes, package scoping, delimiter-bearing file names) is covered end-to-end by the CLI's
+// Search suites; this suite pins the exit-code contract (0 = matches, 1 = clean no-match,
+// Anything else = validationError) and the parsing/bounding rules (NUL-field `-z` records,
+// Limit, truncation flag, snippet trim + cap) against scripted output. One `git grep -z -n`
+// Record is `<path> NUL <line> NUL <content> NEWLINE` (empirically verified layout).
 
 const DIR = '/tmp/checkout';
 const SMALL_LIMIT = 2;
@@ -21,14 +23,20 @@ const optsFor = (limit: number, pathspecs: readonly string[] = []) => ({
   pattern: 'alpha',
 });
 
+const zRecord = (path: string, line: string, content: string): string =>
+  `${path}\0${line}\0${content}\n`;
+
 describe('grepCheckout: match parsing', () => {
-  it('parses `path:line:content` lines, trimming and capping each snippet', async () => {
+  it('parses NUL-field records, trimming and capping each snippet', async () => {
     expect.hasAssertions();
     const runner = new FakeRunner();
     const longLine = 'x'.repeat(LONG_LINE_LENGTH);
     runner.expect(
-      'git -c core.quotePath=false grep',
-      { stdout: `src/a.ts:3:   const alpha = true;\nsrc/b.ts:7:${longLine}\n` },
+      'git grep',
+      {
+        stdout:
+          zRecord('src/a.ts', '3', '   const alpha = true;') + zRecord('src/b.ts', '7', longLine),
+      },
       { cwd: DIR },
     );
 
@@ -41,27 +49,37 @@ describe('grepCheckout: match parsing', () => {
     ]);
   });
 
-  it('passes the pattern via -e and appends pathspecs after the -- separator', async () => {
+  it('returns the full path for a file name containing a colon', async () => {
     expect.hasAssertions();
     const runner = new FakeRunner();
-    runner.expect('git -c core.quotePath=false grep', { exitCode: 1 });
+    runner.expect('git grep', { stdout: zRecord('src/a:b.ts', '3', 'alpha here') }, { cwd: DIR });
 
-    await grepCheckout(runner, optsFor(BIG_LIMIT, ['packages/pkg', ':(exclude)dist']));
+    const result = await grepCheckout(runner, optsFor(BIG_LIMIT));
+
+    expect(result.truncated).toBe(false);
+    expect(result.matches).toStrictEqual([{ line: 3, path: 'src/a:b.ts', snippet: 'alpha here' }]);
+  });
+});
+
+describe('grepCheckout: argument construction', () => {
+  it('passes -z, the pattern via -e, and appends pathspecs after the -- separator', async () => {
+    expect.hasAssertions();
+    const runner = new FakeRunner();
+    runner.expect('git grep', { exitCode: 1 });
+
+    await grepCheckout(runner, optsFor(BIG_LIMIT, [':(glob)src/**', ':(exclude)dist']));
 
     const [firstCall] = runner.calls;
-    // `-c core.quotePath=false` must precede the subcommand (it is a git-level flag) so matches
-    // Carry real, un-escaped non-ASCII file names.
     expect(firstCall?.args).toStrictEqual([
-      '-c',
-      'core.quotePath=false',
       'grep',
+      '-z',
       '-n',
       '-I',
       '--extended-regexp',
       '-e',
       'alpha',
       '--',
-      'packages/pkg',
+      ':(glob)src/**',
       ':(exclude)dist',
     ]);
   });
@@ -71,8 +89,11 @@ describe('grepCheckout: limit and truncation', () => {
   it('returns at most `limit` matches and flags truncation when git produced more lines', async () => {
     expect.hasAssertions();
     const runner = new FakeRunner();
-    runner.expect('git -c core.quotePath=false grep', {
-      stdout: 'src/a.ts:1:alpha one\nsrc/a.ts:2:alpha two\nsrc/a.ts:3:alpha three\n',
+    runner.expect('git grep', {
+      stdout:
+        zRecord('src/a.ts', '1', 'alpha one') +
+        zRecord('src/a.ts', '2', 'alpha two') +
+        zRecord('src/a.ts', '3', 'alpha three'),
     });
 
     const result = await grepCheckout(runner, optsFor(SMALL_LIMIT));
@@ -88,10 +109,14 @@ describe('grepCheckout: limit and truncation', () => {
     expect.hasAssertions();
     const runner = new FakeRunner();
     // The line count (three lines) sits UNDER the limit — only `stdoutTruncated` reveals that
-    // Output is missing; the trailing `src/c.ts:9:al` fragment was cut mid-line by the byte cap
-    // And must never be parsed as a match.
-    runner.expect('git -c core.quotePath=false grep', {
-      stdout: 'src/a.ts:1:alpha one\nsrc/b.ts:2:alpha two\nsrc/c.ts:9:al',
+    // Output is missing; the trailing `src/c.ts NUL 9 NUL al` fragment was cut mid-line by the
+    // Byte cap and must never be parsed as a match.
+    const partialFragment = ['src/c.ts', '9', 'al'].join('\0');
+    runner.expect('git grep', {
+      stdout:
+        zRecord('src/a.ts', '1', 'alpha one') +
+        zRecord('src/b.ts', '2', 'alpha two') +
+        partialFragment,
       stdoutTruncated: true,
     });
 
@@ -109,7 +134,7 @@ describe('grepCheckout: exit codes', () => {
   it('treats exit 1 (no matches) as a clean empty result, not an error', async () => {
     expect.hasAssertions();
     const runner = new FakeRunner();
-    runner.expect('git -c core.quotePath=false grep', { exitCode: 1 });
+    runner.expect('git grep', { exitCode: 1 });
 
     const result = await grepCheckout(runner, optsFor(BIG_LIMIT));
 
@@ -119,7 +144,7 @@ describe('grepCheckout: exit codes', () => {
   it('surfaces any other non-zero exit as a validationError carrying stderr', async () => {
     expect.hasAssertions();
     const runner = new FakeRunner();
-    runner.expect('git -c core.quotePath=false grep', {
+    runner.expect('git grep', {
       exitCode: GREP_ERROR_EXIT_CODE,
       stderr: 'fatal: unrecognized argument\n',
     });

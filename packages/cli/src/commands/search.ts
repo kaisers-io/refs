@@ -2,8 +2,10 @@ import type { GrepMatch, GrepResult, RefEntry, RefKey } from '@kaisers-io/refs-c
 import {
   checkoutPath,
   grepCheckout,
+  notFoundError,
   readConfig,
   resolveHome,
+  usageError,
   // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
 import { emit, wrapAction } from '../output.ts';
@@ -15,17 +17,22 @@ import {
 } from './ref-context.ts';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { matchRefKey } from './list.ts';
 
-// `refs search <ref> <pattern> [--package <name>] [--limit <n>] [--glob <pathspec>]
+// `refs search <ref> <pattern> [--package <name>] [--limit <n>] [--glob <pattern>]
 // [--no-default-excludes]` — a bounded, structured code search over a ref's checkout for coding
-// Agents: a hint tool, not a gate. It wraps core's `grepCheckout` (`git grep -n -I
+// Agents: a hint tool, not a gate. It wraps core's `grepCheckout` (`git grep -z -n -I
 // --extended-regexp`), caps the returned matches at `--limit` (default 50), and ALWAYS reports
 // `truncated` so an agent knows when more matches exist than it was shown. Build artifacts and
 // Lockfiles are filtered by default via git exclude pathspec magic; `--no-default-excludes`
 // Lifts that filter, and `excludes_applied` in the output always states exactly what was applied
-// (empty when disabled), so nothing is ever filtered invisibly. Registered into the command
-// Registry via `registrars-extra.ts`, alongside `range.ts`.
+// (empty when disabled), so nothing is ever filtered invisibly. `--package` is a hard boundary:
+// The search runs WITH THE PACKAGE DIRECTORY AS CWD (never by passing the configured path to git
+// As a pathspec, where fnmatch metacharacters could expand it), so user `--glob` patterns apply
+// Relative to — and strictly inside — the package. Registered into the command registry via
+// `registrars-extra.ts`, alongside `range.ts`.
 
 interface SearchData {
   excludes_applied: string[];
@@ -88,14 +95,65 @@ const excludePathspecs = (defaultExcludes: boolean): string[] => {
   return [...DEFAULT_EXCLUDE_PATHSPECS];
 };
 
-/** The pathspec scoping the search to the named package's registered `path`, or none when
- * `--package` was not given. An unregistered name is a `notFoundError` (via `requirePackage`),
- * exactly like an unresolvable `<ref>` is. */
-const packageScope = (entry: RefEntry, key: RefKey, packageName: string | undefined): string[] => {
-  if (packageName === undefined) {
-    return [];
+// `--glob` accepts a PLAIN glob pattern, never raw pathspec magic: a leading `:` is rejected so
+// A caller can never smuggle `:(exclude)`/`:(top)`/... through, and the accepted pattern is
+// Wrapped as `:(glob)<pattern>` ourselves (glob semantics: `*` stops at `/`, `**` crosses it).
+const PATHSPEC_MAGIC_PREFIX = ':';
+const toGlobPathspec = (pattern: string): string => {
+  if (pattern.startsWith(PATHSPEC_MAGIC_PREFIX)) {
+    throw usageError('--glob takes a plain glob pattern, not a git pathspec');
   }
-  return [requirePackage(entry, key, packageName).path];
+  return `:(glob)${pattern}`;
+};
+
+/** The registered `path` of the named package, or `undefined` when `--package` was not given. An
+ * unregistered name is a `notFoundError` (via `requirePackage`), exactly like an unresolvable
+ * `<ref>` is. */
+const packagePathOf = (
+  entry: RefEntry,
+  key: RefKey,
+  packageName: string | undefined,
+): string | undefined => {
+  if (packageName === undefined) {
+    return undefined;
+  }
+  return requirePackage(entry, key, packageName).path;
+};
+
+/** Where `git grep` runs: the package directory itself when `--package` is given (the boundary
+ * is the process cwd — the configured path is NEVER handed to git as a pathspec, so it cannot be
+ * interpreted as glob/magic), else the checkout root. A package path of `.` means the whole
+ * repo. */
+const searchDir = (dest: string, packagePath: string | undefined): string => {
+  if (packagePath === undefined || packagePath === '.') {
+    return dest;
+  }
+  return join(dest, packagePath);
+};
+
+/** Guards the resolved search directory: a configured package path that is missing from the
+ * checkout (config drift, stale checkout) surfaces as a first-class not_found — never as a
+ * low-level spawn/cwd error from running git inside a nonexistent directory. */
+const requireSearchDir = (dir: string, key: RefKey): void => {
+  // eslint-disable-next-line node/no-sync -- cheap synchronous existence check, mirrors core's isGitCheckout
+  if (!existsSync(dir)) {
+    throw notFoundError(
+      `package path '${dir}' is missing from the checkout — run: refs sync ${key}`,
+    );
+  }
+};
+
+/** Re-anchors package-relative match paths at the checkout root by plain string join — git never
+ * sees (or interprets) the configured package path. */
+const prefixMatches = (result: GrepResult, packagePath: string | undefined): GrepResult => {
+  if (packagePath === undefined || packagePath === '.') {
+    return result;
+  }
+  const prefixed = result.matches.map((match) => ({
+    ...match,
+    path: `${packagePath}/${match.path}`,
+  }));
+  return { matches: prefixed, truncated: result.truncated };
 };
 
 interface SearchOutcome {
@@ -121,24 +179,38 @@ const buildSearchData = (args: SearchArgs, outcome: SearchOutcome): SearchData =
   truncated: outcome.result.truncated,
 });
 
-const runSearch = async (ctx: CliContext, args: SearchArgs): Promise<SearchData> => {
+interface SearchTarget {
+  dest: string;
+  entry: RefEntry;
+  key: RefKey;
+}
+
+/** Resolves the query to a configured ref with a present checkout — shared config/checkout
+ * plumbing split out of `runSearch` purely for the per-function statement cap. */
+const loadSearchTarget = async (ctx: CliContext, query: string): Promise<SearchTarget> => {
   const home = resolveHome(ctx.env);
   const config = await readConfig(home);
-  const key = matchRefKey(config, args.query);
+  const key = matchRefKey(config, query);
   const entry = requireEntry(config, key);
   const dest = checkoutPath(home, key);
   requireCheckout(dest, key);
+  return { dest, entry, key };
+};
+
+const runSearch = async (ctx: CliContext, args: SearchArgs): Promise<SearchData> => {
+  const { dest, entry, key } = await loadSearchTarget(ctx, args.query);
+  const globs = args.opts.globs.map((pattern) => toGlobPathspec(pattern));
+  const packagePath = packagePathOf(entry, key, args.opts.packageName);
   const excludes = excludePathspecs(args.opts.defaultExcludes);
-  const result = await grepCheckout(ctx.runner, {
-    dir: dest,
+  const dir = searchDir(dest, packagePath);
+  requireSearchDir(dir, key);
+  const raw = await grepCheckout(ctx.runner, {
+    dir,
     limit: args.opts.limit,
-    pathspecs: [
-      ...packageScope(entry, key, args.opts.packageName),
-      ...args.opts.globs,
-      ...excludes,
-    ],
+    pathspecs: [...globs, ...excludes],
     pattern: args.pattern,
   });
+  const result = prefixMatches(raw, packagePath);
   return buildSearchData(args, { excludes, key, result });
 };
 
@@ -189,8 +261,8 @@ const registerSearch = (program: RefsCommand, ctx: CliContext): void => {
     .option('--package <name>', "scope the search to this package's registered path")
     .option('--limit <n>', `maximum matches to return (default ${DEFAULT_LIMIT})`)
     .option(
-      '--glob <pathspec>',
-      'additional git pathspec to scope the search (repeatable)',
+      '--glob <pattern>',
+      'plain glob pattern to scope the search (repeatable; relative to the package path when --package is given)',
       collectGlob,
       NO_GLOBS,
     )

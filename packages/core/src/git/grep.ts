@@ -29,29 +29,32 @@ interface GrepResult {
 const MATCHES_EXIT_CODE = 0;
 const NO_MATCHES_EXIT_CODE = 1;
 const NO_PATHSPECS = 0;
+const NO_FIELDS = 0;
 const SNIPPET_START = 0;
 const LAST_LINE = -1;
 /** Hard cap on each returned snippet, so one pathological (e.g. minified) line cannot blow up the
  * structured output a coding agent has to ingest. */
 const MAX_SNIPPET_LENGTH = 200;
 
-// One `git grep -n` output line: `<path>:<line>:<content>`. `[^:]+` deliberately stops the path
-// At the first colon — the safe-segment rules (schemas/primitives.ts) already forbid colons in
-// The paths this tool manages, and `git grep` itself never emits one before the line number.
-const MATCH_LINE = /^(?<path>[^:]+):(?<line>\d+):(?<content>.*)$/u;
+// With `-z`, one `git grep -z -n` record is `<path> NUL <line> NUL <content> NEWLINE` (verified
+// Empirically against git 2.50: BOTH separators become NUL, and path quoting is disabled
+// Entirely, so a path containing `:` — legal in a tracked repo — or non-ASCII bytes comes back
+// Verbatim). Content can never contain a NUL itself: `-I` skips binary files.
+const FIELD_SEPARATOR = '\0';
+const LINE_NUMBER = /^\d+$/u;
 
 const parseMatchLine = (raw: string): GrepMatch | undefined => {
-  const groups = MATCH_LINE.exec(raw)?.groups;
-  const path = groups?.['path'];
-  const line = groups?.['line'];
-  const content = groups?.['content'];
-  if (path === undefined || line === undefined || content === undefined) {
+  const [path, line, ...contentParts] = raw.split(FIELD_SEPARATOR);
+  if (path === undefined || line === undefined || contentParts.length === NO_FIELDS) {
+    return undefined;
+  }
+  if (!LINE_NUMBER.test(line)) {
     return undefined;
   }
   return {
     line: Number(line),
     path,
-    snippet: content.trim().slice(SNIPPET_START, MAX_SNIPPET_LENGTH),
+    snippet: contentParts.join(FIELD_SEPARATOR).trim().slice(SNIPPET_START, MAX_SNIPPET_LENGTH),
   };
 };
 
@@ -76,32 +79,23 @@ const parseByteCappedOutput = (stdout: string, limit: number): GrepResult => {
   return { matches, truncated: true };
 };
 
-// `-c core.quotePath=false` (a git-level flag, so it must precede the subcommand) stops git from
-// Octal-escaping non-ASCII bytes in paths (`"caf\303\251.txt"`) — matches come back with the
-// Real file name. `-e <pattern>` (never a bare positional) so a pattern beginning with `-` can
-// Never be parsed as a git option; the `--` separator likewise guards option-looking pathspecs.
+// `-z` makes git emit NUL field separators and unquoted paths (see `parseMatchLine`), so no
+// `core.quotePath` override is needed. `-e <pattern>` (never a bare positional) so a pattern
+// Beginning with `-` can never be parsed as a git option; the `--` separator likewise guards
+// Option-looking pathspecs.
 const buildGrepArgs = (opts: GrepOpts): string[] => {
-  const args = [
-    '-c',
-    'core.quotePath=false',
-    'grep',
-    '-n',
-    '-I',
-    '--extended-regexp',
-    '-e',
-    opts.pattern,
-  ];
+  const args = ['grep', '-z', '-n', '-I', '--extended-regexp', '-e', opts.pattern];
   if (opts.pathspecs.length > NO_PATHSPECS) {
     args.push('--', ...opts.pathspecs);
   }
   return args;
 };
 
-/** Runs `git grep -n -I --extended-regexp` in `opts.dir`, scoped to `opts.pathspecs` (when any)
- * and bounded to `opts.limit` matches; `truncated` reports whether git produced more match lines
- * than the limit — or, when the runner byte-capped stdout, that the output itself is incomplete
- * (the possibly-partial last line is dropped, never parsed). Exit 1 (no matches) is a clean
- * empty result; any exit other than 0/1 throws `validationError` with git's stderr. */
+/** Runs `git grep -z -n -I --extended-regexp` in `opts.dir`, scoped to `opts.pathspecs` (when
+ * any) and bounded to `opts.limit` matches; `truncated` reports whether git produced more match
+ * lines than the limit — or, when the runner byte-capped stdout, that the output itself is
+ * incomplete (the possibly-partial last line is dropped, never parsed). Exit 1 (no matches) is a
+ * clean empty result; any exit other than 0/1 throws `validationError` with git's stderr. */
 const grepCheckout = async (runner: Runner, opts: GrepOpts): Promise<GrepResult> => {
   const result = await runner.run('git', buildGrepArgs(opts), { cwd: opts.dir });
   if (result.exitCode === MATCHES_EXIT_CODE) {
