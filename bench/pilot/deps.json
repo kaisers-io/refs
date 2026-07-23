@@ -1,0 +1,20 @@
+[
+  {
+    "key": "zod",
+    "ref": "github.com/colinhacks/zod",
+    "commit": "912f0f51b0ced654d0069741e7160834dca742ee",
+    "size_class": "mid"
+  },
+  {
+    "key": "payload",
+    "ref": "github.com/payloadcms/payload",
+    "commit": "5081ad4786643e14b21fb5981941ccdceecd55bd",
+    "size_class": "large"
+  },
+  {
+    "key": "next",
+    "ref": "github.com/vercel/next.js",
+    "commit": "00598045032a0e5b313de7b6ef0af60ed9390c2a",
+    "size_class": "large"
+  }
+]

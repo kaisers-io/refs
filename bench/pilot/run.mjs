@@ -4,9 +4,10 @@
 // expensive real answer). At run start it writes an immutable provenance manifest
 // and HARD-FAILS on checkout commit drift or refs-compliance leaks.
 
-import { appendFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { buildManifest, headSha, provenanceOf } from './lib/provenance.mjs';
 import { failOnCommitDrift, failOnCompliance, recheckHead } from './lib/integrity.mjs';
+import { loadCorpusTasks, loadSentinelTasks } from './lib/tasks-loader.mjs';
 import { refsCalls, refsOnPath, rungEnv, setupShim } from './lib/refs-shim.mjs';
 import { fileURLToPath } from 'node:url';
 import { parseCodexEvents } from './lib/telemetry.mjs';
@@ -14,7 +15,7 @@ import { runCell } from './lib/runner.mjs';
 import { spawnExec } from './lib/exec.mjs';
 
 const CONDITIONS_DIR = new URL('conditions/', import.meta.url);
-const TASKS_DIR = new URL('tasks/', import.meta.url);
+const TASKS_DIR = fileURLToPath(new URL('tasks/', import.meta.url));
 const RESULTS_DIR = new URL('results/', import.meta.url);
 const REFS_BIN = new URL('../../packages/cli/bin/refs.mjs', import.meta.url);
 
@@ -79,15 +80,13 @@ const loadPreambles = async () => {
   return Object.fromEntries(entries);
 };
 
-const loadTasks = async () => {
-  const files = await readdir(TASKS_DIR);
-  const names = files.filter((name) => name.endsWith('.json'));
-  return Promise.all(
-    names.map(async (name) => {
-      const text = await readFile(new URL(name, TASKS_DIR), 'utf8');
-      return JSON.parse(text);
-    }),
-  );
+// --sentinel selects the small top-level smoke-test set (Task 8); by default the
+// full tasks/<dep>/ Wave-B analytic corpus loads instead.
+const loadTasks = (argv) => {
+  if (argv.includes('--sentinel')) {
+    return loadSentinelTasks(TASKS_DIR);
+  }
+  return loadCorpusTasks(TASKS_DIR);
 };
 
 const resolveCheckout = async (ref) => {
@@ -275,7 +274,7 @@ const reportSetup = (seed, count, shim) => {
 const main = async () => {
   const repeats = parseNumberFlag(process.argv, '--repeats', DEFAULT_REPEATS);
   const seed = parseNumberFlag(process.argv, '--seed', DEFAULT_SEED);
-  const [preambles, tasks] = await Promise.all([loadPreambles(), loadTasks()]);
+  const [preambles, tasks] = await Promise.all([loadPreambles(), loadTasks(process.argv)]);
   const checkouts = await resolveCheckouts(tasks);
   failOnCommitDrift(tasks, checkouts);
   const { manifest, run } = await prepareRun({ checkouts, preambles, seed, tasks });
