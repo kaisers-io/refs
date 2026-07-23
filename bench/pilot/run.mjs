@@ -5,6 +5,7 @@
 // and HARD-FAILS on checkout commit drift or refs-compliance leaks.
 
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { applyGridFilters, parseNumberFlag, printPreflightPlan } from './lib/cli-args.mjs';
 import { buildManifest, headSha, provenanceOf } from './lib/provenance.mjs';
 import { failOnCommitDrift, failOnCompliance, recheckHead } from './lib/integrity.mjs';
 import { loadCorpusTasks, loadSentinelTasks } from './lib/tasks-loader.mjs';
@@ -23,7 +24,6 @@ const RUNGS = ['naive', 'discipline', 'full'];
 const MODELS = ['claude', 'codex'];
 const RUNG_FILE = { discipline: 'discipline.md', full: 'full.md', naive: 'naive.md' };
 const DEFAULT_REPEATS = 3;
-const NOT_FOUND = -1;
 const NEXT = 1;
 const ZERO = 0;
 const JSON_INDENT = 2;
@@ -108,14 +108,6 @@ const resolveCheckouts = async (tasks) => {
     }),
   );
   return Object.fromEntries(entries);
-};
-
-const parseNumberFlag = (argv, flag, fallback) => {
-  const index = argv.indexOf(flag);
-  if (index === NOT_FOUND) {
-    return fallback;
-  }
-  return Number(argv[index + NEXT]);
 };
 
 // Per-run env: the shim dir enters PATH only for `full`, and REFS_LOG points at
@@ -265,21 +257,26 @@ const prepareRun = async ({ checkouts, preambles, seed, tasks }) => {
   return { manifest, run };
 };
 
-const reportSetup = (seed, count, shim) => {
-  process.stdout.write(`seed=${seed} cells=${count}\n`);
-  const line = RUNGS.map((rung) => `${rung}=${shim.onPath[rung] || '(none)'}`).join(' ');
-  process.stdout.write(`refs on PATH: ${line}\n`);
-};
-
 const main = async () => {
   const repeats = parseNumberFlag(process.argv, '--repeats', DEFAULT_REPEATS);
   const seed = parseNumberFlag(process.argv, '--seed', DEFAULT_SEED);
-  const [preambles, tasks] = await Promise.all([loadPreambles(), loadTasks(process.argv)]);
+  const [preambles, loadedTasks] = await Promise.all([loadPreambles(), loadTasks(process.argv)]);
+  const { rungs, tasks } = applyGridFilters(process.argv, loadedTasks, RUNGS);
   const checkouts = await resolveCheckouts(tasks);
   failOnCommitDrift(tasks, checkouts);
   const { manifest, run } = await prepareRun({ checkouts, preambles, seed, tasks });
-  const cells = shuffle(expandCells(tasks, MODELS, RUNGS, repeats), makeRng(seed));
-  reportSetup(seed, cells.length, run.shim);
+  const cells = shuffle(expandCells(tasks, MODELS, rungs, repeats), makeRng(seed));
+  printPreflightPlan({
+    cellCount: cells.length,
+    cliVersions: manifest.cli_versions,
+    models: MODELS,
+    onPath: run.shim.onPath,
+    repeats,
+    runId: run.runId,
+    rungs,
+    seed,
+    taskIds: tasks.map((task) => task.id),
+  });
   await runAll({
     cells,
     checkouts,
