@@ -34,7 +34,7 @@ const extractVerdict = (raw) => {
 // cross-family model; `cwd` is a neutral directory (the judge needs no checkout).
 // `judge: true` makes runCell tighten the CLI to grade TEXT only: the Claude judge
 // runs with `--tools ""` (no tools); the Codex judge already runs `-s read-only`
-// in the neutral JUDGE_CWD (set in run-pilot.mjs) — checkout effectively unmounted.
+// in the neutral JUDGE_CWD (set in score-run.mjs) — checkout effectively unmounted.
 const makeJudge = (exec, judgeModel, cwd) => async (payload) => {
   const result = await runCell(exec, {
     cwd,

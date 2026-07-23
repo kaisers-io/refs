@@ -28,9 +28,10 @@ pilot/
   conditions/       naive.md · discipline.md · full.md (rung preambles)
   tasks/*.json      question + pinned commit + atomic rubric (critical_facts, material_errors)
   lib/              telemetry · runner · score · judge · stats · exec (each unit-tested)
-  run-pilot.mjs     orchestrator: expand cells → run → score → results/*.jsonl
+  run.mjs           Pass A: expand cells → run + telemetry → results/<run-id>/raw.jsonl + manifest.json
+  score-run.mjs     Pass B: results/<run-id>/raw.jsonl → judge → results/<run-id>/scored.jsonl
   analyze.mjs       results → per-(model,rung) summary + repeat variance + rough required-N
-  results/          raw + scored jsonl (gitignored)
+  results/<run-id>/ manifest.json + raw.jsonl (Pass A) + scored.jsonl (Pass B), gitignored
 test/               vitest specs (run via bench/vitest.config.mjs)
 ```
 
@@ -41,7 +42,8 @@ export PATH="$HOME/.nvm/versions/node/v26.4.0/bin:$PATH"
 # unit tests (fakes/fixtures only — no CLI calls, no cost):
 pnpm exec vitest run --config bench/vitest.config.mjs
 # the real pilot (spawns claude/codex per cell — costs tokens + time):
-node bench/pilot/run-pilot.mjs --repeats 3
+node bench/pilot/run.mjs --repeats 3          # Pass A: answers + telemetry → results/<run-id>/raw.jsonl
+node bench/pilot/score-run.mjs --input <run-id>  # Pass B: judge → results/<run-id>/scored.jsonl
 node bench/pilot/analyze.mjs
 ```
 

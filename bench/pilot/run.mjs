@@ -1,16 +1,17 @@
-// Pilot orchestrator: expand the cell grid, run each cell headless (isolated),
-// score it with a blinded cross-family judge, and append one JSON line per run.
-// `expandCells` is pure and unit-tested; `main()` is thin real-subprocess glue.
+// Pass A of the two-pass harness: expand the cell grid, run each cell headless
+// (isolated), append one JSON line per run to results/<run-id>/raw.jsonl — NO
+// judging (Pass B, score-run.mjs, does that, so a judge crash never discards an
+// expensive real answer). At run start it writes an immutable provenance manifest
+// and HARD-FAILS on checkout commit drift or refs-compliance leaks.
 
-import { appendFile, mkdir, readFile, readdir } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { buildManifest, headSha, provenanceOf } from './lib/provenance.mjs';
+import { failOnCommitDrift, failOnCompliance, recheckHead } from './lib/integrity.mjs';
 import { refsCalls, refsOnPath, rungEnv, setupShim } from './lib/refs-shim.mjs';
 import { fileURLToPath } from 'node:url';
-import { makeJudge } from './lib/judge.mjs';
 import { parseCodexEvents } from './lib/telemetry.mjs';
 import { runCell } from './lib/runner.mjs';
-import { scoreAnswer } from './lib/score.mjs';
 import { spawnExec } from './lib/exec.mjs';
-import { tmpdir } from 'node:os';
 
 const CONDITIONS_DIR = new URL('conditions/', import.meta.url);
 const TASKS_DIR = new URL('tasks/', import.meta.url);
@@ -20,17 +21,13 @@ const REFS_BIN = new URL('../../packages/cli/bin/refs.mjs', import.meta.url);
 const RUNGS = ['naive', 'discipline', 'full'];
 const MODELS = ['claude', 'codex'];
 const RUNG_FILE = { discipline: 'discipline.md', full: 'full.md', naive: 'naive.md' };
-// Cross-family: each model's answers are judged by the OTHER model.
-const JUDGE_OF = { claude: 'codex', codex: 'claude' };
 const DEFAULT_REPEATS = 3;
 const NOT_FOUND = -1;
 const NEXT = 1;
 const ZERO = 0;
-const OK_EXIT = 0;
+const JSON_INDENT = 2;
 const DEFAULT_SEED = 1;
 const CODEX_COMMAND = 'command_execution';
-// The judge grades text only — run it in a neutral dir, never the dependency checkout.
-const JUDGE_CWD = tmpdir();
 // Seedable LCG (numerical-recipes constants) so cell order is randomized yet reproducible.
 const LCG_A = 1_664_525;
 const LCG_C = 1_013_904_223;
@@ -102,30 +99,22 @@ const resolveCheckout = async (ref) => {
   return JSON.parse(stdout).data.local_path;
 };
 
-const headSha = async (checkoutPath) => {
-  const { stdout, code } = await spawnExec('git', ['-C', checkoutPath, 'rev-parse', 'HEAD'], {});
-  if (code !== OK_EXIT) {
-    return '';
-  }
-  return stdout.trim();
-};
-
 const resolveCheckouts = async (tasks) => {
   const refs = [...new Set(tasks.map((task) => task.ref))];
   const entries = await Promise.all(
     refs.map(async (ref) => {
       const path = await resolveCheckout(ref);
-      const head = await headSha(path);
+      const head = await headSha(spawnExec, path);
       return [ref, { head, path }];
     }),
   );
   return Object.fromEntries(entries);
 };
 
-const parseRepeats = (argv) => {
-  const index = argv.indexOf('--repeats');
+const parseNumberFlag = (argv, flag, fallback) => {
+  const index = argv.indexOf(flag);
   if (index === NOT_FOUND) {
-    return DEFAULT_REPEATS;
+    return fallback;
   }
   return Number(argv[index + NEXT]);
 };
@@ -143,7 +132,7 @@ const rungRunEnv = (rung, shim, logPath) => {
   return { ...process.env, PATH, REFS_LOG };
 };
 
-const runOne = async ({ cell, checkouts, logPath, preambles, shim }) => {
+const runOne = async ({ cell, checkouts, logPath, preambles, provenance, shim }) => {
   const { model, repeat, rung, task } = cell;
   const checkout = checkouts[task.ref];
   const started_at = new Date().toISOString();
@@ -154,26 +143,28 @@ const runOne = async ({ cell, checkouts, logPath, preambles, shim }) => {
     preamble: preambles[rung],
     question: task.question,
   });
-  const judge = makeJudge(spawnExec, JUDGE_OF[model], JUDGE_CWD);
-  const score = await scoreAnswer(task, result.answer, judge);
   return {
     answer: result.answer,
+    cli_versions: provenance.cli_versions,
     code: result.code,
     commit_actual: checkout.head,
     commit_expected: task.commit,
     failed: result.failed,
     model,
+    pricing_as_of: provenance.pricing_as_of,
     raw: result.raw,
-    // Blind spot: these two fields only catch PATH-mediated `refs` resolution
-    // through the shim; an absolute-path invocation of the real refs.mjs bypasses
-    // both and is invisible here (see the MEASUREMENT BLIND SPOT comment in
-    // lib/refs-shim.mjs). Bounded by Task 1's self-contained preamble plus the
-    // persisted per-run transcript, which any absolute-path call would show.
+    // Blind spot: refs_calls/refs_on_path only catch PATH-mediated `refs` (see the
+    // MEASUREMENT BLIND SPOT comment in lib/refs-shim.mjs). The persisted `raw`
+    // transcript closes this for CODEX only (JSONL shows command_execution); Claude's
+    // raw is result+usage only, so an absolute-path call is NOT visible for claude.
+    // Each invocation logs TWO lines here (phase:'start' then phase:'end') — invocation
+    // COUNT = entries where phase === 'end' (filter before counting, don't use .length).
     refs_calls: await refsCalls(logPath),
     refs_on_path: shim.onPath[rung],
+    refs_version: provenance.refs_version,
     repeat,
+    run_id: provenance.run_id,
     rung,
-    score,
     started_at,
     task_id: task.id,
     telemetry: result.telemetry,
@@ -182,10 +173,11 @@ const runOne = async ({ cell, checkouts, logPath, preambles, shim }) => {
   };
 };
 
-const errorRecord = (cell, error) => ({
+const errorRecord = (cell, error, provenance) => ({
   error: String(error),
   model: cell.model,
   repeat: cell.repeat,
+  run_id: provenance.run_id,
   rung: cell.rung,
   task_id: cell.task.id,
 });
@@ -195,51 +187,34 @@ const settleCell = async (args) => {
   try {
     return await runOne(args);
   } catch (error) {
-    return errorRecord(args.cell, error);
+    return errorRecord(args.cell, error, args.provenance);
   }
 };
 
-const runAll = async ({ cells, checkouts, logDir, outPath, preambles, shim }) => {
+const cellState = (record) => {
+  if (record.error) {
+    return 'ERROR';
+  }
+  if (record.failed) {
+    return 'failed';
+  }
+  return 'ok';
+};
+
+const runAll = async ({ cells, checkouts, logDir, outPath, preambles, provenance, shim }) => {
   for (const [index, cell] of cells.entries()) {
     const logPath = fileURLToPath(new URL(`${index}.jsonl`, logDir));
     // eslint-disable-next-line no-await-in-loop -- cells run sequentially by design (interleaved, cache-controlled)
-    const record = await settleCell({ cell, checkouts, logPath, preambles, shim });
+    const record = await settleCell({ cell, checkouts, logPath, preambles, provenance, shim });
     // eslint-disable-next-line no-await-in-loop -- append in order as each run completes
     await appendFile(outPath, `${JSON.stringify(record)}\n`);
-    process.stdout.write(
-      `${record.model}/${record.rung} ${record.task_id} pass=${record.score?.pass ?? 'ERROR'}\n`,
-    );
+    // eslint-disable-next-line no-await-in-loop -- verify the read-only checkout did not move
+    await recheckHead(spawnExec, checkouts[cell.task.ref], cell.task);
+    process.stdout.write(`${record.model}/${record.rung} ${record.task_id} ${cellState(record)}\n`);
   }
 };
 
-const parseSeed = (argv) => {
-  const index = argv.indexOf('--seed');
-  if (index === NOT_FOUND) {
-    return DEFAULT_SEED;
-  }
-  return Number(argv[index + NEXT]);
-};
-
-const warnCommitDrift = (tasks, checkouts) => {
-  for (const task of tasks) {
-    const checkout = checkouts[task.ref];
-    if (checkout.head !== task.commit) {
-      process.stdout.write(
-        `WARNING: ${task.id} pins ${task.commit} but ${task.ref} HEAD is ${checkout.head}\n`,
-      );
-    }
-  }
-};
-
-const newOutPath = () => {
-  const stamp = new Date().toISOString().replaceAll(':', '-');
-  return new URL(`${stamp}.jsonl`, RESULTS_DIR);
-};
-
-const newLogDir = () => {
-  const stamp = new Date().toISOString().replaceAll(':', '-');
-  return new URL(`refs-log/${stamp}/`, RESULTS_DIR);
-};
+const newRunId = () => new Date().toISOString().replaceAll(':', '-');
 
 // `command -v refs` per rung (full → the shim, controls → empty). Measured once
 // since it depends only on the rung env, then reused per record as `refs_on_path`.
@@ -256,10 +231,39 @@ const onPathByRung = async (shim) => {
 const setupRun = async () => {
   const base = await setupShim(spawnExec, fileURLToPath(REFS_BIN));
   const shim = { ...base, onPath: await onPathByRung(base) };
-  await mkdir(RESULTS_DIR, { recursive: true });
-  const logDir = newLogDir();
+  const runId = newRunId();
+  const runDir = new URL(`${runId}/`, RESULTS_DIR);
+  const logDir = new URL('refs-log/', runDir);
   await mkdir(logDir, { recursive: true });
-  return { logDir, outPath: newOutPath(), shim };
+  return {
+    logDir,
+    manifestPath: new URL('manifest.json', runDir),
+    rawPath: new URL('raw.jsonl', runDir),
+    runId,
+    shim,
+  };
+};
+
+// Identity replacer: pretty-print every key (avoids passing a bare `undefined`
+// replacer to JSON.stringify, which the linter rejects).
+const keepAll = (_key, value) => value;
+
+const prepareRun = async ({ checkouts, preambles, seed, tasks }) => {
+  const run = await setupRun();
+  failOnCompliance(run.shim);
+  const manifest = await buildManifest({
+    checkouts,
+    exec: spawnExec,
+    preambles,
+    refsBinPath: fileURLToPath(REFS_BIN),
+    seed,
+    tasks,
+  });
+  await writeFile(
+    fileURLToPath(run.manifestPath),
+    `${JSON.stringify(manifest, keepAll, JSON_INDENT)}\n`,
+  );
+  return { manifest, run };
 };
 
 const reportSetup = (seed, count, shim) => {
@@ -269,15 +273,23 @@ const reportSetup = (seed, count, shim) => {
 };
 
 const main = async () => {
-  const repeats = parseRepeats(process.argv);
-  const seed = parseSeed(process.argv);
+  const repeats = parseNumberFlag(process.argv, '--repeats', DEFAULT_REPEATS);
+  const seed = parseNumberFlag(process.argv, '--seed', DEFAULT_SEED);
   const [preambles, tasks] = await Promise.all([loadPreambles(), loadTasks()]);
   const checkouts = await resolveCheckouts(tasks);
-  warnCommitDrift(tasks, checkouts);
-  const { logDir, outPath, shim } = await setupRun();
+  failOnCommitDrift(tasks, checkouts);
+  const { manifest, run } = await prepareRun({ checkouts, preambles, seed, tasks });
   const cells = shuffle(expandCells(tasks, MODELS, RUNGS, repeats), makeRng(seed));
-  reportSetup(seed, cells.length, shim);
-  await runAll({ cells, checkouts, logDir, outPath, preambles, shim });
+  reportSetup(seed, cells.length, run.shim);
+  await runAll({
+    cells,
+    checkouts,
+    logDir: run.logDir,
+    outPath: run.rawPath,
+    preambles,
+    provenance: provenanceOf(manifest, run.runId),
+    shim: run.shim,
+  });
 };
 
 const [, entryPath] = process.argv;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { expandCells } from '../pilot/run-pilot.mjs';
+import { expandCells } from '../pilot/run.mjs';
 
 const TASKS = [{ id: 't1' }, { id: 't2' }];
 const MODELS = ['claude', 'codex'];

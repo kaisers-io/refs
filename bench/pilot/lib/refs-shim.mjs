@@ -43,8 +43,11 @@ const rungEnv = (rung, { basePath, logPath, shimDir }) => {
 
 // The shim is a tiny CommonJS node script (the shim dir has no package.json, so a
 // bare `refs` file loads as CJS). It execs the real refs with inherited stdio so
-// the agent sees refs's real stdout/stderr unmodified, then appends ONE JSON line
-// to REFS_LOG (or the baked fallback) — never to stdout, so refs output stays clean.
+// the agent sees refs's real stdout/stderr unmodified, then appends JSON lines to
+// REFS_LOG (or the baked fallback) — never to stdout, so refs output stays clean.
+// It logs a `phase:"start"` line BEFORE spawning and a `phase:"end"` line on close;
+// a killed/hung refs then leaves a start with no matching end (completion-only
+// logging would have missed it entirely).
 const shimScript = (refsBinReal, logPath) =>
   `#!${process.execPath}
 const { spawn } = require('node:child_process');
@@ -53,16 +56,18 @@ const REFS_BIN = ${JSON.stringify(refsBinReal)};
 const BAKED_LOG = ${JSON.stringify(logPath)};
 const start = Date.now();
 const argv = process.argv.slice(2);
+const target = process.env.REFS_LOG || BAKED_LOG;
+const log = (obj) => {
+  if (!target) return;
+  try {
+    appendFileSync(target, JSON.stringify(obj) + '\\n');
+  } catch {}
+};
+log({ ts: new Date().toISOString(), argv, phase: 'start' });
 const child = spawn(process.execPath, [REFS_BIN, ...argv], { stdio: 'inherit' });
 child.on('close', (code) => {
   const exit = code === null ? 0 : code;
-  const target = process.env.REFS_LOG || BAKED_LOG;
-  if (target) {
-    const line = JSON.stringify({ ts: new Date().toISOString(), argv, exit, ms: Date.now() - start });
-    try {
-      appendFileSync(target, line + '\\n');
-    } catch {}
-  }
+  log({ ts: new Date().toISOString(), argv, exit, ms: Date.now() - start, phase: 'end' });
   process.exit(exit);
 });
 `;
@@ -92,10 +97,15 @@ const readLog = async (logPath) => {
 // line is written, and refsOnPath still reads empty for that rung. So "no calls
 // logged + refs not on PATH" proves no PATH-resolved leak, NOT zero leak. The
 // residual is bounded by (a) Task 1's self-contained preamble giving control
-// agents no reason to reach for refs at all, and (b) transcripts being persisted
-// per run, so any absolute-path invocation remains visible on post-hoc inspection.
+// agents no reason to reach for refs at all, and (b) the persisted per-run
+// transcript — but transcript visibility is MODEL-SPECIFIC: Codex's JSONL `raw`
+// records command_execution events, so an absolute-path `node .../refs.mjs` call
+// shows there; Claude's `-p --output-format json` `raw` carries only the final
+// result + usage, NOT the tool trajectory, so an absolute-path call is NOT visible
+// for Claude on post-hoc inspection.
 //
-// Parses the JSONL invocation log; a missing file yields [].
+// Parses the JSONL invocation log (a phase:"start" line per call, plus a
+// phase:"end" line once it exits); a missing file yields [].
 const refsCalls = async (logPath) => {
   const text = await readLog(logPath);
   return text

@@ -30,25 +30,40 @@ const buildJudgePayload = (task, answer) => ({
   question: task.question,
 });
 
+// Require EVERY critical fact to be graded (by identity) AND passed — a judge that
+// returns fewer verdicts than facts must not pass the task (no fail-open).
+const gradeFacts = (task, judged) => {
+  const facts = task.critical_facts ?? [];
+  const passByFact = new Map(judged.map((entry) => [entry.fact, entry.pass === true]));
+  return {
+    all: facts.length >= MIN_CRITERIA && facts.every((fact) => passByFact.get(fact) === true),
+    complete: judged.length === facts.length,
+  };
+};
+
+// Require EVERY material_error to be graded by identity (like critical_facts): a
+// judge that OMITS a material_error must fail the task, never silently pass it.
+const gradeMaterialErrors = (task, flagged) => {
+  const errors = task.material_errors ?? [];
+  const presentByError = new Map(flagged.map((entry) => [entry.error, entry.present === true]));
+  return {
+    complete: errors.every((error) => presentByError.has(error)),
+    present: errors.some((error) => presentByError.get(error) === true),
+  };
+};
+
 const scoreAnswer = async (task, answer, judge) => {
   const deterministic_pass = runDeterministic(task, answer);
   const verdict = await judge(buildJudgePayload(task, answer));
-  const judged = verdict.criteria ?? [];
-  const flagged = verdict.material_errors ?? [];
-  const facts = task.critical_facts ?? [];
-  // Require EVERY critical fact to be graded (by identity) AND passed — a judge that
-  // returns fewer verdicts than facts must not pass the task (no fail-open).
-  const passByFact = new Map(judged.map((entry) => [entry.fact, entry.pass === true]));
-  const allFactsPass =
-    facts.length >= MIN_CRITERIA && facts.every((fact) => passByFact.get(fact) === true);
-  const judge_complete = judged.length === facts.length;
-  const material_error_present = flagged.some((entry) => entry.present === true);
+  const facts = gradeFacts(task, verdict.criteria ?? []);
+  const materials = gradeMaterialErrors(task, verdict.material_errors ?? []);
   return {
     deterministic_pass,
-    judge_complete,
-    judged,
-    material_error_present,
-    pass: deterministic_pass && allFactsPass && !material_error_present,
+    judge_complete: facts.complete,
+    judged: verdict.criteria ?? [],
+    material_error_present: materials.present,
+    material_errors_complete: materials.complete,
+    pass: deterministic_pass && facts.all && materials.complete && !materials.present,
   };
 };
 

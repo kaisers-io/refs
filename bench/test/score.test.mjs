@@ -16,6 +16,19 @@ const passingJudge = () =>
       { fact: 'names the correct file', pass: true },
       { fact: 'describes what it wraps', pass: true },
     ],
+    material_errors: [
+      { error: 'cites a dist/ build artifact as the source of truth', present: false },
+    ],
+  });
+
+// All critical facts pass, but the judge OMITS material_errors entirely — a fail-open
+// hole this must close (a genuine material error could go ungraded and slip through).
+const omittedMaterialErrorJudge = () =>
+  Promise.resolve({
+    criteria: [
+      { fact: 'names the correct file', pass: true },
+      { fact: 'describes what it wraps', pass: true },
+    ],
   });
 
 const oneFailingJudge = () =>
@@ -65,6 +78,16 @@ describe('scoreAnswer', () => {
   it('fails (no fail-open) when the judge grades fewer facts than critical_facts', async () => {
     const score = await scoreAnswer(task, 'coerce lives in src/types.ts', partialJudge);
     expect(score.judge_complete).toBe(false);
+    expect(score.pass).toBe(false);
+  });
+
+  it('fails (fail-closed) when the judge omits material_errors entirely', async () => {
+    const score = await scoreAnswer(
+      task,
+      'coerce lives in src/types.ts and wraps the base schemas',
+      omittedMaterialErrorJudge,
+    );
+    expect(score.material_errors_complete).toBe(false);
     expect(score.pass).toBe(false);
   });
 

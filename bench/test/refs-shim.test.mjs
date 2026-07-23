@@ -20,7 +20,12 @@ const FAKE_EXIT = 3;
 const FIRST = 0;
 const NO_CALLS = 0;
 const ONE_CALL = 1;
+// A completed invocation logs two lines: a phase:"start" and a phase:"end".
+const TWO_LINES = 2;
 const SHIM_ARGS = ['add', 'x'];
+
+const endLine = (calls) => calls.find((call) => call.phase === 'end');
+const startLine = (calls) => calls.find((call) => call.phase === 'start');
 
 // A trivial fake "refs" that echoes its argv and exits non-zero, proving the shim
 // forwards argv, passes stdout through untouched, and preserves the exit code.
@@ -136,18 +141,22 @@ describe('setupShim', () => {
     expect(base.shimDir).toContain('refs-shim-');
     expect(result.stdout).toBe('hi add,x');
     expect(result.code).toBe(FAKE_EXIT);
-    expect(calls).toHaveLength(ONE_CALL);
+    expect(calls).toHaveLength(TWO_LINES);
   });
 });
 
 describe('makeShim + refsCalls', () => {
-  it('writes an executable shim that forwards argv/stdout/exit and logs one JSON line', async () => {
+  it('writes an executable shim that forwards argv/stdout/exit and logs start + end lines', async () => {
     const { calls, result } = await invokeShim(SHIM_ARGS);
     expect(result.stdout).toBe('hi add,x');
     expect(result.code).toBe(FAKE_EXIT);
-    expect(calls).toHaveLength(ONE_CALL);
-    expect(calls[FIRST].argv).toEqual(SHIM_ARGS);
-    expect(calls[FIRST].exit).toBe(FAKE_EXIT);
+    expect(calls).toHaveLength(TWO_LINES);
+    // The start line is written before exec (catches killed/hung refs); the end
+    // line carries the exit code once the child closes.
+    expect(startLine(calls).argv).toEqual(SHIM_ARGS);
+    expect(startLine(calls).phase).toBe('start');
+    expect(endLine(calls).argv).toEqual(SHIM_ARGS);
+    expect(endLine(calls).exit).toBe(FAKE_EXIT);
   });
 
   it('returns [] for a missing log', async () => {
