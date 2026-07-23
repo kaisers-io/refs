@@ -16,13 +16,38 @@ describe('normalizeClaude', () => {
     expect(normalizeClaude(json)).toStrictEqual({
       cache_read: 100,
       cache_write: 40,
+      cache_write_1h: undefined,
+      cache_write_5m: undefined,
       input_uncached: 12,
       invalid: false,
       model: 'claude',
       output: 3,
+      provider_cost_usd: undefined,
       reasoning: undefined,
       reported: false,
     });
+  });
+
+  it('exposes the TTL cache-write split and provider cost when present', () => {
+    const ephemeral5m = 10;
+    const ephemeral1h = 30;
+    const providerCost = 0.42;
+    const json = {
+      total_cost_usd: providerCost,
+      usage: {
+        cache_creation: {
+          ephemeral_1h_input_tokens: ephemeral1h,
+          ephemeral_5m_input_tokens: ephemeral5m,
+        },
+        cache_creation_input_tokens: 40,
+        input_tokens: 12,
+        output_tokens: 3,
+      },
+    };
+    const telemetry = normalizeClaude(json);
+    expect(telemetry.cache_write_5m).toBe(ephemeral5m);
+    expect(telemetry.cache_write_1h).toBe(ephemeral1h);
+    expect(telemetry.provider_cost_usd).toBe(providerCost);
   });
 });
 
@@ -35,11 +60,14 @@ describe('normalizeCodex', () => {
     expect(normalizeCodex(raw)).toStrictEqual({
       cache_read: 150,
       cache_write: undefined,
+      cache_write_1h: undefined,
+      cache_write_5m: undefined,
       input_uncached: 50,
       invalid: false,
       model: 'codex',
       // Visible output = output_tokens(9) - reasoning(5); reasoning is counted separately.
       output: 4,
+      provider_cost_usd: undefined,
       reasoning: 5,
       reported: true,
     });
