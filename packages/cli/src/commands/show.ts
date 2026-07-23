@@ -1,4 +1,4 @@
-import type { Config, RefEntry, RefKey, RefState } from '@kaisers-io/refs-core';
+import type { RefEntry, RefKey, RefState } from '@kaisers-io/refs-core';
 import {
   checkoutPath,
   isGitCheckout,
@@ -12,6 +12,7 @@ import { emit, wrapAction } from '../output.ts';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
 import { matchRefKey } from './list.ts';
+import { requireEntry } from './ref-context.ts';
 
 // `refs show <ref>` — resolves `<ref>` (a full key or unique suffix, via `matchRefKey` in
 // `list.ts`) to its full entry, current state, resolved local checkout path, and up to
@@ -26,17 +27,6 @@ type ShowData = RefEntry & {
   local_path: string;
   sample_tags: string[];
   state: RefState;
-};
-
-// `matchRefKey` only ever returns a key it found among `Object.keys(config.refs)`, so this lookup
-// can never actually miss — the throw exists purely to satisfy `noUncheckedIndexedAccess`,
-// surfaced (via `wrapAction`'s generic-error handling) as an "unexpected" failure if it ever did.
-const requireEntry = (config: Config, key: RefKey): RefEntry => {
-  const entry = config.refs[key];
-  if (entry === undefined) {
-    throw new Error(`internal: matched ref key '${key}' is missing from config.refs`);
-  }
-  return entry;
 };
 
 const errorDetail = (error: unknown): string => {

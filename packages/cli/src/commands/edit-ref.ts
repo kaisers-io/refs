@@ -1,4 +1,4 @@
-import type { Config, RefEntry, RefKey, RefsHome } from '@kaisers-io/refs-core';
+import type { RefEntry, RefKey, RefsHome } from '@kaisers-io/refs-core';
 import {
   assertInsideSources,
   canonicalizeGitUrl,
@@ -20,6 +20,7 @@ import { allowFileUrlsFrom } from './add-helpers.ts';
 import { editPackageField } from './edit-package.ts';
 import { matchRefKey } from './list.ts';
 import { normalizeEditValue } from './edit-envelope.ts';
+import { requireEntry } from './ref-context.ts';
 import { z } from 'zod';
 
 // `refs edit <ref> <field> <value> [--package <name>]` — mutates one top-level ref field, or (with
@@ -43,17 +44,6 @@ const SUCCESS_EXIT_CODE = 0;
 
 const PACKAGES_USAGE_MESSAGE = 'use --package <name> <field> <value>';
 const DIFFERENT_KEY_MESSAGE = 'new url derives a different key — remove and re-add instead';
-
-// `matchRefKey` only ever returns a key it found among `Object.keys(config.refs)`, so this lookup
-// can never actually miss — the throw exists purely to satisfy `noUncheckedIndexedAccess`,
-// mirroring `show.ts`/`tag.ts`'s own `requireEntry`.
-const requireEntry = (config: Config, key: RefKey): RefEntry => {
-  const entry = config.refs[key];
-  if (entry === undefined) {
-    throw new Error(`internal: matched ref key '${key}' is missing from config.refs`);
-  }
-  return entry;
-};
 
 const refFieldNames = (): string =>
   Object.keys(zRefEntry.shape)

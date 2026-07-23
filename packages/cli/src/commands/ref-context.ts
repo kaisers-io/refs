@@ -6,17 +6,18 @@ import {
   // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
 
-// Shared ref/checkout/package guards and `--limit` parsing for the investigation-helper commands
-// (`range.ts`, `search.ts`) — extracted so the two never carry diverging copies of the same
-// checks (their user-facing message strings are part of the CLI contract and must stay
-// identical). The older commands (`tag.ts`/`show.ts`/`resolve.ts`) still hold local copies of
-// some of these; consolidating them here is a separate follow-up, deliberately out of scope.
+// Shared ref/checkout/package guards and `--limit` parsing for the command layer — extracted so
+// no command carries a diverging copy of the same checks (their user-facing message strings are
+// part of the CLI contract and must stay identical). Consumed by the investigation helpers
+// (`range.ts`, `search.ts`) and the ref commands (`tag.ts`, `show.ts`, `resolve.ts`, `edit-ref.ts`,
+// `sync.ts`).
 
 const MIN_LIMIT = 1;
 
-// `matchRefKey` only ever returns a key it found among `Object.keys(config.refs)`, so this
-// lookup can never actually miss — the throw exists purely to satisfy
-// `noUncheckedIndexedAccess`, mirroring `tag.ts`'s `requireEntry`.
+// A ref key produced by `matchRefKey`/`routeQuery` is always one found among
+// `Object.keys(config.refs)`, so this lookup can never actually miss — the throw exists purely to
+// satisfy `noUncheckedIndexedAccess`, surfaced as an "unexpected" failure by `wrapAction` if it
+// ever did.
 const requireEntry = (config: Config, key: RefKey): RefEntry => {
   const entry = config.refs[key];
   if (entry === undefined) {
@@ -27,7 +28,7 @@ const requireEntry = (config: Config, key: RefKey): RefEntry => {
 
 /** Guards against a configured ref whose checkout directory is missing — first-class state
  * elsewhere (`refs list` reports it, `refs sync` repairs it) that would otherwise surface as a
- * low-level git/cwd error deeper in the command. Same message as `tag.ts`'s `requireCheckout`. */
+ * low-level git/cwd error deeper in the command. */
 const requireCheckout = (dest: string, key: RefKey): void => {
   if (!isGitCheckout(dest)) {
     throw notFoundError(`checkout for '${key}' is missing — run: refs sync ${key}`);
