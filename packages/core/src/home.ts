@@ -68,31 +68,37 @@ const realpathDeepestExisting = (target: string): string => {
 };
 
 /**
- * Guarantee: resolves symlinks in the EXISTING path components of both `home.sourcesDir` and
- * `absolutePath` (via realpathDeepestExisting) before comparing. For any non-existing suffix of
- * `absolutePath` the check is point-in-time only — a concurrent writer could plant a symlink in
- * that suffix between this check and a later destructive use, so this guard does not fully close
- * TOCTOU races (that would require openat-style traversal, out of scope for a local single-user
- * tool). Destructive callers (e.g. `refs remove`) MUST call this guard against an existing target
+ * Shared containment core behind `assertInsideSources` and the CLI's package-directory guard.
+ * Guarantee: resolves symlinks in the EXISTING path components of both `root` and `absolutePath`
+ * (via realpathDeepestExisting) before comparing. For any non-existing suffix of `absolutePath`
+ * the check is point-in-time only — a concurrent writer could plant a symlink in that suffix
+ * between this check and a later destructive use, so this guard does not fully close TOCTOU
+ * races (that would require openat-style traversal, out of scope for a local single-user tool).
+ * Destructive callers (e.g. `refs remove`) MUST call this guard against an existing target
  * immediately before the destructive operation, not earlier, to minimise the race window.
- * `rel === ''` (target is sourcesDir itself) is rejected too.
+ * `rel === ''` (target is the root itself) is rejected too; `label` names the boundary in the
+ * thrown message (e.g. "sources directory").
  */
-const assertInsideSources = (home: RefsHome, absolutePath: string): void => {
-  const sourcesReal = realpathDeepestExisting(home.sourcesDir);
+const assertInsideDir = (root: string, absolutePath: string, label: string): void => {
+  const rootReal = realpathDeepestExisting(root);
   const targetReal = realpathDeepestExisting(absolutePath);
-  const rel = relative(sourcesReal, targetReal);
+  const rel = relative(rootReal, targetReal);
   // `rel.startsWith('..')` alone is wrong: a ref-key segment literally named `..name`
-  // also starts with `..` without escaping sourcesReal (zRefKey's SAFE_SEGMENT only
+  // also starts with `..` without escaping rootReal (zRefKey's SAFE_SEGMENT only
   // rejects an exact `.` or `..`). Only an exact `..` or a `..` followed by a path
   // separator means escape.
   const isParentOrAbove = rel === PARENT_DIR_SEGMENT || rel.startsWith(PARENT_DIR_SEGMENT + sep);
   const contained = rel !== '' && !isParentOrAbove && !isAbsolute(rel);
   if (!contained) {
-    throw validationError(
-      `path escapes sources directory (containment violation): ${absolutePath}`,
-    );
+    throw validationError(`path escapes ${label} (containment violation): ${absolutePath}`);
   }
 };
 
-export { assertInsideSources, checkoutPath, configBackupPath, resolveHome };
+/** The historical sources-dir guard, now a thin binding of `assertInsideDir` to
+ * `home.sourcesDir` — every guarantee (and TOCTOU caveat) documented there applies verbatim. */
+const assertInsideSources = (home: RefsHome, absolutePath: string): void => {
+  assertInsideDir(home.sourcesDir, absolutePath, 'sources directory');
+};
+
+export { assertInsideDir, assertInsideSources, checkoutPath, configBackupPath, resolveHome };
 export type { RefsHome };

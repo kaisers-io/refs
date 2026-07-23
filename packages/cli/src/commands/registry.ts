@@ -1,5 +1,6 @@
 import type { CliContext } from '../context.ts';
 import type { Command } from '@commander-js/extra-typings';
+import { EXTRA_REGISTRARS } from './registrars-extra.ts';
 import { MORE_REGISTRARS } from './registrars-more.ts';
 import { registerAdd } from './add.ts';
 import { registerEdit } from './edit.ts';
@@ -34,6 +35,7 @@ const REGISTRARS: readonly ((program: RefsCommand, ctx: CliContext) => void)[] =
   registerEdit,
   registerList,
   ...MORE_REGISTRARS,
+  ...EXTRA_REGISTRARS,
 ];
 
 const registerCommands = (program: RefsCommand, ctx: CliContext): void => {
