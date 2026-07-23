@@ -1,0 +1,22 @@
+{
+  "id": "zod-coerce-location",
+  "dep": "zod",
+  "ref": "github.com/colinhacks/zod",
+  "commit": "912f0f51b0ced654d0069741e7160834dca742ee",
+  "job_type": "symbol-localization",
+  "question": "In zod 4's source (the `zod` package), which file defines the `z.coerce` helpers (coerce.string, coerce.number, coerce.boolean, coerce.bigint, coerce.date), and what do those helpers wrap? Answer for zod 4, not the legacy v3 implementation.",
+  "deterministic": [{ "kind": "regex", "pattern": "v4/classic/coerce\\.ts" }],
+  "critical_facts": [
+    "names packages/zod/src/v4/classic/coerce.ts as the file defining the zod 4 coerce helpers",
+    "explains that each helper wraps the corresponding base schema constructor (ZodString, ZodNumber, ZodBoolean, ZodBigInt, ZodDate) with coercion enabled"
+  ],
+  "material_errors": [
+    "cites packages/zod/src/v3/types.ts (the legacy v3 coerce object) as the zod 4 answer",
+    "cites a dist/ or build artifact as the source of truth"
+  ],
+  "evidence": [
+    "packages/zod/src/v4/classic/coerce.ts — defines string/number/boolean/bigint/date coerced helpers",
+    "packages/zod/src/v4/classic/external.ts:52 — `export * as coerce from \"./coerce.js\"`",
+    "decoy: packages/zod/src/v3/types.ts:5084 — legacy v3 `export const coerce = { ... }`"
+  ]
+}
