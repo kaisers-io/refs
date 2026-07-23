@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `refs range <ref> <old-version> <new-version>` — a bounded version-diff digest for
+  agent-driven "what changed between these versions" questions. Resolves both versions to git
+  tags (same `tag_format` inheritance as `refs tag`) and returns, in one call, the commit count,
+  the newest `--limit` (default 50) non-merge commit subjects, diff stats, changed paths (capped
+  at 200), and a changelog excerpt extracted at the new tag. `--package <name>` scopes the
+  diff/paths/changelog to that package's path while the commit log stays repo-wide. Every bounded
+  list carries an honest flag in `truncated`; the digest is a starting point, and the full history
+  stays available via plain git in the checkout.
+- `refs search <ref> <pattern>` — bounded structured code search over a ref's checkout. Wraps
+  `git grep -z -n -I --extended-regexp` and returns `{path, line, snippet}` matches (trimmed,
+  capped at 200 chars), at most `--limit` (default 50), with `truncated: true` whenever more
+  exist. Vendored/generated paths (`dist`, `build`, `node_modules`, lockfiles, …) are excluded by
+  default and echoed in `excludes_applied`; `--no-default-excludes` turns them off. `--glob` takes
+  plain glob patterns (never raw git pathspec magic — leading `:` or root-escaping `..` are
+  rejected), and `--package` is a hard boundary that intersects with any `--glob` and refuses a
+  package directory resolving outside the checkout. No matches is a success, not an error.
+
+### Changed
+
+- Rewrote the agent skill's investigation playbook (`skills/refs/references/investigate.md`) as an
+  advisory guide built on the "hint, not gate" principle: four hard rules (read real source before
+  citing, treat digests as starting points, honour truncation flags, unmask decoy version tags)
+  plus recommended investigation funnels with explicit escape hatches, tuned by two real-world
+  field tests.
+
 ## [0.2.0] - 2026-07-07
 
 ### Added
