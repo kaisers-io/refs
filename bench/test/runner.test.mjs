@@ -57,6 +57,18 @@ describe('runCell (claude)', () => {
     expect(promptArg).toContain('PLAYBOOK');
     expect(promptArg).toContain('Where is coerce?');
   });
+
+  // Codex-review catch: effort must be pinned for claude too (only codex was),
+  // and side-effect state should be disabled — see runner.mjs CLAUDE_ISOLATION.
+  it('pins effort and disables session-persistence/chrome side effects', async () => {
+    const fake = claudeFake();
+    await runCell(fake.exec.bind(fake), cell('claude'));
+    const [call] = fake.calls;
+    expect(call.args).toContain('--effort');
+    expect(call.args).toContain('medium');
+    expect(call.args).toContain('--no-session-persistence');
+    expect(call.args).toContain('--no-chrome');
+  });
 });
 
 describe('runCell (failure)', () => {

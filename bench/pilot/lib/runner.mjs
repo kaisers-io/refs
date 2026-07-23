@@ -18,16 +18,25 @@ const AGENT_MESSAGE = 'agent_message';
 const CODEX_MODEL = 'gpt-5.6-sol';
 const CODEX_EFFORT = 'medium';
 const CLAUDE_MODEL = 'claude-opus-4-8';
+// Claude's effort levels are low/medium/high/xhigh/max; medium matches codex's
+// pinned model_reasoning_effort tier. The requirement is CONSTANT effort across
+// rungs for a clean within-model contrast, not cross-model level equivalence.
+const CLAUDE_EFFORT = 'medium';
 
 const CLAUDE_ISOLATION = [
   '--output-format',
   'json',
   '--model',
   CLAUDE_MODEL,
+  '--effort',
+  CLAUDE_EFFORT,
   '--setting-sources',
   '',
   '--strict-mcp-config',
   '--disable-slash-commands',
+  // Reduce side-effects/state that could leak across cells (verified in `claude --help`).
+  '--no-session-persistence',
+  '--no-chrome',
   // Enforce the "never mutate the checkout" hard rule (Codex gets `-s read-only`).
   '--disallowed-tools',
   'Write',
