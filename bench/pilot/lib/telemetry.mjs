@@ -33,12 +33,15 @@ const parseJsonLine = (line) => {
   }
 };
 
-// Codex emits JSONL events; the last `turn.completed` carries cumulative usage.
+// Codex emits a JSONL event stream. Parse every line into its event object;
+// non-JSON lines survive as raw strings so consumers can `?.`-skip them.
+const parseCodexEvents = (raw) => raw.split('\n').map((line) => parseJsonLine(line));
+
+// The last `turn.completed` event carries cumulative usage.
 const lastCodexUsage = (raw) =>
-  raw
-    .split('\n')
-    .map((line) => parseJsonLine(line))
-    .findLast((event) => event?.type === CODEX_USAGE_EVENT && event.usage !== undefined)?.usage;
+  parseCodexEvents(raw).findLast(
+    (event) => event?.type === CODEX_USAGE_EVENT && event?.usage !== undefined,
+  )?.usage;
 
 // Codex reports total input including cache; uncached = total - cached-read.
 const codexUncachedInput = (usage) => {
@@ -62,4 +65,4 @@ const normalizeCodex = (raw) => {
   };
 };
 
-export { normalizeClaude, normalizeCodex };
+export { normalizeClaude, normalizeCodex, parseCodexEvents };
