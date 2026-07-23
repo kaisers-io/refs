@@ -1,6 +1,6 @@
 {
   "name": "refs",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Local, read-only reference checkouts of dependency sources for agents and humans.",
   "author": {
     "name": "Kaisers IO",
