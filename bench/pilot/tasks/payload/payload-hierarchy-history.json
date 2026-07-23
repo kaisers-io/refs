@@ -1,0 +1,28 @@
+{
+  "id": "payload-hierarchy-history",
+  "dep": "payload",
+  "ref": "github.com/payloadcms/payload",
+  "commit": "5081ad4786643e14b21fb5981941ccdceecd55bd",
+  "job_type": "history",
+  "tool_target": "neither",
+  "eligible_tools": [],
+  "baseline_query": "git log --oneline --no-merges --diff-filter=A -- packages/payload/src/hierarchy/resolveHierarchyCollections.ts",
+  "burden": { "commit_count": 1, "changed_paths": 1, "output_bytes": 43 },
+  "question": "In github.com/payloadcms/payload, the collection `hierarchy` feature has a directory packages/payload/src/hierarchy/ (e.g. resolveHierarchyCollections.ts and types.ts) at the current commit. Which commit first introduced this hierarchy feature/directory, and what is its PR number? Give the commit subject.",
+  "deterministic": [{ "kind": "regex", "pattern": "2d77a3ed|15769" }],
+  "critical_facts": [
+    "identifies commit 2d77a3ed6844b37bcf0cd771d8f6bc85fab1a582 (short 2d77a3ed6) as the commit that first added packages/payload/src/hierarchy/",
+    "commit subject is `feat: hierarchy with ui`",
+    "cites PR #15769"
+  ],
+  "material_errors": [
+    "claims the hierarchy feature does not exist at the current commit (it does — packages/payload/src/hierarchy/ is present)",
+    "attributes the introduction to a later hierarchy-touching commit (e.g. 48c354227 `feat(ui): add SmallIcon support to hierarchy collections`, #16817, or the 1b29f7c42 templates/elements move, #16765) rather than the original add",
+    "claims the feature shipped in a tagged v3 release (no v3 tag contains 2d77a3ed6; it is a v4-beta-era addition, first present at HEAD which is 4.0.0-beta.0)"
+  ],
+  "evidence": [
+    "`git log --oneline --no-merges --diff-filter=A -- packages/payload/src/hierarchy/resolveHierarchyCollections.ts` => single result `2d77a3ed6 feat: hierarchy with ui (#15769)`",
+    "`git show --stat 2d77a3ed6` adds packages/payload/src/hierarchy/resolveHierarchyCollections.ts (+445) and packages/payload/src/hierarchy/types.ts (+164)",
+    "`git merge-base --is-ancestor 2d77a3ed6 HEAD` => ancestor; `git tag --contains 2d77a3ed6` => empty (no v3 tag contains it)"
+  ]
+}

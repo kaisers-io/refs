@@ -1,0 +1,28 @@
+{
+  "id": "payload-committransaction-noop-default",
+  "dep": "payload",
+  "ref": "github.com/payloadcms/payload",
+  "commit": "5081ad4786643e14b21fb5981941ccdceecd55bd",
+  "job_type": "symbol-localization",
+  "tool_target": "search",
+  "eligible_tools": ["search"],
+  "baseline_query": "git grep -n \"commitTransaction\" -- packages",
+  "burden": { "grep_hits": 84, "distinct_files": 42, "output_bytes": 8401 },
+  "question": "In github.com/payloadcms/payload, `commitTransaction` appears as a database-adapter method, a utility wrapper, a type, and per-adapter implementations. Which single file and function provides the DEFAULT no-op `commitTransaction` (`() => Promise.resolve(null)`) that `createDatabaseAdapter` assigns so an adapter that does not implement transactions still has a callable method? Name the file.",
+  "deterministic": [{ "kind": "regex", "pattern": "database/createDatabaseAdapter\\.ts" }],
+  "critical_facts": [
+    "names packages/payload/src/database/createDatabaseAdapter.ts as the file holding the default no-op commitTransaction",
+    "identifies it as the module-level `const commitTransaction: CommitTransaction = () => Promise.resolve(null)` (around line 22) that is placed into the returned adapter object as a default before `...args` can override it"
+  ],
+  "material_errors": [
+    "names the utility wrapper packages/payload/src/utilities/commitTransaction.ts (which calls payload.db.commitTransaction and deletes req.transactionID) as the no-op default",
+    "names a real adapter implementation (packages/db-mongodb/src/transactions/commitTransaction.ts or packages/drizzle/src/transactions/commitTransaction.ts) as the default",
+    "names the type declaration packages/payload/src/database/types.ts (`commitTransaction: CommitTransaction`) instead of the no-op default value"
+  ],
+  "evidence": [
+    "packages/payload/src/database/createDatabaseAdapter.ts:22 — `const commitTransaction: CommitTransaction = () => Promise.resolve(null)`",
+    "packages/payload/src/database/createDatabaseAdapter.ts:45 — `commitTransaction,` placed in the returned adapter defaults, then `...args` (line 57) spreads the adapter's own impl over it",
+    "decoys: packages/payload/src/utilities/commitTransaction.ts:8 (wrapper), packages/db-mongodb/src/transactions/commitTransaction.ts:5 and packages/drizzle/src/transactions/commitTransaction.ts:3 (impls), packages/payload/src/database/types.ts:36 (type)",
+    "burden: `git grep -n \"commitTransaction\" -- packages` = 84 match lines across 42 files"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "payload-aftervalidate-negative",
+  "dep": "payload",
+  "ref": "github.com/payloadcms/payload",
+  "commit": "5081ad4786643e14b21fb5981941ccdceecd55bd",
+  "job_type": "negative",
+  "tool_target": "search",
+  "eligible_tools": ["search"],
+  "baseline_query": "git grep -in \"afterValidate\" -- packages/payload/src",
+  "burden": { "grep_hits": 0, "distinct_files": 0, "output_bytes": 0 },
+  "question": "In github.com/payloadcms/payload, collections support a `beforeValidate` hook. Is there a symmetric collection-level `afterValidate` hook (i.e. a `hooks.afterValidate` key with an `AfterValidateHook` type)? Answer yes or no, and if no, name the validate-adjacent hooks that DO exist on a collection.",
+  "deterministic": [{ "kind": "regex", "pattern": "no|does not|doesn't|not exist|no such|there is no" }],
+  "critical_facts": [
+    "answers that there is NO `afterValidate` collection hook in the payload source (no `hooks.afterValidate`, no `AfterValidateHook` type)",
+    "correctly notes that `beforeValidate` DOES exist as a collection hook, and that the post-write hooks are `beforeChange` / `afterChange` (there is no afterValidate stage)"
+  ],
+  "material_errors": [
+    "claims an `afterValidate` hook exists or fabricates a file/line/type where it is defined",
+    "claims `beforeValidate` does not exist (it does, at packages/payload/src/collections/config/types.ts:657)"
+  ],
+  "evidence": [
+    "`git grep -in \"afterValidate\" -- packages/payload/src` returns 0 matches (exit 1 — no such symbol anywhere in the source)",
+    "packages/payload/src/collections/config/types.ts:657 — `beforeValidate?: BeforeValidateHook[]` (exists); the hooks block (types.ts:641-673) lists afterChange, afterDelete, afterError, afterForgotPassword, afterLogin, afterLogout, afterMe, afterOperation, afterRead, afterRefresh, beforeChange, beforeDelete, beforeLogin, beforeOperation, beforeRead, beforeValidate, me, refresh — no afterValidate"
+  ]
+}

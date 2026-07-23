@@ -1,0 +1,29 @@
+{
+  "id": "payload-afterread-access-behavior",
+  "dep": "payload",
+  "ref": "github.com/payloadcms/payload",
+  "commit": "5081ad4786643e14b21fb5981941ccdceecd55bd",
+  "job_type": "behavior-explanation",
+  "tool_target": "neither",
+  "eligible_tools": ["search"],
+  "baseline_query": "git grep -n \"triggerAccessControl\" -- packages/payload/src",
+  "burden": { "grep_hits": 21, "distinct_files": 3, "output_bytes": 1989 },
+  "question": "In github.com/payloadcms/payload's afterRead field-hook pipeline (packages/payload/src/fields/hooks/afterRead/promise.ts), does a field's read access-control function (`field.access.read`) get evaluated by DEFAULT when the afterRead hooks run, and what single parameter lets a caller skip that field-level read access enforcement while still running afterRead hooks? Explain the default and the flag.",
+  "deterministic": [{ "kind": "regex", "pattern": "triggerAccessControl" }],
+  "critical_facts": [
+    "the parameter is `triggerAccessControl`, and it DEFAULTS to true in the afterRead field promise (so field-level read access IS enforced by default)",
+    "when triggerAccessControl is true AND the field defines `field.access.read`, the afterRead promise evaluates that access function and can delete/hide the field value; passing triggerAccessControl: false skips this while still running the afterRead traversal/hooks",
+    "the flag is threaded recursively into nested traverseFields/promise calls so the choice applies to sub-fields too"
+  ],
+  "material_errors": [
+    "claims field read access is NOT run by default, or that the default of triggerAccessControl is false",
+    "names a different flag (e.g. showHiddenFields, triggerHooks, or overrideAccess) as the one that toggles field-level read access control in the afterRead promise",
+    "conflates collection-level/operation-level access (overrideAccess) with the per-field afterRead triggerAccessControl flag"
+  ],
+  "evidence": [
+    "packages/payload/src/fields/hooks/afterRead/promise.ts:112 — `triggerAccessControl = true,` (default in the promise args)",
+    "packages/payload/src/fields/hooks/afterRead/promise.ts:374 — `if (triggerAccessControl && field.access && field.access.read) {` (gate around evaluating the field read access fn)",
+    "packages/payload/src/fields/hooks/afterRead/promise.ts:485,519,583,627,673,717,750 — triggerAccessControl forwarded into nested traverseFields/promise calls",
+    "burden: `git grep -n \"triggerAccessControl\" -- packages/payload/src` = 21 lines across 3 files (afterRead promise.ts x17, afterRead traverseFields.ts x3, admin/RichText.ts x1)"
+  ]
+}

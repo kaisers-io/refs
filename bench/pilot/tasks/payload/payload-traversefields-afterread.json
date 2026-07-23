@@ -1,0 +1,28 @@
+{
+  "id": "payload-traversefields-afterread",
+  "dep": "payload",
+  "ref": "github.com/payloadcms/payload",
+  "commit": "5081ad4786643e14b21fb5981941ccdceecd55bd",
+  "job_type": "symbol-localization",
+  "tool_target": "search",
+  "eligible_tools": ["search"],
+  "baseline_query": "git grep -n \"traverseFields\" -- packages",
+  "burden": { "grep_hits": 191, "distinct_files": 47, "output_bytes": 18613 },
+  "question": "In github.com/payloadcms/payload, the field-hook pipeline defines a helper named `traverseFields` in many different packages and hook stages. Which single source file defines the `traverseFields` function that the afterRead field hook uses — the one imported by packages/payload/src/fields/hooks/afterRead/index.ts and afterRead/promise.ts? Name the defining file, not one of its ~14 same-named siblings or the dozens of call sites.",
+  "deterministic": [{ "kind": "regex", "pattern": "fields/hooks/afterRead/traverseFields\\.ts" }],
+  "critical_facts": [
+    "names packages/payload/src/fields/hooks/afterRead/traverseFields.ts as the file defining the afterRead field hook's traverseFields",
+    "identifies it as `export const traverseFields = ({ ... })` (defined around line 63) that the afterRead index.ts and promise.ts import via `./traverseFields.js`"
+  ],
+  "material_errors": [
+    "names a different hook stage's traverseFields (e.g. fields/hooks/beforeChange/traverseFields.ts, afterChange/traverseFields.ts, or beforeValidate/traverseFields.ts) as the afterRead one",
+    "names the generic utility packages/payload/src/utilities/traverseFields.ts or a drizzle/ui traverseFields (e.g. packages/drizzle/src/transform/read/traverseFields.ts) instead of the afterRead hook file",
+    "cites a dist/ build artifact or a call site line in promise.ts instead of the defining file"
+  ],
+  "evidence": [
+    "packages/payload/src/fields/hooks/afterRead/traverseFields.ts:63 — `export const traverseFields = ({`",
+    "packages/payload/src/fields/hooks/afterRead/index.ts:7 — `import { traverseFields } from './traverseFields.js'`; :77 call site",
+    "packages/payload/src/fields/hooks/afterRead/promise.ts:22 — `import { traverseFields } from './traverseFields.js'` (14+ call sites in this file)",
+    "burden: `git grep -n \"traverseFields\" -- packages` = 191 match lines across 47 files; 14 of those files each define their own `export const traverseFields`"
+  ]
+}
