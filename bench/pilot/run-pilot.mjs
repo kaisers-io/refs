@@ -3,6 +3,7 @@
 // `expandCells` is pure and unit-tested; `main()` is thin real-subprocess glue.
 
 import { appendFile, mkdir, readFile, readdir } from 'node:fs/promises';
+import { refsCalls, refsOnPath, rungEnv, setupShim } from './lib/refs-shim.mjs';
 import { fileURLToPath } from 'node:url';
 import { makeJudge } from './lib/judge.mjs';
 import { parseCodexEvents } from './lib/telemetry.mjs';
@@ -129,12 +130,26 @@ const parseRepeats = (argv) => {
   return Number(argv[index + NEXT]);
 };
 
-const runOne = async (cell, preambles, checkouts) => {
+// Per-run env: the shim dir enters PATH only for `full`, and REFS_LOG points at
+// this run's fresh log. HOME is preserved (refs needs its ~/.kaisers-io store);
+// the shim's skills residual is bounded by the self-contained preamble — see
+// refs-shim.mjs. spawn REPLACES env, so we spread process.env before overriding.
+const rungRunEnv = (rung, shim, logPath) => {
+  const { PATH, REFS_LOG } = rungEnv(rung, {
+    basePath: shim.basePath,
+    logPath,
+    shimDir: shim.shimDir,
+  });
+  return { ...process.env, PATH, REFS_LOG };
+};
+
+const runOne = async ({ cell, checkouts, logPath, preambles, shim }) => {
   const { model, repeat, rung, task } = cell;
   const checkout = checkouts[task.ref];
   const started_at = new Date().toISOString();
   const result = await runCell(spawnExec, {
     cwd: checkout.path,
+    env: rungRunEnv(rung, shim, logPath),
     model,
     preamble: preambles[rung],
     question: task.question,
@@ -149,6 +164,13 @@ const runOne = async (cell, preambles, checkouts) => {
     failed: result.failed,
     model,
     raw: result.raw,
+    // Blind spot: these two fields only catch PATH-mediated `refs` resolution
+    // through the shim; an absolute-path invocation of the real refs.mjs bypasses
+    // both and is invisible here (see the MEASUREMENT BLIND SPOT comment in
+    // lib/refs-shim.mjs). Bounded by Task 1's self-contained preamble plus the
+    // persisted per-run transcript, which any absolute-path call would show.
+    refs_calls: await refsCalls(logPath),
+    refs_on_path: shim.onPath[rung],
     repeat,
     rung,
     score,
@@ -169,18 +191,19 @@ const errorRecord = (cell, error) => ({
 });
 
 // One failing cell must not discard the whole run: record the error and continue.
-const settleCell = async (cell, preambles, checkouts) => {
+const settleCell = async (args) => {
   try {
-    return await runOne(cell, preambles, checkouts);
+    return await runOne(args);
   } catch (error) {
-    return errorRecord(cell, error);
+    return errorRecord(args.cell, error);
   }
 };
 
-const runAll = async ({ cells, checkouts, outPath, preambles }) => {
-  for (const cell of cells) {
+const runAll = async ({ cells, checkouts, logDir, outPath, preambles, shim }) => {
+  for (const [index, cell] of cells.entries()) {
+    const logPath = fileURLToPath(new URL(`${index}.jsonl`, logDir));
     // eslint-disable-next-line no-await-in-loop -- cells run sequentially by design (interleaved, cache-controlled)
-    const record = await settleCell(cell, preambles, checkouts);
+    const record = await settleCell({ cell, checkouts, logPath, preambles, shim });
     // eslint-disable-next-line no-await-in-loop -- append in order as each run completes
     await appendFile(outPath, `${JSON.stringify(record)}\n`);
     process.stdout.write(
@@ -213,17 +236,48 @@ const newOutPath = () => {
   return new URL(`${stamp}.jsonl`, RESULTS_DIR);
 };
 
+const newLogDir = () => {
+  const stamp = new Date().toISOString().replaceAll(':', '-');
+  return new URL(`refs-log/${stamp}/`, RESULTS_DIR);
+};
+
+// `command -v refs` per rung (full → the shim, controls → empty). Measured once
+// since it depends only on the rung env, then reused per record as `refs_on_path`.
+const onPathByRung = async (shim) => {
+  const entries = await Promise.all(
+    RUNGS.map(async (rung) => {
+      const { PATH } = rungEnv(rung, { basePath: shim.basePath, shimDir: shim.shimDir });
+      return [rung, await refsOnPath(spawnExec, PATH)];
+    }),
+  );
+  return Object.fromEntries(entries);
+};
+
+const setupRun = async () => {
+  const base = await setupShim(spawnExec, fileURLToPath(REFS_BIN));
+  const shim = { ...base, onPath: await onPathByRung(base) };
+  await mkdir(RESULTS_DIR, { recursive: true });
+  const logDir = newLogDir();
+  await mkdir(logDir, { recursive: true });
+  return { logDir, outPath: newOutPath(), shim };
+};
+
+const reportSetup = (seed, count, shim) => {
+  process.stdout.write(`seed=${seed} cells=${count}\n`);
+  const line = RUNGS.map((rung) => `${rung}=${shim.onPath[rung] || '(none)'}`).join(' ');
+  process.stdout.write(`refs on PATH: ${line}\n`);
+};
+
 const main = async () => {
   const repeats = parseRepeats(process.argv);
   const seed = parseSeed(process.argv);
   const [preambles, tasks] = await Promise.all([loadPreambles(), loadTasks()]);
   const checkouts = await resolveCheckouts(tasks);
   warnCommitDrift(tasks, checkouts);
-  await mkdir(RESULTS_DIR, { recursive: true });
-  const outPath = newOutPath();
+  const { logDir, outPath, shim } = await setupRun();
   const cells = shuffle(expandCells(tasks, MODELS, RUNGS, repeats), makeRng(seed));
-  process.stdout.write(`seed=${seed} cells=${cells.length}\n`);
-  await runAll({ cells, checkouts, outPath, preambles });
+  reportSetup(seed, cells.length, shim);
+  await runAll({ cells, checkouts, logDir, outPath, preambles, shim });
 };
 
 const [, entryPath] = process.argv;

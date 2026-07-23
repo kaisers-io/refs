@@ -46,8 +46,24 @@ const CODEX_ISOLATION = [
   'read-only',
 ];
 
+// Extra flags appended ONLY when a cell is a judge run (see judge.mjs). Claude
+// gets `--tools ""` (no tools — the judge grades TEXT only, never a checkout).
+// Codex stays empty: its prompt is the LAST positional arg, so appending would
+// corrupt it, and the codex judge already runs `-s read-only` in a neutral cwd.
+const JUDGE_EXTRA = {
+  claude: ['--tools', ''],
+  codex: [],
+};
+
 const buildPrompt = (preamble, question, cwd) =>
   `${preamble}\n\nThe dependency checkout is at: ${cwd}\n\nQuestion: ${question}`;
+
+const withJudgeArgs = (model, argv, judge) => {
+  if (!judge) {
+    return argv;
+  }
+  return [...argv, ...JUDGE_EXTRA[model]];
+};
 
 // Codex's answer is the text of the LAST agent_message item, not the whole stream.
 const codexAnswer = (stdout) =>
@@ -73,8 +89,11 @@ const nowMs = () => Number(process.hrtime.bigint() / NANOS_PER_MS);
 const runCell = async (exec, cell) => {
   const cli = CLI[cell.model];
   const prompt = buildPrompt(cell.preamble, cell.question, cell.cwd);
+  const argv = withJudgeArgs(cell.model, cli.argv(prompt), cell.judge);
   const start = nowMs();
-  const { stdout, stderr, code } = await exec(cell.model, cli.argv(prompt), { cwd: cell.cwd });
+  // A full per-rung env (PATH+REFS_LOG) rides on cell.env; it is undefined for the
+  // FakeCli unit tests and judge runs, which then inherit process.env unchanged.
+  const { stdout, stderr, code } = await exec(cell.model, argv, { cwd: cell.cwd, env: cell.env });
   const wall_ms = nowMs() - start;
   const base = { code, raw: stdout, stderr, wall_ms };
   // A non-zero exit (incl. spawnExec's timeout code) means the answer/telemetry are
