@@ -65,3 +65,33 @@ describe('extractChangelogExcerpt: bounded version matching', () => {
     expect(result?.excerpt).not.toContain('old change');
   });
 });
+
+const NESTED_OLD_MENTION = [
+  '# Changelog',
+  '',
+  '## 3.0.0',
+  '',
+  '- new feature',
+  '',
+  '### Migrating from 2.0.0',
+  '',
+  '- run the 2.0.0 codemod',
+  '',
+  '## 2.0.0',
+  '',
+  '- old change',
+  '',
+].join('\n');
+
+describe('extractChangelogExcerpt: section boundary depth', () => {
+  it('does not end the section at a DEEPER sub-heading that merely mentions the old version', () => {
+    expect.hasAssertions();
+    // A `### Migrating from 2.0.0` sub-heading inside the `## 3.0.0` section is body content, not
+    // the boundary — the migration notes are the most valuable part of a range query and must
+    // survive. Only a heading at the new heading's depth or shallower (`## 2.0.0`) ends it.
+    const result = extractChangelogExcerpt(NESTED_OLD_MENTION, optsFor('3.0.0', '2.0.0'));
+    expect(result?.excerpt).toContain('new feature');
+    expect(result?.excerpt).toContain('run the 2.0.0 codemod');
+    expect(result?.excerpt).not.toContain('old change');
+  });
+});

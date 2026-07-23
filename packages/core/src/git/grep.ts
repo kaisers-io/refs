@@ -46,13 +46,25 @@ const MAX_SNIPPET_LENGTH = 200;
 // Only safe walk is over NUL tokens, where token 3k is a path glued to the previous record's
 // Content ("<content> NEWLINE <path>" — content runs to the FIRST newline, because a matched
 // Line can never contain one; everything after it, newlines included, is the next path). Content
-// Can never contain a NUL either: `-I` skips binary files.
+// Is USUALLY NUL-free, but `-I` only skips files git SNIFFS as binary (first ~8000 bytes), so a
+// Text-classified file carrying a later NUL still emits one inside the content field and desyncs
+// The token walk. `parseRecords` detects that (it stops early on an unassemblable record) and the
+// Caller turns it into an honest `truncated: true`, never a silent under-count.
 const FIELD_SEPARATOR = '\0';
 const LINE_NUMBER = /^\d+$/u;
 
 interface GrepRecord {
   match: GrepMatch;
   nextPath: string;
+}
+
+// `matches` are the records assembled in stream order; `complete` is false when the walk stopped
+// Before consuming every token — the expected trailing fragment under a byte cap, but for an
+// Un-capped stream a desync (e.g. a NUL byte embedded in matched content) that must keep
+// `truncated` honest rather than passing off a partial listing as exhaustive.
+interface ParsedRecords {
+  complete: boolean;
+  matches: GrepMatch[];
 }
 
 // One record assembled from the pending `path` plus the two tokens at `index` (line number and
@@ -86,7 +98,12 @@ const takeRecord = (
 
 // State machine over the NUL tokens: each record consumes the pending path plus two tokens (see
 // `takeRecord`), and each mixed token's post-newline remainder becomes the NEXT record's path.
-const parseRecords = (stdout: string): GrepMatch[] => {
+// A clean `-z` stream ends with a newline-terminated final record, so after a full walk the
+// Pending `path` is '' (nothing follows the last record's newline). A NON-empty pending `path`
+// After the loop means the walk broke early on an unassemblable record — the expected trailing
+// Fragment under a byte cap, but for an un-capped stream a desync (e.g. a content NUL) that
+// `complete: false` reports so the caller keeps `truncated` honest.
+const parseRecords = (stdout: string): ParsedRecords => {
   const tokens = stdout.split(FIELD_SEPARATOR);
   const records: GrepMatch[] = [];
   let path = tokens[FIRST_TOKEN] ?? '';
@@ -98,14 +115,19 @@ const parseRecords = (stdout: string): GrepMatch[] => {
     records.push(record.match);
     path = record.nextPath;
   }
-  return records;
+  return { complete: path === '', matches: records };
 };
 
 // Counts ALL complete records first (that is what keeps `truncated` honest), then returns only
-// The first `limit` of them — reading just enough to know more exists without shipping it.
+// The first `limit` of them — reading just enough to know more exists without shipping it. An
+// Incomplete walk (`complete: false`) forces `truncated: true`: with the stream desynced, the
+// Record count alone can no longer prove there was nothing beyond what was parsed.
 const parseGrepOutput = (stdout: string, limit: number): GrepResult => {
-  const records = parseRecords(stdout);
-  return { matches: records.slice(SNIPPET_START, limit), truncated: records.length > limit };
+  const { complete, matches: records } = parseRecords(stdout);
+  return {
+    matches: records.slice(SNIPPET_START, limit),
+    truncated: records.length > limit || !complete,
+  };
 };
 
 // When the runner's byte cap cut stdout mid-stream (`RunResult.stdoutTruncated`), the trailing
