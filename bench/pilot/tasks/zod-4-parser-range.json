@@ -1,0 +1,21 @@
+{
+  "id": "zod-4-parser-range",
+  "dep": "zod",
+  "ref": "github.com/colinhacks/zod",
+  "commit": "912f0f51b0ced654d0069741e7160834dca742ee",
+  "job_type": "version-range",
+  "question": "In the zod repository, comparing the release tags v4.4.2 and v4.4.3, which change restored `.catch()` handling for absent object keys? Give the commit subject and identify it by sha or PR number.",
+  "deterministic": [{ "kind": "regex", "pattern": "5937|5939|1cab6938" }],
+  "critical_facts": [
+    "identifies the fix that restores catch handling for absent object keys",
+    "cites the correct commit reachable in the v4.4.2..v4.4.3 range (sha 1cab6938, or PR #5937 / #5939)"
+  ],
+  "material_errors": [
+    "claims no such change exists between v4.4.2 and v4.4.3",
+    "attributes the fix to a commit outside the v4.4.2..v4.4.3 range"
+  ],
+  "evidence": [
+    "commit 1cab6938 — `fix(v4): restore catch handling for absent object keys (#5937) (#5939)`, reachable in v4.4.2..v4.4.3",
+    "both tags exist: `git tag -l` lists v4.4.2 and v4.4.3; range has 10 non-merge commits"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "id": "zod-error-format",
+  "dep": "zod",
+  "ref": "github.com/colinhacks/zod",
+  "commit": "912f0f51b0ced654d0069741e7160834dca742ee",
+  "job_type": "behavior-explanation",
+  "question": "In zod 4, what does the `z.treeifyError` function produce from a ZodError, how does that differ from `z.flattenError`, and in which source file are both defined?",
+  "deterministic": [{ "kind": "regex", "pattern": "v4/core/errors\\.ts" }],
+  "critical_facts": [
+    "explains treeifyError produces a nested, tree-shaped structure that mirrors the schema/data shape, with per-path `errors` and recursive `properties`/`items`",
+    "explains flattenError produces a flat structure — `formErrors` plus `fieldErrors` keyed one level deep by the first path segment",
+    "names packages/zod/src/v4/core/errors.ts as the file defining both functions"
+  ],
+  "material_errors": [
+    "describes treeifyError as returning a flat list of issues",
+    "cites the legacy v3 error formatting (ZodError.format in v3/types.ts) as the zod 4 answer"
+  ],
+  "evidence": [
+    "packages/zod/src/v4/core/errors.ts:345 — `export function treeifyError`; return type `$ZodErrorTree` has `errors` + nested `properties`/`items`",
+    "packages/zod/src/v4/core/errors.ts:263 — `export function flattenError`; returns `{ formErrors, fieldErrors }`"
+  ]
+}
