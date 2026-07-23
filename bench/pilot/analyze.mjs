@@ -109,6 +109,12 @@ const printPowerEstimate = (runs) => {
   }
 };
 
+const report = (runs) => {
+  printCellTable(runs);
+  printRepeatVariance(runs);
+  printPowerEstimate(runs);
+};
+
 const main = async () => {
   const file = await latestResultsFile();
   if (file === undefined) {
@@ -116,11 +122,12 @@ const main = async () => {
     return;
   }
   print(`analyzing ${file}`);
-  const runs = await loadRuns(file);
-  print(`${runs.length} runs\n`);
-  printCellTable(runs);
-  printRepeatVariance(runs);
-  printPowerEstimate(runs);
+  const allRuns = await loadRuns(file);
+  const runs = allRuns.filter((run) => run.telemetry !== undefined && run.score !== undefined);
+  print(
+    `${allRuns.length} runs (${allRuns.length - runs.length} errored, ${runs.length} analyzed)\n`,
+  );
+  report(runs);
 };
 
 await main();

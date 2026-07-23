@@ -102,14 +102,31 @@ const runOne = async (cell, preambles, checkouts) => {
   };
 };
 
+const errorRecord = (cell, error) => ({
+  error: String(error),
+  model: cell.model,
+  repeat: cell.repeat,
+  rung: cell.rung,
+  task_id: cell.task.id,
+});
+
+// One failing cell must not discard the whole run: record the error and continue.
+const settleCell = async (cell, preambles, checkouts) => {
+  try {
+    return await runOne(cell, preambles, checkouts);
+  } catch (error) {
+    return errorRecord(cell, error);
+  }
+};
+
 const runAll = async ({ cells, checkouts, outPath, preambles }) => {
   for (const cell of cells) {
     // eslint-disable-next-line no-await-in-loop -- cells run sequentially by design (interleaved, cache-controlled)
-    const record = await runOne(cell, preambles, checkouts);
+    const record = await settleCell(cell, preambles, checkouts);
     // eslint-disable-next-line no-await-in-loop -- append in order as each run completes
     await appendFile(outPath, `${JSON.stringify(record)}\n`);
     process.stdout.write(
-      `${record.model}/${record.rung} ${record.task_id} pass=${record.score.pass}\n`,
+      `${record.model}/${record.rung} ${record.task_id} pass=${record.score?.pass ?? 'ERROR'}\n`,
     );
   }
 };
