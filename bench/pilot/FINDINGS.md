@@ -3,127 +3,133 @@
 **Run:** 2026-07-23, N=3 · 54 cells (3 tasks × 2 models × 3 rungs × 3 repeats) · 0 errored.
 **Scope:** mechanics validation only (per `bench-design.md` §2/§12) — NOT a test of the efficiency
 claim itself. All numbers are within-model; cross-model token counts are not comparable.
+**Reviewed:** whole-branch by Codex (collab headless) + Fable (high-effort subagent); their findings
+are folded in below and the code-level ones are fixed on this branch (commit `e8e7fc7`).
 
-## Recommendation: **GO on mechanics — CONDITIONAL on two design fixes before the full study**
+## Recommendation: **GO on mechanics — CONDITIONAL on the Phase-B design fixes below**
 
-The measurement machinery works end-to-end (telemetry, orchestration, deterministic + blinded
-cross-family judge, material-error scoring, variance/power). The harness is buildable as specified.
-**But the pilot surfaced two issues that make the current efficiency/correctness contrasts
-un-provable as-is** — both must be fixed before Phase B produces a defensible claim. This is exactly
-what a pilot is for.
+The measurement machinery works end-to-end and the harness is buildable. **But the pilot + the two
+reviews showed the current efficiency/correctness contrasts are not yet provable**, and the reviews
+surfaced real harness bugs (now fixed) plus methodology gaps that need a re-run before Phase B is
+meaningful. This is exactly what a pilot is for.
 
 ---
 
 ## The three go/no-go questions (design §12)
 
 ### (a) Cache-separated per-run telemetry from both CLIs? — **YES**
+- **Claude** (`claude -p --output-format json`): fully cache-separated, `reported=false`. 27/27 clean.
+- **Codex** (`codex exec --json`): `input_uncached`(derived)`/cache_read/output/reasoning`; no
+  cache-write → `reported=true`. 27/27 clean. **Fixed post-review:** codex `output_tokens` *includes*
+  reasoning — the normalizer now subtracts it so a summed total never double-counts (numerically tiny
+  here, ~0.1%, but wrong in principle).
+- 0/54 telemetry-extraction failures. Text-volume-proxy fallback not needed.
 
-- **Claude** (`claude -p --output-format json`): fully cache-separated —
-  `input_uncached / cache_write / cache_read / output`, `reported=false`. 27/27 runs clean.
-- **Codex** (`codex exec --json`): `input_uncached` (derived) `/ cache_read / output / reasoning`;
-  **no cache-write component** → `reported=true` with that documented exclusion. 27/27 runs clean.
-- 0/54 runs failed telemetry extraction. The text-volume-proxy fallback is **not** needed.
+### (b) Does the atomic-fact judge agree with humans? — **NOT YET MEASURABLE (mechanics OK)**
+Downgraded from a naive "yes" after review. The judge *machinery* is sound: structured per-criterion
+verdicts, and an adversarial check (deliberately wrong answers) failed all three correctly —
+v3-decoy and dist-artifact → `pass=false` + `material_error=true`; "treeifyError is flat" → the two
+content facts fail **but the correct sub-fact still passes** (genuine per-criterion discrimination).
+**But** every *real* run was correct (§Finding 1), so the judge's false-pass/false-fail rate on
+*ambiguous* answers is unmeasured — and design §6 requires ≥20% stratified human double-label with
+reported agreement. With 100% pass there is no discrimination data. Honest answer: **the judge works
+mechanically; its agreement rate is not yet measurable and must be established on a task set that
+actually produces wrong answers.**
 
-### (b) Does the atomic-fact judge agree with humans? — **YES (on the cases available)**
-
-- The judge returns real structured per-criterion verdicts (2/2, 3/3), not empty or holistic.
-- On all human-spot-checked **correct** answers it agreed (passed genuinely-correct answers).
-- **Adversarial discrimination check** (deliberately wrong answers) — the judge correctly failed all:
-  - "cites v3/types.ts as the zod-4 answer" → `pass=false`, `material_error=true`, both facts fail.
-  - "coerce is in dist/index.js" → `pass=false`, `material_error=true`.
-  - "treeifyError returns a flat list" → the two content facts fail **but the correct sub-fact
-    (names core/errors.ts) still passes** → genuine per-criterion discrimination, not blanket reject.
-- **Caveat:** because every real run was correct (see below), the judge's false-pass/false-fail rate
-  on _ambiguous_ real answers could not be measured. That calibration needs correctness variance,
-  which the pilot task set did not produce.
-
-### (c) Variance + affordable N? — **DATA COLLECTED, but the contrast is confounded (see Finding 2)**
-
-- Repeat variance is **high and heterogeneous**: per-cell token stdev ranged **27 → 100,987**.
-- Rough required-N (normal-approx placeholder) for the Full-vs-Discipline token contrast:
-  **claude ≈ 31/condition, codex ≈ 18/condition.** These are **not trustworthy** because the token
-  contrast they size is confounded by Finding 2.
+### (c) Variance + affordable N? — **DATA COLLECTED, but the sized contrast is confounded**
+Per-cell token stdev (now sample/Bessel) ranges wide; the rough required-N (claude ≈ tens, codex ≈
+tens per condition) is **not trustworthy** because it sizes a conflated, order-confounded token total
+(see Finding 2 + review H2/B3). Re-size only after the Phase-B fixes.
 
 ---
 
-## Efficiency results (within-model, mean total native tokens)
+## Efficiency results — per component (design §5: never one opaque total)
 
-| model  | naive   | discipline     | full                        | wall naive→full |
-| ------ | ------- | -------------- | --------------------------- | --------------- |
-| claude | 101,085 | 130,132 (+29%) | 188,103 (**+86%** vs naive) | 22.6s → 40.2s   |
-| codex  | 219,858 | 202,335 (−8%)  | 251,069 (**+14%** vs naive) | 51.0s → 58.2s   |
+Mean tokens per (model, rung). The single "total" is a **trajectory-length proxy**, not cost.
 
-**The token trend runs BACKWARDS from the hypothesis: `full` (with refs) costs MORE, not less.**
-Correctness: **54/54 pass (100%) in every cell.**
+| model · rung | uncached | cache_write | cache_read | output | total (proxy) |
+|---|---|---|---|---|---|
+| claude naive | 10 | 3,668 | 96,171 | 1,236 | 101,085 |
+| claude discipline | 87 | 6,500 | 121,454 | 2,091 | 130,132 |
+| claude full | 91 | 7,363 | **178,300** | 2,349 | 188,103 |
+| codex naive | 33,808 | — | 184,548 | 1,282 | 219,858 |
+| codex discipline | **37,881** | — | 162,532 | 1,576 | 202,335 |
+| codex full | **35,292** | — | **213,646** | 1,710 | 251,069 |
+
+**What the opaque total hid (review B3):** the naive→full growth is almost entirely **cache_read** —
+the cheapest component (~10% of uncached-input price). Codex **uncached input actually falls**
+discipline→full (37.9k → 35.3k); its inflation is purely cache_read (more turns re-reading a longer
+cached context). So "+86% / +14%" overstates the real picture.
+
+**Cost-weighted (claude, Opus prices):** naive $0.31 · discipline $0.46 · full $0.58 — full is still
+~2× naive in dollars (cache_read volume + output + cache_write), so a *real* full-rung cost premium
+exists **for claude**; for codex it is much weaker once components are separated. Correctness:
+**54/54 pass (100%).**
 
 ---
 
-## Critical mechanics findings (the real pilot payload)
+## Critical findings
 
 ### Finding 1 — Correctness does not discriminate (task set too easy)
+54/54 pass; even naive cited `v4/classic/coerce.ts` and avoided the v3 decoy, so `material_error`
+never fired on a real run (the gate is wired + adversarially verified, just never triggered). The
+pilot therefore **cannot size correctness non-inferiority** — no variance. Phase B needs harder /
+negative / decoy tasks across ≥4 deps so weaker approaches actually fail.
 
-Every rung, both models, passed all three tasks — even **naive** correctly cited `v4/classic/coerce.ts`
-and **avoided the v3 decoy** (so `material_error` never fired on real runs). Consequence: the pilot
-**cannot size the correctness non-inferiority test** — there is no variance to power it. The full
-study needs harder, negative, and decoy-heavy tasks across ≥4 deps so that weaker approaches actually
-fail. Corollary: the `material_errors` scoring is wired and verified (via the adversarial check) but
-was never exercised by a real run.
+### Finding 2 — The `full` token premium: doc-reading is a *plausible contributor*, not proven to dominate
+Softened after review (H6). One out-of-band re-run of a `codex/full` cell showed the agent read ~700
+lines of external refs skill docs (`SKILL.md` + `investigate.md`) before using refs (correctly, exit
+0, grounded). That plausibly inflates tokens — **but** it is n=1, not from the 54 measured runs
+(transcripts weren't persisted — now fixed), the claude side is unexplained, and the cache_read-shaped
+growth is consistent with "more turns from *any* cause" (doc-reading, the `refs list` discovery step
+`full.md` forces, refs JSON volume, or plain trajectory lengthening). It remains a real confound
+vs design §3 rung-2/3 equivalence; the fix (below) must be symmetric across rungs.
 
-### Finding 2 — Token inversion is a **skill-doc confound**, not a refs-command cost
-
-Diagnosed by re-running one `codex/full` cell with the transcript kept (the results don't persist it
-— Finding 3). The `full`-rung agent:
-
-- **used refs correctly** (`refs list`, `refs search … --json`; exit 0; grounded in git-grep + real
-  file reads), but
-- **first autonomously read ~700 lines of external refs skill docs** —
-  `sed -n '1,240p' …/.agents/skills/refs/SKILL.md` and `…/references/investigate.md` — before doing
-  any work.
-
-That doc-reading dominates `full`'s token cost and **confounds the design's §3 rung-2/3 equivalence**
-(rung 3 should differ from rung 2 by the refs-command _mechanism only_, not by pulling in the whole
-investigate.md playbook). Launch isolation blocks _auto_-loading the skill, but the agent reads the
-files manually because the preamble names `refs`. **Fix before Phase B:** make `full.md` fully
-self-contained (inline everything the agent needs about `refs search`/`refs range`) **and** prevent or
-separately account for external skill-doc reads (e.g. run rung 3 with the skills dir hidden), so the
-measured effect is the refs-command effect — not the cost of reading documentation. High, bimodal
-variance (stdev up to ~101k) is consistent with "sometimes reads all docs, sometimes not."
-
-### Finding 3 — No transcript persistence (blocks post-hoc diagnosis)
-
-`runOne` records answer + telemetry + score but **drops `runCell`'s `raw`**, so Finding 2 could only
-be diagnosed by re-running. Phase B must persist the raw transcript + a tool-call count per run
-(also flagged by the skill-eval review). Cheap and high-value.
+### Finding 3 — Transcript persistence (FIXED)
+`runOne` dropped `runCell`'s `raw`, so Finding 2 could only be diagnosed by re-running. Now the record
+persists `raw`, a derived `tool_calls` count, `started_at`, `code`, and `failed`.
 
 ---
 
-## Recommendations for the full study (Phase B)
+## Review-driven fixes **applied on this branch** (commit `e8e7fc7`)
+- **Scoring fail-open (Codex#1/Fable B2):** the judge must now grade *every* critical fact by identity
+  and pass all; a `judge_complete` flag fails runs where the judge graded too few.
+- **Judge contract contradiction (Codex#2/B2):** `JUDGE_PREAMBLE` now includes `material_errors`,
+  matching `buildJudgePayload`.
+- **Codex reasoning double-count (Codex#7/B3):** visible output = `output_tokens − reasoning`.
+- **Sample stdev (Fable M2):** `stdev` is now Bessel (÷ n−1), 0 for n≤1.
+- **Timeouts/CLI errors as failures (B1):** `runCell` surfaces `code`/`failed`; non-zero exit no
+  longer parsed as a success; `analyze` reports the failed/timed-out count.
+- **Claude pinning + read-only (Codex#8/#9/H3):** `--model claude-opus-4-8` + `--disallowed-tools
+  Write Edit NotebookEdit`.
+- **Neutral judge cwd (Fable H3):** the judge runs in `os.tmpdir()`, not the checkout.
+- **Randomized cell order (Codex#5/Fable H2):** seeded Fisher–Yates (recorded seed) breaks the fixed
+  naive→discipline→full sequence.
+- **Commit stamping (Codex#3/Fable H1):** each ref's HEAD is recorded per run; a drift from
+  `task.commit` warns loudly.
+- **Per-component analysis (Fable B3):** `analyze` prints component means, labels the total a proxy.
+- **UTF-8 decode (Fable M6):** `spawnExec` sets `utf8` encoding (no multi-byte corruption).
 
-**Must-fix (block the causal claim otherwise):**
-
-1. **De-confound rung 3** — self-contained `full.md` + hide/measure external skill-doc reads.
-2. **Discriminating task set** — harder / negative / decoy tasks across **≥4 deps** so correctness
-   varies and non-inferiority can be sized. Re-estimate N only after Findings 1–2 are fixed.
-3. **Persist transcripts + tool-call counts** per run.
-
-**From the agentskills.io skill-eval review (methodology add-ons, mostly Phase B):**
-
-- Add a **holistic/pairwise quality judge** (citation quality, conciseness) beside the fact grader —
-  atomic pass/fail can't see the qualities that justify refs' token cost.
-- Add a separate **trigger eval** (~20 queries, near-miss negatives) for the SKILL.md `description` —
-  the bench injects the playbook directly and never tests whether the skill _loads_.
-- After a real run, **prune non-discriminating `critical_facts`** and diversify beyond zod.
+## Still open for Phase B (need a re-run + design work — your call)
+1. **De-confound rung 3 fully** — self-contained `full.md` + hide the external skills dir for **all**
+   rungs (symmetry), so the measured effect is the refs-command effect. Also remove `refs` from the
+   control rungs' PATH (naive/discipline can currently reach it).
+2. **Discriminating task set** — harder/negative/decoy tasks across **≥4 deps**; re-estimate N after.
+3. **Two-pass persist-then-score (Fable H4)** so a judge crash never discards an expensive answer.
+4. **Cost-weighted aggregate as primary** (date-stamped prices) with per-component tables (§8).
+5. **Judge-agreement calibration** — ≥20% human double-label once wrong answers exist (§6).
+6. **From the skill-eval review:** holistic/pairwise quality judge; a separate trigger eval for the
+   SKILL.md `description`; prune non-discriminating `critical_facts` after a real run.
 
 **refs-skill improvements surfaced (independent of the bench):** tighten the `SKILL.md` description
-with an implicit-trigger clause + a negative boundary; consolidate a `## Gotchas` block (hoist the
-blobless-cold-fetch + "tags can lie" gotchas into SKILL.md); add a progress checklist to `add.md`.
+(implicit-trigger clause + negative boundary); consolidate a `## Gotchas` block (hoist blobless
+cold-fetch + "tags can lie"); add a progress checklist to `add.md`.
 
 ---
 
 ## Bottom line
-
-Mechanics: **validated.** Efficiency claim: **currently un-proven and confounded** (Finding 2).
-Correctness non-inferiority: **un-sizable from this pilot** (Finding 1). Proceed to build the reusable
-Phase-B harness, but land Fixes 1–3 first — otherwise the full study would inherit the same confounds.
-This matches the design's honest fallback: without the fixes, efficiency stays "reported, confounded"
-and correctness stays "exploratory," not proven.
+Mechanics: **validated** (and hardened against the review). Efficiency: a **real full-rung cost
+premium for claude**, but cache_read-shaped and its cause not yet isolated; **weaker for codex**.
+Correctness non-inferiority: **un-sizable from this pilot**. Both reviewers converge on
+**GO-conditional**: build the Phase-B harness, but land the open fixes (esp. rung-3 de-confounding,
+a discriminating ≥4-dep task set, two-pass scoring) and re-run before any efficiency/correctness claim.
