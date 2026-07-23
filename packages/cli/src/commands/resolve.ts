@@ -1,4 +1,4 @@
-import type { Config, PackageEntry, RefEntry, RefKey, State } from '@kaisers-io/refs-core';
+import type { Config, PackageEntry, RefKey, State } from '@kaisers-io/refs-core';
 import {
   RefsError,
   canonicalizeGitUrl,
@@ -22,6 +22,7 @@ import { allowFileUrlsFrom } from './add-helpers.ts';
 import { isStale } from './ref-status.ts';
 import { join } from 'node:path';
 import { matchRefKey } from './list.ts';
+import { requireEntry } from './ref-context.ts';
 
 // `refs resolve <query>` — the agent-routing command. Turns a git url, an exact npm package name,
 // an import path (e.g. `@scope/pkg/sub/path`), or a unique ref-key suffix into the one configured ref (and,
@@ -215,17 +216,6 @@ const routeQuery = (config: Config, query: string, options: RouteOptions): Route
     return { key: prefixed.key, packageMatch: prefixed };
   }
   return { key: matchSuffixOrThrow(config, query) };
-};
-
-// `routeQuery` only ever returns a key it found among `Object.keys(config.refs)` (directly, or via
-// `findPackageByName`/`matchRefKey`), so this lookup can never actually miss — the throw exists
-// purely to satisfy `noUncheckedIndexedAccess`, mirroring `show.ts`'s `requireEntry`.
-const requireEntry = (config: Config, key: RefKey): RefEntry => {
-  const entry = config.refs[key];
-  if (entry === undefined) {
-    throw new Error(`internal: resolved ref key '${key}' is missing from config.refs`);
-  }
-  return entry;
 };
 
 const packageDataFor = (match: RouteMatch, dest: string): ResolvePackage | null => {
