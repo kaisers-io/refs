@@ -18,6 +18,18 @@ describe('condition preambles', () => {
     const discipline = disciplineText.trim();
     const full = await read('full.md');
     expect(full.startsWith(discipline)).toBe(true);
-    expect(full.slice(discipline.length)).toContain('refs search');
+    const appended = full.slice(discipline.length);
+    expect(appended).toContain('refs search <ref>');
+    expect(appended).toContain('refs range <ref>');
+  });
+
+  it('full is self-contained — no need to read external refs skill docs', async () => {
+    const disciplineText = await read('discipline.md');
+    const discipline = disciplineText.trim();
+    const full = await read('full.md');
+    const appended = full.slice(discipline.length);
+    expect(appended).toContain('refs search github.com/colinhacks/zod "widget" --json');
+    expect(appended).toContain('refs range github.com/colinhacks/zod 3.24.1 4.0.1 --json');
+    expect(appended).not.toMatch(/investigate\.md|SKILL\.md|\.agents\/skills/u);
   });
 });
