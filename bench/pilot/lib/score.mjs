@@ -22,8 +22,11 @@ const buildJudgePayload = (task, answer) => ({
   answer,
   criteria: task.critical_facts,
   instruction:
-    'For EACH criterion, decide pass=true or pass=false based solely on whether the answer ' +
-    'satisfies it. Ignore answer length and style. Return {"criteria":[{"fact","pass"}]}.',
+    'For EACH criterion decide pass=true/false based solely on whether the answer satisfies it. ' +
+    'For EACH material_error decide present=true/false based on whether the answer commits it. ' +
+    'Ignore answer length and style. ' +
+    'Return {"criteria":[{"fact","pass"}],"material_errors":[{"error","present"}]}.',
+  material_errors: task.material_errors ?? [],
   question: task.question,
 });
 
@@ -31,9 +34,16 @@ const scoreAnswer = async (task, answer, judge) => {
   const deterministic_pass = runDeterministic(task, answer);
   const verdict = await judge(buildJudgePayload(task, answer));
   const judged = verdict.criteria ?? [];
+  const flagged = verdict.material_errors ?? [];
   const allFactsPass =
     judged.length >= MIN_CRITERIA && judged.every((entry) => entry.pass === true);
-  return { deterministic_pass, judged, pass: deterministic_pass && allFactsPass };
+  const material_error_present = flagged.some((entry) => entry.present === true);
+  return {
+    deterministic_pass,
+    judged,
+    material_error_present,
+    pass: deterministic_pass && allFactsPass && !material_error_present,
+  };
 };
 
 export { buildJudgePayload, runDeterministic, scoreAnswer };

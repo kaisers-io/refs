@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 const task = {
   critical_facts: ['names the correct file', 'describes what it wraps'],
   deterministic: [{ kind: 'contains', pattern: 'src/types.ts' }],
+  material_errors: ['cites a dist/ build artifact as the source of truth'],
   question: 'Where is coerce?',
 };
 
@@ -22,6 +23,17 @@ const oneFailingJudge = () =>
     criteria: [
       { fact: 'names the correct file', pass: true },
       { fact: 'describes what it wraps', pass: false },
+    ],
+  });
+
+const materialErrorJudge = () =>
+  Promise.resolve({
+    criteria: [
+      { fact: 'names the correct file', pass: true },
+      { fact: 'describes what it wraps', pass: true },
+    ],
+    material_errors: [
+      { error: 'cites a dist/ build artifact as the source of truth', present: true },
     ],
   });
 
@@ -44,6 +56,16 @@ describe('scoreAnswer', () => {
   it('fails when a critical fact is judged fail even though deterministic passes', async () => {
     const score = await scoreAnswer(task, 'coerce lives in src/types.ts', oneFailingJudge);
     expect(score.deterministic_pass).toBe(true);
+    expect(score.pass).toBe(false);
+  });
+
+  it('fails when a material error is present even if all critical facts pass', async () => {
+    const score = await scoreAnswer(
+      task,
+      'coerce lives in src/types.ts, per dist/index.js',
+      materialErrorJudge,
+    );
+    expect(score.material_error_present).toBe(true);
     expect(score.pass).toBe(false);
   });
 });
