@@ -11,6 +11,9 @@ const spawnExec = (cmd, args, opts) =>
   // eslint-disable-next-line promise/avoid-new -- wrapping child_process events needs a constructed Promise
   new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { cwd: opts?.cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    // Decode as UTF-8 so a multi-byte char split across chunk boundaries is not corrupted.
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
     let stdout = '';
     let stderr = '';
     const timer = setTimeout(() => {

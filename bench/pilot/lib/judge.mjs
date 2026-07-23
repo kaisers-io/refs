@@ -10,9 +10,11 @@ const VERDICT_RE = /\{[^]*"criteria"[^]*\}/u;
 
 const JUDGE_PREAMBLE =
   'You are a strict, blinded grader. You receive a JSON payload with a question, a candidate ' +
-  'answer, and a list of criteria. For EACH criterion, decide whether the answer satisfies it. ' +
-  'Respond with ONLY a JSON object of the form ' +
-  '{"criteria":[{"fact":"<criterion text>","pass":true}]}. No prose.';
+  'answer, a list of criteria, and a list of material_errors. Grade EVERY criterion (does the ' +
+  'answer satisfy it?) and EVERY material_error (does the answer commit it?), echoing each item ' +
+  'text verbatim. Respond with ONLY a JSON object of the form ' +
+  '{"criteria":[{"fact":"<criterion text>","pass":true}],' +
+  '"material_errors":[{"error":"<error text>","present":false}]}. No prose.';
 
 const extractVerdict = (raw) => {
   const match = raw.match(VERDICT_RE);

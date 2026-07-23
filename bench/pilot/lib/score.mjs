@@ -35,11 +35,17 @@ const scoreAnswer = async (task, answer, judge) => {
   const verdict = await judge(buildJudgePayload(task, answer));
   const judged = verdict.criteria ?? [];
   const flagged = verdict.material_errors ?? [];
+  const facts = task.critical_facts ?? [];
+  // Require EVERY critical fact to be graded (by identity) AND passed — a judge that
+  // returns fewer verdicts than facts must not pass the task (no fail-open).
+  const passByFact = new Map(judged.map((entry) => [entry.fact, entry.pass === true]));
   const allFactsPass =
-    judged.length >= MIN_CRITERIA && judged.every((entry) => entry.pass === true);
+    facts.length >= MIN_CRITERIA && facts.every((fact) => passByFact.get(fact) === true);
+  const judge_complete = judged.length === facts.length;
   const material_error_present = flagged.some((entry) => entry.present === true);
   return {
     deterministic_pass,
+    judge_complete,
     judged,
     material_error_present,
     pass: deterministic_pass && allFactsPass && !material_error_present,

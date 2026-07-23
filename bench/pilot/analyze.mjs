@@ -38,6 +38,10 @@ const cellRuns = (runs, model, rung) =>
 
 const pct = (fraction) => `${Math.round(fraction * PERCENT)}%`;
 
+const compMean = (cell, key) => Math.round(mean(cell.map((run) => run.telemetry[key] ?? ZERO)));
+
+// Per-component means, never a single opaque total as the headline (design §5): the
+// "total" is a trajectory-length proxy; uncached/output carry most of the cost weight.
 const printCellRow = (runs, model, rung) => {
   const cell = cellRuns(runs, model, rung);
   if (cell.length === ZERO) {
@@ -46,15 +50,15 @@ const printCellRow = (runs, model, rung) => {
   const tokens = cell.map((run) => totalTokens(run.telemetry));
   const rate = pct(passRate(cell.map((run) => run.score.pass)));
   const wall = Math.round(mean(cell.map((run) => run.wall_ms)));
-  const meanTok = Math.round(mean(tokens));
-  const p90Tok = Math.round(p90(tokens));
-  print(`${model}/${rung}  ->  ${cell.length} | ${rate} | ${meanTok} | ${p90Tok} | ${wall}`);
+  print(
+    `${model}/${rung}  n=${cell.length} pass=${rate} | uncached=${compMean(cell, 'input_uncached')} cache_wr=${compMean(cell, 'cache_write')} cache_rd=${compMean(cell, 'cache_read')} out=${compMean(cell, 'output')} reason=${compMean(cell, 'reasoning')} | total≈${Math.round(mean(tokens))} p90=${Math.round(p90(tokens))} wall=${wall}ms`,
+  );
 };
 
 const printCellTable = (runs) => {
   const models = [...new Set(runs.map((run) => run.model))];
   const rungs = [...new Set(runs.map((run) => run.rung))];
-  print('model/rung  ->  n | pass | meanTok | p90Tok | meanWall(ms)');
+  print('per (model, rung): component means | total = trajectory proxy (NOT cost-weighted)');
   for (const model of models) {
     for (const rung of rungs) {
       printCellRow(runs, model, rung);
@@ -123,9 +127,11 @@ const main = async () => {
   }
   print(`analyzing ${file}`);
   const allRuns = await loadRuns(file);
-  const runs = allRuns.filter((run) => run.telemetry !== undefined && run.score !== undefined);
+  const runs = allRuns.filter(
+    (run) => run.telemetry !== undefined && run.score !== undefined && run.failed !== true,
+  );
   print(
-    `${allRuns.length} runs (${allRuns.length - runs.length} errored, ${runs.length} analyzed)\n`,
+    `${allRuns.length} runs (${allRuns.length - runs.length} failed/errored/timed-out, ${runs.length} analyzed)\n`,
   );
   report(runs);
 };

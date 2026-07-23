@@ -26,6 +26,9 @@ const oneFailingJudge = () =>
     ],
   });
 
+const partialJudge = () =>
+  Promise.resolve({ criteria: [{ fact: 'names the correct file', pass: true }] });
+
 const materialErrorJudge = () =>
   Promise.resolve({
     criteria: [
@@ -56,6 +59,12 @@ describe('scoreAnswer', () => {
   it('fails when a critical fact is judged fail even though deterministic passes', async () => {
     const score = await scoreAnswer(task, 'coerce lives in src/types.ts', oneFailingJudge);
     expect(score.deterministic_pass).toBe(true);
+    expect(score.pass).toBe(false);
+  });
+
+  it('fails (no fail-open) when the judge grades fewer facts than critical_facts', async () => {
+    const score = await scoreAnswer(task, 'coerce lives in src/types.ts', partialJudge);
+    expect(score.judge_complete).toBe(false);
     expect(score.pass).toBe(false);
   });
 

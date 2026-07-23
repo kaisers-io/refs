@@ -11,19 +11,28 @@ import { normalizeClaude, normalizeCodex, parseCodexEvents } from './telemetry.m
 
 const NANOS_PER_MS = 1_000_000n;
 const LAST_INDEX = -1;
+const OK_CODE = 0;
 const AGENT_MESSAGE = 'agent_message';
 
-// Codex flags are pinned so reasoning effort / model stay constant across rungs.
+// Both models are pinned (model + effort) so those stay constant across rungs.
 const CODEX_MODEL = 'gpt-5.6-sol';
 const CODEX_EFFORT = 'medium';
+const CLAUDE_MODEL = 'claude-opus-4-8';
 
 const CLAUDE_ISOLATION = [
   '--output-format',
   'json',
+  '--model',
+  CLAUDE_MODEL,
   '--setting-sources',
   '',
   '--strict-mcp-config',
   '--disable-slash-commands',
+  // Enforce the "never mutate the checkout" hard rule (Codex gets `-s read-only`).
+  '--disallowed-tools',
+  'Write',
+  'Edit',
+  'NotebookEdit',
 ];
 
 const CODEX_ISOLATION = [
@@ -65,14 +74,15 @@ const runCell = async (exec, cell) => {
   const cli = CLI[cell.model];
   const prompt = buildPrompt(cell.preamble, cell.question, cell.cwd);
   const start = nowMs();
-  const { stdout } = await exec(cell.model, cli.argv(prompt), { cwd: cell.cwd });
+  const { stdout, stderr, code } = await exec(cell.model, cli.argv(prompt), { cwd: cell.cwd });
   const wall_ms = nowMs() - start;
-  return {
-    answer: cli.answer(stdout),
-    raw: stdout,
-    telemetry: cli.telemetry(stdout),
-    wall_ms,
-  };
+  const base = { code, raw: stdout, stderr, wall_ms };
+  // A non-zero exit (incl. spawnExec's timeout code) means the answer/telemetry are
+  // untrustworthy — surface it as failed instead of parsing partial/garbage stdout.
+  if (code !== OK_CODE) {
+    return { ...base, answer: '', failed: true, telemetry: undefined };
+  }
+  return { ...base, answer: cli.answer(stdout), failed: false, telemetry: cli.telemetry(stdout) };
 };
 
 export { buildPrompt, runCell };

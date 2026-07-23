@@ -35,10 +35,14 @@ const passRate = (bools) => bools.filter((flag) => flag === true).length / bools
 const totalTokens = (telemetry) =>
   TOKEN_KEYS.reduce((acc, key) => acc + (telemetry[key] ?? ZERO), ZERO);
 
+// Sample standard deviation (Bessel's ÷(n-1)); 0 for n <= 1 (no spread definable).
 const stdev = (xs) => {
+  if (xs.length <= PREV) {
+    return ZERO;
+  }
   const avg = mean(xs);
   const squaredDiffs = xs.map((value) => (value - avg) * (value - avg));
-  return Math.sqrt(mean(squaredDiffs));
+  return Math.sqrt(sum(squaredDiffs) / (xs.length - PREV));
 };
 
 const groupBy = (items, keyOf) => {

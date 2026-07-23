@@ -3,6 +3,7 @@ import { FakeCli } from './fake-cli.mjs';
 import { runCell } from '../pilot/lib/runner.mjs';
 
 const OK_CODE = 0;
+const FAIL_CODE = 1;
 const CLAUDE_INPUT_TOKENS = 5;
 const CLAUDE_OUTPUT_TOKENS = 7;
 const CODEX_UNCACHED_TOKENS = 6;
@@ -55,6 +56,16 @@ describe('runCell (claude)', () => {
     const promptArg = call.args.join(' ');
     expect(promptArg).toContain('PLAYBOOK');
     expect(promptArg).toContain('Where is coerce?');
+  });
+});
+
+describe('runCell (failure)', () => {
+  it('marks the cell failed without parsing when the CLI exits non-zero', async () => {
+    const fake = new FakeCli({ code: FAIL_CODE, stderr: 'boom', stdout: 'not json at all' });
+    const result = await runCell(fake.exec.bind(fake), cell('claude'));
+    expect(result.failed).toBe(true);
+    expect(result.answer).toBe('');
+    expect(result.telemetry).toBeUndefined();
   });
 });
 

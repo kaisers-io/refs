@@ -17,6 +17,7 @@ describe('normalizeClaude', () => {
       cache_read: 100,
       cache_write: 40,
       input_uncached: 12,
+      invalid: false,
       model: 'claude',
       output: 3,
       reasoning: undefined,
@@ -35,11 +36,17 @@ describe('normalizeCodex', () => {
       cache_read: 150,
       cache_write: undefined,
       input_uncached: 50,
+      invalid: false,
       model: 'codex',
-      output: 9,
+      // Visible output = output_tokens(9) - reasoning(5); reasoning is counted separately.
+      output: 4,
       reasoning: 5,
       reported: true,
     });
+  });
+
+  it('flags telemetry as invalid when codex emitted no turn.completed usage event', () => {
+    expect(normalizeCodex('{"type":"turn.started"}\nplain text, no usage').invalid).toBe(true);
   });
 });
 

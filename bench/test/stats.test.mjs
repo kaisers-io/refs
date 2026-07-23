@@ -6,6 +6,7 @@ import {
   p90,
   passRate,
   repeatVariance,
+  stdev,
   totalTokens,
   withinRungTokenSummary,
 } from '../pilot/lib/stats.mjs';
@@ -26,6 +27,11 @@ describe('stats primitives', () => {
 
   it('p90 picks the 90th-percentile value (nearest-rank)', () => {
     expect(p90([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])).toBe(9);
+  });
+
+  it('stdev is the sample (n-1) standard deviation, 0 for a single value', () => {
+    expect(stdev([2, 4, 6])).toBe(2);
+    expect(stdev([5])).toBe(0);
   });
 });
 
