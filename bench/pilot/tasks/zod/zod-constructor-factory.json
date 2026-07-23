@@ -1,0 +1,26 @@
+{
+  "id": "zod-constructor-factory",
+  "dep": "zod",
+  "ref": "github.com/colinhacks/zod",
+  "commit": "912f0f51b0ced654d0069741e7160834dca742ee",
+  "job_type": "symbol-localization",
+  "tool_target": "search",
+  "eligible_tools": ["search"],
+  "baseline_query": "git grep -n \"\\$constructor\" -- packages/zod/src/v4",
+  "burden": { "grep_hits": 264, "distinct_files": 8, "output_bytes": 38154 },
+  "question": "In the zod 4 source (the `zod` package) of github.com/colinhacks/zod, which single file defines the `$constructor` factory function — the runtime helper that every zod 4 schema class (e.g. `$ZodString`, `$ZodObject`) is built with via `core.$constructor(name, initializer)`? Name the file, not merely one of the 200+ call sites.",
+  "deterministic": [{ "kind": "regex", "pattern": "v4/core/core\\.ts" }],
+  "critical_facts": [
+    "names packages/zod/src/v4/core/core.ts as the file defining the $constructor factory function",
+    "identifies $constructor as the runtime factory (an `export function $constructor(name, initializer, params?)`) used to construct schema classes, distinct from its many call sites"
+  ],
+  "material_errors": [
+    "names a call site (e.g. packages/zod/src/v4/core/schemas.ts or classic/schemas.ts) as the definition instead of the defining file core/core.ts",
+    "cites a v3 path (packages/zod/src/v3/...) or a dist/ build artifact as the answer"
+  ],
+  "evidence": [
+    "packages/zod/src/v4/core/core.ts:16 — `export /*@__NO_SIDE_EFFECTS__*/ function $constructor<T extends ZodTrait, D = ...>(name, initializer, params?)`",
+    "packages/zod/src/v4/core/core.ts:7 — `export interface $constructor<...>` (companion type in the same file)",
+    "burden: `git grep -n \"\\$constructor\" -- packages/zod/src/v4` returns 264 match lines across 8 files; the definition is in core/core.ts"
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "id": "zod-romanian-locale-history",
+  "dep": "zod",
+  "ref": "github.com/colinhacks/zod",
+  "commit": "912f0f51b0ced654d0069741e7160834dca742ee",
+  "job_type": "history",
+  "tool_target": "neither",
+  "eligible_tools": [],
+  "baseline_query": "git log --oneline --no-merges --diff-filter=A -- packages/zod/src/v4/locales/ro.ts",
+  "burden": { "commit_count": 1, "changed_paths": 1, "output_bytes": 48 },
+  "question": "In github.com/colinhacks/zod, the zod 4 Romanian locale file packages/zod/src/v4/locales/ro.ts exists at the current commit. Which commit first added this file (i.e. introduced the Romanian locale), and what is its PR number? Give the commit subject.",
+  "deterministic": [{ "kind": "regex", "pattern": "5657|ec979ad7" }],
+  "critical_facts": [
+    "identifies commit ec979ad7 as the commit that first added packages/zod/src/v4/locales/ro.ts",
+    "commit subject is `feat: add Romanian (ro) locale`",
+    "cites PR #5657"
+  ],
+  "material_errors": [
+    "claims the Romanian locale does not exist in zod 4",
+    "attributes the file's introduction to an unrelated commit/PR, or to a different locale's PR"
+  ],
+  "evidence": [
+    "`git log --oneline --no-merges --diff-filter=A -- packages/zod/src/v4/locales/ro.ts` => single result `ec979ad7 feat: add Romanian (ro) locale (#5657)`",
+    "`git merge-base --is-ancestor ec979ad7 HEAD` => ancestor; `git tag --contains ec979ad7` => first released in v4.4.0",
+    "packages/zod/src/v4/locales/ro.ts exists at HEAD and is registered in packages/zod/src/v4/locales/index.ts"
+  ]
+}

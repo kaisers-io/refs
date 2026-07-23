@@ -1,0 +1,29 @@
+{
+  "id": "zod-iso-datetime-crossfile",
+  "dep": "zod",
+  "ref": "github.com/colinhacks/zod",
+  "commit": "912f0f51b0ced654d0069741e7160834dca742ee",
+  "job_type": "cross-file",
+  "tool_target": "neither",
+  "eligible_tools": ["search"],
+  "baseline_query": "git grep -n \"datetime\" -- packages/zod/src/v4",
+  "burden": { "grep_hits": 192, "distinct_files": 71, "output_bytes": 19655 },
+  "question": "In zod 4 (github.com/colinhacks/zod, the `zod` package), trace how `z.iso.datetime()` is wired: which classic-layer file exposes the `datetime` function under the `iso` namespace, which core factory/class it delegates to, and where the actual datetime regex/pattern is built. Name the files at each hop.",
+  "deterministic": [{ "kind": "regex", "pattern": "v4/classic/iso\\.ts" }],
+  "critical_facts": [
+    "the `iso.datetime` function lives in packages/zod/src/v4/classic/iso.ts and is surfaced as the `z.iso` namespace via `export * as iso from \"./iso.js\"` in classic/external.ts",
+    "classic/iso.ts `datetime()` delegates to `core._isoDateTime(ZodISODateTime, params)`, and the `$ZodISODateTime` constructor is defined in packages/zod/src/v4/core/schemas.ts",
+    "the datetime regex/pattern is produced by the `datetime()` builder in packages/zod/src/v4/core/regexes.ts (the core $ZodISODateTime constructor sets `def.pattern ??= regexes.datetime(def)`)"
+  ],
+  "material_errors": [
+    "claims `datetime` is a top-level `z.datetime()` (in zod 4 it is under the `z.iso` namespace, from classic/iso.ts) rather than tracing the iso namespace",
+    "cites the legacy v3 string `.datetime()` implementation (packages/zod/src/v3/...) as the zod 4 wiring",
+    "names dist/ build output instead of the src files"
+  ],
+  "evidence": [
+    "packages/zod/src/v4/classic/iso.ts:6 — `export function datetime(...) { return core._isoDateTime(ZodISODateTime, params); }`; :2 imports `ZodISODateTime` from `./schemas.js`",
+    "packages/zod/src/v4/classic/external.ts:42 — `export * as iso from \"./iso.js\"`",
+    "packages/zod/src/v4/core/schemas.ts:704-707 — `export const $ZodISODateTime = core.$constructor(\"$ZodISODateTime\", ... { def.pattern ??= regexes.datetime(def); ...})`",
+    "packages/zod/src/v4/core/regexes.ts:119 — `export function datetime(args: {...})` builds the pattern"
+  ]
+}

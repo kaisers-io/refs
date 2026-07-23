@@ -1,0 +1,28 @@
+{
+  "id": "zod-prefault-vs-default",
+  "dep": "zod",
+  "ref": "github.com/colinhacks/zod",
+  "commit": "912f0f51b0ced654d0069741e7160834dca742ee",
+  "job_type": "behavior-explanation",
+  "tool_target": "neither",
+  "eligible_tools": [],
+  "baseline_query": "git grep -n \"prefault\" -- packages/zod/src/v4",
+  "burden": { "grep_hits": 70, "distinct_files": 14, "output_bytes": 7186 },
+  "question": "In zod 4 (github.com/colinhacks/zod, the `zod` package), when the input is `undefined`, how does the behavior of `.prefault(x)` differ from `.default(x)` with respect to whether the substituted value `x` is run through the schema's own parsing/validation? Explain the difference in outcome, not just that both exist.",
+  "deterministic": [{ "kind": "regex", "pattern": "prefault" }],
+  "critical_facts": [
+    "explains that .default(x) short-circuits: on undefined input it returns the default value immediately WITHOUT running it through the inner schema's validation/transforms",
+    "explains that .prefault(x) substitutes x as the input and THEN runs it through the inner schema (so validation and transforms DO apply to the prefault value)",
+    "the distinguishing point is that prefault passes the value through the validator while default does not"
+  ],
+  "material_errors": [
+    "claims .default() runs the default value through the schema's validation/transforms (it does not — it returns immediately)",
+    "claims .prefault() and .default() are identical, or reverses which one validates the substituted value",
+    "cites the legacy v3 `.default()` implementation (packages/zod/src/v3/...) as the zod 4 answer"
+  ],
+  "evidence": [
+    "packages/zod/src/v4/core/schemas.ts:3648-3653 — $ZodDefault forward: `payload.value = def.defaultValue; ... return payload;` with comment \"It doesn't pass the default value into the validator\"",
+    "packages/zod/src/v4/core/schemas.ts:3711-3717 — $ZodPrefault forward: on undefined `payload.value = def.defaultValue;` then `return def.innerType._zod.run(payload, ctx);` (runs through innerType)",
+    "packages/zod/src/v4/classic/schemas.ts:2250 — `export function prefault(...)`; :2211 — `export const ZodDefault` (classic wrappers)"
+  ]
+}

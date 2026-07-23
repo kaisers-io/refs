@@ -1,0 +1,29 @@
+{
+  "id": "zod-xor-looserecord-range",
+  "dep": "zod",
+  "ref": "github.com/colinhacks/zod",
+  "commit": "912f0f51b0ced654d0069741e7160834dca742ee",
+  "job_type": "version-range",
+  "tool_target": "range",
+  "eligible_tools": ["range"],
+  "baseline_query": "git log v4.1.13..v4.2.0 --oneline --no-merges",
+  "burden": { "commit_count": 12, "changed_paths": 40, "insertions": 4072, "deletions": 1331 },
+  "question": "In github.com/colinhacks/zod, the top-level helpers `z.xor()` and `z.looseRecord()` did not exist in release v4.1.13 but are present in v4.2.0. Which single commit (in the v4.1.13..v4.2.0 range) introduced them, and what is its PR number? Give the commit subject.",
+  "deterministic": [{ "kind": "regex", "pattern": "5534|e17dcb63" }],
+  "critical_facts": [
+    "identifies commit e17dcb63 (subject: \"Add `z.fromJSONSchema()`, `z.looseRecord()`, `z.xor()`\") as the commit that introduced xor and looseRecord",
+    "cites PR #5534",
+    "places the change in the v4.1.13..v4.2.0 range (first released in v4.2.0)"
+  ],
+  "material_errors": [
+    "claims z.xor / z.looseRecord already existed in v4.1.13, or that they were added in a v4.1.x patch",
+    "claims no such change exists in the v4.1.13..v4.2.0 range",
+    "attributes the addition to a commit or PR outside this range"
+  ],
+  "evidence": [
+    "commit e17dcb63573397063e87d7c7fe10a5a78968181a — `Add `z.fromJSONSchema()`, `z.looseRecord()`, `z.xor()` (#5534)`",
+    "`git merge-base --is-ancestor e17dcb63 v4.1.13` => NOT ancestor; `git tag --contains e17dcb63` => first v4 tag is v4.2.0",
+    "packages/zod/src/v4/classic/schemas.ts:1654 `export function xor`; :1829 `export function looseRecord` (present at HEAD, exported via external.ts:2 `export * from \"./schemas.js\"`)",
+    "range size: `git log v4.1.13..v4.2.0 --oneline --no-merges` = 12 commits; `git diff v4.1.13..v4.2.0 --shortstat` = 40 files, 4072 insertions, 1331 deletions"
+  ]
+}

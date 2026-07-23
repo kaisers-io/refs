@@ -1,0 +1,25 @@
+{
+  "id": "zod-strictrecord-negative",
+  "dep": "zod",
+  "ref": "github.com/colinhacks/zod",
+  "commit": "912f0f51b0ced654d0069741e7160834dca742ee",
+  "job_type": "negative",
+  "tool_target": "search",
+  "eligible_tools": ["search"],
+  "baseline_query": "git grep -n \"strictRecord\" -- packages/zod/src",
+  "burden": { "grep_hits": 0, "distinct_files": 0, "output_bytes": 0 },
+  "question": "In zod 4 (github.com/colinhacks/zod, the `zod` package), does the library export a top-level record helper named `z.strictRecord()`? Answer yes or no, and if no, name the record helpers that DO exist.",
+  "deterministic": [{ "kind": "regex", "pattern": "no|does not|doesn't|not exist|no such" }],
+  "critical_facts": [
+    "answers that there is NO `strictRecord` / `z.strictRecord` in the zod 4 source",
+    "correctly names the record helpers that DO exist: `record`, `looseRecord`, and `partialRecord`"
+  ],
+  "material_errors": [
+    "claims z.strictRecord exists or fabricates a file/line where it is defined",
+    "claims looseRecord or partialRecord do not exist (they do), i.e. denies the real symbols while inventing the fake one"
+  ],
+  "evidence": [
+    "`git grep -n \"strictRecord\" -- packages/zod/src` returns 0 matches (no such symbol anywhere in the source)",
+    "packages/zod/src/v4/classic/schemas.ts:1792 `export function record`; :1814 `export function partialRecord`; :1829 `export function looseRecord`"
+  ]
+}
