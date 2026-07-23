@@ -1,139 +1,244 @@
-// Read the latest results jsonl and print: per (model, rung) pass rate + token/wall
-// summaries, per-cell repeat variance, and a ROUGH required-N estimate for the
-// Full-vs-Discipline token contrast. The rough N is a normal-approximation
-// placeholder — the rigorous task-cluster bootstrap power analysis is Phase B.
+// Descriptive analyzer (Task 7): read results/<run-id>/scored.jsonl and print, per
+// model, the tables that answer "does adding refs cut cost, and WHERE".
+//
+// The headline efficiency number is the COST-WEIGHTED native-token spend, never a
+// summed-token "total" (that stays a labeled trajectory proxy). Codex cost is
+// structurally a lower bound (no cache-write telemetry) and is flagged everywhere.
+//
+// The where-refs-win table is DESCRIPTIVE: Full-Discipline cost deltas split by
+// tool_target and a per-construct burden tertile, with a task-level bootstrap CI for
+// transparency. It is NOT a powered interaction test (see the printed caveat).
+//
+// All table logic lives in the pure builders in lib/analysis.mjs (imported here and
+// unit-tested there directly, without spawning); main() is a thin I/O shell.
 
-import { mean, p90, passRate, repeatVariance, stdev, totalTokens } from './lib/stats.mjs';
-import { readFile, readdir } from 'node:fs/promises';
+import {
+  buildCellRows,
+  buildComplianceRows,
+  buildDepDeltas,
+  buildTaskDeltas,
+  buildTrajectoryRows,
+  buildWhereRefsWinRows,
+} from './lib/analysis.mjs';
+import { fileURLToPath } from 'node:url';
+import { loadCorpusTasks } from './lib/tasks-loader.mjs';
+import { makeRng } from './lib/stats.mjs';
+import { readFile } from 'node:fs/promises';
 
 const RESULTS_DIR = new URL('results/', import.meta.url);
-// Z_ALPHA: two-sided alpha = 0.05. Z_BETA: power = 0.80.
-const Z_ALPHA = 1.96;
-const Z_BETA = 0.84;
-const TWO_GROUPS = 2;
+const TASKS_DIR = fileURLToPath(new URL('tasks/', import.meta.url));
+
+const ONE = 1;
 const PERCENT = 100;
-const ZERO = 0;
-const DISCIPLINE = 'discipline';
-const FULL = 'full';
+const USD_DP = 4;
+// The runner SIGKILLs a hung child with this cap (lib/exec.mjs DEFAULT_TIMEOUT_MS).
+const TIMEOUT_CAP_MS = 360_000;
+// Bootstrap: 0.05 -> 95% CI; a fixed seed keeps the descriptive CIs reproducible.
+const BOOTSTRAP_ITERATIONS = 2000;
+const BOOTSTRAP_ALPHA = 0.05;
+const BOOTSTRAP_SEED = 20_260_723;
+
+const COMPONENT_KEYS = [
+  'input_uncached',
+  'cache_write_5m',
+  'cache_write_1h',
+  'cache_read',
+  'output',
+  'reasoning',
+];
 
 const print = (line) => process.stdout.write(`${line}\n`);
 
-const latestResultsFile = async () => {
-  const files = await readdir(RESULTS_DIR);
-  const jsonl = files.filter((name) => name.endsWith('.jsonl'));
-  const [newest] = jsonl.toSorted().toReversed();
-  return newest;
-};
+// ---- formatting --------------------------------------------------------------
 
-const loadRuns = async (file) => {
-  const text = await readFile(new URL(file, RESULTS_DIR), 'utf8');
-  return text
-    .split('\n')
-    .filter((line) => line.trim() !== '')
-    .map((line) => JSON.parse(line));
-};
+const pctOf = (value) => `${Math.round(value * PERCENT)}%`;
 
-const cellRuns = (runs, model, rung) =>
-  runs.filter((run) => run.model === model && run.rung === rung);
-
-const pct = (fraction) => `${Math.round(fraction * PERCENT)}%`;
-
-const compMean = (cell, key) => Math.round(mean(cell.map((run) => run.telemetry[key] ?? ZERO)));
-
-// Per-component means, never a single opaque total as the headline (design §5): the
-// "total" is a trajectory-length proxy; uncached/output carry most of the cost weight.
-const printCellRow = (runs, model, rung) => {
-  const cell = cellRuns(runs, model, rung);
-  if (cell.length === ZERO) {
-    return;
+const num = (value) => {
+  if (value === undefined) {
+    return 'n/a';
   }
-  const tokens = cell.map((run) => totalTokens(run.telemetry));
-  const rate = pct(passRate(cell.map((run) => run.score.pass)));
-  const wall = Math.round(mean(cell.map((run) => run.wall_ms)));
+  return String(Math.round(value));
+};
+
+const usd = (value) => {
+  if (value === undefined) {
+    return 'n/a';
+  }
+  return `$${value.toFixed(USD_DP)}`;
+};
+
+// A cost is a lower bound whenever any priced component is structurally missing
+// (codex cache-write). Two label widths so tables and lists stay readable.
+const boundLabel = (complete, wide) => {
+  if (complete) {
+    return '';
+  }
+  if (wide) {
+    return ' [LOWER BOUND]';
+  }
+  return ' [LB]';
+};
+
+const costText = (cost) => {
+  if (cost.value === undefined) {
+    return 'n/a (all censored)';
+  }
+  return `${usd(cost.value)}${boundLabel(cost.complete, true)} (priced n=${cost.count})`;
+};
+
+const ciText = (row) => `${usd(row.point)} [95% CI ${usd(row.lo)}..${usd(row.hi)}]`;
+
+// ---- printing ----------------------------------------------------------------
+
+const printComponents = (components) =>
+  COMPONENT_KEYS.map((key) => `${key}=${num(components[key])}`).join(' ');
+
+const printCellRow = (row) => {
   print(
-    `${model}/${rung}  n=${cell.length} pass=${rate} | uncached=${compMean(cell, 'input_uncached')} cache_wr=${compMean(cell, 'cache_write')} cache_rd=${compMean(cell, 'cache_read')} out=${compMean(cell, 'output')} reason=${compMean(cell, 'reasoning')} | total≈${Math.round(mean(tokens))} p90=${Math.round(p90(tokens))} wall=${wall}ms`,
+    `  ${row.rung}  n=${row.count} | ${printComponents(row.components)} | cost=${costText(row.cost)}`,
+  );
+  print(
+    `        pass=${pctOf(row.rates.pass)} fail=${pctOf(row.rates.fail)} measurement_error=${pctOf(row.rates.measurementError)} timeout=${pctOf(row.rates.timeout)}`,
   );
 };
 
-const printCellTable = (runs) => {
-  const models = [...new Set(runs.map((run) => run.model))];
-  const rungs = [...new Set(runs.map((run) => run.rung))];
-  print('per (model, rung): component means | total = trajectory proxy (NOT cost-weighted)');
-  for (const model of models) {
-    for (const rung of rungs) {
-      printCellRow(runs, model, rung);
+const printCellTable = (rows) => {
+  print('per (model, rung): component means (tokens) | cost-weighted mean (PRIMARY)');
+  print('  (summed tokens are a trajectory proxy; cost-weighted spend is the headline)');
+  for (const row of rows) {
+    printCellRow(row);
+  }
+};
+
+const printCompliance = (rows) => {
+  print('\nrefs-compliance (MEASURED PATH-mediated leakage on control rungs; ideal 0%):');
+  for (const row of rows) {
+    print(`  ${row.model}: leak=${pctOf(row.leakRate)} (control runs n=${row.count})`);
+  }
+};
+
+const printTertile = (row) => {
+  print(
+    `    ${row.label} burden (nTasks=${row.nTasks}): delta=${ciText(row)}${boundLabel(row.complete, true)}`,
+  );
+};
+
+const printWhereRefsWin = (table) => {
+  print('\nwhere does refs win: Full - Discipline cost delta (negative = refs cheaper)');
+  print(
+    '  descriptive engineering signal; NOT a powered interaction test; CIs are for transparency;',
+  );
+  print('  task-level bootstrap assumes task independence. Burden tertile is per-construct.');
+  for (const group of table) {
+    print(`  tool_target=${group.target}:`);
+    for (const row of group.tertiles) {
+      printTertile(row);
     }
   }
 };
 
-const printRepeatVariance = (runs) => {
-  print('\nrepeat variance (token stdev per model/rung/task cell):');
-  for (const row of repeatVariance(runs)) {
+const printTaskDeltaRow = (row) => {
+  print(
+    `  ${row.task_id} (${row.dep}/${row.tool_target}, burden=${num(row.burden)}): ${usd(row.delta)}${boundLabel(row.complete, false)}`,
+  );
+};
+
+const printTaskDeltas = (taskDeltas) => {
+  print(
+    '\nper-task cost delta (Full - Discipline; raw spread, 3 deps too few to cluster-bootstrap):',
+  );
+  for (const row of taskDeltas.toSorted((left, right) => left.delta - right.delta)) {
+    printTaskDeltaRow(row);
+  }
+};
+
+const printDepDeltas = (depDeltas) => {
+  print('per-dep mean cost delta (Full - Discipline):');
+  for (const row of depDeltas) {
     print(
-      `  ${row.model}/${row.rung}/${row.task_id}: n=${row.count} stdev=${Math.round(row.stdev)}`,
+      `  ${row.dep} (nTasks=${row.nTasks}): ${usd(row.meanDelta)}${boundLabel(row.complete, false)}`,
     );
   }
 };
 
-const requiredN = (delta, pooled) => {
-  const zSum = Z_ALPHA + Z_BETA;
-  return Math.ceil((zSum * zSum * TWO_GROUPS * pooled * pooled) / (delta * delta));
+const trajToolCalls = (row) => {
+  if (row.model === 'claude') {
+    return 'n/a (no trace in -p json)';
+  }
+  return num(row.toolCalls);
 };
 
-const nText = (delta, pooled) => {
-  if (delta === ZERO) {
-    return 'undefined (no observed effect)';
-  }
-  return String(requiredN(delta, pooled));
-};
-
-const printModelPower = (runs, model) => {
-  const full = cellRuns(runs, model, FULL).map((run) => totalTokens(run.telemetry));
-  const disc = cellRuns(runs, model, DISCIPLINE).map((run) => totalTokens(run.telemetry));
-  if (full.length === ZERO || disc.length === ZERO) {
-    return;
-  }
-  const delta = Math.abs(mean(full) - mean(disc));
-  const sFull = stdev(full);
-  const sDisc = stdev(disc);
-  const pooled = Math.sqrt((sFull * sFull + sDisc * sDisc) / TWO_GROUPS);
+const printTrajectory = (rows) => {
   print(
-    `  ${model}: delta=${Math.round(delta)} tok, pooled_sd=${Math.round(pooled)}, n/cond≈${nText(delta, pooled)}`,
+    '\ntrajectory: wall time + turns/tool_calls/tool_output_bytes (codex real; claude partial):',
   );
-};
-
-const printPowerEstimate = (runs) => {
-  print('\nrough required-N per condition for the Full-vs-Discipline token contrast:');
-  print(
-    '(normal approx n = (z_a+z_b)^2 * 2 * s^2 / delta^2; pilot placeholder, not the Phase-B bootstrap)',
-  );
-  const models = [...new Set(runs.map((run) => run.model))];
-  for (const model of models) {
-    printModelPower(runs, model);
+  for (const row of rows) {
+    print(
+      `  ${row.model}/${row.rung}: wall=${num(row.wallMs)}ms turns=${num(row.turns)} tool_calls=${trajToolCalls(row)} tool_bytes=${num(row.toolBytes)}`,
+    );
   }
 };
 
-const report = (runs) => {
-  printCellTable(runs);
-  printRepeatVariance(runs);
-  printPowerEstimate(runs);
+const ciOptsOf = () => ({
+  alpha: BOOTSTRAP_ALPHA,
+  iterations: BOOTSTRAP_ITERATIONS,
+  rng: makeRng(BOOTSTRAP_SEED),
+});
+
+const reportModel = (model, runs, tasksById) => {
+  const opts = { timeoutCapMs: TIMEOUT_CAP_MS };
+  const modelRuns = runs.filter((run) => run.model === model);
+  const taskDeltas = buildTaskDeltas(runs, model, tasksById);
+  print(`\n===== ${model} =====`);
+  printCellTable(buildCellRows(modelRuns, opts));
+  printCompliance(buildComplianceRows(modelRuns));
+  printWhereRefsWin(buildWhereRefsWinRows(taskDeltas, ciOptsOf()));
+  printTaskDeltas(taskDeltas);
+  printDepDeltas(buildDepDeltas(taskDeltas));
+  printTrajectory(buildTrajectoryRows(modelRuns));
+};
+
+// ---- I/O shell ---------------------------------------------------------------
+
+const NOT_FOUND = -1;
+const FAIL_EXIT = 1;
+const EMPTY = '';
+
+const parseInput = (argv) => {
+  const index = argv.indexOf('--input');
+  if (index === NOT_FOUND) {
+    return EMPTY;
+  }
+  return argv[index + ONE] ?? EMPTY;
+};
+
+const loadScored = async (runId) => {
+  const text = await readFile(new URL(`${runId}/scored.jsonl`, RESULTS_DIR), 'utf8');
+  return text
+    .split('\n')
+    .filter((line) => line.trim() !== EMPTY)
+    .map((line) => JSON.parse(line));
+};
+
+const loadTasksById = async () => {
+  const tasks = await loadCorpusTasks(TASKS_DIR);
+  return Object.fromEntries(tasks.map((task) => [task.id, task]));
 };
 
 const main = async () => {
-  const file = await latestResultsFile();
-  if (file === undefined) {
-    print('no results/*.jsonl found — run run-pilot.mjs first.');
-    return;
+  const runId = parseInput(process.argv);
+  if (runId === EMPTY) {
+    process.stderr.write('FATAL: analyze.mjs requires --input <run-id>\n');
+    process.exit(FAIL_EXIT);
   }
-  print(`analyzing ${file}`);
-  const allRuns = await loadRuns(file);
-  const runs = allRuns.filter(
-    (run) => run.telemetry !== undefined && run.score !== undefined && run.failed !== true,
-  );
-  print(
-    `${allRuns.length} runs (${allRuns.length - runs.length} failed/errored/timed-out, ${runs.length} analyzed)\n`,
-  );
-  report(runs);
+  const [runs, tasksById] = await Promise.all([loadScored(runId), loadTasksById()]);
+  print(`analyzing results/${runId}/scored.jsonl (${runs.length} records)`);
+  for (const model of new Set(runs.map((run) => run.model))) {
+    reportModel(model, runs, tasksById);
+  }
 };
 
-await main();
+const [, entryPath] = process.argv;
+if (entryPath === import.meta.filename) {
+  await main();
+}

@@ -3,9 +3,15 @@
 
 const TOKEN_KEYS = ['input_uncached', 'cache_write', 'cache_read', 'output', 'reasoning'];
 const ZERO = 0;
+const ONE = 1;
 const HALF = 2;
 const PREV = 1;
 const P90_FRACTION = 0.9;
+// Seedable LCG (numerical-recipes constants); mirrors run.mjs so the analyzer's
+// bootstrap is reproducible without pulling in Math.random.
+const LCG_A = 1_664_525;
+const LCG_C = 1_013_904_223;
+const LCG_M = 4_294_967_296;
 
 const sum = (xs) => xs.reduce((acc, value) => acc + value, ZERO);
 
@@ -43,6 +49,41 @@ const stdev = (xs) => {
   const avg = mean(xs);
   const squaredDiffs = xs.map((value) => (value - avg) * (value - avg));
   return Math.sqrt(sum(squaredDiffs) / (xs.length - PREV));
+};
+
+// Deterministic [0, 1) generator from an integer seed. Injected into bootstrapCI
+// so no run of the analyzer ever depends on Math.random.
+const makeRng = (seed) => {
+  let state = seed;
+  return () => {
+    state = (LCG_A * state + LCG_C) % LCG_M;
+    return state / LCG_M;
+  };
+};
+
+// Nearest-rank percentile of an already-sorted array; rank clamped to [1, length]
+// so alpha/2 near the tails never indexes out of bounds on a short resample set.
+const percentileAt = (ordered, fraction) => {
+  const rank = Math.ceil(fraction * ordered.length);
+  const clamped = Math.min(Math.max(rank, ONE), ordered.length);
+  return ordered[clamped - PREV];
+};
+
+// One bootstrap resample (with replacement) of `values`, returned as its mean.
+const resampleMean = (values, rng) =>
+  mean(values.map(() => values[Math.floor(rng() * values.length)]));
+
+// Descriptive percentile bootstrap CI: resample the mean `iterations` times and
+// take the alpha/2 and 1-alpha/2 percentiles of those resample means. `point` is
+// the plain sample mean. A constant sample has zero spread, so lo == hi == point.
+const bootstrapCI = (values, { alpha, iterations, rng }) => {
+  const point = mean(values);
+  const means = sorted(Array.from({ length: iterations }, () => resampleMean(values, rng)));
+  return {
+    hi: percentileAt(means, ONE - alpha / HALF),
+    lo: percentileAt(means, alpha / HALF),
+    point,
+  };
 };
 
 const groupBy = (items, keyOf) => {
@@ -96,4 +137,16 @@ const repeatVariance = (runs) => {
   return rows;
 };
 
-export { mean, median, p90, passRate, repeatVariance, stdev, totalTokens, withinRungTokenSummary };
+export {
+  bootstrapCI,
+  groupBy,
+  makeRng,
+  mean,
+  median,
+  p90,
+  passRate,
+  repeatVariance,
+  stdev,
+  totalTokens,
+  withinRungTokenSummary,
+};

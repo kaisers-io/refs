@@ -1,6 +1,7 @@
 /* eslint-disable no-magic-numbers -- numeric fixtures for statistics functions; naming every array element would harm readability, and the production stats.mjs stays fully strict */
-import { describe, expect, it } from 'vitest';
 import {
+  bootstrapCI,
+  makeRng,
   mean,
   median,
   p90,
@@ -10,6 +11,7 @@ import {
   totalTokens,
   withinRungTokenSummary,
 } from '../pilot/lib/stats.mjs';
+import { describe, expect, it } from 'vitest';
 
 describe('stats primitives', () => {
   it('median of odd and even length', () => {
@@ -66,5 +68,27 @@ describe('within-rung aggregation', () => {
   it('reports the token spread across repeats of the same cell', () => {
     const variance = repeatVariance(RUNS);
     expect(variance.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('bootstrapCI', () => {
+  const CI_OPTS = { alpha: 0.05, iterations: 500, rng: makeRng(42) };
+
+  it('brackets the mean of a constant sample exactly (zero spread)', () => {
+    const ci = bootstrapCI([5, 5, 5, 5], CI_OPTS);
+    expect(ci).toStrictEqual({ hi: 5, lo: 5, point: 5 });
+  });
+
+  it('brackets the mean strictly for a spread sample (lo < point < hi)', () => {
+    const ci = bootstrapCI([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], CI_OPTS);
+    expect(ci.point).toBe(5.5);
+    expect(ci.lo).toBeLessThan(ci.point);
+    expect(ci.point).toBeLessThan(ci.hi);
+  });
+
+  it('is deterministic for a fixed seed', () => {
+    const first = bootstrapCI([2, 4, 8, 16], { alpha: 0.05, iterations: 300, rng: makeRng(7) });
+    const second = bootstrapCI([2, 4, 8, 16], { alpha: 0.05, iterations: 300, rng: makeRng(7) });
+    expect(first).toStrictEqual(second);
   });
 });
