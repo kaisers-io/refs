@@ -56,20 +56,23 @@ interface SectionBoundary {
   pattern: RegExp;
 }
 
-// The section runs to the next heading matching `boundary.pattern` — but ONLY one at the new
-// Heading's depth or shallower. A DEEPER sub-heading that merely mentions the old version (e.g.
-// `### Migrating from 2.0.0` inside a `## 3.0.0` section) is body content, not the boundary, so
-// The migration notes — the most valuable part of a range digest — are not truncated away.
+// The section runs to the next heading matching `boundary.pattern`. Preferred boundary: one at
+// The new heading's depth or shallower — so a DEEPER sub-heading that merely mentions the old
+// Version (e.g. `### Migrating from 2.0.0` inside a `## 3.0.0` section) stays as body content and
+// The migration notes, the most valuable part of a range digest, are not truncated away. But when
+// No such heading exists, the old release may itself be nested deeper (releases grouped under a
+// Heading); fall back to any depth so its body is still excluded, never leaked to end-of-file.
 const sectionEndIndex = (
   lines: readonly string[],
   start: number,
   boundary: SectionBoundary,
 ): number => {
-  const relative = lines
-    .slice(start + NEXT_LINE)
-    .findIndex(
-      (line) => isVersionHeading(line, boundary.pattern) && headingDepth(line) <= boundary.maxDepth,
-    );
+  const rest = lines.slice(start + NEXT_LINE);
+  const isOld = (line: string): boolean => isVersionHeading(line, boundary.pattern);
+  let relative = rest.findIndex((line) => isOld(line) && headingDepth(line) <= boundary.maxDepth);
+  if (relative === NOT_FOUND_INDEX) {
+    relative = rest.findIndex((line) => isOld(line));
+  }
   if (relative === NOT_FOUND_INDEX) {
     return lines.length;
   }

@@ -83,6 +83,21 @@ const NESTED_OLD_MENTION = [
   '',
 ].join('\n');
 
+const OLD_NESTED_DEEPER = [
+  '# Changelog',
+  '',
+  '## 3.0.0',
+  '',
+  '- new feature',
+  '',
+  '## Historical releases',
+  '',
+  '### 2.0.0',
+  '',
+  '- old change',
+  '',
+].join('\n');
+
 describe('extractChangelogExcerpt: section boundary depth', () => {
   it('does not end the section at a DEEPER sub-heading that merely mentions the old version', () => {
     expect.hasAssertions();
@@ -92,6 +107,16 @@ describe('extractChangelogExcerpt: section boundary depth', () => {
     const result = extractChangelogExcerpt(NESTED_OLD_MENTION, optsFor('3.0.0', '2.0.0'));
     expect(result?.excerpt).toContain('new feature');
     expect(result?.excerpt).toContain('run the 2.0.0 codemod');
+    expect(result?.excerpt).not.toContain('old change');
+  });
+
+  it('still bounds at a DEEPER old-release heading when none exists at the new depth', () => {
+    expect.hasAssertions();
+    // When the old release is nested deeper than the new one (grouped under a section heading)
+    // and no same-or-shallower old heading exists, the boundary falls back to any depth so the
+    // old release body is excluded, never leaked to end-of-file.
+    const result = extractChangelogExcerpt(OLD_NESTED_DEEPER, optsFor('3.0.0', '2.0.0'));
+    expect(result?.excerpt).toContain('new feature');
     expect(result?.excerpt).not.toContain('old change');
   });
 });
