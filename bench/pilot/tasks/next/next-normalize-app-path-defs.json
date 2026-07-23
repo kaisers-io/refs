@@ -1,0 +1,31 @@
+{
+  "id": "next-normalize-app-path-defs",
+  "dep": "next",
+  "ref": "github.com/vercel/next.js",
+  "commit": "00598045032a0e5b313de7b6ef0af60ed9390c2a",
+  "job_type": "symbol-localization",
+  "tool_target": "search",
+  "eligible_tools": ["search"],
+  "baseline_query": "git grep -n \"normalizeAppPath\"",
+  "burden": { "grep_hits": 90, "distinct_files": 38, "output_bytes": 10441 },
+  "question": "In the github.com/vercel/next.js repository at the pinned commit, `normalizeAppPath` is referenced across the codebase. Which source files DEFINE a function named `normalizeAppPath` (its declaration, not a call site or re-export)? Give the file path(s).",
+  "deterministic": [
+    { "kind": "regex", "pattern": "shared/lib/router/utils/app-paths" },
+    { "kind": "regex", "pattern": "eslint-plugin-next/src/utils/url" }
+  ],
+  "critical_facts": [
+    "identifies packages/next/src/shared/lib/router/utils/app-paths.ts as a definition site (line 23)",
+    "identifies packages/eslint-plugin-next/src/utils/url.ts as the second, separate definition site (line 103)",
+    "distinguishes the two declarations from the ~90 reference hits"
+  ],
+  "material_errors": [
+    "reports only one definition file and misses the other",
+    "cites a call site or import as the definition",
+    "names a file that does not contain `export function normalizeAppPath`"
+  ],
+  "evidence": [
+    "packages/next/src/shared/lib/router/utils/app-paths.ts:23 — `export function normalizeAppPath(route: string) {`",
+    "packages/eslint-plugin-next/src/utils/url.ts:103 — `export function normalizeAppPath(route: string) {`",
+    "`git grep -n normalizeAppPath` = 90 hits across 38 files (10441 bytes); only these two are declarations"
+  ]
+}

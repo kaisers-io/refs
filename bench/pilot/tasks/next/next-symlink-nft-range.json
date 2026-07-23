@@ -1,0 +1,25 @@
+{
+  "id": "next-symlink-nft-range",
+  "dep": "next",
+  "ref": "github.com/vercel/next.js",
+  "commit": "00598045032a0e5b313de7b6ef0af60ed9390c2a",
+  "job_type": "version-range",
+  "tool_target": "range",
+  "eligible_tools": ["range"],
+  "baseline_query": "git log refs/tags/v15.5.0..refs/tags/v15.5.1 --oneline --no-merges   (+ git diff --shortstat refs/tags/v15.5.0 refs/tags/v15.5.1)",
+  "burden": { "commit_count": 11, "changed_paths": 42, "insertions": 461, "deletions": 120 },
+  "question": "In the github.com/vercel/next.js repository, comparing release tags v15.5.0 and v15.5.1, which commit fixed the invalid Node File Trace (NFT) entry produced for a file behind a symlink in Turbopack? Identify the commit by sha or PR number.",
+  "deterministic": [{ "kind": "regex", "pattern": "83013|c8cf55f4" }],
+  "critical_facts": [
+    "identifies the Turbopack fix for invalid NFT entries for files behind symlinks",
+    "cites the correct commit reachable in v15.5.0..v15.5.1 (sha c8cf55f4e9, or PR #83013)"
+  ],
+  "material_errors": [
+    "claims no such symlink/NFT fix exists between v15.5.0 and v15.5.1",
+    "attributes the fix to a commit outside the v15.5.0..v15.5.1 range"
+  ],
+  "evidence": [
+    "commit c8cf55f4e96749b89cb4986733a17991172662c4 — `Turbopack: fix invalid NFT entry with file behind symlink (#83013)`, reachable in v15.5.0..v15.5.1",
+    "first stable tag containing c8cf55f4e9 is v15.5.1 (`git tag --contains`); range has 11 non-merge commits"
+  ]
+}

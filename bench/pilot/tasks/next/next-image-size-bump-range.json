@@ -1,0 +1,26 @@
+{
+  "id": "next-image-size-bump-range",
+  "dep": "next",
+  "ref": "github.com/vercel/next.js",
+  "commit": "00598045032a0e5b313de7b6ef0af60ed9390c2a",
+  "job_type": "version-range",
+  "tool_target": "range",
+  "eligible_tools": ["range"],
+  "baseline_query": "git log refs/tags/v15.3.0..refs/tags/v15.3.1 --oneline --no-merges   (+ git diff --shortstat refs/tags/v15.3.0 refs/tags/v15.3.1)",
+  "burden": { "commit_count": 5, "changed_paths": 32, "insertions": 301, "deletions": 139 },
+  "question": "In the github.com/vercel/next.js repository, comparing release tags v15.3.0 and v15.3.1, which commit bumped the bundled `image-size` dependency, and to which version? Identify the commit by sha or PR number.",
+  "deterministic": [{ "kind": "regex", "pattern": "78149|78164|a9e7a24d|1\\.2\\.1" }],
+  "critical_facts": [
+    "identifies the commit that bumps `image-size` to 1.2.1",
+    "cites the correct commit reachable in v15.3.0..v15.3.1 (sha a9e7a24d47, or PR #78149 / #78164)"
+  ],
+  "material_errors": [
+    "claims no image-size bump exists between v15.3.0 and v15.3.1",
+    "attributes the bump to a commit outside the v15.3.0..v15.3.1 range",
+    "states a wrong target version (not 1.2.1)"
+  ],
+  "evidence": [
+    "commit a9e7a24d47e4800f2cee34f67c2f8db21affdefa — `fix: bump `image-size@1.2.1` (#78149) (#78164)`, reachable in v15.3.0..v15.3.1",
+    "both tags resolve; range has 5 non-merge commits per `git log refs/tags/v15.3.0..refs/tags/v15.3.1 --oneline --no-merges`"
+  ]
+}

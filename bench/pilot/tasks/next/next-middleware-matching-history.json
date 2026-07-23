@@ -1,0 +1,25 @@
+{
+  "id": "next-middleware-matching-history",
+  "dep": "next",
+  "ref": "github.com/vercel/next.js",
+  "commit": "00598045032a0e5b313de7b6ef0af60ed9390c2a",
+  "job_type": "history",
+  "tool_target": "range",
+  "eligible_tools": ["range"],
+  "baseline_query": "git log refs/tags/v15.3.1..refs/tags/v15.3.2 --oneline --no-merges   (+ git diff --shortstat refs/tags/v15.3.1 refs/tags/v15.3.2)",
+  "burden": { "commit_count": 7, "changed_paths": 59, "insertions": 611, "deletions": 77 },
+  "question": "In the github.com/vercel/next.js repository, between release tags v15.3.1 and v15.3.2, which commit updated middleware matching for public/static files? Identify the commit by sha or PR number.",
+  "deterministic": [{ "kind": "regex", "pattern": "78875|b464d185" }],
+  "critical_facts": [
+    "identifies the commit updating middleware public/static file matching",
+    "cites the correct commit reachable in v15.3.1..v15.3.2 (sha b464d1855e, or PR #78875)"
+  ],
+  "material_errors": [
+    "claims no middleware public/static matching change exists between v15.3.1 and v15.3.2",
+    "attributes the change to a commit outside the v15.3.1..v15.3.2 range"
+  ],
+  "evidence": [
+    "commit b464d1855eaa37bfcbf1988d575809650d5e3f7f — `Update middleware public/static matching (#78875)`, reachable in v15.3.1..v15.3.2",
+    "both tags resolve; range has 7 non-merge commits per `git log refs/tags/v15.3.1..refs/tags/v15.3.2 --oneline --no-merges`"
+  ]
+}

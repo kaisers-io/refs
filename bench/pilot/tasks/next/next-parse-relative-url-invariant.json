@@ -1,0 +1,26 @@
+{
+  "id": "next-parse-relative-url-invariant",
+  "dep": "next",
+  "ref": "github.com/vercel/next.js",
+  "commit": "00598045032a0e5b313de7b6ef0af60ed9390c2a",
+  "job_type": "behavior-explanation",
+  "tool_target": "neither",
+  "eligible_tools": [],
+  "baseline_query": "git grep -n \"invariant: invalid relative URL\" -- packages/next/src/shared/lib/router/utils/parse-relative-url.ts   (locates the function; the ANSWER requires reading its control flow, which no range/search helper shortcuts)",
+  "burden": { "grep_hits": 1, "distinct_files": 1, "output_bytes": 146 },
+  "question": "In the github.com/vercel/next.js repository at the pinned commit, explain how `parseRelativeUrl` (packages/next/src/shared/lib/router/utils/parse-relative-url.ts) behaves when the resolved URL's origin does not match its internal base: what does it do, and what base URL does it use when running on the server (no `window`)?",
+  "deterministic": [{ "kind": "regex", "pattern": "invariant: invalid relative URL|http://n" }],
+  "critical_facts": [
+    "states that a non-matching origin causes it to throw an Error (the `invariant: invalid relative URL, router received ...` invariant)",
+    "states that on the server (typeof window === 'undefined') the internal base is `http://n`"
+  ],
+  "material_errors": [
+    "claims it returns/normalizes the absolute URL instead of throwing on an origin mismatch",
+    "claims it uses the real request origin or window.location as the server base rather than `http://n`"
+  ],
+  "evidence": [
+    "packages/next/src/shared/lib/router/utils/parse-relative-url.ts:62 — `throw new Error(\\`invariant: invalid relative URL, router received ${url}\\`)`",
+    "packages/next/src/shared/lib/router/utils/parse-relative-url.ts:40-41 — `new URL(typeof window === 'undefined' ? 'http://n' : getLocationOrigin())`",
+    "parse-relative-url.ts:61 — the origin check `if (origin !== globalBase.origin)` guards the throw"
+  ]
+}

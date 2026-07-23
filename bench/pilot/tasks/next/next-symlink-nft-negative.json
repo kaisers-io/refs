@@ -1,0 +1,25 @@
+{
+  "id": "next-symlink-nft-negative",
+  "dep": "next",
+  "ref": "github.com/vercel/next.js",
+  "commit": "00598045032a0e5b313de7b6ef0af60ed9390c2a",
+  "job_type": "negative",
+  "tool_target": "range",
+  "eligible_tools": ["range"],
+  "baseline_query": "git log refs/tags/v15.3.1..refs/tags/v15.3.2 --oneline --no-merges   (+ git diff --shortstat refs/tags/v15.3.1 refs/tags/v15.3.2)",
+  "burden": { "commit_count": 7, "changed_paths": 59, "insertions": 611, "deletions": 77 },
+  "question": "In the github.com/vercel/next.js repository, between release tags v15.3.1 and v15.3.2, which commit fixed the invalid Node File Trace (NFT) entry produced for a file behind a symlink in Turbopack? If no such change is in this range, say so and, if you can, note where it actually landed.",
+  "deterministic": [{ "kind": "regex", "pattern": "(?i)no such|not (present|in|introduced|part)|none|absent|v?15\\.5\\.1|83013" }],
+  "critical_facts": [
+    "correctly reports that no symlink/NFT fix is present in the v15.3.1..v15.3.2 range",
+    "does not fabricate an in-range commit for this change"
+  ],
+  "material_errors": [
+    "claims a commit in v15.3.1..v15.3.2 made this symlink/NFT fix",
+    "attributes PR #83013 / sha c8cf55f4e9 to the v15.3.1..v15.3.2 range (it landed in v15.5.1)"
+  ],
+  "evidence": [
+    "`git log refs/tags/v15.3.1..refs/tags/v15.3.2 --oneline --no-merges | grep -iE 'symlink|83013'` returns nothing",
+    "the symlink NFT fix c8cf55f4e9 (#83013) first appears in stable tag v15.5.1 (`git tag --contains c8cf55f4e9`), i.e. after v15.3.2 — so it is genuinely absent from this range"
+  ]
+}
