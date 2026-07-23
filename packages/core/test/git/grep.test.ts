@@ -84,6 +84,39 @@ describe('grepCheckout: newline-bearing file names', () => {
   });
 });
 
+describe('grepCheckout: NUL byte inside matched content', () => {
+  it('flags truncation instead of silently under-counting when a content NUL desyncs the walk', async () => {
+    expect.hasAssertions();
+    const runner = new FakeRunner();
+    // `-I` only skips files git SNIFFS as binary (first ~8000 bytes), so a text-classified file
+    // with a later NUL emits a raw NUL INSIDE the content field. That splits an extra token and
+    // desyncs the NUL-token walk: the parser must stop at the poisoned record AND report
+    // `truncated: true`, never return the two clean matches with `truncated: false` (which would
+    // falsely claim there is nothing more to find).
+    const NUL = '\0';
+    const poisoned = `c.ts${NUL}3${NUL}alpha${NUL}three\n`;
+    runner.expect(
+      'git grep',
+      {
+        stdout:
+          zRecord('a.ts', '1', 'alpha one') +
+          zRecord('b.ts', '2', 'alpha two') +
+          poisoned +
+          zRecord('d.ts', '4', 'alpha four'),
+      },
+      { cwd: DIR },
+    );
+
+    const result = await grepCheckout(runner, optsFor(BIG_LIMIT));
+
+    expect(result.truncated).toBe(true);
+    expect(result.matches).toStrictEqual([
+      { line: 1, path: 'a.ts', snippet: 'alpha one' },
+      { line: 2, path: 'b.ts', snippet: 'alpha two' },
+    ]);
+  });
+});
+
 describe('grepCheckout: argument construction', () => {
   it('passes -z, the pattern via -e, and appends pathspecs after the -- separator', async () => {
     expect.hasAssertions();

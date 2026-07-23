@@ -43,18 +43,48 @@ const versionHeadingPattern = (version: string): RegExp =>
 const isVersionHeading = (line: string, versionPattern: RegExp): boolean =>
   line.startsWith('#') && versionPattern.test(line);
 
+const HEADING_PREFIX = /^#+/u;
+const FULL_MATCH = 0;
+const NO_DEPTH = 0;
+
+// The ATX heading depth (count of leading `#`), or 0 for a non-heading line.
+const headingDepth = (line: string): number =>
+  line.match(HEADING_PREFIX)?.[FULL_MATCH]?.length ?? NO_DEPTH;
+
+interface SectionBoundary {
+  maxDepth: number;
+  pattern: RegExp;
+}
+
+// The section runs to the next heading matching `boundary.pattern` — but ONLY one at the new
+// Heading's depth or shallower. A DEEPER sub-heading that merely mentions the old version (e.g.
+// `### Migrating from 2.0.0` inside a `## 3.0.0` section) is body content, not the boundary, so
+// The migration notes — the most valuable part of a range digest — are not truncated away.
 const sectionEndIndex = (
   lines: readonly string[],
   start: number,
-  oldVersionPattern: RegExp,
+  boundary: SectionBoundary,
 ): number => {
   const relative = lines
     .slice(start + NEXT_LINE)
-    .findIndex((line) => isVersionHeading(line, oldVersionPattern));
+    .findIndex(
+      (line) => isVersionHeading(line, boundary.pattern) && headingDepth(line) <= boundary.maxDepth,
+    );
   if (relative === NOT_FOUND_INDEX) {
     return lines.length;
   }
   return start + NEXT_LINE + relative;
+};
+
+// The raw section text from the `newVersion` heading at `start` to its bounded end (see
+// `sectionEndIndex`): the boundary is the `oldVersion` heading at the new heading's depth or
+// Shallower, or end-of-file when none matches.
+const sliceSection = (lines: readonly string[], start: number, oldVersion: string): string => {
+  const boundary: SectionBoundary = {
+    maxDepth: headingDepth(lines[start] ?? ''),
+    pattern: versionHeadingPattern(oldVersion),
+  };
+  return lines.slice(start, sectionEndIndex(lines, start, boundary)).join('\n');
 };
 
 /** Slices the section from the heading matching `newVersion` (bounded, per
@@ -71,8 +101,7 @@ const extractChangelogExcerpt = (
   if (start === NOT_FOUND_INDEX) {
     return undefined;
   }
-  const oldHeading = versionHeadingPattern(opts.oldVersion);
-  const section = lines.slice(start, sectionEndIndex(lines, start, oldHeading)).join('\n');
+  const section = sliceSection(lines, start, opts.oldVersion);
   if (section.length <= opts.maxChars) {
     return { excerpt: section, truncated: false };
   }

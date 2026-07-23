@@ -585,7 +585,7 @@ The digest is a starting point, not a source: cite commits and files from the ch
 not from this output.
 
 ```bash
-refs range zod 3.24.1 4.0.0 --json
+refs range zod 3.24.1 4.0.1 --json
 refs range tanstack-query 5.0.0 5.20.0 --package @tanstack/query-core --json
 ```
 
@@ -596,12 +596,12 @@ refs range tanstack-query 5.0.0 5.20.0 --package @tanstack/query-core --json
     "key": "github.com/colinhacks/zod",
     "package": null,
     "old": { "version": "3.24.1", "tag": "v3.24.1" },
-    "new": { "version": "4.0.0", "tag": "v4.0.0" },
+    "new": { "version": "4.0.1", "tag": "v4.0.1" },
     "commit_count": 437,
     "commits": [{ "sha": "abc1234", "date": "2026-04-02", "subject": "feat!: rewrite core parser" }],
     "diff": { "files_changed": 312, "insertions": 41200, "deletions": 38900 },
     "changed_paths": [{ "path": "src/types.ts", "status": "M" }],
-    "changelog": "## 4.0.0 ...",
+    "changelog": "## 4.0.1 ...",
     "truncated": { "commits": true, "paths": false, "changelog": false }
   },
   "warnings": []
