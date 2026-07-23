@@ -29,6 +29,7 @@ const ZERO = 0;
 const JSON_INDENT = 2;
 const DEFAULT_SEED = 1;
 const CODEX_COMMAND = 'command_execution';
+const CODEX_ITEM_COMPLETED = 'item.completed';
 // Seedable LCG (numerical-recipes constants) so cell order is randomized yet reproducible.
 const LCG_A = 1_664_525;
 const LCG_C = 1_013_904_223;
@@ -57,8 +58,11 @@ const shuffle = (items, rng) => {
   return out;
 };
 
+// Count only item.completed (codex emits item.started THEN item.completed per command id) so raw.jsonl mirrors metrics.trajectory instead of double-counting.
 const toolCallCount = (raw) =>
-  parseCodexEvents(raw).filter((event) => event?.item?.type === CODEX_COMMAND).length;
+  parseCodexEvents(raw).filter(
+    (event) => event?.type === CODEX_ITEM_COMPLETED && event?.item?.type === CODEX_COMMAND,
+  ).length;
 
 // Repeat is the OUTERMOST dimension (spreads a cell's repeats far apart in time);
 // rung is the innermost (adjacent cells differ in rung — defeats warm-cache/drift).

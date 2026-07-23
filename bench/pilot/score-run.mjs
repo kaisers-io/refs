@@ -4,7 +4,8 @@
 // answers survive a judge crash. `scoreRawRecords` is pure and unit-tested;
 // `main()` is thin glue that requires `--input <run-id>`.
 
-import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { loadCorpusTasks, loadSentinelTasks } from './lib/tasks-loader.mjs';
+import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { makeJudge } from './lib/judge.mjs';
 import { scoreAnswer } from './lib/score.mjs';
@@ -12,7 +13,7 @@ import { spawnExec } from './lib/exec.mjs';
 import { tmpdir } from 'node:os';
 
 const RESULTS_DIR = new URL('results/', import.meta.url);
-const TASKS_DIR = new URL('tasks/', import.meta.url);
+const TASKS_DIR = fileURLToPath(new URL('tasks/', import.meta.url));
 // Cross-family: each model's answers are judged by the OTHER model.
 const JUDGE_OF = { claude: 'codex', codex: 'claude' };
 // The judge grades text only — run it in a neutral dir, never the dependency checkout.
@@ -100,13 +101,15 @@ const parseConcurrency = (argv) => {
   return Number(argv[index + NEXT]);
 };
 
-const loadTasksById = async () => {
-  const files = await readdir(TASKS_DIR);
-  const names = files.filter((name) => name.endsWith('.json'));
-  const tasks = await Promise.all(
-    names.map(async (name) => JSON.parse(await readFile(new URL(name, TASKS_DIR), 'utf8'))),
-  );
-  return Object.fromEntries(tasks.map((task) => [task.id, task]));
+// The DEFAULT grid runs the corpus (tasks/<dep>/*.json); the --sentinel smoke runs the
+// top-level sentinel set. Load BOTH and key by id (disjoint by design) so Pass B can
+// score either — a corpus-only or sentinel-only map silently score_errors the other.
+const loadTasksById = async (tasksDir) => {
+  const [corpus, sentinel] = await Promise.all([
+    loadCorpusTasks(tasksDir),
+    loadSentinelTasks(tasksDir),
+  ]);
+  return Object.fromEntries([...corpus, ...sentinel].map((task) => [task.id, task]));
 };
 
 const loadRaw = async (runId) => {
@@ -132,7 +135,7 @@ const main = async () => {
     process.exit(FAIL_EXIT);
   }
   const concurrency = parseConcurrency(process.argv);
-  const [records, tasksById] = await Promise.all([loadRaw(runId), loadTasksById()]);
+  const [records, tasksById] = await Promise.all([loadRaw(runId), loadTasksById(TASKS_DIR)]);
   const scored = await scoreRawRecords(records, tasksById, judgeFactoryOf(spawnExec), concurrency);
   await writeScored(runId, scored);
   process.stdout.write(`scored ${scored.length} records -> results/${runId}/scored.jsonl\n`);
@@ -143,4 +146,4 @@ if (entryPath === import.meta.filename) {
   await main();
 }
 
-export { scoreRawRecords };
+export { loadTasksById, scoreRawRecords };

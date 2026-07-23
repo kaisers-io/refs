@@ -30,7 +30,7 @@ pilot/
   lib/              telemetry · runner · score · judge · stats · exec (each unit-tested)
   run.mjs           Pass A: expand cells → run + telemetry → results/<run-id>/raw.jsonl + manifest.json
   score-run.mjs     Pass B: results/<run-id>/raw.jsonl → judge → results/<run-id>/scored.jsonl
-  analyze.mjs       results → per-(model,rung) summary + repeat variance + rough required-N
+  analyze.mjs       results → per-(model,rung) cost-weighted summary + tool_target×burden + compliance
   results/<run-id>/ manifest.json + raw.jsonl (Pass A) + scored.jsonl (Pass B), gitignored
 test/               vitest specs (run via bench/vitest.config.mjs)
 ```
@@ -41,10 +41,12 @@ test/               vitest specs (run via bench/vitest.config.mjs)
 export PATH="$HOME/.nvm/versions/node/v26.4.0/bin:$PATH"
 # unit tests (fakes/fixtures only — no CLI calls, no cost):
 pnpm exec vitest run --config bench/vitest.config.mjs
-# the real pilot (spawns claude/codex per cell — costs tokens + time):
-node bench/pilot/run.mjs --repeats 3          # Pass A: answers + telemetry → results/<run-id>/raw.jsonl
-node bench/pilot/score-run.mjs --input <run-id>  # Pass B: judge → results/<run-id>/scored.jsonl
-node bench/pilot/analyze.mjs
+# the real pilot (spawns claude/codex per cell — costs tokens + time).
+# Default (no --sentinel) runs the corpus grid (tasks/<dep>/*.json); all three steps
+# share the same <run-id> (run.mjs prints it, and its pre-flight cell/spend plan):
+node bench/pilot/run.mjs       --repeats 3 --seed 1   # Pass A: answers + telemetry → results/<run-id>/raw.jsonl
+node bench/pilot/score-run.mjs --input <run-id>       # Pass B: cross-family judge → results/<run-id>/scored.jsonl
+node bench/pilot/analyze.mjs   --input <run-id>       # cost-weighted summary + tool_target×burden + compliance
 ```
 
 ## Honesty caveats (read before quoting any number)

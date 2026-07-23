@@ -42,4 +42,4 @@ const spawnExec = (cmd, args, opts) =>
     });
   });
 
-export { spawnExec };
+export { DEFAULT_TIMEOUT_MS, spawnExec };

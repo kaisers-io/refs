@@ -26,12 +26,18 @@ const parseCsvFlag = (argv, flag) => {
   return parseCsv(argv[index + NEXT] ?? '');
 };
 
+// Absent flag returns the caller's default; a PRESENT flag with a missing/NaN value
+// hard-fails (never silently NaN → range(NaN) → 0 cells), matching --tasks discipline.
 const parseNumberFlag = (argv, flag, fallback) => {
   const index = argv.indexOf(flag);
   if (index === NOT_FOUND) {
     return fallback;
   }
-  return Number(argv[index + NEXT]);
+  const value = Number(argv[index + NEXT]);
+  if (Number.isNaN(value)) {
+    die(`${flag}: expected a number, got '${argv[index + NEXT] ?? ''}'`);
+  }
+  return value;
 };
 
 // Keeps only tasks whose id is named in `ids`; also reports any named id that
@@ -87,6 +93,9 @@ const applyRungFilter = (argv, allRungs) => {
   if (invalid.length > ZERO) {
     die(`--rungs: unknown rung(s) ${invalid.join(', ')} (expected one of ${allRungs.join(', ')})`);
   }
+  if (rungs.length === ZERO) {
+    die('--rungs matched no known rungs — refusing to run 0 cells');
+  }
   return rungs;
 };
 
@@ -141,6 +150,7 @@ const printPreflightPlan = (info) => {
 
 export {
   applyGridFilters,
+  applyRungFilter,
   formatPreflightPlan,
   parseCsvFlag,
   parseNumberFlag,

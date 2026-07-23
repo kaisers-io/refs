@@ -3,13 +3,20 @@
 // leave "empty after filtering" detectable by the caller. Rung validation must
 // reject anything outside the known naive/discipline/full enum.
 
-import { describe, expect, it } from 'vitest';
-import { resolveRungs, selectTasks } from '../pilot/lib/cli-args.mjs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  applyRungFilter,
+  parseNumberFlag,
+  resolveRungs,
+  selectTasks,
+} from '../pilot/lib/cli-args.mjs';
 
 const TASKS = [{ id: 't1' }, { id: 't2' }, { id: 't3' }];
 const ALL_RUNGS = ['naive', 'discipline', 'full'];
 const TWO = 2;
 const ZERO = 0;
+const FAIL_EXIT_CODE = 1;
+const REPEATS_FALLBACK = 3;
 
 describe('selectTasks', () => {
   it('keeps only tasks whose id is named', () => {
@@ -58,5 +65,49 @@ describe('resolveRungs', () => {
     const { invalid, rungs } = resolveRungs(ALL_RUNGS, ALL_RUNGS);
     expect(rungs).toEqual(ALL_RUNGS);
     expect(invalid).toHaveLength(ZERO);
+  });
+});
+
+// A fat-fingered flag tomorrow must NOT silently run 0 cells: an empty --rungs value
+// and a missing/NaN numeric flag both have to hard-fail (non-zero exit), matching the
+// --tasks discipline. die() calls process.exit(1); the spy throws so the guarded call
+// stops exactly where the real process would terminate.
+const stubExit = () =>
+  vi.spyOn(process, 'exit').mockImplementation(() => {
+    throw new Error('process.exit');
+  });
+
+describe('hard-fail on empty/missing flags', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('exits when --rungs is present but empty (no silent 0-cell run)', () => {
+    const exit = stubExit();
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    expect(() => applyRungFilter(['--rungs'], ALL_RUNGS)).toThrow('process.exit');
+    expect(exit).toHaveBeenCalledWith(FAIL_EXIT_CODE);
+  });
+
+  it('exits when a numeric flag is present but its value is missing', () => {
+    const exit = stubExit();
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    expect(() => parseNumberFlag(['--repeats'], '--repeats', REPEATS_FALLBACK)).toThrow(
+      'process.exit',
+    );
+    expect(exit).toHaveBeenCalledWith(FAIL_EXIT_CODE);
+  });
+
+  it('exits when a numeric flag value is not a number', () => {
+    const exit = stubExit();
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    expect(() => parseNumberFlag(['--repeats', 'abc'], '--repeats', REPEATS_FALLBACK)).toThrow(
+      'process.exit',
+    );
+    expect(exit).toHaveBeenCalledWith(FAIL_EXIT_CODE);
+  });
+
+  it('still returns the fallback when a numeric flag is absent', () => {
+    expect(parseNumberFlag([], '--repeats', REPEATS_FALLBACK)).toBe(REPEATS_FALLBACK);
   });
 });

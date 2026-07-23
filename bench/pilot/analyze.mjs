@@ -20,6 +20,7 @@ import {
   buildTrajectoryRows,
   buildWhereRefsWinRows,
 } from './lib/analysis.mjs';
+import { DEFAULT_TIMEOUT_MS } from './lib/exec.mjs';
 import { fileURLToPath } from 'node:url';
 import { loadCorpusTasks } from './lib/tasks-loader.mjs';
 import { makeRng } from './lib/stats.mjs';
@@ -31,8 +32,9 @@ const TASKS_DIR = fileURLToPath(new URL('tasks/', import.meta.url));
 const ONE = 1;
 const PERCENT = 100;
 const USD_DP = 4;
-// The runner SIGKILLs a hung child with this cap (lib/exec.mjs DEFAULT_TIMEOUT_MS).
-const TIMEOUT_CAP_MS = 360_000;
+// The runner SIGKILLs a hung child with this cap; single source is lib/exec.mjs so
+// the two can never drift.
+const TIMEOUT_CAP_MS = DEFAULT_TIMEOUT_MS;
 // Bootstrap: 0.05 -> 95% CI; a fixed seed keeps the descriptive CIs reproducible.
 const BOOTSTRAP_ITERATIONS = 2000;
 const BOOTSTRAP_ALPHA = 0.05;
