@@ -1,4 +1,4 @@
-import type { Config, RefEntry, RefKey, RefsHome, State } from '@kaisers-io/refs-core';
+import type { Config, RefKey, RefsHome, State } from '@kaisers-io/refs-core';
 import {
   EXIT,
   checkoutPath,
@@ -18,6 +18,7 @@ import type { RefsCommand } from './registry.ts';
 import type { SyncResultItem } from './sync-core.ts';
 import { isStale } from './ref-status.ts';
 import { matchRefKey } from './list.ts';
+import { requireEntry } from './ref-context.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { syncAll } from './sync-core.ts';
 
@@ -25,14 +26,6 @@ import { syncAll } from './sync-core.ts';
 // requested ref, defaulting to all configured refs. Target resolution/staleness-filtering and
 // human-mode summary formatting live here; the actual per-ref clone/sync/lock pipeline is in
 // `sync-core.ts`, split out purely to keep this file under the repo's 300-line oxlint cap.
-
-const requireEntry = (config: Config, key: RefKey): RefEntry => {
-  const entry = config.refs[key];
-  if (entry === undefined) {
-    throw new Error(`internal: matched ref key '${key}' is missing from config.refs`);
-  }
-  return entry;
-};
 
 const buildContext = (home: RefsHome, config: Config, key: RefKey): RefSyncContext => ({
   home,

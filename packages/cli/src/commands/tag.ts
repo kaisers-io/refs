@@ -1,7 +1,6 @@
-import type { Config, RefEntry, RefKey } from '@kaisers-io/refs-core';
+import type { RefEntry, RefKey } from '@kaisers-io/refs-core';
 import {
   checkoutPath,
-  isGitCheckout,
   notFoundError,
   readConfig,
   resolveHome,
@@ -9,6 +8,7 @@ import {
   // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
 import { emit, wrapAction } from '../output.ts';
+import { requireCheckout, requireEntry } from './ref-context.ts';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
 import { matchRefKey } from './list.ts';
@@ -38,17 +38,6 @@ interface TagArgs {
   version: string;
 }
 
-// `matchRefKey` only ever returns a key it found among `Object.keys(config.refs)`, so this lookup
-// can never actually miss — the throw exists purely to satisfy `noUncheckedIndexedAccess`,
-// mirroring `show.ts`'s `requireEntry`.
-const requireEntry = (config: Config, key: RefKey): RefEntry => {
-  const entry = config.refs[key];
-  if (entry === undefined) {
-    throw new Error(`internal: matched ref key '${key}' is missing from config.refs`);
-  }
-  return entry;
-};
-
 /** Resolves the `tag_format` to render `version` against: the named package's own override when
  * `packageName` is given and it has one, else the ref's own `tag_format` — the inheritance rule
  * from spec §3. An unregistered `packageName` is a `notFoundError`, not a silent ref-level
@@ -62,15 +51,6 @@ const formatFor = (entry: RefEntry, key: RefKey, packageName: string | undefined
     throw notFoundError(`no package '${packageName}' registered on ref '${key}'`);
   }
   return pkg.tag_format ?? entry.tag_format;
-};
-
-/** Guards against a configured ref whose checkout directory is missing — first-class state
- * elsewhere (`refs list` reports it, `refs sync` repairs it) that would otherwise surface here as
- * a low-level git/cwd error out of `resolveTag`. */
-const requireCheckout = (dest: string, key: RefKey): void => {
-  if (!isGitCheckout(dest)) {
-    throw notFoundError(`checkout for '${key}' is missing — run: refs sync ${key}`);
-  }
 };
 
 const runTag = async (ctx: CliContext, args: TagArgs): Promise<TagData> => {
