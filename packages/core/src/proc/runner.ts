@@ -24,6 +24,12 @@ interface RunResult {
   stderr: string;
   exitCode: number;
   timedOut?: boolean;
+  // Present-and-`true` only when the collector's byte cap cut `stdout` short (see
+  // `spawn-collector.ts`) — never an explicit `false`, so callers branch on `=== true`. Callers
+  // that parse `stdout` line-by-line MUST treat a byte-truncated result as incomplete: the last
+  // line may be a partial fragment, and counting lines no longer proves anything about how much
+  // output the child really produced.
+  stdoutTruncated?: true;
 }
 
 interface RunOpts {
@@ -173,22 +179,37 @@ const resolveExitCode = (code: number | null): number => {
   return code;
 };
 
+// `exactOptionalPropertyTypes` + the `stdoutTruncated?: true` shape (see `RunResult`): the flag
+// is added only when the stdout collector actually hit its byte cap, never set to `false`.
+const withStdoutTruncation = (result: RunResult, stdout: CollectedStream): RunResult => {
+  if (!stdout.truncated) {
+    return result;
+  }
+  return { ...result, stdoutTruncated: true };
+};
+
 const buildCloseResult = (ctx: CloseContext): RunResult => {
   if (ctx.timedOut) {
     return normalizeTimedOutResult(ctx.stderr.text, ctx.timeoutMs);
   }
   if (ctx.errorMessage !== undefined) {
-    return {
-      exitCode: SPAWN_ERROR_EXIT_CODE,
-      stderr: appendNote(ctx.stderr.text, ctx.errorMessage),
-      stdout: ctx.stdout.text,
-    };
+    return withStdoutTruncation(
+      {
+        exitCode: SPAWN_ERROR_EXIT_CODE,
+        stderr: appendNote(ctx.stderr.text, ctx.errorMessage),
+        stdout: ctx.stdout.text,
+      },
+      ctx.stdout,
+    );
   }
-  return {
-    exitCode: resolveExitCode(ctx.code),
-    stderr: withTruncationNote(ctx.stderr.text, ctx.stdout, ctx.stderr),
-    stdout: ctx.stdout.text,
-  };
+  return withStdoutTruncation(
+    {
+      exitCode: resolveExitCode(ctx.code),
+      stderr: withTruncationNote(ctx.stderr.text, ctx.stdout, ctx.stderr),
+      stdout: ctx.stdout.text,
+    },
+    ctx.stdout,
+  );
 };
 
 class SpawnRunner implements Runner {
