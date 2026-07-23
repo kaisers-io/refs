@@ -19,13 +19,13 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { fetch-depth: 0 }
-      - uses: pnpm/action-setup@a15d269cd4658e1107c09f1fabf4cbd7bd1f308a # v4.4.0
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
       # No `cache: pnpm` in this workflow (unlike ci.yml): a poisoned or stale restore-key cache
       # is a plausible supply-chain vector for the one workflow with publish reach, so the
       # release pipeline always installs clean.
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .node-version }
       - name: Guard — tag matches packages/cli/package.json version
         # `github.ref_name` is attacker-controlled text once the repo is public (anyone who can
@@ -90,7 +90,7 @@ jobs:
         # This is the ONLY channel that gets `dist/refs.mjs` into `publish`: the artifact built,
         # determinism-checked, and shape-guarded above by this unprivileged (no id-token) job.
         # Short retention — it only needs to survive until `publish` downloads it moments later.
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cli-bundle
           path: packages/cli/dist/refs.mjs
@@ -108,8 +108,8 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .node-version
           # Required for npm's Trusted Publishing (OIDC) exchange to target the right registry —
@@ -117,7 +117,7 @@ jobs:
           # (verified locally: node v24.12.0 bundles npm 11.6.2).
           registry-url: 'https://registry.npmjs.org'
       - name: Download the CLI bundle built by the unprivileged verify job
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: cli-bundle
           path: packages/cli/dist
