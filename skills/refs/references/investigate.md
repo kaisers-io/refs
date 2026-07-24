@@ -74,11 +74,11 @@ long as you keep the excerpts you pull into context small.
 doesn't surface what you need, widen: whole-file reads and broad searches are
 always available and sometimes the right call.
 
-1. Locate before you read: `refs search <ref> "<term>" --json` gives bounded,
-   structured matches with vendor/generated noise pre-excluded (the applied
-   excludes are echoed back; `--no-default-excludes` lifts them, `truncated`
-   tells you when more exists). Plain `rg -l` / `git grep -l` in the checkout is
-   just as legitimate — the helper is a shortcut, not a gate.
+1. Locate before you read: `git grep -n "<term>"` (or `rg -l "<term>"`) inside the
+   checkout finds the defining sites cheaply. When a broad term is drowned out by
+   vendored/generated hits, exclude them with pathspecs
+   (`git grep -n "<term>" -- ':(exclude)**/node_modules/**' ':(exclude)dist'`), and
+   narrow to a subdirectory first on a cold blobless checkout (see below).
 2. Read the smallest span that answers the question (the defining function/class
    plus its immediate context), not the whole file.
 3. Follow only the call sites/imports you actually need.
@@ -156,44 +156,28 @@ the raw source yourself into the main thread.
    manifest (`package.json` + `package-lock.json`/`pnpm-lock.yaml`/`npm-shrinkwrap.json`
    for npm; the equivalent lockfile for other ecosystems). This is the project being
    worked on, not the ref checkout.
-2. Get the one-call digest first — `refs range` resolves both versions to tags
-   itself (same `tag_format` rules as `refs tag`, including the package-level
-   override), so no separate tag-resolution step is needed:
-
-   ```bash
-   # Commit count + subjects, diff stats, changed paths, and the changelog
-   # excerpt between the two versions, in one envelope:
-   refs range <ref> <old-version> <new-version> --json   # --package <name> in monorepos
-   ```
-
-   Add `--package <name>` when the versions belong to one package of a monorepo
-   ref (tag conventions can differ per package). A `4` exit means a tag doesn't
-   exist for one of the versions under the applicable tag_format — before
-   assuming the release doesn't exist, double-check the version strings and list
-   nearby tags (`git tag -l '<prefix><major>.<minor>*' --sort=-version:refname`
-   in the checkout); some releases are only reachable as version-bump commits in
-   `git log`, not as tags.
-
-   The digest is a map, not a source: check its `truncated` flags before treating
-   any list as complete, and cite commits/files from the checkout, never from the
-   digest itself. **Sanity-check implausible digests.** Tags can lie: a
-   similarly-named tag may predate the actual release. If a digest looks wrong
-   for a claimed release range (e.g. a zero diff), verify the resolved tag's
-   content before trusting it —
-   `git show refs/tags/<tag>:<path-to-manifest>` should report the version you
-   asked about.
-
-3. Where the digest was truncated or too coarse, drill into the range **locally**,
-   read-only (worker or inline, per the dosing rule), with raw git. For that you
-   need concrete tag names — resolve each version once via:
+2. Resolve each version to a concrete git tag — the diff is then plain read-only git in
+   the checkout (worker or inline, per the dosing rule):
 
    ```bash
    refs tag <ref> <version> --json   # --package <name> in monorepos
    ```
 
    which returns `{ key, version, tag, ref_path }` (`ref_path` is a git ref,
-   e.g. `refs/tags/<tag>`, not a filesystem path). Don't call it before
-   `refs range` — range already resolves both versions on its own.
+   e.g. `refs/tags/<tag>`, not a filesystem path). Add `--package <name>` when the
+   versions belong to one package of a monorepo ref (tag conventions can differ per
+   package). A `4` exit means no tag exists for that version under the applicable
+   `tag_format` — before assuming the release doesn't exist, double-check the version
+   string and list nearby tags (`git tag -l '<prefix><major>.<minor>*'
+--sort=-version:refname` in the checkout); some releases are only reachable as
+   version-bump commits in `git log`, not as tags.
+
+   **Sanity-check the resolved tags.** Tags can lie: a similarly-named tag may predate
+   the actual release. If a diff looks wrong for a claimed range (e.g. a zero diff),
+   verify the tag's content before trusting it — `git show refs/tags/<tag>:<path-to-manifest>`
+   should report the version you asked about.
+
+3. Diff between the two tags **locally**, read-only, with raw git.
 
    **Recommended diff funnel** — start cheap, drill down only where the question
    points; if the funnel doesn't answer it, a full diff is always available.
@@ -201,7 +185,7 @@ the raw source yourself into the main thread.
    `ref_path`) — a tag starting with `-` would otherwise parse as an option:
 
    ```bash
-   # 1. The same data the digest showed, raw and unbounded:
+   # 1. Overview — changelog, commit list, diff stats:
    git show refs/tags/<new-tag>:CHANGELOG.md
    git log refs/tags/<old-tag>..refs/tags/<new-tag> --oneline --no-merges
    git diff refs/tags/<old-tag>..refs/tags/<new-tag> --stat   # add -- <package-path> in monorepos
@@ -213,7 +197,7 @@ the raw source yourself into the main thread.
 
    Scope to the package path (`-- packages/<name>`) in monorepos — most of a wide
    range's noise is usually other packages. The worker still returns only the
-   compact contract from step 3 above — commit list + `path:line` highlights,
+   compact output contract from §3 above — commit list + `path:line` highlights,
    never a pasted raw diff.
 
-4. Synthesize as in step 4.
+4. Synthesize as in §3 step 4.

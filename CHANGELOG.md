@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- `refs search` and `refs range` (both added in 0.3.0). A dedicated efficiency benchmark
+  (18-task corpus built around the two commands, taught inline with worked `--json` examples and
+  provably on `PATH`) measured **0 / 324 adoption** — neither Opus 4.8 nor GPT-5.6 invoked either
+  command on a single task, including tasks constructed to favor them — while the condition
+  carrying the teaching cost *more* (cost-weighted spend +19% over discipline, +41% over naive for
+  Claude). With the dependency source checked out, both commands compete head-to-head with the
+  agent's native `git grep` / `git log` / `git diff` and lose: they are redundant with skills the
+  agent already has on the very source refs provides. refs' core value — real, local source the
+  agent then reads and greps — is unchanged. The agent skill now routes source-search and version
+  questions to `resolve`/`sync`/`tag` plus read-only git on the checkout. The now-dead core helpers
+  (`git/grep`, `git/range`, `git/changelog`) were removed with them.
+
 ## [0.3.0] - 2026-07-23
 
 ### Added
