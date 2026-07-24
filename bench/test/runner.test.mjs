@@ -91,5 +91,8 @@ describe('runCell (codex)', () => {
     expect(call.cmd).toBe('codex');
     expect(call.args).toContain('--ignore-user-config');
     expect(call.args).toContain('--json');
+    // The cross-family judge runs in a neutral non-git tmpdir; without this flag codex
+    // exec exits 1 there with an empty answer (breaks every codex-as-judge verdict).
+    expect(call.args).toContain('--skip-git-repo-check');
   });
 });

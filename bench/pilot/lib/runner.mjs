@@ -53,6 +53,10 @@ const CODEX_ISOLATION = [
   `model_reasoning_effort=${CODEX_EFFORT}`,
   '-s',
   'read-only',
+  // The cross-family judge runs in a neutral, non-git tmpdir; codex exec refuses an
+  // untrusted (non-git) cwd without this flag and exits 1 with an empty answer. It is
+  // a no-op inside the git dependency checkouts the answer pass runs in.
+  '--skip-git-repo-check',
 ];
 
 // Extra flags appended ONLY when a cell is a judge run (see judge.mjs). Claude

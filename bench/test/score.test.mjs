@@ -102,6 +102,31 @@ describe('scoreAnswer', () => {
   });
 });
 
+const inlineFlagTask = {
+  critical_facts: ['names the correct file'],
+  deterministic: [{ kind: 'regex', pattern: '(?i)NO SUCH|absent' }],
+  material_errors: [],
+  question: 'Was it introduced?',
+};
+
+const inlineFlagJudge = () =>
+  Promise.resolve({
+    criteria: [{ fact: 'names the correct file', pass: true }],
+    material_errors: [],
+  });
+
+// Regression: a leading PCRE/Python inline-flag group `(?i)` in a deterministic
+// regex made `new RegExp(pattern, 'u')` throw, which score-run captured as a
+// score_error and silently dropped the cell. It must now compile and match
+// case-insensitively instead.
+describe('scoreAnswer deterministic regex flags', () => {
+  it('handles a leading inline (?i) flag without throwing (matches case-insensitively)', async () => {
+    const score = await scoreAnswer(inlineFlagTask, 'there is no such symbol', inlineFlagJudge);
+    expect(score.deterministic_pass).toBe(true);
+    expect(score.pass).toBe(true);
+  });
+});
+
 describe('buildJudgePayload', () => {
   it('omits model and rung identity so the judge is blinded', () => {
     const payload = buildJudgePayload(task, 'some answer', { model: 'claude', rung: 'full' });

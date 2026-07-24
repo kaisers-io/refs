@@ -6,11 +6,27 @@
 
 const MIN_CRITERIA = 1;
 
+// A deterministic regex may carry a leading PCRE/Python-style inline-flag group
+// like `(?i)`. JS RegExp rejects inline flags and THROWS (which score-run would
+// capture as a score_error, silently dropping the cell) — so lift a leading group
+// into real flags, keeping only the flags JS supports, and always retain 'u'.
+const INLINE_FLAGS_RE = /^\(\?(?<flags>[a-z]+)\)/u;
+const JS_INLINE_FLAGS = new Set(['i', 'm', 's']);
+
+const compileRegex = (pattern) => {
+  const match = pattern.match(INLINE_FLAGS_RE);
+  if (match === null) {
+    return new RegExp(pattern, 'u');
+  }
+  const kept = [...match.groups.flags].filter((flag) => JS_INLINE_FLAGS.has(flag));
+  return new RegExp(pattern.replace(INLINE_FLAGS_RE, ''), ['u', ...kept].join(''));
+};
+
 const checkOne = (answer, check) => {
   if (check.kind === 'contains') {
     return answer.includes(check.pattern);
   }
-  return new RegExp(check.pattern, 'u').test(answer);
+  return compileRegex(check.pattern).test(answer);
 };
 
 const runDeterministic = (task, answer) =>
