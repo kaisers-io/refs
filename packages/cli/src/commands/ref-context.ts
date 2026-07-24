@@ -2,17 +2,13 @@ import type { Config, PackageEntry, RefEntry, RefKey } from '@kaisers-io/refs-co
 import {
   isGitCheckout,
   notFoundError,
-  usageError,
   // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
 
-// Shared ref/checkout/package guards and `--limit` parsing for the command layer — extracted so
-// no command carries a diverging copy of the same checks (their user-facing message strings are
-// part of the CLI contract and must stay identical). Consumed by the investigation helpers
-// (`range.ts`, `search.ts`) and the ref commands (`tag.ts`, `show.ts`, `resolve.ts`, `edit-ref.ts`,
-// `sync.ts`).
-
-const MIN_LIMIT = 1;
+// Shared ref/checkout/package guards for the command layer — extracted so no command carries a
+// diverging copy of the same checks (their user-facing message strings are part of the CLI contract
+// and must stay identical). Consumed by the ref commands (`tag.ts`, `show.ts`, `resolve.ts`,
+// `edit-ref.ts`, `sync.ts`).
 
 // A ref key produced by `matchRefKey`/`routeQuery` is always one found among
 // `Object.keys(config.refs)`, so this lookup can never actually miss — the throw exists purely to
@@ -45,18 +41,4 @@ const requirePackage = (entry: RefEntry, key: RefKey, name: string): PackageEntr
   return pkg;
 };
 
-// Deliberately parsed inside the action rather than via commander's parseArg seam: throwing in a
-// parseArg surfaces as a CommanderError, not the standard usage-error envelope — parsing here
-// keeps a bad `--limit` on `wrapAction`'s ordinary error-rendering path.
-const parsePositiveLimit = (raw: string | undefined, opts: { def: number }): number => {
-  if (raw === undefined) {
-    return opts.def;
-  }
-  const limit = Number(raw);
-  if (!Number.isInteger(limit) || limit < MIN_LIMIT) {
-    throw usageError(`--limit must be a positive integer, got '${raw}'`);
-  }
-  return limit;
-};
-
-export { parsePositiveLimit, requireCheckout, requireEntry, requirePackage };
+export { requireCheckout, requireEntry, requirePackage };
