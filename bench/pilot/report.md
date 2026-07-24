@@ -1,13 +1,23 @@
 # refs Efficiency Benchmark — Phase B report
 
-**Status:** harness built and reviewed (Tasks 1–7), end-to-end pipeline **smoke-validated on the
-real CLIs**. The **full dev-scale grid run is deferred pending a budget/N decision** — this report
-documents the de-confounded harness, what the smoke proved, and exactly what the grid will produce.
-It is deliberately a **decision-grade engineering signal, not a preregistered causal study** (see
+**Status:** harness built, reviewed, smoke-validated, and **the dev-scale grid RAN**
+(run-id `2026-07-24T05-59-32.564Z`, N=3, 324 answer cells + 324 judge calls). This report
+documents the de-confounded harness, the grid results, and the honest caveats. It is
+deliberately a **decision-grade engineering signal, not a preregistered causal study** (see
 Limits).
 
 **Date:** 2026-07-24 · **Branch:** `bench/phase-b` (off `main`) · Pilot findings:
 [`bench/pilot/FINDINGS.md`](./FINDINGS.md).
+
+**Headline (read this first):** across all 324 cells, **neither model invoked `refs` on a
+single task** (adoption = 0/324, measured via the logging shim). Given a `full`-rung preamble
+that teaches `refs search`/`range` inline, both Opus 4.8 and GPT-5.6 answered every task via
+git / grep / file reads instead. So the `full` rung reduces to *"discipline preamble + unused
+refs teaching"*, and the engineering answer — **does adding `refs` cut cost-weighted cost on
+search/range high-burden tasks, within these 3 deps** — is, under **intent-to-treat**, **no**:
+the added preamble is a net cost (clearly for Claude; noisy/null for Codex), with no offsetting
+adoption to pay it back. A null/negative effect driven by non-adoption is a real finding, not a
+harness fault — and it is the single most useful thing this grid tells us.
 
 ---
 
@@ -25,125 +35,177 @@ residual confounds instead of claiming them absent.
 | # | Change | Why it matters |
 |---|--------|----------------|
 | 1 | **Self-contained `full.md`** — the rung-3 preamble teaches `refs search`/`range` inline (worked `--json` examples), with no reference to external skill docs. | Removes the *need* to read external docs, the pilot's biggest rung-3 confound. Worked examples use a neutral, non-answer range so they can't leak a task's answer. |
-| 2 | **Full-only `refs` shim + per-rung compliance logging.** `basePath` = ambient PATH minus the refs dir, so control rungs **provably cannot resolve `refs`**; the `full` rung reaches it only through a logging shim. Each run records `refs_on_path` and every `refs` invocation. Judge tightened (`--tools ""`, read-only, neutral cwd). | Isolation is **verified per run**, not assumed. Honest residual: the log catches PATH-mediated calls; an absolute-path call to the real binary would bypass it (bounded by the self-contained preamble + persisted transcripts — for codex the JSONL transcript shows tool calls, for claude `-p json` it does not). |
-| 3 | **Two-pass run→score + provenance + integrity hard-fails.** Pass A writes immutable `raw.jsonl` (answers+telemetry+compliance) + a provenance `manifest.json`; Pass B judges into `scored.jsonl`, retaining every record. The run **hard-fails** on checkout commit drift and on any compliance violation (a control resolving `refs`, or `full` missing the shim). | A judge crash never discards a paid answer (Pass B is re-runnable). The manifest pins harness commit + dirty flag, per-task checkout HEADs + peeled tags, CLI versions, seed, preamble hashes, pricing date. |
-| 4 | **Failure policy + TTL-aware pricing.** `classifyRun` separates `pass`/`fail`/`measurement_error`; a **timeout is a correctness fail but a cost-censored observation** (cost is never imputed). Verified current list prices (Opus 4.8, GPT-5.6), TTL-split cache-write, completeness flags. | Cost is honest: `costWeighted` never silently zeroes/undercounts; codex cost is labeled an **API-list-price-equivalent lower bound** (no cache-write telemetry), distinct from subscription spend. |
-| 5 | **Corpus across 3 deps with `tool_target` + measured burden** (zod, payload, next.js — 18 tasks). Each task carries an **outcome-blind** `tool_target ∈ {search, range, neither}` and an objectively **measured** retrieval burden (search construct: grep hits / files / bytes; range construct: commit count / changed paths / diff size — never combined). | The "where does refs win" axis. Covers all six job types, both a high-burden search/range group and a `neither` control group, with discriminating rubrics (real decoys as `material_errors`). |
-| 6 | **Trajectory metrics** (`turns`, `tool_calls`, `tool_output_bytes`) + runner pins (`--effort medium`, `--no-session-persistence`, `--no-chrome`). | Matches the claim's "and speed". Honest: claude `tool_calls` are `n/a` (no tool trace in `-p json`), never rendered as 0. |
-| 7 | **Descriptive analyzer** — per-component + **cost-weighted** means (primary headline), pass/failure/measurement-error rates, refs-compliance (measured control-rung leakage), and the **Full − Discipline cost delta split by `tool_target` × burden tertile** with bootstrap CIs. | The deliverable table. Labeled descriptive; CIs are for transparency, not a powered interaction test; task-level bootstrap assumes task independence. |
+| 2 | **Full-only `refs` shim + per-rung compliance logging.** `basePath` = ambient PATH minus the refs dir, so control rungs **provably cannot resolve `refs`**; the `full` rung reaches it only through a logging shim. Each run records `refs_on_path` and every `refs` invocation. Judge tightened (`--tools ""`, read-only, neutral cwd). | Isolation is **verified per run**, not assumed. The shim is also what let us **measure adoption = 0** (below). |
+| 3 | **Two-pass run→score + provenance + integrity hard-fails.** Pass A writes immutable `raw.jsonl` (answers+telemetry+compliance) + a provenance `manifest.json`; Pass B judges into `scored.jsonl`, retaining every record. The run **hard-fails** on checkout commit drift and on any compliance violation. | A judge crash never discards a paid answer — **Pass B is re-runnable against the immutable answers**, which is exactly what saved this grid when two scoring bugs surfaced (below). The manifest pins harness commit, per-task checkout HEADs, CLI versions, seed, preamble hashes. |
+| 4 | **Failure policy + TTL-aware pricing.** `classifyRun` separates `pass`/`fail`/`measurement_error`; a **timeout is a correctness fail but a cost-censored observation**. Verified current list prices (Opus 4.8, GPT-5.6, verified 2026-07-23), TTL-split cache-write. | Cost is honest: codex cost is labeled an **API-list-price-equivalent lower bound** (no cache-write telemetry), distinct from subscription spend. |
+| 5 | **Corpus across 3 deps with `tool_target` + measured burden** (zod, payload, next.js — 18 tasks). Each task carries an **outcome-blind** `tool_target ∈ {search, range, neither}` and an objectively **measured** retrieval burden. | The "where does refs win" axis, with a high-burden search/range group and a `neither` control group, and discriminating rubrics (real decoys as `material_errors`). |
+| 6 | **Trajectory metrics** (`turns`, `tool_calls`, `tool_output_bytes`) + runner pins (`--effort medium`, `--no-session-persistence`, `--no-chrome`). | Matches the claim's "and speed". Honest: claude `tool_calls` are `n/a` (no tool trace in `-p json`). |
+| 7 | **Descriptive analyzer** — per-component + **cost-weighted** means (primary headline), pass/failure/measurement-error rates, refs-compliance, and the **Full − Discipline cost delta split by `tool_target` × burden tertile** with bootstrap CIs. | The deliverable table. Labeled descriptive; CIs are for transparency, not a powered interaction test. |
 
-All gates green; each task cross-reviewed (internal reviewer, several with a Codex cross-model pass
-folded in). 111 harness tests pass.
-
----
-
-## Smoke validation (4 real cells — pipeline, not an efficiency finding)
-
-A minimal paid smoke ran **1 sentinel task (`zod-4-parser-range`) × 2 models × {full, naive} × 1
-repeat = 4 cells** (+ 4 judge calls), to prove the pipeline works on the real CLIs before the grid.
-**These numbers validate mechanics only — n=1 per cell on one sentinel task is not an efficiency
-signal, and the sentinel set is permanently excluded from the analytic corpus.**
-
-What the smoke confirmed:
-
-- **Isolation works on the real setup:** pre-flight reported `refs on PATH: full=<shim> naive=(none)`.
-  Per-run compliance: `naive` rungs had `refs_on_path=no`; `full` rungs had `refs_on_path=yes` (the
-  shim). Both integrity hard-fails passed (commit match, no compliance violation).
-- **Telemetry captured, cache-separated, valid** for all 4 cells (0 extraction failures); commit
-  provenance matched the pinned SHA; `manifest.json` written with a clean-tree flag.
-- **Behavioral observation (intent-to-treat):** on this task, **both `full`-rung agents answered via
-  git without invoking `refs`** (`refs_calls = 0`), while the longer `full` preamble still cost more
-  input/cache than `naive`. This is exactly the "full premium, refs not adopted" pattern the pilot
-  flagged — real data the grid will quantify, not a harness fault. (The shim's logging path is unit-
-  verified separately; here there was simply nothing to log.)
-- **Two-pass + scoring** ran end-to-end: Pass A → `raw.jsonl`, Pass B judged → `scored.jsonl`, and the
-  analyzer rendered its tables from the scored file.
-
-The analyzer rendered every section from the scored file. Excerpt (n=1 per cell — **not** a
-signal):
-
-```
-===== codex =====
-  naive  n=1 | ... cache_read=45568 output=290 reasoning=138 | cost=$0.1677 [LOWER BOUND]
-        pass=0% fail=100% measurement_error=0% timeout=0%
-  full   n=1 | ... cache_read=164352 output=1051 reasoning=438 | cost=$0.3133 [LOWER BOUND]
-        pass=100% fail=0% measurement_error=0% timeout=0%
-refs-compliance (control rungs): codex leak=0%
-trajectory: codex/naive turns=2 tool_calls=2 tool_bytes=10310 · codex/full turns=2 tool_calls=6 tool_bytes=21472
-===== claude =====
-  naive  n=1 | input_uncached=6  cache_write_1h=35609 cache_read=17559 output=646 | cost=$0.3810
-  full   n=1 | input_uncached=10 cache_write_1h=22528 cache_read=78537 output=980 | cost=$0.2891
-refs-compliance (control rungs): claude leak=0%
-trajectory: claude/naive turns=3 tool_calls=n/a · claude/full turns=5 tool_calls=n/a
-```
-
-Three honest observations from the smoke (all are *mechanics*, not efficiency findings):
-
-- **Compliance leak = 0%** on both models' control rungs — the PATH isolation held on the real setup.
-- **Scoring discriminates** (unlike the pilot's 100% pass): codex/full passed; codex/naive failed a
-  deterministic check; **both claude cells fail-closed because the cross-family (codex) judge returned
-  an incomplete verdict** (`judge_complete=false`) — the anti-fail-open discipline working as designed.
-  This flags a real risk for the grid: **judge completeness/reliability affects observed pass rates**
-  (judge-agreement calibration is descoped — see Limits). Worth a human eye during the grid.
-- **The "Full − Discipline" delta table is empty here** because the smoke deliberately used
-  `{full, naive}` (to test shim-vs-isolation), not `discipline`. The delta needs discipline cells; it
-  populates on the full grid (all three rungs) and its computation is unit-tested with a planted
-  per-stratum difference (Task 7).
+All gates green; each task cross-reviewed. 118 harness tests pass (was 111; +2 regression tests
+for the scoring bugs below, +5 since).
 
 ---
 
-## The grid run (deferred — needs a budget/N decision)
+## The grid run (what ran)
 
-The analytic grid is **~18 tasks × 3 rungs × 2 models × N repeats**. At **N = 3** that is **324 answer
-cells + 324 judge calls ≈ 648 paid CLI invocations** (Opus 4.8 + GPT-5.6). The smoke cells ran roughly
-10k–200k tokens each; a rough order-of-magnitude estimate is single-digit to low-tens of dollars at
-N = 3, but **this should be confirmed against the pre-flight print** (`run.mjs` prints the exact cell
-and invocation count and the pinned CLI versions before any paid call).
+- **run-id:** `2026-07-24T05-59-32.564Z` · **seed** 1 · **N = 3 repeats**.
+- **Grid:** 18 corpus tasks × 3 rungs (naive / discipline / full) × 2 models × N=3 = **324
+  answer cells**, each judged cross-family = **324 judge calls**.
+- **Models (pinned):** Claude answers `claude-opus-4-8` `--effort medium`; Codex answers
+  `gpt-5.6-sol` `model_reasoning_effort=medium`. Cross-family judge (Claude answers judged by
+  Codex, and vice-versa).
+- **Provenance (`manifest.json`):** answer pass ran on **harness commit `75f2b1e` (clean tree)**;
+  CLI versions **claude `2.1.218`, codex `0.144.6`**; pricing **verified 2026-07-23**; per-rung
+  preamble hashes pinned. **All integrity hard-fails passed** (per-task checkout commits matched;
+  no compliance violation).
+- **Answer pass:** 324/324 cells, **0 failures, 0 timeouts, 0 measurement errors.**
 
-To run it tomorrow (after budget sign-off):
+### Two scoring-pass bugs found in the re-score (and fixed)
 
-```
-node bench/pilot/run.mjs --repeats <N> --seed <s>          # corpus grid (subdirs), NOT --sentinel
-node bench/pilot/score-run.mjs --input <run-id>
-node bench/pilot/analyze.mjs   --input <run-id>
-```
+The immutable answer pass was clean, but the **first** score pass surfaced two Pass-B defects that
+corrupted the correctness axis. Because Pass B re-runs against the immutable `raw.jsonl` (no
+re-answer, no re-spend on the expensive model answers), both were fixed and the grid re-scored
+(harness commit **`7c50bd9`**):
 
-Gate on the smoke-tested CLI versions (`claude 2.1.218`, `codex 0.144.6`); if either changed, re-smoke.
+1. **Cross-family Codex judge exited 1 in the neutral non-git tmpdir** (`Not inside a trusted
+   directory and --skip-git-repo-check was not specified`), returning an empty answer → **every
+   Claude-answer verdict fail-closed** (`judge_complete=false`, 153/162). Fix: add
+   `--skip-git-repo-check` to the codex isolation flags (a no-op inside the git checkouts the
+   answer pass uses).
+2. **A deterministic regex with a leading `(?i)` inline-flag group** (one task,
+   `next-symlink-nft-negative`) made `new RegExp(pattern,'u')` throw → `score_error` silently
+   dropped 18 cells. Fix: `score.mjs` now lifts a leading inline-flag group into real JS flags.
 
-**The engineering question the grid answers:** *does adding `refs` reduce cost-weighted cost on
-`search`/`range`-target, high-burden tasks (and stay neutral/negative on `neither`/low-burden tasks),
-within these three deps* — analyzed **intent-to-treat** (a `full`-rung agent that ignores `refs`
-counts as assigned-and-didn't-use, not excluded).
+Both have regression tests. This is exactly the failure mode the two-pass split was built to
+survive: a scoring bug never costs a paid answer.
+
+---
+
+## Results
+
+### 1. Adoption (intent-to-treat): 0/324
+
+The shim logged **zero `refs` invocations across all 324 cells** — including all 108 `full`-rung
+cells, where `refs` was provably on PATH (`refs_on_path`=shim for every full cell; empty for every
+control cell). **Compliance leak = 0%** on both models' control rungs. So the `full`−`discipline`
+contrast below measures **the cost of the refs-teaching preamble that the models did not act on**,
+not the cost/benefit of *using* `refs`. Everything downstream is read through that lens.
+
+### 2. Cost-weighted spend per (model, rung) — the primary headline
+
+Cost-weighted native-token spend (the headline; summed tokens are only a trajectory proxy):
+
+| model | rung | cost-weighted mean | pass rate |
+|-------|------|--------------------|-----------|
+| **Claude** (Opus 4.8) | naive | **$0.0828** | 89% |
+| | discipline | **$0.0981** | 98% |
+| | full | **$0.1164** | 87% |
+| **Codex** (GPT-5.6) `[LOWER BOUND]` | naive | **$0.3037** | 67%¹ |
+| | discipline | **$0.3396** | 65%¹ |
+| | full | **$0.3227** | 76%¹ |
+
+- **Claude (complete cost accounting):** cost rises **monotonically** naive → discipline → full
+  ($0.083 → $0.098 → $0.116). `full` is **+$0.018 (+19%) over discipline** and **+$0.034 (+41%)
+  over naive** — the longer preamble is pure cache-read cost, and with `refs` never invoked there
+  is nothing to earn it back.
+- **Codex (lower-bound cost):** noisier and cache-read-dominated (naive $0.304, discipline $0.340,
+  full $0.323); `full` is nominally *below* discipline but the ordering is within run-to-run
+  cache-read variance and the figure is a **lower bound** (no cache-write telemetry).
+- **Cross-model USD is not comparable** as an apples-to-apples number: Codex is an
+  API-list-price-equivalent **lower bound** on a different basis. Token/cost comparisons are
+  **within-model only**.
+
+¹ Codex pass rates are **deflated ~20%** — see §4.
+
+### 3. "Where refs would win" → Full − Discipline preamble-cost delta
+
+The analyzer's `tool_target × burden` table is labeled "where does refs win", but **since `refs`
+was never invoked, it does not measure refs**; it measures where the *preamble* was cheap or dear.
+Read that way (negative = `full` cheaper):
+
+- **Claude — every stratum is positive** (full costs more), search/range/neither alike
+  (+$0.007 … +$0.033 per task; per-dep: payload +$0.029, zod +$0.016, next +$0.010). A clean,
+  consistent "the refs preamble is a net cost, uniformly."
+- **Codex — mixed and noisy** (lower bound): range-target cells show `full` nominally cheaper
+  (range low −$0.066, med −$0.073, high −$0.164) and per-dep next −$0.052 / zod −$0.038, but most
+  tertile CIs cross zero, task counts are 1–2 per cell, and **with `refs` uninvoked none of this
+  is attributable to `refs`** — it is cache-read variance in a lower-bound measure, not a retrieval
+  win.
+
+**So the "does refs win on search/range high-burden" question resolves to: not observed — because
+the tool was not adopted.** The infrastructure to detect a win is in place and verified (isolation
+0% leak, burden strata, CIs); there was simply no treatment uptake to detect.
+
+### 4. Correctness (pass rates)
+
+- **Claude answers: fully judged (162/162 complete verdicts), and discriminating** — naive 89% /
+  discipline 98% / full 87%. High but not saturated (unlike the pilot's 100%); the rubric's
+  `material_errors` do bite. A hand spot-check of pass/fail verdicts on `payload-aftervalidate-
+  negative` confirmed the judge grades sensibly (same task, two repeats, one pass / one fail on a
+  genuinely weaker answer).
+- **Codex answers: pass rate is deflated by residual judge incompleteness.** After the fix,
+  32/162 Codex cells (20%) still got an **incomplete** verdict from the Claude-as-judge (it
+  occasionally returns fewer graded facts than the rubric lists) → fail-closed. Among the 130
+  fully-judged Codex cells, **pass = 86% (112/130)**, versus the 65–76% shown in the table.
+  A spot-checked incomplete cell (`payload-committransaction-noop-default`) had a *plausibly
+  correct* answer that was fail-closed purely on the empty verdict — so **Codex correctness is
+  meaningfully better than the raw per-rung rates suggest.** Treat Codex pass rates as a lower
+  bound; the Claude-answer correctness axis is the clean one.
+- **No timeouts, no measurement errors, 0% compliance leak** on either model.
+
+### 5. Trajectory (speed proxy)
+
+| model | rung | wall | turns | tool_calls | tool_bytes |
+|-------|------|------|-------|-----------|-----------|
+| Codex | naive / discipline / full | 49.5s / 64.8s / 53.8s | 3 / 4 / 3 | 6 / 8 / 7 | 37k / 96k / 73k |
+| Claude | naive / discipline / full | 21.0s / 27.6s / 28.3s | 4 / 4 / 6 | n/a² | n/a² |
+
+² Claude `tool_calls`/`tool_bytes` have no trace in `-p json` — rendered `n/a`, never 0. Both
+models take *more* turns/wall on the longer rungs, consistent with §2 (the preamble adds work, not
+saves it).
+
+### The engineering answer
+
+**Within these 3 deps, at N=3, adding a `refs`-teaching rung did not reduce cost-weighted cost on
+search/range high-burden tasks — because neither Opus 4.8 nor GPT-5.6 adopted `refs` when offered
+it inline.** The added preamble is a net cost (clear and monotonic for Claude; noisy/null and
+lower-bound for Codex). The isolation, burden strata, and CI machinery all held; the missing
+ingredient was treatment uptake. **The actionable signal is about adoption, not retrieval
+efficiency:** a `refs` rung only pays off if the agent actually calls `refs`, and here — with a
+purely inline, opt-in teaching preamble and capable git/grep fallbacks — it never did.
 
 ---
 
 ## Limits (read before quoting any number)
 
+- **Adoption was 0 → this is an intent-to-treat null, not a "refs doesn't help retrieval" result.**
+  The grid cannot say whether `refs` *would* cut cost when actually invoked; it says the models
+  did not invoke it under this preamble. A treatment-on-the-treated estimate needs cells where
+  `refs` is actually called (e.g. a preamble that mandates it, or a task git/grep can't answer).
 - **Descriptive, not confirmatory.** Every efficiency number is descriptive; bootstrap CIs are for
   transparency, not a powered significance/interaction test.
-- **Correctness non-inferiority is not powered.** Pass rates are reported as observed; this study is
-  not sized to certify refs doesn't hurt correctness.
-- **Isolation is measured, not guaranteed.** Controls provably can't resolve `refs` via PATH and this
-  is verified per run, but an absolute-path invocation of the real binary would bypass the shim's log
-  (bounded, not eliminated).
-- **Codex cost is a lower bound.** No cache-write telemetry from the codex CLI → its dollar figure is
-  an API-list-price-equivalent lower bound, not subscription spend. Cross-model USD is date-stamped
-  and labeled; token comparisons are **within-model only**.
-- **3 deps ≠ population inference.** Three dependency clusters are too few for dependency-cluster
-  bootstrap rigor; the analyzer surfaces per-task and per-dep deltas so the spread is visible, and
-  labels any aggregate CI as assuming task independence.
+- **Correctness non-inferiority is not powered**, and **Codex pass rates are a lower bound** — the
+  Claude-as-judge returns an incomplete verdict ~20% of the time and those fail-closed. Judge-
+  completeness/agreement calibration is descoped; the Claude-answer axis (0% incomplete) is the
+  trustworthy one. Two earlier scoring bugs were found and fixed (above) before these numbers.
+- **Isolation is measured, not guaranteed.** Controls provably can't resolve `refs` via PATH
+  (verified 0% leak per run), but an absolute-path invocation of the real binary would bypass the
+  shim's log (bounded, not eliminated). Here it is moot: 0 invocations of any kind.
+- **Codex cost is a lower bound** (no cache-write telemetry). Cross-model USD is date-stamped and
+  labeled; token comparisons are **within-model only**.
+- **3 deps ≠ population inference.** The analyzer surfaces per-task and per-dep deltas so the
+  spread is visible; any aggregate CI assumes task independence.
 - **Cache carryover not eliminated** (within-block randomization only).
-- **Corpus is subagent-authored + controller-spot-verified.** Every fact was pulled from the real
-  pinned checkouts (a sample was re-verified by hand), but the rubrics/labels should get a **human
-  eye before the paid grid run** — freezing this corpus commit *is* the "seal". Negative-task
-  deterministic regexes are intentionally permissive; discrimination lives in `material_errors`, which
-  the grader weights.
+- **Corpus is subagent-authored + controller-spot-verified**, and **frozen in this PR (the "seal")**.
+  Negative-task deterministic regexes are intentionally permissive; discrimination lives in
+  `material_errors`, which the grader weights.
 
-**What a full *causal* study would additionally require** (deliberately out of scope here; see the
-archived v2 plan + Codex reviews): preregistration + external-custody held-out corpus; a named exact
-paired-binomial (Tango) non-inferiority test + power simulation; an allowlisted-runtime sandbox with a
-bypass matrix; Williams counterbalancing / cold-start estimand; a multiplicity-controlled confirmatory
-family; and ≫4-dep population inference. The conclusion here holds at the decision-grade bar, not the
-publishable-causal bar.
+**What a full *causal* study would additionally require** (deliberately out of scope; see the
+archived v2 plan + Codex reviews): preregistration + external-custody held-out corpus; a named
+exact paired-binomial non-inferiority test + power simulation; an allowlisted-runtime sandbox with
+a bypass matrix; Williams counterbalancing / cold-start estimand; a multiplicity-controlled
+confirmatory family; ≫4-dep population inference; **and a treatment arm that actually induces
+`refs` use.** The conclusion here holds at the decision-grade bar, not the publishable-causal bar.
 
 Any product or marketing claim from these results remains a human decision.
