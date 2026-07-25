@@ -1,0 +1,18 @@
+{
+  "id": "p1-catch-absent-key",
+  "dep": "zod",
+  "ref": "github.com/colinhacks/zod",
+  "commit": "912f0f51b0ced654d0069741e7160834dca742ee",
+  "anchor": "v4.4.3 (change commit 1cab6938) vs v4.4.2",
+  "change_unit": "CU1",
+  "job_type": "behavior",
+  "question": "In zod 4.4.3, what does z.object({ fruit: z.enum([\"apple\",\"orange\"]).catch(\"apple\") }).parse({}) return, and why does the absent `fruit` key no longer cause a failure?",
+  "critical_facts": [
+    "states that the call returns { fruit: \"apple\" } (parsing succeeds)",
+    "explains that an absent object key now flows through to the .catch() handler, so the catch fallback is substituted"
+  ],
+  "material_errors": [
+    "claims the parse throws, fails, or returns success:false",
+    "claims it returns {} with no fruit key"
+  ]
+}

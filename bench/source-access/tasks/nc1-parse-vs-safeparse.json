@@ -1,0 +1,17 @@
+{
+  "id": "nc1-parse-vs-safeparse",
+  "dep": "zod",
+  "ref": "github.com/colinhacks/zod",
+  "commit": "912f0f51b0ced654d0069741e7160834dca742ee",
+  "anchor": "v4.4.3 (negative control: source should NOT help)",
+  "change_unit": "NC",
+  "job_type": "negative-control",
+  "question": "On invalid input, how do zod's .parse() and .safeParse() differ?",
+  "critical_facts": [
+    "states .parse() throws a ZodError on invalid input while .safeParse() does not throw",
+    "states .safeParse() returns { success: false, error } on invalid input (and { success: true, data } on success)"
+  ],
+  "material_errors": [
+    "claims .safeParse() throws on invalid input, or returns success:true on invalid input"
+  ]
+}

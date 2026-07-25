@@ -1,0 +1,18 @@
+{
+  "id": "p7-proto-catchall",
+  "dep": "zod",
+  "ref": "github.com/colinhacks/zod",
+  "commit": "912f0f51b0ced654d0069741e7160834dca742ee",
+  "anchor": "v4.4.0 (change commit 76e8f706) vs v4.3.6",
+  "change_unit": "CU4",
+  "job_type": "behavior",
+  "question": "In zod 4.4.0, given const s = z.looseObject({ name: z.string() }); and const r = s.parse(JSON.parse('{\"__proto__\":{\"isAdmin\":true},\"name\":\"alice\"}')); what are Object.keys(r) and Object.getPrototypeOf(r)?",
+  "critical_facts": [
+    "states Object.keys(r) is [\"name\"] — the __proto__ key is skipped, not carried through the catchall",
+    "states Object.getPrototypeOf(r) === Object.prototype (the result's prototype is not replaced)"
+  ],
+  "material_errors": [
+    "claims __proto__ appears as a normal data key on r",
+    "claims global Object.prototype was polluted"
+  ]
+}

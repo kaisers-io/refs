@@ -1,0 +1,19 @@
+{
+  "id": "p5-iso-facade",
+  "dep": "zod",
+  "ref": "github.com/colinhacks/zod",
+  "commit": "912f0f51b0ced654d0069741e7160834dca742ee",
+  "anchor": "commit dfd8766b vs parent (post-v4.4.3)",
+  "change_unit": "CU3",
+  "job_type": "architecture",
+  "question": "At zod main (post-4.4.3), where are the ZodISODateTime/ZodISODate/ZodISOTime/ZodISODuration class definitions located in the v4 classic source, what role does classic/iso.ts now play, and is the public API (z.iso.datetime(), top-level ZodISODateTime, z.string().datetime()) changed?",
+  "critical_facts": [
+    "states the ZodISODateTime/Date/Time/Duration class definitions now live in packages/zod/src/v4/classic/schemas.ts",
+    "states classic/iso.ts is now a thin facade that re-exports those classes and exposes the z.iso.* builder functions",
+    "states the public API (z.iso.datetime(), top-level ZodISODateTime, z.string().datetime()) is unchanged"
+  ],
+  "material_errors": [
+    "claims a named public API surface changed",
+    "claims the ISO class definitions still live in iso.ts"
+  ]
+}
