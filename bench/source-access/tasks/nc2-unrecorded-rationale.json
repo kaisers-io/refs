@@ -1,0 +1,17 @@
+{
+  "id": "nc2-unrecorded-rationale",
+  "dep": "zod",
+  "ref": "github.com/colinhacks/zod",
+  "commit": "912f0f51b0ced654d0069741e7160834dca742ee",
+  "anchor": "commit f29f2a6d (negative control: genuinely unanswerable)",
+  "change_unit": "NC",
+  "job_type": "negative-control",
+  "question": "What maintainer-stated reason explains why commit f29f2a6d duplicated the IPv6 alternatives into the cidrv6 regex rather than building the CIDR pattern programmatically from the ipv6 regex source?",
+  "critical_facts": [
+    "states that no maintainer-stated reason for choosing duplication over programmatic construction is recorded in the commit or source",
+    "distinguishes the observed implementation from any inferred or speculative rationale"
+  ],
+  "material_errors": [
+    "asserts a specific reason (performance, regex-engine compatibility, JSON-Schema limits, or maintainer preference) as a recorded fact"
+  ]
+}

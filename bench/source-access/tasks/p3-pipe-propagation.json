@@ -1,0 +1,18 @@
+{
+  "id": "p3-pipe-propagation",
+  "dep": "zod",
+  "ref": "github.com/colinhacks/zod",
+  "commit": "912f0f51b0ced654d0069741e7160834dca742ee",
+  "anchor": "commit c2be4f81 vs parent 1cab6938 (both within v4.4.3)",
+  "change_unit": "CU1",
+  "job_type": "cross-module",
+  "question": "Given const s = z.string().catch(\"X\").transform((v) => v + \"!\").optional(); what does s.parse(undefined) return at zod commit c2be4f81, and what did it return at its parent commit 1cab6938?",
+  "critical_facts": [
+    "states that at commit c2be4f81, s.parse(undefined) returns undefined",
+    "states that at the parent commit 1cab6938, s.parse(undefined) returns \"X!\"",
+    "attributes the difference to the fallback flag being propagated across the pipe/transform boundary"
+  ],
+  "material_errors": [
+    "claims zod 4.4.2 (the release) produced \"X!\" for s.parse(undefined)"
+  ]
+}
