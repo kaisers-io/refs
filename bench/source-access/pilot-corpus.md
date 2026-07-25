@@ -129,11 +129,42 @@ the frozen rubric, a **public-exposure audit**, and the **source-necessity gate*
 - **Critical facts:** (1) explicitly says the rationale is not recorded; (2) separates observed implementation from speculation. **Fatal contradiction:** confidently attributing the choice to performance, regex-engine compatibility, JSON-Schema limits, or maintainer preference *as a recorded fact*. Clearly-labeled speculation is acceptable.
 - **Purpose:** measures whether source access makes a model *more* honest about the limits of what the source establishes (a qualitative win for refs even where correctness deltas are small).
 
+## Confirmatory hardening (post-pilot)
+
+Work done to de-risk the corpus before any model-run budget is spent.
+
+### P7 — behavior / security · change-unit CU4 (independent) · **confirmatory-grade replacement for P4**
+
+Replaces P4's slot for confirmatory scoring (P4 stays only as a flagged pilot diagnostic). Counterintuitive + low-contamination — a source-less model's intuitive guess is *specifically* wrong.
+
+- **Anchor:** target release **`v4.4.0`** (change commit `76e8f706`, "skip `__proto__` key in object catchall" #5898) vs. previous release **`v4.3.6`**.
+- **Question:** In zod 4.4.0, given `const s = z.looseObject({ name: z.string() });` and `const r = s.parse(JSON.parse('{"__proto__":{"isAdmin":true},"name":"alice"}'));`, what are `Object.keys(r)` and `Object.getPrototypeOf(r)`?
+- **Target answer (v4.4.0+):** `Object.keys(r)` is `["name"]` — the `__proto__` key is **skipped**, not carried through the catchall — and `Object.getPrototypeOf(r) === Object.prototype` (`r.isAdmin` is `undefined`). `handleCatchall` skips `__proto__` so it can't replace the parsed result's prototype via the assignment setter. Same for `.passthrough()` and `.catchall(z.unknown())`.
+- **Previous-version counter-answer (v4.3.6):** `handleCatchall` had **no** `__proto__` guard, so the `__proto__` key reached the catchall assignment and — via the `__proto__` setter on the plain object being built — **replaced the parsed result's prototype**; `Object.getPrototypeOf(r)` was the injected `{isAdmin:true}` object, not `Object.prototype`. (No *global* `Object.prototype` pollution — the result's own prototype was clobbered.)
+- **Source:** `core/schemas.ts:1873` (the `if (key === "__proto__") continue;` guard added inside `handleCatchall`, which begins at `:1856`; async path guard at `:2957`). Verified **absent** from `handleCatchall` at v4.3.6 (its only `__proto__` guard was at `:2801`, the regular non-catchall object path). Observable behavior asserted at `classic/tests/object.test.ts:677` ("__proto__ in object catchall paths").
+- **Oracle:** `Object.keys(r)` deep-equals `["name"]`; `Object.getPrototypeOf(r) === Object.prototype`; across `looseObject`/`passthrough`/`catchall(z.unknown())`.
+- **Critical facts:** (1) `Object.keys(r)` excludes `__proto__` (= `["name"]`); (2) `Object.getPrototypeOf(r) === Object.prototype` (prototype not replaced). **Fatal contradiction:** claiming `__proto__` appears as a normal data key on `r`, or that global `Object.prototype` was polluted.
+- **Public-exposure audit:** security fix; not in general docs. Counterintuitive — memory expects catchall/passthrough to preserve *all* input keys. **Low contamination, strong necessity.**
+
+### kysely eligibility audit — **eligible** (provisional third dep confirmed)
+
+Added `github.com/kysely-org/kysely` (single package, `tag_format v{version}`) and scanned `v0.29.0..v0.29.4` (May–Jul 2026). It yields real, contrastive, version-specific source-only items across job types — e.g.:
+
+- **`1ca8834` (#1946):** SQLite DELETE compiled the `RETURNING` clause in the **wrong position** (after `ORDER BY`/`LIMIT`) — fixed in `query-compiler/default-query-compiler.ts` to emit it before. A crisp SQL-generation behavior contrast (before/after produce different SQL strings).
+- **`6e1bc5c` (#1919):** PG/MSSQL migrations not running **exclusively** under `disableTransactions: true` — concurrency/behavioral semantics.
+- **`00400f8` (#1851):** `$narrowType` mishandling **branded** types — type-level/internal.
+
+Verdict: keep kysely as the medium-popularity churn slot (lower contamination than zod). Author 3–4 items from independent change-units when building the confirmatory corpus.
+
+### Negative controls — status
+
+NC1 (parse vs. safeParse) and NC2 (unrecorded cidrv6-duplication rationale) are authored above with frozen rubrics and are directly runnable; no further work needed before the harness exists.
+
 ## Corpus deps (decided with the review)
 
 - **zod** — worked example (this file).
 - **`payloadcms/payload`** — large monorepo / cross-package wiring slot. Keep (release history confirms frequent cross-package changes).
-- **`kysely-org/kysely`** — provisional medium-popularity, rapid-churn slot (~14k stars; releases 0.29.0–0.29.4 May–Jul 2026), **pending a short eligibility audit of recent diffs** to confirm it yields enough source-only items.
+- **`kysely-org/kysely`** — medium-popularity, rapid-churn slot (~14k stars; releases 0.29.0–0.29.4 May–Jul 2026). **Eligibility audited → confirmed** (see Confirmatory hardening): yields contrastive source-only items across job types at lower contamination than zod.
 - **`vercel/next.js`** — **not** the churn slot (≈141k stars, exceptionally training-exposed). Keep only as a separate *high-contamination stress stratum*, reported apart from the main estimate.
 
 ## Rubric conventions (frozen)
