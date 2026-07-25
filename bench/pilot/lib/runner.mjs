@@ -44,6 +44,10 @@ const CODEX_ISOLATION = [
   `model_reasoning_effort=${CODEX_EFFORT}`,
   '-s',
   'read-only',
+  // Codex refuses to run outside a trusted git repo without this; the judge runs in a
+  // neutral non-git cwd (tmpdir), and agent cells run inside the read-only checkout, so
+  // this is required for the judge and harmless for agent runs.
+  '--skip-git-repo-check',
 ];
 
 const buildPrompt = (preamble, question, cwd) =>
