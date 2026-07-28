@@ -2,7 +2,6 @@ import { emit, wrapAction } from '../output.ts';
 import { installHooksGuard, migrateConfig, resolveHome, withLock } from '@kaisers-io/refs-core';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { RefsHome } from '@kaisers-io/refs-core';
 import { mkdir } from 'node:fs/promises';
 // eslint-disable-next-line import/no-relative-parent-imports -- package.json lives at the package root, one level above src/

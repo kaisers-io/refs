@@ -1,9 +1,5 @@
 import type { Config, PackageEntry, RefEntry, RefKey } from '@kaisers-io/refs-core';
-import {
-  isGitCheckout,
-  notFoundError,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
-} from '@kaisers-io/refs-core';
+import { isGitCheckout, notFoundError } from '@kaisers-io/refs-core';
 
 // Shared ref/checkout/package guards for the command layer — extracted so no command carries a
 // diverging copy of the same checks (their user-facing message strings are part of the CLI contract

@@ -1,10 +1,5 @@
 import type { Config, RefsHome } from '@kaisers-io/refs-core';
-import {
-  SCHEMA_VERSION,
-  readConfig,
-  zConfig,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
-} from '@kaisers-io/refs-core';
+import { SCHEMA_VERSION, readConfig, zConfig } from '@kaisers-io/refs-core';
 import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
 import { access } from 'node:fs/promises';

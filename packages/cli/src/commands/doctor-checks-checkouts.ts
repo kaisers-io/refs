@@ -1,11 +1,6 @@
 import type { Config, RefsHome } from '@kaisers-io/refs-core';
 import { access, constants } from 'node:fs/promises';
-import {
-  checkoutPath,
-  isGitCheckout,
-  zRefKey,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
-} from '@kaisers-io/refs-core';
+import { checkoutPath, isGitCheckout, zRefKey } from '@kaisers-io/refs-core';
 import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
 import { join } from 'node:path';

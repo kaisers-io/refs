@@ -3,17 +3,12 @@ import { SCHEMA_VERSION, zConfig } from './schemas/config.ts';
 import { TomlError, parse, stringify } from 'smol-toml';
 import { copyFile, readFile, stat } from 'node:fs/promises';
 import { isEnoent, writeFileAtomic } from './fs-atomic.ts';
+import type { Config } from './schemas/config.ts';
 import type { RefsHome } from './home.ts';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { configBackupPath } from './home.ts';
 import { z } from 'zod';
 
 type JsonRecord = Record<string, unknown>;
-
-// Derived from `zConfig` rather than imported as `Config` alongside the `zConfig` value import —
-// See the identical note in `state-io.ts` for why (avoids a real conflict between this repo's
-// `no-duplicate-imports` and `consistent-type-specifier-style` lint rules).
-type Config = z.infer<typeof zConfig>;
 
 const isPlainObject = (value: unknown): value is JsonRecord =>
   typeof value === 'object' && value !== null && !Array.isArray(value);

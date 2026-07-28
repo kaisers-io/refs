@@ -9,7 +9,6 @@ import {
   withLock,
   writeConfig,
   writeState,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
 import { emit, wrapAction } from '../output.ts';
 import { lstat, readdir, rm, rmdir } from 'node:fs/promises';

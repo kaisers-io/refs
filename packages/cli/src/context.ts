@@ -1,5 +1,4 @@
 import type { Fetcher, Runner } from '@kaisers-io/refs-core';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { SpawnRunner } from '@kaisers-io/refs-core';
 
 // Every side effect the CLI can perform (reading env, writing stdout/stderr, shelling out,

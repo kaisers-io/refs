@@ -18,7 +18,6 @@ import {
   resolveSetting,
   usageError,
   zRefKey,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
 import { emit, wrapAction } from '../output.ts';
 import type { CliContext } from '../context.ts';

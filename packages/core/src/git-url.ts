@@ -1,7 +1,6 @@
 import type { GitTransport, RefKey } from './schemas/primitives.ts';
 import { redactUrl } from './git-url-redact.ts';
 import { validationError } from './errors.ts';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { zRefKey } from './schemas/primitives.ts';
 
 const SCP_URL = /^git@(?<host>[^:/\s]+):(?<path>[^\s]+)$/u;

@@ -9,7 +9,6 @@ import {
   resolveHome,
   resolveSetting,
   zRefKey,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
 import type { RefSyncContext, SyncStatus } from './sync-checkout.ts';
 import { emit, wrapAction } from '../output.ts';
@@ -19,7 +18,6 @@ import type { SyncResultItem } from './sync-core.ts';
 import { isStale } from './ref-status.ts';
 import { matchRefKey } from './list.ts';
 import { requireEntry } from './ref-context.ts';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { syncAll } from './sync-core.ts';
 
 // `refs sync [refs…] [--stale-only]` — fetches (or, if the checkout is missing, re-clones) every

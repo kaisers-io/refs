@@ -1,5 +1,4 @@
 import type { RefKey, RefState, RefsHome } from '@kaisers-io/refs-core';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { readConfig, readState, withLock, writeConfig, writeState } from '@kaisers-io/refs-core';
 import type { RefSyncOutcome } from './sync-checkout.ts';
 

@@ -14,15 +14,11 @@ import {
 import { emit, wrapAction } from '../output.ts';
 import { runDryRunCore, toWarningsList, writePendingProposal } from './add-dry-run.ts';
 import type { CliContext } from '../context.ts';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { DryRunOutcome } from './add-dry-run.ts';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { FinalProposal } from '@kaisers-io/refs-core';
 import type { FinalizeOpts } from './add-finalize.ts';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { FinalizedRefInput } from './add-packages.ts';
 import type { RefsCommand } from './registry.ts';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { finalizeRef } from './add-finalize.ts';
 import { loadFinalProposal } from './add-proposal-io.ts';
 

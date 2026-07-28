@@ -2,7 +2,6 @@ import type { Runner } from '../proc/runner.ts';
 import type { TagFormat } from '../schemas/primitives.ts';
 import { notFoundError } from '../errors.ts';
 import { tagExists } from './repo.ts';
-// eslint-disable-next-line no-duplicate-imports
 import { zTagFormat } from '../schemas/primitives.ts';
 
 // Regex for semantic version: major.minor.patch with optional prerelease and optional build metadata.

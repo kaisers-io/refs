@@ -2,7 +2,6 @@ import type { RefSyncContext, RefSyncOutcome, SyncStatus } from './sync-checkout
 import { applySyncSuccess, recordFailure } from './sync-state.ts';
 import { createSemaphore, runGated } from './sync-semaphore.ts';
 import type { CliContext } from '../context.ts';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { syncCheckout } from './sync-checkout.ts';
 
 // Batch orchestration for `sync.ts` — split out purely to keep that file under the repo's

@@ -11,11 +11,9 @@ import {
   writeState,
   zConfig,
   zState,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
 import type { CliContext } from '../context.ts';
 import type { FinalizedRefInput } from './add-packages.ts';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { buildRefEntry } from './add-packages.ts';
 import { resolveCheckoutHead } from './add-checkout-guards.ts';
 import { z } from 'zod';

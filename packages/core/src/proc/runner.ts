@@ -1,9 +1,9 @@
 import { activeChildren, installCleanupOnce } from './spawn-cleanup.ts';
 import { appendNote, createCollector, withTruncationNote } from './spawn-collector.ts';
 import type { ChildProcess } from 'node:child_process';
+import type { CollectedStream } from './spawn-collector.ts';
 import { armTimeout } from './spawn-timeout.ts';
 import { once } from 'node:events';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { spawn } from 'node:child_process';
 
 // Thin process-execution seam so `git/repo.ts` never calls `child_process` directly: production
@@ -155,13 +155,6 @@ const waitForClose = async (child: ChildProcess): Promise<CloseOutcome> => {
     return { code: null, errorMessage: errorMessageOf(error) };
   }
 };
-
-// Derived from `createCollector`'s own return type rather than a separate `import type` of
-// `CollectedStream` from `spawn-collector.ts` — importing both the value AND the type from that
-// module would trigger the same `no-duplicate-imports`/`consistent-type-specifier-style` conflict
-// documented in `state-io.ts`; deriving locally sidesteps it while staying byte-for-byte the same
-// shape `spawn-collector.ts` actually returns.
-type CollectedStream = ReturnType<ReturnType<typeof createCollector>['finish']>;
 
 interface CloseContext {
   code: number | null;
