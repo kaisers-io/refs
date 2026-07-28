@@ -11,8 +11,8 @@ import {
   resolveHome,
   usageError,
 } from '@kaisers-io/refs-core';
-import { cliOptsOf, emit, wrapAction } from '../output.ts';
-import { runDryRunCore, toWarningsList, writePendingProposal } from './add-dry-run.ts';
+import { cliOptsOf, emit, warningsFor, wrapAction } from '../output.ts';
+import { runDryRunCore, writePendingProposal } from './add-dry-run.ts';
 import type { CliContext } from '../context.ts';
 import type { DryRunOutcome } from './add-dry-run.ts';
 import type { FinalProposal } from '@kaisers-io/refs-core';
@@ -43,7 +43,7 @@ const runAddDryRun = async (ctx: CliContext, source: string): Promise<AddOutcome
   const outcome = await runDryRunCore(ctx, source);
   const home = resolveHome(ctx.env);
   await writePendingProposal(home, outcome.proposal.key, outcome.effectiveCloneMode);
-  const warnings = toWarningsList(outcome.warning);
+  const warnings = warningsFor(outcome.warning);
   return {
     data: outcome.proposal,
     human: dryRunHuman(outcome.proposal.key, outcome.dest),
@@ -114,7 +114,7 @@ const runAddDescription = async (
     finalizeOpts.effectiveCloneMode = outcome.effectiveCloneMode;
   }
   const { entry, key } = await finalizeRef(ctx, finalizeOpts);
-  const warnings = toWarningsList(outcome.warning);
+  const warnings = warningsFor(outcome.warning);
   return { data: { entry, key }, human: finalizeHuman(key), warnings };
 };
 

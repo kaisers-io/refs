@@ -37,14 +37,6 @@ import { progress } from '../output.ts';
 // default branch/tags/workspace packages → shape a `Proposal`. Shared by both `refs add --dry-run`
 // and the `refs add --description` one-shot flow (see `add.ts`).
 
-/** Normalizes an optional warning string into the envelope's `warnings` array shape. */
-const toWarningsList = (warning: string | undefined): string[] => {
-  if (warning === undefined) {
-    return [];
-  }
-  return [warning];
-};
-
 type DryRunOutcome = {
   dest: string;
   effectiveCloneMode?: CloneMode;
@@ -178,5 +170,5 @@ const writePendingProposal = (
     await writeState(home, state);
   });
 
-export { runDryRunCore, toWarningsList, writePendingProposal };
+export { runDryRunCore, writePendingProposal };
 export type { DryRunOutcome };

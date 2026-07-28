@@ -182,15 +182,17 @@ const resolveSyncBranch = async (
   return result;
 };
 
-// Hard-resets `dir` to `origin/<branch>`: `checkout -B` + `reset --hard` handle force-pushes and
-// stray local commits on tracked files. Only when dirty does `clean -fd` also remove untracked
-// files/dirs (`reset --hard` leaves them behind; `-x` is deliberately NOT used, so gitignored
-// artifacts survive a routine clean sync).
+// The two scrub steps that run before `checkout -B` when the tree is dirty: `reset --hard HEAD`
+// clears tracked-file modifications, `clean -fd` removes untracked files/dirs (`-x` is
+// deliberately NOT used, so gitignored artifacts survive a routine clean sync).
 const dirtyCleanupSteps = (dir: string): CommandSpec[] => [
   gitSpec('git reset --hard HEAD (pre-checkout)', ['reset', '--hard', 'HEAD'], dir),
   gitSpec('git clean -fd', ['clean', '-fd'], dir),
 ];
 
+// Hard-resets `dir` to `origin/<branch>`: `checkout -B` + `reset --hard` handle force-pushes and
+// stray local commits on tracked files.
+//
 // A dirty checkout is scrubbed BEFORE `checkout -B`, not after: an untracked local file whose path
 // the fetched branch now tracks makes `checkout -B` refuse to overwrite it, so the restore path
 // would throw exactly when it is needed. `reset --hard HEAD` clears tracked-file modifications

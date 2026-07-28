@@ -196,7 +196,7 @@ const ensureGitSuffix = (path: string): string => {
 const httpsFormOf = (host: string, path: string): string =>
   `https://${host.toLowerCase()}/${trimPathSlashes(path)}`;
 
-// The ssh rewrite target is the scp form (`git@host:path.git`) — the form forges print in their
+// The ssh rewrite target is the scp form (`git@host:path.git`) — the form code forges (GitHub/GitLab) print in their
 // clone UI; the `.git` suffix is added when missing to match that form (it never changes the
 // canonical key — see `stripGitSuffix` in `buildKey`).
 const scpFormOf = (host: string, path: string): string =>
