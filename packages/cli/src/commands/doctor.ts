@@ -16,7 +16,7 @@ import type { ConfigLoad } from './doctor-checks-basic.ts';
 import type { RefsCommand } from './registry.ts';
 import { checkSshAuth } from './doctor-checks-ssh.ts';
 
-// `refs doctor [--json]` — the 8 environment/integrity checks from spec §4: `git`, `node`,
+// `refs doctor [--json]` — the 8 environment/integrity checks: `git`, `node`,
 // `config`, `hooks-guard`, `dirty-checkouts`, `orphans`, `skill`, `ssh-auth` (the last one only
 // ever appears when a configured ref uses an ssh transport url). Every check runs to completion
 // before anything is reported — a failing `config` check must never prevent `orphans`/

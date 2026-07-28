@@ -25,7 +25,7 @@ import { requireEntry } from './ref-context.ts';
 
 // `refs resolve <query>` — the agent-routing command. Turns a git url, an exact npm package name,
 // an import path (e.g. `@scope/pkg/sub/path`), or a unique ref-key suffix into the one configured ref (and,
-// where applicable, the one package within it) the query denotes, per spec §5's deterministic
+// where applicable, the one package within it) the query denotes, via a deterministic
 // four-step precedence (see `routeQuery` below). No match at all → `notFoundError` with the fixed
 // "no ref matches" message every step below ultimately funnels into.
 

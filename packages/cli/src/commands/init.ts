@@ -8,8 +8,8 @@ import { mkdir } from 'node:fs/promises';
 import pkg from '../../package.json' with { type: 'json' };
 
 // Printed verbatim in human mode and mirrored into `data.skill_hint` in json mode — this string
-// is only ever printed, never executed: `refs init` must stay free of anything network-facing
-// (spec §8), so the actual `npx skills add` install step is left for the human/agent to run.
+// is only ever printed, never executed: `refs init` must stay free of anything network-facing,
+// so the actual `npx skills add` install step is left for the human/agent to run.
 const SKILL_HINT =
   'Install the agent skill: npx skills add kaisers-io/refs   ' +
   '(private phase: npx skills add <path-to-this-repo> --skill refs)';
