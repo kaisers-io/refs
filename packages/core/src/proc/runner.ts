@@ -58,12 +58,7 @@ const TIMEOUT_EXIT_CODE = 124;
 // `exitCode === 0` or reads `stderr`), so there is no compatibility reason to pick anything else.
 const SPAWN_ERROR_EXIT_CODE = 127;
 
-const cwdOpt = (cwd: string | undefined): { cwd?: string } => {
-  if (cwd === undefined) {
-    return {};
-  }
-  return { cwd };
-};
+const cwdOpt = (cwd: string | undefined): { cwd?: string } => (cwd === undefined ? {} : { cwd });
 
 const withTimeoutNote = (stderr: string, timeoutMs: number | undefined): string =>
   appendNote(stderr, `refs: command timed out after ${String(timeoutMs)}ms`);

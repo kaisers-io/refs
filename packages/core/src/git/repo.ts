@@ -49,12 +49,7 @@ type CommandSpec = {
   cwd?: string;
 };
 
-const cwdOpt = (cwd: string | undefined): { cwd?: string } => {
-  if (cwd === undefined) {
-    return {};
-  }
-  return { cwd };
-};
+const cwdOpt = (cwd: string | undefined): { cwd?: string } => (cwd === undefined ? {} : { cwd });
 
 // Shorthand for the `{ action, args, cmd: 'git', cwd }` shape passed to `runOrThrow` below.
 const gitSpec = (action: string, args: readonly string[], cwd?: string): CommandSpec => ({

@@ -114,8 +114,7 @@ const editPlainRefField = (
 };
 
 /** `url` needs its own (async, checkout-touching) path; every other recognized field is a plain
- * re-validated assignment (`editPlainRefField`). Written as two early-return branches rather than
- * a ternary — this repo's oxlint config forbids `no-ternary`. */
+ * re-validated assignment (`editPlainRefField`). */
 const resolveUpdatedEntry = (
   ctx: CliContext,
   args: {

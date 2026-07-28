@@ -17,23 +17,12 @@ type ErrorEnvelope = {
 
 const NO_WARNINGS: string[] = [];
 
-// Normalizes `emit`'s `human` parameter (one line, or several) to an array — kept out of `emit`
-// itself only to avoid a ternary there (repo style forbids `no-ternary`).
-const toLines = (human: string | string[]): string[] => {
-  if (Array.isArray(human)) {
-    return human;
-  }
-  return [human];
-};
+// Normalizes `emit`'s `human` parameter (one line, or several) to an array.
+const toLines = (human: string | string[]): string[] => (Array.isArray(human) ? human : [human]);
 
-// Normalizes a command's optional single warning to `emit`'s warnings array — same "kept out only
-// to avoid a ternary" reasoning as `toLines` above. Shared by `show.ts`/`remove.ts`.
-const warningsFor = (warning: string | undefined): string[] => {
-  if (warning === undefined) {
-    return NO_WARNINGS;
-  }
-  return [warning];
-};
+// Normalizes a command's optional single warning to `emit`'s warnings array.
+const warningsFor = (warning: string | undefined): string[] =>
+  warning === undefined ? NO_WARNINGS : [warning];
 
 // Renders a caught `unknown` as a plain message string: an `Error`'s own `.message`, anything else
 // via `String(...)`. The CLI-side twin of core's private helper of the same name in
