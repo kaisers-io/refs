@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-28
+
+### Changed
+
+- Internal: whole-codebase clarity refactor — comments now explain behavior instead of project
+  history, inline lint exceptions cut from 75 to 20, `type` aliases replace interfaces
+  throughout, dead exports removed, and the workspace-detection logic is split into a pure,
+  directly-tested module. No CLI behavior change.
+
 ### Removed
 
 - `refs search` and `refs range` (both added in 0.3.0). A dedicated efficiency benchmark
@@ -176,7 +185,9 @@ trusted-publishing pipeline end to end.
   installed git hooks.
 - Agent skill (`skills/refs/`) documenting the investigate/add/maintain workflows.
 
-[Unreleased]: https://github.com/kaisers-io/refs/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/kaisers-io/refs/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/kaisers-io/refs/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/kaisers-io/refs/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/kaisers-io/refs/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/kaisers-io/refs/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/kaisers-io/refs/compare/v0.1.1...v0.1.2
