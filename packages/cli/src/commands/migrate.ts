@@ -1,15 +1,15 @@
+import { cliOptsOf, emit, wrapAction } from '../output.ts';
 import { configBackupPath, migrateConfig, resolveHome, withLock } from '@kaisers-io/refs-core';
-import { emit, wrapAction } from '../output.ts';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
 import { basename } from 'node:path';
 // eslint-disable-next-line import/no-relative-parent-imports -- package.json lives at the package root, one level above src/
 import pkg from '../../package.json' with { type: 'json' };
 
-interface MigrateData {
+type MigrateData = {
   backup: string | null;
   result: 'migrated' | 'noop' | 'seeded';
-}
+};
 
 // Pure command body: `migrateConfig` alone decides seed/migrate/noop — this only adds the
 // home-wide lock (matching `init.ts`'s own `withLock(home, 'home', ...)` wrapping of the same
@@ -43,8 +43,7 @@ const registerMigrate = (program: RefsCommand, ctx: CliContext): void => {
     .command('migrate')
     .description('Migrate the refs config to the current schema, seeding it if absent.')
     .action((_localOpts, command) => {
-      const globals = command.optsWithGlobals();
-      const opts = { json: globals.json === true, verbose: globals.verbose === true };
+      const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
         const data = await runMigrate(ctx);
         emit(ctx, opts, migrateHuman(data), data);
@@ -52,5 +51,4 @@ const registerMigrate = (program: RefsCommand, ctx: CliContext): void => {
     });
 };
 
-export { registerMigrate, runMigrate };
-export type { MigrateData };
+export { registerMigrate };

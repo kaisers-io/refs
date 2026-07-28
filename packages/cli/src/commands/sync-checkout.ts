@@ -1,5 +1,5 @@
 import type { CloneMode, RefEntry, RefKey, RefsHome, Settings } from '@kaisers-io/refs-core';
-import { allowFileUrlsFrom, refLockName } from './add-helpers.ts';
+import { allowFileUrlsFrom, refLockName } from './add-source.ts';
 import {
   assertInsideSources,
   checkoutPath,
@@ -11,7 +11,6 @@ import {
   validationError,
   withLock,
   zRefState,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
 import {
   ensureCheckoutOrigin,
@@ -22,28 +21,27 @@ import type { CliContext } from '../context.ts';
 import { dirname } from 'node:path';
 import { mkdir } from 'node:fs/promises';
 
-// The per-ref git pipeline for `sync.ts`/`sync-core.ts` — split out purely to keep both files
-// under the repo's 300-line oxlint cap. Owns the missing-checkout re-clone path, the
+// The per-ref git pipeline for `refs sync`. Owns the missing-checkout re-clone path, the
 // existing-checkout sync path (guarded by the same managed-checkout marker `add`'s reuse path
 // checks), and the per-ref lock around both. No config/state write happens here — that is
 // `sync-state.ts`'s job, under a SEPARATE, sequential (never nested) home-lock acquisition.
 
 type SyncStatus = 'cloned' | 'fresh' | 'restored' | 'updated';
 
-interface RefSyncOutcome {
+type RefSyncOutcome = {
   headSha: string;
   status: SyncStatus;
   branchRenamedTo?: string;
   effectiveCloneMode?: CloneMode;
   warning?: string;
-}
+};
 
-interface RefSyncContext {
+type RefSyncContext = {
   home: RefsHome;
   key: RefKey;
   ref: RefEntry;
   settings: Settings;
-}
+};
 
 const unsupportedHeadShaMessage = (key: RefKey, dest: string, sha: string): string =>
   `sync produced a HEAD sha for '${key}' at ${dest} that refs cannot store yet ` +
@@ -59,13 +57,13 @@ const validateHeadSha = (key: RefKey, dest: string, sha: string): string => {
   return sha;
 };
 
-interface ClonedFields {
+type ClonedFields = {
   actualBranch: string;
   headSha: string;
-}
+};
 
-/** Shapes a fresh clone's outcome — split out of `syncMissingCheckout` purely to keep that
- * function under the repo's max-statements cap. */
+/** Shapes `syncMissingCheckout`'s `'cloned'` outcome, recording a detected branch rename and any
+ * clone warning. */
 const buildClonedOutcome = (
   rsc: RefSyncContext,
   cloneResult: { effectiveMode: CloneMode; warning?: string },

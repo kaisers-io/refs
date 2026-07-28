@@ -6,9 +6,8 @@ import {
   readConfig,
   readState,
   resolveHome,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
-import { emit, wrapAction } from '../output.ts';
+import { cliOptsOf, emit, errorMessageOf, warningsFor, wrapAction } from '../output.ts';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
 import { matchRefKey } from './list.ts';
@@ -19,7 +18,6 @@ import { requireEntry } from './ref-context.ts';
 // `SAMPLE_TAG_LIMIT` recent tags (only when the checkout actually exists).
 
 const SAMPLE_TAG_LIMIT = 5;
-const EMPTY_LENGTH = 0;
 const EMPTY_STATE: RefState = {};
 
 type ShowData = RefEntry & {
@@ -29,17 +27,10 @@ type ShowData = RefEntry & {
   state: RefState;
 };
 
-const errorDetail = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-};
-
-interface SampleTagsResult {
+type SampleTagsResult = {
   tags: string[];
   warning?: string;
-}
+};
 
 // A present checkout can still be broken (corrupt `.git`, detached from its remote, etc.) — `git
 // tag` then throws (via core's `runOrThrow` → `validationError`) rather than returning cleanly.
@@ -53,24 +44,13 @@ const sampleTagsFor = async (ctx: CliContext, dest: string): Promise<SampleTagsR
     const tags = await listTags(ctx.runner, dest, SAMPLE_TAG_LIMIT);
     return { tags };
   } catch (error) {
-    return { tags: [], warning: `could not list tags: ${errorDetail(error)}` };
+    return { tags: [], warning: `could not list tags: ${errorMessageOf(error)}` };
   }
 };
 
-interface ShowResult {
+type ShowResult = {
   data: ShowData;
   warnings: string[];
-}
-
-const NO_WARNINGS: string[] = [];
-
-// Kept out of `runShow` only to avoid a ternary there (repo style forbids `no-ternary`), mirroring
-// `output.ts`'s `toLines`.
-const warningsFor = (warning: string | undefined): string[] => {
-  if (warning === undefined) {
-    return NO_WARNINGS;
-  }
-  return [warning];
 };
 
 const runShow = async (ctx: CliContext, query: string): Promise<ShowResult> => {
@@ -97,7 +77,7 @@ const showHuman = (data: ShowData): string[] => {
     `url: ${data.url}`,
     `local_path: ${data.local_path}`,
   ];
-  if (data.sample_tags.length > EMPTY_LENGTH) {
+  if (data.sample_tags.length > 0) {
     lines.push(`tags: ${data.sample_tags.join(', ')}`);
   }
   return lines;
@@ -109,8 +89,7 @@ const registerShow = (program: RefsCommand, ctx: CliContext): void => {
     .description('Show a configured ref: full entry, state, local path, and sample tags.')
     .argument('<ref>', 'full ref key or a unique suffix, e.g. zod')
     .action((ref, _localOpts, command) => {
-      const globals = command.optsWithGlobals();
-      const opts = { json: globals.json === true, verbose: globals.verbose === true };
+      const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
         const { data, warnings } = await runShow(ctx, ref);
         emit(ctx, opts, showHuman(data), data, warnings);
@@ -118,5 +97,5 @@ const registerShow = (program: RefsCommand, ctx: CliContext): void => {
     });
 };
 
-export { registerShow, runShow };
+export { registerShow };
 export type { ShowData };

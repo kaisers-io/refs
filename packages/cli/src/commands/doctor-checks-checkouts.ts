@@ -1,28 +1,21 @@
 import type { Config, RefsHome } from '@kaisers-io/refs-core';
 import { access, constants } from 'node:fs/promises';
-import {
-  checkoutPath,
-  isGitCheckout,
-  zRefKey,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
-} from '@kaisers-io/refs-core';
+import { checkoutPath, isGitCheckout, zRefKey } from '@kaisers-io/refs-core';
 import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
 import { join } from 'node:path';
 
 // `hooks-guard` and `dirty-checkouts` — the two checks that iterate configured refs whose checkout
-// currently exists, each running one `git` command per checkout via the injected `Runner`. Split
-// out of `doctor.ts` purely to keep that file under the repo's 300-line oxlint cap; the shared
-// `existingCheckouts` filter is exported so `doctor.ts` never has to recompute or reconcile two
-// independently-derived checkout lists.
+// currently exists, each running one `git` command per checkout via the injected `Runner`.
+// Both checks derive their checkout list from the shared existingCheckouts filter below, so they
+// never work from two independently-derived (and potentially diverging) lists.
 
 const SUCCESS_EXIT_CODE = 0;
-const EMPTY_LENGTH = 0;
 
-interface ExistingCheckout {
+type ExistingCheckout = {
   dest: string;
   key: string;
-}
+};
 
 /** Every configured ref whose checkout directory currently exists on disk — a ref with a missing
  * checkout is out of scope for both checks below (`refs list`/`refs sync` already surface that
@@ -34,9 +27,9 @@ const existingCheckouts = (home: RefsHome, config: Config): ExistingCheckout[] =
 
 const PRE_COMMIT_HOOK_NAME = 'pre-commit';
 const PRE_PUSH_HOOK_NAME = 'pre-push';
-// Both are installed together by core's `installHooksGuard` (§4's read-only guard covers commits
-// AND pushes) — Task 15's own tests assert both exist, so this check must fail if either one is
-// missing or not executable, not just `pre-commit`.
+// Both hooks are installed together by core's installHooksGuard (the read-only guard covers
+// commits AND pushes). The guard is only intact when BOTH are present and executable, so this
+// check fails if either one is missing — never just pre-commit.
 const GUARD_HOOK_NAMES = [PRE_COMMIT_HOOK_NAME, PRE_PUSH_HOOK_NAME] as const;
 
 const hookExecutable = async (home: RefsHome, name: string): Promise<boolean> => {
@@ -74,7 +67,7 @@ const buildHooksGuardResult = (opts: {
   checkoutCount: number;
   missingHooks: readonly string[];
 }): CheckResult => {
-  if (opts.missingHooks.length > EMPTY_LENGTH) {
+  if (opts.missingHooks.length > 0) {
     const names = opts.missingHooks.map((name) => `hooks/${name}`).join(', ');
     return {
       detail: `${names} missing or not executable — run: refs init`,
@@ -82,7 +75,7 @@ const buildHooksGuardResult = (opts: {
       status: 'fail',
     };
   }
-  if (opts.badKeys.length > EMPTY_LENGTH) {
+  if (opts.badKeys.length > 0) {
     return {
       detail: `core.hooksPath not set for: ${opts.badKeys.join(', ')} — run: refs init`,
       name: 'hooks-guard',
@@ -113,12 +106,12 @@ const checkHooksGuard = async (
   return buildHooksGuardResult({ badKeys, checkoutCount: checkouts.length, missingHooks });
 };
 
-interface CheckoutStatus {
+type CheckoutStatus = {
   broken: boolean;
   detail: string;
   dirty: boolean;
   key: string;
-}
+};
 
 /** A non-zero exit from `git status --porcelain` (e.g. a stripped/corrupt `.git`, permissions
  * denied on the working tree) means the checkout couldn't be inspected at all — that is a
@@ -138,14 +131,14 @@ const checkoutStatusFor = async (
 
 const buildDirtyCheckoutsResult = (statuses: readonly CheckoutStatus[]): CheckResult => {
   const broken = statuses.filter((status) => status.broken);
-  if (broken.length > EMPTY_LENGTH) {
+  if (broken.length > 0) {
     const detail = broken
       .map((status) => `${status.key}: git status failed — ${status.detail}`)
       .join('; ');
     return { detail, name: 'dirty-checkouts', status: 'fail' };
   }
   const dirtyKeys = statuses.filter((status) => status.dirty).map((status) => status.key);
-  if (dirtyKeys.length === EMPTY_LENGTH) {
+  if (dirtyKeys.length === 0) {
     return { detail: 'no local changes in any checkout', name: 'dirty-checkouts', status: 'ok' };
   }
   return {
@@ -165,4 +158,4 @@ const checkDirtyCheckouts = async (
   return buildDirtyCheckoutsResult(statuses);
 };
 
-export { checkDirtyCheckouts, checkHooksGuard, existingCheckouts };
+export { checkDirtyCheckouts, checkHooksGuard };

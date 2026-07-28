@@ -17,12 +17,12 @@ import { testContext } from './context.ts';
 // `Runner` interface type) to script responses, mirroring `show.test.ts`'s own `runner.expect(...)`
 // usage.
 
-interface DoctorTestHome {
+type DoctorTestHome = {
   ctx: CliContext;
   home: RefsHome;
   runner: FakeRunner;
   stdout: string[];
-}
+};
 
 /** `testContext()` + `REFS_HOME` + a real `refs init` (which never touches the injected `Runner`,
  * so this stays compatible with every doctor test's later `runner.expect(...)` scripting) — the
@@ -44,16 +44,16 @@ const expectGitVersion = (runner: FakeRunner): void => {
   runner.expect('git --version', { stdout: GIT_VERSION_STDOUT });
 };
 
-interface CheckResultLike {
+type CheckResultLike = {
   detail: string;
   name: string;
   status: string;
-}
+};
 
-interface DoctorEnvelope {
+type DoctorEnvelope = {
   data: { checks: CheckResultLike[] };
   ok: boolean;
-}
+};
 
 const runDoctorJson = async (
   ctx: CliContext,

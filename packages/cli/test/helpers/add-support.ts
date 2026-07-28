@@ -16,10 +16,10 @@ import { run } from '../../src/main.ts';
 import { testContext } from './context.ts';
 import { tmpdir } from 'node:os';
 
-interface ErrorEnvelope {
+type ErrorEnvelope = {
   error?: { code: string; message: string };
   ok: boolean;
-}
+};
 
 // Shared scaffolding + assertion helpers for `add.test.ts`'s real-git integration suite — kept
 // separate purely to keep that file under the repo's 300-line oxlint cap and each individual test
@@ -123,11 +123,11 @@ const validFinalProposal = (key: string): Record<string, unknown> => ({
   url: `https://${key}.git`,
 });
 
-interface AddTestHarness {
+type AddTestHarness = {
   ctx: CliContext;
   homeDir: string;
   stdout: string[];
-}
+};
 
 /** Writes `body` to a proposal file, finalizes via `--proposal`, and asserts the common
  * validation-failure shape (exit 3, `ok: false`, `code: 'validation'`) — the three assertions

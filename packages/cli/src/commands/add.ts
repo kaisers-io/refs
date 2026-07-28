@@ -11,35 +11,28 @@ import {
   resolveHome,
   usageError,
 } from '@kaisers-io/refs-core';
-import { emit, wrapAction } from '../output.ts';
-import { runDryRunCore, toWarningsList, writePendingProposal } from './add-dry-run.ts';
+import { cliOptsOf, emit, warningsFor, wrapAction } from '../output.ts';
+import { runDryRunCore, writePendingProposal } from './add-dry-run.ts';
 import type { CliContext } from '../context.ts';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { DryRunOutcome } from './add-dry-run.ts';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { FinalProposal } from '@kaisers-io/refs-core';
 import type { FinalizeOpts } from './add-finalize.ts';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { FinalizedRefInput } from './add-packages.ts';
 import type { RefsCommand } from './registry.ts';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { finalizeRef } from './add-finalize.ts';
 import { loadFinalProposal } from './add-proposal-io.ts';
 
 // `refs add` — the two-phase flow (`--dry-run` proposes, `--proposal` finalizes) plus the
-// `--description` one-shot convenience. Source resolution/guards live in `add-helpers.ts`, the
-// dry-run pipeline in `add-dry-run.ts`, package/proposal shaping in `add-packages.ts`,
-// proposal-file/stdin loading in `add-proposal-io.ts`, and the finalize write path in
-// `add-finalize.ts` — split out to keep this file under the repo's 300-line oxlint cap.
+// `--description` one-shot convenience. This file owns mode selection, argument validation, and
+// command registration; source resolution/pre-clone guards live in `add-source.ts`, the dry-run
+// pipeline in `add-dry-run.ts`, package/proposal shaping in `add-packages.ts`, proposal-file/
+// stdin loading in `add-proposal-io.ts`, and the finalize write path in `add-finalize.ts`.
 
-const NO_ACTIVE_MODES = 0;
-const MIN_ACTIVE_MODES = 1;
-
-interface AddOutcome {
+type AddOutcome = {
   data: unknown;
   human: string[];
   warnings: string[];
-}
+};
 
 const dryRunHuman = (key: string, dest: string): string[] => [
   `refs add: dry-run proposal ready for '${key}' (checkout: ${dest})`,
@@ -50,7 +43,7 @@ const runAddDryRun = async (ctx: CliContext, source: string): Promise<AddOutcome
   const outcome = await runDryRunCore(ctx, source);
   const home = resolveHome(ctx.env);
   await writePendingProposal(home, outcome.proposal.key, outcome.effectiveCloneMode);
-  const warnings = toWarningsList(outcome.warning);
+  const warnings = warningsFor(outcome.warning);
   return {
     data: outcome.proposal,
     human: dryRunHuman(outcome.proposal.key, outcome.dest),
@@ -121,16 +114,16 @@ const runAddDescription = async (
     finalizeOpts.effectiveCloneMode = outcome.effectiveCloneMode;
   }
   const { entry, key } = await finalizeRef(ctx, finalizeOpts);
-  const warnings = toWarningsList(outcome.warning);
+  const warnings = warningsFor(outcome.warning);
   return { data: { entry, key }, human: finalizeHuman(key), warnings };
 };
 
-interface AddOptions {
+type AddOptions = {
   description?: string;
   dryRun: boolean;
   proposal?: string;
   source?: string;
-}
+};
 
 const NEEDS_MODE_MESSAGE = 'refs add needs --dry-run, --proposal, or --description';
 const MUTUALLY_EXCLUSIVE_MESSAGE =
@@ -143,10 +136,10 @@ const assertSingleMode = (opts: AddOptions): void => {
     opts.proposal !== undefined,
     opts.description !== undefined,
   ].filter(Boolean).length;
-  if (activeCount > MIN_ACTIVE_MODES) {
+  if (activeCount > 1) {
     throw usageError(MUTUALLY_EXCLUSIVE_MESSAGE);
   }
-  if (activeCount === NO_ACTIVE_MODES) {
+  if (activeCount === 0) {
     throw usageError(NEEDS_MODE_MESSAGE);
   }
 };
@@ -203,8 +196,7 @@ const registerAdd = (program: RefsCommand, ctx: CliContext): void => {
       'one-shot: dry-run then finalize immediately with this description',
     )
     .action((source, localOpts, command) => {
-      const globals = command.optsWithGlobals();
-      const opts = { json: globals.json === true, verbose: globals.verbose === true };
+      const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
         const outcome = await runAdd(ctx, buildAddOptions(source, localOpts));
         emit(ctx, opts, outcome.human, outcome.data, outcome.warnings);
@@ -212,5 +204,4 @@ const registerAdd = (program: RefsCommand, ctx: CliContext): void => {
     });
 };
 
-export { registerAdd, runAdd };
-export type { AddOutcome };
+export { registerAdd };

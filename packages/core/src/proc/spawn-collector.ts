@@ -1,5 +1,5 @@
-// Byte-capped stream collection shared by `spawn-runner`'s stdout/stderr handling — split out of
-// `runner.ts` purely to keep that file under the repo's 300-line oxlint cap.
+// Byte-capped collection of a child process's stdout/stderr streams, used by `SpawnRunner`
+// (runner.ts). Buffers raw chunks up to a hard cap so a runaway child can never OOM the CLI.
 
 const BYTES_PER_KIB = 1024;
 const KIB_PER_MIB = 1024;
@@ -14,24 +14,22 @@ const STREAM_CAP_MIB = 64;
 // below) so the caller can see output was cut, rather than the process crashing or hanging.
 const MAX_STREAM_BYTES = STREAM_CAP_MIB * KIB_PER_MIB * BYTES_PER_KIB;
 
-const EMPTY_BYTES = 0;
-
-interface CollectedStream {
+type CollectedStream = {
   text: string;
   truncated: boolean;
-}
+};
 
-interface StreamCollector {
+type StreamCollector = {
   push: (chunk: Buffer) => void;
   finish: () => CollectedStream;
-}
+};
 
 // Buffers `Buffer` chunks (never decoding until `finish()`, so a multi-byte utf8 character split
 // across two chunks decodes correctly) up to `MAX_STREAM_BYTES`; anything past the cap is dropped,
 // not stored, so a runaway stream can never grow this collector's memory past the cap itself.
 const createCollector = (): StreamCollector => {
   const chunks: Buffer[] = [];
-  let bytes = EMPTY_BYTES;
+  let bytes = 0;
   let truncated = false;
   return {
     finish: (): CollectedStream => ({ text: Buffer.concat(chunks).toString('utf8'), truncated }),
@@ -45,8 +43,8 @@ const createCollector = (): StreamCollector => {
         bytes += chunk.length;
         return;
       }
-      if (remaining > EMPTY_BYTES) {
-        chunks.push(chunk.subarray(EMPTY_BYTES, remaining));
+      if (remaining > 0) {
+        chunks.push(chunk.subarray(0, remaining));
       }
       truncated = true;
     },
@@ -55,11 +53,9 @@ const createCollector = (): StreamCollector => {
 
 // Appends `note` to `text` rather than replacing it — a child's own partial output (if it produced
 // any before being killed/erroring/truncating) stays visible alongside the reason it's incomplete.
-// ONE trailing newline — LF or CRLF, the same terminators the previous runner stripped — is
-// removed from `text` first (only here, at note-append time; `RunResult` output is otherwise
-// never trimmed), so `"partial\n"` joins as `"partial\n<note>"` rather than
-// stacking a blank line (`"partial\n\n<note>"`) — matching what the previous, final-newline-
-// stripping runner produced.
+// ONE trailing newline — LF or CRLF — is removed from `text` first (only here, at
+// note-append time; `RunResult` output is otherwise never trimmed), so `"partial\n"` joins as
+// `"partial\n<note>"` rather than stacking a blank line (`"partial\n\n<note>"`).
 const appendNote = (text: string, note: string): string => {
   const base = text.replace(/\r?\n$/u, '');
   return [base, note].filter((part) => part !== '').join('\n');
@@ -84,4 +80,4 @@ const withTruncationNote = (
 };
 
 export { appendNote, createCollector, withTruncationNote };
-export type { CollectedStream, StreamCollector };
+export type { CollectedStream };

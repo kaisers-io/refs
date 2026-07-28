@@ -47,11 +47,11 @@ const commitNewFileTo = async (dir: string, name: string, content: string): Prom
  * sync's resulting `head_sha` matches exactly what the remote/checkout landed on. */
 const headShaOf = (dir: string): Promise<string> => gitFor(dir, ['rev-parse', 'HEAD']);
 
-interface AddedRef {
+type AddedRef = {
   dest: string;
   entry: RefEntry;
   key: string;
-}
+};
 
 /** Runs `refs add <source> --description <description> --json` and returns the finalized
  * `{key, entry}` plus the real local checkout path — the common "get a real configured ref with a
@@ -73,13 +73,13 @@ const addRefViaDescription = async (
   return { dest, entry, key: envelope.data.key };
 };
 
-interface SyncedRefFixture {
+type SyncedRefFixture = {
   added: AddedRef;
   ctx: CliContext;
   fixture: FixtureRepo;
   home: RefsHome;
   stdout: string[];
-}
+};
 
 /** Bootstraps a fresh temp home, inits it, seeds one fixture repo, and adds it as a real
  * configured ref (real checkout) — the common setup every single-ref `sync.test.ts` case needs,
@@ -93,14 +93,14 @@ const setupSyncedRef = async (homeDir: string): Promise<SyncedRefFixture> => {
   return { added, ctx, fixture, home, stdout };
 };
 
-interface TwoRefsFixture {
+type TwoRefsFixture = {
   bad: AddedRef;
   badFixture: FixtureRepo;
   ctx: CliContext;
   good: AddedRef;
   home: RefsHome;
   stdout: string[];
-}
+};
 
 /** Like `setupSyncedRef`, but seeds and adds TWO independent refs — needed by the partial-batch-
  * failure case, which breaks one of them (`bad`) after both are configured, and by the origin-
@@ -116,10 +116,10 @@ const setupTwoRefs = async (homeDir: string): Promise<TwoRefsFixture> => {
   return { bad, badFixture, ctx, good, home, stdout };
 };
 
-interface SyncEnvelope {
+type SyncEnvelope = {
   data: { results: { error?: string; key: string; status: string; warning?: string }[] };
   ok: boolean;
-}
+};
 
 /** Runs `refs sync [...opts.refKeys] --json` (`--stale-only` optionally appended) and returns the
  * parsed envelope. Takes `opts.refKeys`/`opts.staleOnly` bundled (rather than two more positional
@@ -140,13 +140,13 @@ const runSyncJson = async (
 
 const TWO_RESULTS = 2;
 
-interface PersistedSyncCheck {
+type PersistedSyncCheck = {
   badKey: string;
   goodHeadShaBefore: string | undefined;
   goodKey: string;
   goodLastFetchedBefore: string | undefined;
   home: RefsHome;
-}
+};
 
 /** Asserts the (f) partial-batch-failure shape: a still-`ok: true` envelope carrying exactly two
  * results, `goodKey`'s synced cleanly and `badKey`'s reported as `'failed'` — AND that the same
@@ -171,12 +171,12 @@ const expectGoodSyncedBadFailed = async (
   expect(state.refs[check.badKey]?.last_error).toBe(badResult?.error);
 };
 
-interface OriginMismatchCheck {
+type OriginMismatchCheck = {
   badKey: string;
   goodDest: string;
   goodKey: string;
   home: RefsHome;
-}
+};
 
 /** Asserts the origin-identity-guard shape: `goodKey` (whose checkout's `origin` was repointed at
  * an unrelated repo) comes back `'failed'` with the mismatch naming its checkout path, `badKey`

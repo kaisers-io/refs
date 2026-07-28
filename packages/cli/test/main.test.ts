@@ -30,10 +30,10 @@ const soleLine = (lines: readonly string[]): string => {
   return line;
 };
 
-interface UsageEnvelope {
+type UsageEnvelope = {
   error: { code: string; message: string };
   ok: boolean;
-}
+};
 
 // Typed parse of a single `--json` error-envelope line — kept out of the `it` body below purely to
 // stay under the repo's max-statements/max-expects caps.

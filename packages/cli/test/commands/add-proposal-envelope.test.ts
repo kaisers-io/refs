@@ -26,11 +26,11 @@ import { run } from '../../src/main.ts';
 
 const TEST_TIMEOUT_MS = 30_000;
 
-interface Envelope {
+type Envelope = {
   data: unknown;
   ok: boolean;
   warnings: string[];
-}
+};
 
 /** Like `add-support.ts`'s `runAddDryRunJson`, but returns the FULL envelope (`{ok, data,
  * warnings}`) rather than just the validated `data` — these tests need the real envelope

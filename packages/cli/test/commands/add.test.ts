@@ -16,7 +16,7 @@ import {
 } from '../helpers/add-support.ts';
 import { access } from 'node:fs/promises';
 import { createFixtureRepo } from '../helpers/fixture-repo.ts';
-import { resolveAddSource } from '../../src/commands/add-helpers.ts';
+import { resolveAddSource } from '../../src/commands/add-source.ts';
 import { run } from '../../src/main.ts';
 import { testContext } from '../helpers/context.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
@@ -32,15 +32,15 @@ const TEST_TIMEOUT_MS = 30_000;
 const TWO_PACKAGES = 2;
 const HTTP_STATUS_OK = 200;
 
-interface FinalizeEnvelope {
+type FinalizeEnvelope = {
   data: { entry: { description: string; packages?: unknown }; key: string };
   ok: boolean;
-}
+};
 
-interface ErrorEnvelope {
+type ErrorEnvelope = {
   error?: { code: string; message: string };
   ok: boolean;
-}
+};
 
 // Fills in the top-level `description` and every package's description (falling back to a
 // placeholder for `@fixture/b`, which the fixture deliberately ships without one) — the human

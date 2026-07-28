@@ -1,22 +1,14 @@
 import type { Config, RefsHome, State } from '@kaisers-io/refs-core';
-import {
-  isEnoent,
-  isGitCheckout,
-  readState,
-  zState,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
-} from '@kaisers-io/refs-core';
+import { isEnoent, isGitCheckout, readState, zState } from '@kaisers-io/refs-core';
 import type { CheckResult } from './doctor-types.ts';
 import { join } from 'node:path';
 import { readdir } from 'node:fs/promises';
 
-// `orphans` — a checkout directory under `sources/` that is not (or no longer) a configured ref.
-// Split out of `doctor.ts` purely to keep that file under the repo's 300-line oxlint cap. Never
-// deletes anything (YAGNI per the task brief): a fresh `pending_proposal_at` (a dry-run clone still
-// awaiting `refs add --proposal`/`--description`) reports as `pending add`; anything else reports
-// as a true orphan with the exact `rm -rf <path>` a human/agent can run by hand.
-
-const EMPTY_LENGTH = 0;
+// The orphans check: a checkout directory under sources/ that is not (or no longer) a configured
+// ref. Deliberately read-only — it never deletes anything: a fresh pending_proposal_at (a
+// dry-run clone still awaiting refs add --proposal/--description) reports as 'pending add';
+// anything else reports as a true orphan with the exact rm -rf <path> a human/agent can run by
+// hand.
 
 /** Never throws: `readState` is already self-healing for a corrupt/malformed state file, but an
  * unexpected fs fault (e.g. permission denied) still propagates from it — caught here too, since
@@ -44,8 +36,7 @@ const listSubdirNames = async (dir: string): Promise<string[]> => {
 /** Recursively walks `dir`, returning the segment path (relative to `sources/`) of every git
  * checkout found. A directory containing `.git` ends that branch of the walk rather than being
  * descended into further — a checkout's own internal folders are never mistaken for nested
- * checkouts. Recursive (mirroring `remove.ts#pruneEmptyParents`'s "recursive rather than an
- * imperative loop" discipline) so no single function's statement count grows with tree depth. */
+ * checkouts. Recursive — the natural shape for the tree walk. */
 const findCheckoutSegments = async (
   dir: string,
   segments: readonly string[],
@@ -70,10 +61,10 @@ const isFreshPendingProposal = (state: State, key: string, now: number): boolean
   return now - Date.parse(pendingAt) < TWENTY_FOUR_HOURS_MS;
 };
 
-interface OrphanCandidate {
+type OrphanCandidate = {
   dest: string;
   key: string;
-}
+};
 
 const classifyOrphan = (candidate: OrphanCandidate, state: State, now: number): string => {
   if (isFreshPendingProposal(state, candidate.key, now)) {
@@ -92,7 +83,7 @@ const checkOrphans = async (home: RefsHome, config: Config, state: State): Promi
   const candidates = segmentsList
     .map((segments) => toCandidate(home, segments))
     .filter((candidate) => !Object.hasOwn(config.refs, candidate.key));
-  if (candidates.length === EMPTY_LENGTH) {
+  if (candidates.length === 0) {
     return { detail: 'no orphaned checkouts under sources/', name: 'orphans', status: 'ok' };
   }
   const now = Date.now();

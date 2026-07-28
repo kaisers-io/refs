@@ -13,7 +13,7 @@ import {
   ensureNoConflict,
   refLockName,
   resolveAddSource,
-} from './add-helpers.ts';
+} from './add-source.ts';
 import {
   checkoutPath,
   detectDefaultBranch,
@@ -26,42 +26,29 @@ import {
   resolveSetting,
   withLock,
   writeState,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
 import type { CliContext } from '../context.ts';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
-import type { ResolvedSource } from './add-helpers.ts';
+import type { ResolvedSource } from './add-source.ts';
 import { buildProposalPackages } from './add-packages.ts';
 import { ensureClonedCheckout } from './add-checkout-guards.ts';
 import { progress } from '../output.ts';
 
 // The `--dry-run` core: resolve source → conflict/collision guards → idempotent clone → detect
 // default branch/tags/workspace packages → shape a `Proposal`. Shared by both `refs add --dry-run`
-// and the `refs add --description` one-shot flow (see `add.ts`). Split out purely to keep `add.ts`
-// under the repo's 300-line oxlint cap.
+// and the `refs add --description` one-shot flow (see `add.ts`).
 
-const NO_WARNINGS: readonly string[] = [];
-
-/** Normalizes an optional warning string into the envelope's `warnings` array shape. */
-const toWarningsList = (warning: string | undefined): string[] => {
-  if (warning === undefined) {
-    return [...NO_WARNINGS];
-  }
-  return [warning];
-};
-
-interface DryRunOutcome {
+type DryRunOutcome = {
   dest: string;
   effectiveCloneMode?: CloneMode;
   proposal: Proposal;
   warning?: string;
-}
+};
 
-interface DetectedFields {
+type DetectedFields = {
   defaultBranch: string;
   packages: Proposal['packages'];
   tagFormatCandidate: TagFormat | null;
-}
+};
 
 const detectProposalFields = async (
   ctx: CliContext,
@@ -77,18 +64,18 @@ const detectProposalFields = async (
   return { defaultBranch, packages, tagFormatCandidate };
 };
 
-interface CloneAndDetectOpts {
+type CloneAndDetectOpts = {
   cloneMode: CloneMode;
   dest: string;
   home: RefsHome;
   resolved: ResolvedSource;
-}
+};
 
-interface CloneAndDetectResult {
+type CloneAndDetectResult = {
   effectiveMode?: CloneMode;
   fields: DetectedFields;
   warning?: string;
-}
+};
 
 // Clone (idempotent — reuses a healthy existing checkout) and detect, both under the per-ref lock:
 // keeps the checkout stable between cloning and reading it back, rather than racing a concurrent
@@ -114,11 +101,11 @@ const cloneAndDetect = (ctx: CliContext, opts: CloneAndDetectOpts): Promise<Clon
     return result;
   });
 
-interface BuildDryRunOutcomeOpts {
+type BuildDryRunOutcomeOpts = {
   cloneResult: CloneAndDetectResult;
   dest: string;
   resolved: ResolvedSource;
-}
+};
 
 const buildDryRunOutcome = (opts: BuildDryRunOutcomeOpts): DryRunOutcome => {
   const proposal: Proposal = {
@@ -155,10 +142,10 @@ const runDryRunCore = async (ctx: CliContext, source: string): Promise<DryRunOut
 };
 
 /** Records that a dry-run proposal is pending for `key` — cleared again once `--proposal`/
- * `--description` finalizes it (see `finalizeRef` in `add.ts`). Also persists `effectiveCloneMode`
- * when this dry-run actually cloned (see `ensureClonedCheckout`'s partial-clone-fallback note) so a
- * later `--proposal` finalize — which never re-clones — can recover the real mode used instead of
- * silently guessing the global default.
+ * `--description` finalizes it (see `finalizeRef` in `add-finalize.ts`). Also persists
+ * `effectiveCloneMode` when this dry-run actually cloned (see `ensureClonedCheckout`'s
+ * partial-clone-fallback note) so a later `--proposal` finalize — which never re-clones — can
+ * recover the real mode used instead of silently guessing the global default.
  *
  * Re-checks the conflict guard again here, under the home lock: `runDryRunCore`'s own
  * `ensureNoConflict` call ran unlocked, earlier — a `--proposal`/`--description` finalize could
@@ -183,5 +170,5 @@ const writePendingProposal = (
     await writeState(home, state);
   });
 
-export { runDryRunCore, toWarningsList, writePendingProposal };
+export { runDryRunCore, writePendingProposal };
 export type { DryRunOutcome };

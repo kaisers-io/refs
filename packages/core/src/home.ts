@@ -4,20 +4,19 @@ import type { RefKey } from './schemas/primitives.ts';
 import { homedir } from 'node:os';
 import { validationError } from './errors.ts';
 
-const NO_MISSING_SEGMENTS = 0;
 const PARENT_DIR_SEGMENT = '..';
 
-interface RefsHome {
+type RefsHome = {
   root: string;
   configPath: string;
   statePath: string;
   locksDir: string;
   sourcesDir: string;
   hooksDir: string;
-}
+};
 
 // `resolve()` the configured root so a relative REFS_HOME (e.g. "./refs-home") still yields
-// absolute derived paths — every command and the containment guard above assume absolute paths.
+// absolute derived paths — every command and the containment guards below assume absolute paths.
 const resolveHome = (env: NodeJS.ProcessEnv): RefsHome => {
   const root = resolve(env['REFS_HOME'] ?? join(homedir(), '.kaisers-io', 'refs'));
   return {
@@ -38,7 +37,8 @@ const checkoutPath = (home: RefsHome, key: RefKey): string =>
 // hardcoding `.bak` independently.
 const configBackupPath = (home: RefsHome): string => `${home.configPath}.bak`;
 
-// Walks up from `target` until it finds an existing ancestor, collecting the non-existing suffix segments along the way (deepest-first order for re-joining later).
+// Walks up from `target` until it finds an existing ancestor, collecting the non-existing suffix
+// segments along the way (deepest-first order for re-joining later).
 const findExistingAncestor = (target: string): { ancestor: string; missing: string[] } => {
   const missing: string[] = [];
   let current = target;
@@ -46,22 +46,27 @@ const findExistingAncestor = (target: string): { ancestor: string; missing: stri
   while (!existsSync(current)) {
     const parent = dirname(current);
     if (parent === current) {
-      /* Defensive backstop for non-POSIX roots (e.g. Windows drive roots) where dirname(root) === root and the loop would otherwise never terminate. */
+      /* Defensive backstop for non-POSIX roots (e.g. Windows drive roots) where
+       * dirname(root) === root and the loop would otherwise never terminate. */
       break;
     }
-    /* Using basename() here is correct at every boundary, including when parent === '/': slicing on parent.length + separator length under-counts the leading separator once parent already ends in one, silently dropping a character. */
+    /* Using basename() here is correct at every boundary, including when parent === '/': slicing
+     * on parent.length + separator length under-counts the leading separator once parent already
+     * ends in one, silently dropping a character. */
     missing.unshift(basename(current));
     current = parent;
   }
   return { ancestor: current, missing };
 };
 
-// Realpath()s the deepest existing ancestor of `target` (resolving symlinks) and re-appends the non-existing suffix, so we can realpath paths that don't exist yet, e.g. a checkout that hasn't been cloned.
+// Realpath()s the deepest existing ancestor of `target` (resolving symlinks) and re-appends the
+// non-existing suffix, so we can realpath paths that don't exist yet, e.g. a checkout that hasn't
+// been cloned.
 const realpathDeepestExisting = (target: string): string => {
   const { ancestor, missing } = findExistingAncestor(target);
   // eslint-disable-next-line node/no-sync -- containment guard must resolve synchronously before any destructive fs operation proceeds
   const resolved = realpathSync(ancestor);
-  if (missing.length === NO_MISSING_SEGMENTS) {
+  if (missing.length === 0) {
     return resolved;
   }
   return join(resolved, ...missing);
@@ -94,8 +99,8 @@ const assertInsideDir = (root: string, absolutePath: string, label: string): voi
   }
 };
 
-/** The historical sources-dir guard, now a thin binding of `assertInsideDir` to
- * `home.sourcesDir` — every guarantee (and TOCTOU caveat) documented there applies verbatim. */
+/** Containment guard for the sources directory — a thin binding of `assertInsideDir` to
+ * `home.sourcesDir`; every guarantee (and TOCTOU caveat) documented there applies verbatim. */
 const assertInsideSources = (home: RefsHome, absolutePath: string): void => {
   assertInsideDir(home.sourcesDir, absolutePath, 'sources directory');
 };

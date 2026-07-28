@@ -7,17 +7,16 @@
 // implementation instead of duplicating the regex.
 
 // Redacts everything from the start of the string up to (and including) the LAST `@`, preserving
-// only a well-formed leading `scheme://` when one exists. Deliberately maximal (review round 2):
-// the first implementation's precise, non-global, start-anchored userinfo patterns were PROVEN to
-// leak on inputs that aren't a single well-formed url — a second credentialed url later in the
-// string, a bare `user:pass@` not at index 0, whitespace inside the would-be userinfo. Redaction
-// here may be lossy on garbage input (the accepted trade-off); a candidate secret must never
-// survive just because it contains a space, slash, or an extra url before it.
+// only a well-formed leading `scheme://` when one exists. Deliberately maximal: precise,
+// start-anchored userinfo patterns leak on inputs that aren't a single well-formed url — a second
+// credentialed url later in the string, a bare `user:pass@` not at index 0, whitespace inside the
+// would-be userinfo. Redaction here may be lossy on garbage input (the accepted trade-off); a
+// candidate secret must never survive just because it contains a space, slash, or an extra url
+// before it.
 const THROUGH_LAST_AT_PATTERN = /^(?<scheme>[a-z][a-z0-9+.-]*:\/\/)?[\s\S]*@/iu;
 const REDACTED_THROUGH_LAST_AT = '$<scheme><redacted>@';
 
 const MAX_REDACTED_LENGTH = 200;
-const TRUNCATION_START = 0;
 const TRUNCATION_SUFFIX = '…';
 
 /** Strips any potential userinfo from `raw` (`scheme://user:pass@host/...` →
@@ -31,7 +30,7 @@ const redactUrl = (raw: string): string => {
   if (withoutCredentials.length <= MAX_REDACTED_LENGTH) {
     return withoutCredentials;
   }
-  return `${withoutCredentials.slice(TRUNCATION_START, MAX_REDACTED_LENGTH)}${TRUNCATION_SUFFIX}`;
+  return `${withoutCredentials.slice(0, MAX_REDACTED_LENGTH)}${TRUNCATION_SUFFIX}`;
 };
 
 export { redactUrl };

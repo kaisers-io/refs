@@ -1,14 +1,10 @@
 import type { Config, PackageEntry, RefEntry, RefKey } from '@kaisers-io/refs-core';
-import {
-  isGitCheckout,
-  notFoundError,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
-} from '@kaisers-io/refs-core';
+import { isGitCheckout, notFoundError } from '@kaisers-io/refs-core';
 
 // Shared ref/checkout/package guards for the command layer — extracted so no command carries a
 // diverging copy of the same checks (their user-facing message strings are part of the CLI contract
 // and must stay identical). Consumed by the ref commands (`tag.ts`, `show.ts`, `resolve.ts`,
-// `edit-ref.ts`, `sync.ts`).
+// `edit-ref.ts`, `edit-package.ts`, `sync.ts`).
 
 // A ref key produced by `matchRefKey`/`routeQuery` is always one found among
 // `Object.keys(config.refs)`, so this lookup can never actually miss — the throw exists purely to
@@ -32,7 +28,7 @@ const requireCheckout = (dest: string, key: RefKey): void => {
 };
 
 /** The named package's registered entry on `entry`; an unregistered name is a `notFoundError`,
- * exactly like an unresolvable `<ref>` is — mirroring `tag.ts`'s `formatFor`. */
+ * exactly like an unresolvable `<ref>` is. */
 const requirePackage = (entry: RefEntry, key: RefKey, name: string): PackageEntry => {
   const pkg = entry.packages?.[name];
   if (pkg === undefined) {

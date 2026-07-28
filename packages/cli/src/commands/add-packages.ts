@@ -6,16 +6,13 @@ import type {
   TagFormat,
   WorkspacePackage,
 } from '@kaisers-io/refs-core';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { validationError } from '@kaisers-io/refs-core';
 
 // `packages`/`tag_format` shaping between the proposal shape (partial, machine-detected) and the
-// config shape (full `zPackageEntry`s, `zRefEntry`) — split out of `add.ts` purely to keep that
-// file under the repo's 300-line oxlint cap. See `add-helpers.ts` for source resolution/guards and
-// `add-proposal-io.ts` for proposal-file/stdin loading.
+// config shape (full `zPackageEntry`s, `zRefEntry`). See `add-source.ts` for source
+// resolution/guards and `add-proposal-io.ts` for proposal-file/stdin loading.
 
 const ROOT_PACKAGE_PATH = '.';
-const NO_ITEMS = 0;
 
 type ProposalPackages = Proposal['packages'];
 type ProposalPackageEntry = ProposalPackages[string];
@@ -36,7 +33,7 @@ const buildProposalPackages = (
   npmDirectory: string | undefined,
   npmPkgName: string | undefined,
 ): Record<string, ProposalPackageEntry> => {
-  if (detected.length > NO_ITEMS) {
+  if (detected.length > 0) {
     return Object.fromEntries(detected.map((pkg) => [pkg.name, toProposalEntry(pkg)]));
   }
   if (npmPkgName !== undefined) {
@@ -68,7 +65,7 @@ const buildFinalPackages = (
   proposalPackages: Record<string, ProposalPackageEntry>,
 ): Record<string, PackageEntry> | undefined => {
   const entries = Object.entries(proposalPackages);
-  if (entries.length === NO_ITEMS) {
+  if (entries.length === 0) {
     return undefined;
   }
   return Object.fromEntries(entries.map(([name, pkg]) => [name, toFinalPackageEntry(pkg)]));
@@ -101,7 +98,7 @@ const packagesMissingDescription = (
  * before `finalizeRef` ever runs, so a rejection here writes nothing to config or state. */
 const requireAllDescribed = (proposalPackages: Record<string, ProposalPackageEntry>): void => {
   const missing = packagesMissingDescription(proposalPackages);
-  if (missing.length === NO_ITEMS) {
+  if (missing.length === 0) {
     return;
   }
   throw validationError(
@@ -117,7 +114,7 @@ const requireAllDescribed = (proposalPackages: Record<string, ProposalPackageEnt
 const finalProposalPackages = (
   packages: Record<string, PackageEntry>,
 ): Record<string, PackageEntry> | undefined => {
-  if (Object.keys(packages).length === NO_ITEMS) {
+  if (Object.keys(packages).length === 0) {
     return undefined;
   }
   return packages;
@@ -137,14 +134,14 @@ const requireTagFormat = (candidate: TagFormat | null): TagFormat => {
   return candidate;
 };
 
-interface FinalizedRefInput {
+type FinalizedRefInput = {
   default_branch: string;
   description: string;
   key: RefKey;
   packages?: Record<string, PackageEntry>;
   tag_format: TagFormat;
   url: string;
-}
+};
 
 const buildRefEntry = (ref: FinalizedRefInput): RefEntry => {
   if (ref.packages === undefined) {
@@ -173,4 +170,4 @@ export {
   requireAllDescribed,
   requireTagFormat,
 };
-export type { FinalizedRefInput, ProposalPackageEntry };
+export type { FinalizedRefInput };

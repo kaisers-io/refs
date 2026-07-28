@@ -2,17 +2,16 @@ import { notFoundError, usageError, validationError } from './errors.ts';
 import type { RefKey } from './schemas/primitives.ts';
 import { canonicalizeGitUrl } from './git-url.ts';
 import { z } from 'zod';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { zPackagePath } from './schemas/primitives.ts';
 
 // Injectable HTTP client; production passes the global `fetch`.
 type Fetcher = (url: string) => Promise<{ json: () => Promise<unknown>; status: number }>;
 
-interface ResolvedNpmPackage {
+type ResolvedNpmPackage = {
   cloneUrl: string;
   directory?: string;
   key: RefKey;
-}
+};
 
 // External data → loose objects (unknown extra keys pass through).
 const zRepositoryObject = z.looseObject({
@@ -29,10 +28,6 @@ type NpmRepository = NpmPackument['repository'];
 const PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9-~][a-z0-9._~-]*\/)?[a-z0-9-~][a-z0-9._~-]*$/u;
 const PACKAGE_NAME_MAX_LENGTH = 214;
 const RESERVED_UNSCOPED_NAMES = new Set(['node_modules', 'favicon.ico']);
-// eslint-disable-next-line no-magic-numbers
-const SCOPED_NAME_PARTS = 2;
-// eslint-disable-next-line no-magic-numbers
-const SCOPED_NAME_INDEX = 1;
 
 const HTTP_STATUS_NOT_FOUND = 404;
 const HTTP_STATUS_OK = 200;
@@ -42,13 +37,10 @@ const noUsableRepositoryError = (pkgName: string): Error =>
     `package '${pkgName}' has no usable repository field — find the repository and run: refs add <git-url>`,
   );
 
+// `@scope/pkg` → `pkg`; unscoped names contain no `/`. Validation caps names at one slash.
 const getUnscopedName = (pkgName: string): string => {
-  const parts = pkgName.split('/');
-  if (parts.length >= SCOPED_NAME_PARTS) {
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- Pattern ensures exactly one slash for scoped names
-    return parts[SCOPED_NAME_INDEX]!;
-  }
-  return pkgName;
+  const [head, scopedName] = pkgName.split('/');
+  return scopedName ?? head ?? pkgName;
 };
 
 const validatePackageName = (pkgName: string): void => {
@@ -116,7 +108,8 @@ const fetchPackument = async (fetcher: Fetcher, pkgName: string): Promise<NpmPac
   return parsed.data;
 };
 
-// Unsupported url forms (e.g. `github:` shorthand) map to the agent-fallback contract.
+// Unsupported url forms (e.g. the `github:` shorthand) are treated exactly like a missing
+// repository field: fail with a not_found that points the user at `refs add <git-url>`.
 const canonicalizeRepository = (
   repositoryUrl: string,
   pkgName: string,

@@ -1,7 +1,6 @@
 import type { GitTransport, RefKey } from './schemas/primitives.ts';
 import { redactUrl } from './git-url-redact.ts';
 import { validationError } from './errors.ts';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { zRefKey } from './schemas/primitives.ts';
 
 const SCP_URL = /^git@(?<host>[^:/\s]+):(?<path>[^\s]+)$/u;
@@ -11,16 +10,16 @@ const MIN_FILE_SEGMENTS = 2;
 const LAST_SEGMENT_OFFSET = -1;
 const SECOND_LAST_SEGMENT_OFFSET = -2;
 
-interface CanonicalizeGitUrlOptions {
+type CanonicalizeGitUrlOptions = {
   allowFileUrls?: boolean;
-}
+};
 
-interface BuildKeyInput {
+type BuildKeyInput = {
   host: string;
   path: string;
   port: string;
   protocol: string;
-}
+};
 
 const stripGitSuffix = (path: string): string => path.replace(/\.git$/u, '');
 
@@ -28,16 +27,18 @@ const stripGitSuffix = (path: string): string => path.replace(/\.git$/u, '');
 // `url.pathname`, so traversal attempts must be caught on the raw input first.
 const hasDotSegment = (raw: string): boolean =>
   raw.split('/').some((segment) => segment === '.' || segment === '..');
-
-// Backslashes are treated as `/` by the WHATWG URL parser for special (e.g. https) schemes, so `a/b\..\c` can normalize into a traversal invisible to the raw, `/`-split check above.
-// We reject any backslash outright: git clone urls never legitimately contain one.
+// Backslashes are treated as `/` by the WHATWG URL parser for special (e.g. https) schemes, so
+// `a/b\..\c` can normalize into a traversal invisible to the raw, `/`-split check above. We reject
+// any backslash outright: git clone urls never legitimately contain one.
 const hasBackslash = (raw: string): boolean => raw.includes('\\');
-
-// Percent-encoding lets a dot segment survive raw inspection (e.g. `%2e%2e`), which the WHATWG URL parser then resolves after our traversal check runs, producing a cloneUrl/key mismatch.
-// Rather than decode-and-recheck every path segment, we reject any `%` in non-file forms outright: git hosts virtually never need percent-encoded paths, and zRefKey's SAFE_SEGMENT already forbids `%` in stored keys, so encoding here can only ever cause normalization surprises.
+// Percent-encoding lets a dot segment survive raw inspection (e.g. `%2e%2e`), which the WHATWG URL
+// parser then resolves after our traversal check runs, producing a cloneUrl/key mismatch. Rather
+// than decode-and-recheck every path segment, we reject any `%` in non-file forms outright: git
+// hosts virtually never need percent-encoded paths, and zRefKey's SAFE_SEGMENT already forbids `%`
+// in stored keys, so encoding here can only ever cause normalization surprises.
 const hasPercentEncoding = (raw: string): boolean => raw.includes('%');
 
-// The candidate is redacted (review round 2): an authority-less `ssh:/user:pass@host/...` url
+// The candidate is redacted because it can carry a secret: an authority-less `ssh:/user:pass@host/...` url
 // parses with EMPTY username/password (WHATWG folds the credentials into pathname), so
 // `assertNoCredentials` never fires and the secret lands here — same for `buildFileKey`'s path.
 const parseAsRefKey = (candidate: string): RefKey => {
@@ -115,7 +116,8 @@ const resolveKeyFromUrl = (url: URL, allowFileUrls: boolean): RefKey => {
   });
 };
 
-// Guards for the scp-style `git@host:path` form, which is parsed with a regexp rather than the WHATWG URL parser, and so needs its own ambiguity checks.
+// Guards for the scp-style `git@host:path` form, which is parsed with a regexp rather than the
+// WHATWG URL parser, and so needs its own ambiguity checks.
 const assertSafeScpPath = (scpPath: string, input: string): void => {
   if (hasPercentEncoding(scpPath)) {
     throw validationError(
@@ -154,7 +156,8 @@ const assertNoDotSegment = (cloneUrl: string, input: string): void => {
   }
 };
 
-// Percent-encoding is only meaningful for `file:` urls (which encode filesystem-legal characters like spaces); https/ssh forms never need it, so any `%` there is rejected.
+// Percent-encoding is only meaningful for `file:` urls (which encode filesystem-legal characters
+// like spaces); https/ssh forms never need it, so any `%` there is rejected.
 const assertNoPercentEncodingUnlessFile = (url: URL, cloneUrl: string, input: string): void => {
   if (url.protocol !== 'file:' && hasPercentEncoding(cloneUrl)) {
     throw validationError(
@@ -180,26 +183,22 @@ const canonicalizeGitUrl = (
   return { cloneUrl, key: resolveKeyFromUrl(url, allowFileUrls) };
 };
 
-// --- git_transport transform (spec §3 transport rule) ---------------------------------------
-
+// --- git_transport transform: rewriting npm:-resolved clone urls to the configured transport ---
 const FILE_PROTOCOL_PREFIX = 'file:';
 const GIT_SUFFIX = '.git';
-
 const trimPathSlashes = (path: string): string => path.replace(/^\/+/u, '').replace(/\/+$/u, '');
-
 const ensureGitSuffix = (path: string): string => {
   if (path.endsWith(GIT_SUFFIX)) {
     return path;
   }
   return `${path}${GIT_SUFFIX}`;
 };
-
 const httpsFormOf = (host: string, path: string): string =>
   `https://${host.toLowerCase()}/${trimPathSlashes(path)}`;
 
-// The spec prescribes the scp form (`git@host:path.git`) as the ssh rewrite target; the `.git`
-// suffix is added when missing to match that form (it never changes the canonical key — see
-// `stripGitSuffix` in `buildKey`).
+// The ssh rewrite target is the scp form (`git@host:path.git`) — the form code forges (GitHub/GitLab) print in their
+// clone UI; the `.git` suffix is added when missing to match that form (it never changes the
+// canonical key — see `stripGitSuffix` in `buildKey`).
 const scpFormOf = (host: string, path: string): string =>
   `git@${host.toLowerCase()}:${ensureGitSuffix(trimPathSlashes(path))}`;
 
@@ -218,7 +217,8 @@ const transportOfProtocol = (protocol: string): GitTransport => {
 
 // A port only survives canonicalization by being non-default (default ports are stripped from
 // the key), and neither rewrite target can carry it faithfully (the scp form has no port syntax;
-// stamping an ssh port onto an https url targets a different endpoint) — reject per spec §3.
+// stamping an ssh port onto an https url targets a different endpoint) — so a rewrite is refused
+// rather than guessed.
 const rejectNonDefaultPort = (url: URL, transport: GitTransport, input: string): void => {
   const defaultPort = DEFAULT_PORTS[url.protocol];
   if (url.port !== '' && url.port !== defaultPort) {
@@ -249,11 +249,11 @@ const assertKeyInvariant = (input: string, transformed: string, originalKey: Ref
   return transformed;
 };
 
-interface TransformContext {
+type TransformContext = {
   cloneUrl: string;
   originalKey: RefKey;
   transport: GitTransport;
-}
+};
 
 // The scp branch of `applyGitTransport`: an scp url IS the ssh transport, so it either stays
 // verbatim or rewrites to the https form.
@@ -276,7 +276,7 @@ const transformFromUrlForm = (ctx: TransformContext): string => {
   return assertKeyInvariant(ctx.cloneUrl, targetFormOf(url, ctx.transport), ctx.originalKey);
 };
 
-/** Rewrites `cloneUrl` to the requested `transport` (spec §3 transport rule): https ↔ the scp
+/** Rewrites `cloneUrl` to the requested `transport`: https ↔ the scp
  * ssh form `git@host:path.git`. Only `npm:`-resolved urls are ever passed here — a url the user
  * typed explicitly is used verbatim by the add flow and never reaches this function. A url
  * already on the requested transport is returned byte-for-byte unchanged (including one with a

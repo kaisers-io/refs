@@ -38,11 +38,11 @@ const WIDGET_ENTRY = {
   url: 'https://example.com/widget',
 };
 
-interface JsonEnvelope {
+type JsonEnvelope = {
   data: unknown;
   error?: { code: string; message: string };
   ok: boolean;
-}
+};
 
 const parseSoleEnvelope = (stdout: readonly string[]): JsonEnvelope => {
   const [line] = stdout;
@@ -52,13 +52,13 @@ const parseSoleEnvelope = (stdout: readonly string[]): JsonEnvelope => {
   return JSON.parse(line) as JsonEnvelope;
 };
 
-interface ResolveDataShape {
+type ResolveDataShape = {
   key: string;
   local_path: string;
   missing: boolean;
   package: { local_path: string; name: string; path: string } | null;
   stale: boolean;
-}
+};
 
 /** Seeds the shared next.js monorepo fixture (two packages, fresh state, a present checkout) and
  * returns its resolved checkout path — the common starting point for steps 1-4's happy paths. */

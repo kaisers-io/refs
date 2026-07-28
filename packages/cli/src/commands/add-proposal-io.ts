@@ -1,12 +1,12 @@
 import { validationError, zFinalProposal } from '@kaisers-io/refs-core';
 import type { CliContext } from '../context.ts';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { FinalProposal } from '@kaisers-io/refs-core';
+import { errorMessageOf } from '../output.ts';
 import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 
-// Loads and validates the `--proposal <file|->` JSON payload — split out of `add.ts` purely to
-// keep that file under the repo's 300-line oxlint cap.
+// Loads and validates the `--proposal <file|->` JSON payload: raw read (file or stdin), `--json`
+// envelope unwrapping, and legible `zFinalProposal` error rendering for hand-edited proposals.
 
 const STDIN_MARKER = '-';
 
@@ -20,18 +20,11 @@ const readProposalText = (ctx: CliContext, location: string): Promise<string> =>
   return readFile(location, 'utf8');
 };
 
-const errorDetail = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-};
-
 const parseProposalJson = (text: string): unknown => {
   try {
     return JSON.parse(text) as unknown;
   } catch (error) {
-    throw validationError(`invalid JSON in proposal: ${errorDetail(error)}`);
+    throw validationError(`invalid JSON in proposal: ${errorMessageOf(error)}`);
   }
 };
 
@@ -83,7 +76,6 @@ const unwrapEnvelope = (value: unknown): unknown => {
   throw validationError(NO_USABLE_DATA_MESSAGE);
 };
 
-const NO_ITEMS = 0;
 const TOP_LEVEL_PATH = '';
 
 type ZodIssue = z.core.$ZodIssue;
@@ -92,7 +84,7 @@ type UnrecognizedKeysIssue = Extract<ZodIssue, { code: 'unrecognized_keys' }>;
 const isUnrecognizedKeysIssue = (issue: ZodIssue): issue is UnrecognizedKeysIssue =>
   issue.code === 'unrecognized_keys';
 
-const hasEmptyPath = (issue: ZodIssue): boolean => issue.path.length === NO_ITEMS;
+const hasEmptyPath = (issue: ZodIssue): boolean => issue.path.length === 0;
 
 /** One named line per offending location — the repo's established "list ALL offending keys"
  * precedent (see `resolve.ts`'s multi-ref ambiguity message). A top-level issue (empty dot-path)
@@ -152,7 +144,7 @@ const formatProposalError = (error: z.core.$ZodError<FinalProposal>): string => 
   );
   const rest = error.issues.filter((issue) => !isUnrecognizedKeysIssue(issue));
   const restEmptyPath = rest.filter((issue) => hasEmptyPath(issue));
-  if (unrecognized.length === NO_ITEMS && restEmptyPath.length === NO_ITEMS) {
+  if (unrecognized.length === 0 && restEmptyPath.length === 0) {
     return z.prettifyError(error);
   }
   const restPathed = rest.filter((issue) => !hasEmptyPath(issue));
@@ -160,7 +152,7 @@ const formatProposalError = (error: z.core.$ZodError<FinalProposal>): string => 
     ...unrecognizedKeysLines(unrecognized),
     ...restEmptyPath.map((issue) => emptyPathLine(issue)),
   ];
-  if (restPathed.length > NO_ITEMS) {
+  if (restPathed.length > 0) {
     lines.push(z.prettifyError({ issues: restPathed }));
   }
   return lines.join('\n');

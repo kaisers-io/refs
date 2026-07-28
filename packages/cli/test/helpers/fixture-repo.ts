@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 
 const setupRunner = new SpawnRunner();
 
-interface FixtureOpts {
+type FixtureOpts = {
   monorepo?: boolean;
   // When `true` (alongside `monorepo: true`), `@fixture/b` also ships a description — the "the
   // one-shot succeeds because every detected package already has one" fixture. Default
@@ -26,18 +26,18 @@ interface FixtureOpts {
   monorepoEmptyDescription?: boolean;
   objectFormat?: 'sha256';
   tags?: string[];
-}
+};
 
-interface FixtureRepo {
+type FixtureRepo = {
   dir: string;
   url: string;
-}
+};
 
-interface PackageSpec {
+type PackageSpec = {
   folder: string;
   pkgName: string;
   description?: string;
-}
+};
 
 const JSON_INDENT = 2;
 const SUCCESS_EXIT_CODE = 0;

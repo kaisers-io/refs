@@ -42,10 +42,10 @@ const BETA_ENTRY = {
   url: 'https://github.com/acme/beta',
 };
 
-interface JsonEnvelope {
+type JsonEnvelope = {
   data: unknown;
   ok: boolean;
-}
+};
 
 const parseSoleEnvelope = (stdout: readonly string[]): JsonEnvelope => {
   const [line] = stdout;

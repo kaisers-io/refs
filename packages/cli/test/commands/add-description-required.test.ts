@@ -27,23 +27,23 @@ const TEST_TIMEOUT_MS = 30_000;
 const TWO_PACKAGES = 2;
 const NO_REFS = 0;
 
-interface ErrorEnvelope {
+type ErrorEnvelope = {
   error?: { code: string; message: string };
   ok: boolean;
-}
+};
 
-interface FinalizeEnvelope {
+type FinalizeEnvelope = {
   data: {
     entry: { description: string; packages?: Record<string, { description: string }> };
     key: string;
   };
   ok: boolean;
-}
+};
 
-interface OneShotResult {
+type OneShotResult = {
   ctx: CliContext;
   stdout: string[];
-}
+};
 
 /** Runs `refs add <fixture.url> --description "A fixture monorepo." --json` against a fresh temp
  * home, for the given monorepo fixture `opts` — kept out of the test bodies so each individual

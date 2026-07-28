@@ -9,19 +9,18 @@ import {
   withLock,
   writeConfig,
   writeState,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
-import { emit, wrapAction } from '../output.ts';
+import { cliOptsOf, emit, warningsFor, wrapAction } from '../output.ts';
 import { lstat, readdir, rm, rmdir } from 'node:fs/promises';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
 import { dirname } from 'node:path';
 import { matchRefKey } from './list.ts';
-import { refLockName } from './add-helpers.ts';
+import { refLockName } from './add-source.ts';
 
 // `refs remove <ref>` — the CLI's only destructive command: it always removes BOTH the ref's
-// config/state entry AND its checkout directory (no partial-removal flag, per the task brief's
-// "user decision: always both").
+// config/state entry AND its checkout directory (deliberately all-or-nothing — there is no flag
+// to keep either half).
 //
 // Ordering (deliberate, see `home.ts`'s destructive-caller contract): the checkout is
 // containment-checked (`assertInsideSources`) and deleted FIRST, under the ref's own per-ref lock;
@@ -33,26 +32,15 @@ import { refLockName } from './add-helpers.ts';
 // recoverable only by manually finding it on disk, which is strictly worse than a retryable no-op.
 
 const MISSING_CHECKOUT_WARNING = 'checkout was already missing';
-const EMPTY_ENTRIES = 0;
-const NO_WARNINGS: string[] = [];
 
-interface RemoveData {
+type RemoveData = {
   key: RefKey;
   removed_checkout: boolean;
-}
+};
 
-interface RemoveResult {
+type RemoveResult = {
   data: RemoveData;
   warnings: string[];
-}
-
-// Kept out of `runRemove` only to avoid a ternary there (repo style forbids `no-ternary`),
-// mirroring `output.ts`'s `toLines`/`show.ts`'s `warningsFor`.
-const warningsFor = (warning: string | undefined): string[] => {
-  if (warning === undefined) {
-    return NO_WARNINGS;
-  }
-  return [warning];
 };
 
 /** `lstat` rather than `stat` — a DANGLING symlink at `dest` (target missing) must still count as
@@ -71,7 +59,7 @@ const checkoutExists = async (dest: string): Promise<boolean> => {
   }
 };
 
-/** `readdir(dir)`, or `undefined` if `dir` is already gone — mirrors `add-helpers.ts#readDirSafe`
+/** `readdir(dir)`, or `undefined` if `dir` is already gone — mirrors `add-source.ts#readDirSafe`
  * (same reasoning: an ENOENT here just means a concurrent pruner or the destructive removal above
  * already won the race, not a real error). */
 const readdirSafe = async (dir: string): Promise<string[] | undefined> => {
@@ -101,14 +89,13 @@ const isRealDirectory = async (dir: string): Promise<boolean | undefined> => {
 };
 
 /** The actual `readdir`-then-`rmdir` removal, once `removeIfEmpty` has already confirmed `dir` is
- * a real directory — split out purely to keep `removeIfEmpty` itself under the repo's
- * `max-statements` cap. Same "gone either way" contract as `removeIfEmpty`. */
+ * a real directory. Same "gone either way" contract as `removeIfEmpty`. */
 const removeEmptyDirectory = async (dir: string): Promise<boolean> => {
   const entries = await readdirSafe(dir);
   if (entries === undefined) {
     return true;
   }
-  if (entries.length !== EMPTY_ENTRIES) {
+  if (entries.length > 0) {
     return false;
   }
   try {
@@ -145,8 +132,7 @@ const removeIfEmpty = async (dir: string): Promise<boolean> => {
  * stopping at (and never removing) `home.sourcesDir` itself — e.g. deleting the sole checkout
  * under `github.com/vercel/` also prunes that now-empty `vercel/` directory, and `github.com/`
  * above it if that too is now empty, but `sources/` always survives. Recursive (one `await` per
- * call, mirroring `lock.ts#acquireWithRetry`'s "recursive rather than a loop" discipline) rather
- * than an imperative loop, purely to keep every function under the repo's `max-statements` cap. */
+ * call) — the natural shape for the upward walk. */
 const pruneEmptyParents = async (home: RefsHome, dir: string): Promise<void> => {
   if (dir === home.sourcesDir) {
     return;
@@ -158,10 +144,10 @@ const pruneEmptyParents = async (home: RefsHome, dir: string): Promise<void> => 
   await pruneEmptyParents(home, dirname(dir));
 };
 
-interface CheckoutRemoval {
+type CheckoutRemoval = {
   removedCheckout: boolean;
   warning?: string;
-}
+};
 
 /** Deletes the checkout at `dest` if one is present, containment-checked via `assertInsideSources`
  * immediately before the actual `fs.rm` — per `home.ts`'s destructive-caller contract, which names
@@ -199,7 +185,7 @@ const withoutKey = <TValue>(record: Record<string, TValue>, key: string): Record
  * lock every other config/state mutation in the CLI takes (init, edit, add's finalize step, sync's
  * state updates) — so this can never race a concurrent `refs edit`/`refs add`/`refs sync`. Re-reads
  * both files fresh under the lock rather than reusing an earlier read, mirroring
- * `add-helpers.ts#ensureNoConflict`'s "checked once outside, re-verified inside the lock"
+ * `add-source.ts#ensureNoConflict`'s "checked once outside, re-verified inside the lock"
  * discipline. A key already absent (e.g. dropped by a racing caller) is a harmless no-op. */
 const dropRefEntries = async (home: RefsHome, key: RefKey): Promise<void> => {
   const config = await readConfig(home);
@@ -243,8 +229,7 @@ const registerRemove = (program: RefsCommand, ctx: CliContext): void => {
     .description('Remove a configured ref: its config/state entry AND its checkout directory.')
     .argument('<ref>', 'full ref key or a unique suffix, e.g. zod')
     .action((ref, _localOpts, command) => {
-      const globals = command.optsWithGlobals();
-      const opts = { json: globals.json === true, verbose: globals.verbose === true };
+      const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
         const { data, warnings } = await runRemove(ctx, ref);
         emit(ctx, opts, removeHuman(data), data, warnings);
@@ -252,5 +237,4 @@ const registerRemove = (program: RefsCommand, ctx: CliContext): void => {
     });
 };
 
-export { registerRemove, runRemove };
-export type { RemoveData };
+export { registerRemove };

@@ -3,16 +3,16 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 // Meta.json read/write/parse primitives for the advisory lock in `lock.ts`. Kept separate purely
-// To keep that file's higher-level acquire/steal/release orchestration readable on its own.
+// to keep that file's higher-level acquire/steal/release orchestration readable on its own.
 
 // Signal 0 performs the existence/permission check without delivering anything.
 const NO_SIGNAL = 0;
 const META_FILENAME = 'meta.json';
 
-interface LockMeta {
+type LockMeta = {
   acquiredAtMs: number;
   pid: number;
-}
+};
 
 const errnoCode = (err: unknown): string | undefined => {
   if (typeof err === 'object' && err !== null && 'code' in err) {
@@ -25,7 +25,7 @@ const errnoCode = (err: unknown): string | undefined => {
 };
 
 // Only ESRCH proves the process is gone; EPERM means it exists under another user, and any other
-// Failure is treated as "alive" so we never steal a lock on uncertainty.
+// failure is treated as "alive" so we never steal a lock on uncertainty.
 const isPidAlive = (pid: number): boolean => {
   try {
     process.kill(pid, NO_SIGNAL);
@@ -77,7 +77,7 @@ const parseLockMeta = (raw: unknown): LockMeta | undefined => {
 };
 
 // Returns the lock's meta, or `undefined` when meta.json is missing, unreadable, or malformed —
-// All of which fall into the mtime-grace-period bucket in `isLockStale` (`lock.ts`).
+// all of which fall into the mtime-grace-period bucket in `isLockStale` (`lock.ts`).
 const readLockMeta = async (lockPath: string): Promise<LockMeta | undefined> => {
   const text = await readTextOrUndefined(join(lockPath, META_FILENAME));
   if (text === undefined) {
@@ -117,9 +117,9 @@ const dirMtimeMs = async (path: string): Promise<number | undefined> => {
 };
 
 // Writes meta.json via a same-dir tmp file + rename (so a reader never observes a torn write),
-// Deliberately WITHOUT the parent-dir auto-`mkdir` that the shared `writeFileAtomic` in
+// deliberately WITHOUT the parent-dir auto-`mkdir` that the shared `writeFileAtomic` in
 // `fs-atomic.ts` does for its other callers: here the parent dir is the mutex itself, so silently
-// Recreating it if momentarily missing would mask an identity-loss bug instead of surfacing it.
+// recreating it if momentarily missing would mask an identity-loss bug instead of surfacing it.
 const writeMetaAtomic = async (lockPath: string, contents: string): Promise<void> => {
   const path = join(lockPath, META_FILENAME);
   const tmpPath = `${path}.tmp-${randomUUID()}`;

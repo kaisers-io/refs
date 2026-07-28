@@ -15,10 +15,10 @@ const notManagedMessage = (dir: string): string =>
 
 // `syncRef` runs destructive git operations (checkout -B, reset --hard, clean -fd) against
 // `opts.dir` — this guard confirms dir is actually a checkout refs itself produced, not an
-// Arbitrary git repo a caller happened to point us at: (a) a real `.git` directory exists, and
+// arbitrary git repo a caller happened to point us at: (a) a real `.git` directory exists, and
 // (b) `core.hooksPath` is a non-empty value — the marker `cloneRepo` stamps on every managed
-// Checkout it creates. Neither check re-verifies the hook *scripts*; that's `installHooksGuard`'s
-// Job.
+// checkout it creates. Neither check re-verifies the hook *scripts*; that's `installHooksGuard`'s
+// job.
 const assertManagedCheckout = async (runner: Runner, dir: string): Promise<void> => {
   if (!isGitCheckout(dir)) {
     throw validationError(notManagedMessage(dir));

@@ -4,12 +4,12 @@ import { SpawnRunner, checkoutPath, readConfig, resolveHome } from '@kaisers-io/
 import { access, mkdir, mkdtemp, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { initHome, realContextFor, runAddDryRunJson } from './add-support.ts';
 import type { CliContext } from '../../src/context.ts';
-import type { ResolvedSource } from '../../src/commands/add-helpers.ts';
+import type { ResolvedSource } from '../../src/commands/add-source.ts';
 import { createFixtureRepo } from './fixture-repo.ts';
 import { expect } from 'vitest';
 import { join } from 'node:path';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
-import { resolveAddSource } from '../../src/commands/add-helpers.ts';
+import { resolveAddSource } from '../../src/commands/add-source.ts';
 import { tmpdir } from 'node:os';
 
 // Scaffolding specific to `add-guards.test.ts`'s review-round regression suite (checkout-identity
@@ -28,14 +28,14 @@ const expectRefNotConfigured = async (home: RefsHome, key: string): Promise<void
   expect(config.refs[key]).toBeUndefined();
 };
 
-interface DryRunFixture {
+type DryRunFixture = {
   ctx: CliContext;
   dest: string;
   home: RefsHome;
   proposal: Proposal;
   sourceUrl: string;
   stdout: string[];
-}
+};
 
 // `exactOptionalPropertyTypes` forbids assigning a `boolean | undefined` value directly onto
 // `FixtureOpts.monorepo?: boolean` — built field-by-field so `monorepo` is only ever set when
@@ -65,14 +65,14 @@ const setupDryRunFixture = async (
   return { ctx, dest, home, proposal, sourceUrl: fixture.url, stdout };
 };
 
-interface SourceFixture {
+type SourceFixture = {
   ctx: CliContext;
   dest: string;
   home: RefsHome;
   resolved: ResolvedSource;
   sourceUrl: string;
   stdout: string[];
-}
+};
 
 /** Like `setupDryRunFixture`, but stops right after resolving the source (no clone yet) — needed
  * by the checkout-identity guard test that must pre-create a bogus checkout at the derived path

@@ -8,38 +8,33 @@ import {
   redactUrl,
   validationError,
   zRefState,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
 import type { CliContext } from '../context.ts';
 import { dirname } from 'node:path';
 import { mkdir } from 'node:fs/promises';
 import { progress } from '../output.ts';
 
-// Checkout-identity + head-sha guards for `add-helpers.ts`'s idempotent clone/finalize flow —
-// split out purely to keep `add-helpers.ts` under the repo's 300-line oxlint cap. Source
-// resolution and the pre-clone case-collision guard stay in `add-helpers.ts`; this file owns
-// everything that runs AGAINST an already-existing (or just-cloned) checkout directory: origin
-// identity verification, the reuse-path managed-checkout marker check, and the finalize-time
-// `HEAD` sha resolution/validation.
+// Checkout-identity + head-sha guards shared by `refs add`'s idempotent clone/finalize flow and
+// `refs sync`'s per-ref pipeline (`sync-checkout.ts`). Owns everything that runs AGAINST an
+// already-existing (or just-cloned) checkout directory: origin identity verification, the
+// reuse-path managed-checkout marker check, and the finalize-time `HEAD` sha
+// resolution/validation. Source resolution and the pre-clone case-collision guard live in
+// `add-source.ts`.
 
 const SUCCESS_EXIT_CODE = 0;
 
 // BOTH url slots are redacted: `actual` comes straight from `git remote get-url origin` — a real
 // checkout's origin may itself carry embedded credentials (`https://token@host/...`) — and
-// `expectedUrl` can carry them too (review round 2): a `refs add --proposal` payload's `url` is
-// only checked to be a non-empty string by `zFinalProposal`, so a credentialed url reaches this
-// message verbatim; this error also lands in logs, not just the invoking terminal.
+// `expectedUrl` can carry them too: a `refs add --proposal` payload's `url` is only checked to be
+// a non-empty string by `zFinalProposal`, so a credentialed url reaches this message verbatim;
+// this error also lands in logs, not just the invoking terminal.
 const originMismatchMessage = (dest: string, actual: string, expectedUrl: string): string =>
   `checkout at ${dest} points at '${redactUrl(actual)}' — expected '${redactUrl(expectedUrl)}'; ` +
   'remove the checkout directory or run refs remove before retrying';
 
 const NO_ORIGIN_MARKER = '(no origin remote)';
 
-/** Verifies `opts.dest`'s `origin` remote points at `opts.expectedUrl` — guards against reusing or
- * finalizing against a directory that merely happens to occupy the derived checkout path but is an
- * unrelated or unmanaged repo (leftover from another tool, a moved/renamed remote, etc.). A failed
- * `git remote get-url origin` (not a repo, no such remote) is treated as a mismatch too, rendered
- * as `(no origin remote)` in the error rather than surfacing raw git stderr. */
+/** The trimmed origin url on success, or the `(no origin remote)` marker when the lookup failed. */
 const originOrMarker = (result: { exitCode: number; stdout: string }): string => {
   if (result.exitCode === SUCCESS_EXIT_CODE) {
     return result.stdout.trim();
@@ -105,6 +100,31 @@ const ensureManagedCheckout = async (
   }
 };
 
+type CloneCheckoutOpts = {
+  allowFileUrls: boolean;
+  cloneUrl: string;
+  dest: string;
+  home: RefsHome;
+  hooksDir: string;
+  mode: CloneMode;
+};
+
+// The fresh-clone branch of `ensureClonedCheckout` (`dest` doesn't exist as a checkout yet):
+// creates `dest`'s parent directories, emits the `cloning …` progress line (see
+// `output.ts#progress`), then clones.
+const cloneFresh = async (
+  ctx: CliContext,
+  opts: CloneCheckoutOpts,
+): Promise<{ effectiveMode?: CloneMode; warning?: string }> => {
+  await mkdir(dirname(opts.dest), { recursive: true });
+  progress(ctx, `cloning ${redactUrl(opts.cloneUrl)} into ${opts.dest}…`);
+  const result = await cloneRepo(ctx.runner, opts);
+  if (result.warning === undefined) {
+    return { effectiveMode: result.effectiveMode };
+  }
+  return { effectiveMode: result.effectiveMode, warning: result.warning };
+};
+
 /** Idempotent clone: reuses an already-healthy checkout (a `.git` dir already exists at `dest`)
  * rather than re-cloning, otherwise clones fresh — creating `dest`'s parent directories first.
  * `effectiveMode` is only known (and returned) when a clone actually ran: `cloneRepo` may downgrade
@@ -120,32 +140,6 @@ const ensureManagedCheckout = async (
  * write outside the managed tree, or make the reuse branch ADOPT a checkout that physically lives
  * outside it (`isGitCheckout`'s existsSync follows symlinked ancestors) — every later sync would
  * then operate out there. */
-interface CloneCheckoutOpts {
-  allowFileUrls: boolean;
-  cloneUrl: string;
-  dest: string;
-  home: RefsHome;
-  hooksDir: string;
-  mode: CloneMode;
-}
-
-// The fresh-clone branch of `ensureClonedCheckout` (`dest` doesn't exist as a checkout yet) —
-// split out purely to keep that function under the repo's 10-statement oxlint cap. Creates
-// `dest`'s parent directories, emits the `cloning …` progress line (see `output.ts#progress`),
-// then clones.
-const cloneFresh = async (
-  ctx: CliContext,
-  opts: CloneCheckoutOpts,
-): Promise<{ effectiveMode?: CloneMode; warning?: string }> => {
-  await mkdir(dirname(opts.dest), { recursive: true });
-  progress(ctx, `cloning ${redactUrl(opts.cloneUrl)} into ${opts.dest}…`);
-  const result = await cloneRepo(ctx.runner, opts);
-  if (result.warning === undefined) {
-    return { effectiveMode: result.effectiveMode };
-  }
-  return { effectiveMode: result.effectiveMode, warning: result.warning };
-};
-
 const ensureClonedCheckout = async (
   ctx: CliContext,
   opts: CloneCheckoutOpts,
@@ -183,10 +177,10 @@ const unsupportedHeadShaMessage = (key: RefKey, dest: string, sha: string): stri
  * succeeds — `Runner.run` never throws on a non-zero exit, so a corrupt/removed checkout would
  * otherwise hand back garbage `stdout` instead of failing — AND that the resulting sha has the
  * exact shape `zState`'s `head_sha` field requires (imported from core, not retyped locally): a
- * SHA-256 (`--object-format=sha256`) repo yields a 64-character HEAD, which `writeState` would
- * otherwise only catch AFTER `writeConfig` had already landed the ref (see `finalizeRef` in
- * `add.ts`). Called under the per-ref lock, strictly before any config/state write, so any of these
- * failures is caught before anything is persisted. */
+ * SHA-256 (`--object-format=sha256`) repo yields a 64-character HEAD, rejected here so finalize
+ * fails before any document is built or written (see `finalizeRef` in `add-finalize.ts`). Called
+ * under the per-ref lock, strictly before any config/state write, so any of these failures is
+ * caught before anything is persisted. */
 const resolveCheckoutHead = async (
   runner: Runner,
   opts: {

@@ -12,11 +12,10 @@ import {
   withLock,
   writeConfig,
   zRefEntry,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
 import type { CliContext } from '../context.ts';
 import type { EditData } from './edit.ts';
-import { allowFileUrlsFrom } from './add-helpers.ts';
+import { allowFileUrlsFrom } from './add-source.ts';
 import { editPackageField } from './edit-package.ts';
 import { matchRefKey } from './list.ts';
 import { normalizeEditValue } from './edit-envelope.ts';
@@ -28,15 +27,15 @@ import { z } from 'zod';
 // `url` gets its own path (`editUrlField`): the new value is canonicalized and MUST derive the
 // same ref key the ref is already stored under (spec: editing url can't silently re-key a ref —
 // that's what remove + re-add is for), and the checkout's `origin` remote is rewritten to match
-// when a checkout exists. Split out of `edit.ts`/`edit-package.ts` purely to keep each mode's file
-// small, per the task brief's up-front three-mode file split.
+// when a checkout exists. Each of edit's three modes lives in its own module (edit-settings.ts /
+// edit-ref.ts / edit-package.ts); edit.ts only dispatches.
 
-interface EditRefArgs {
+type EditRefArgs = {
   field: string;
   opts: { packageName?: string };
   query: string;
   value: string;
-}
+};
 
 const PACKAGES_FIELD = 'packages';
 const URL_FIELD = 'url';
@@ -115,8 +114,7 @@ const editPlainRefField = (
 };
 
 /** `url` needs its own (async, checkout-touching) path; every other recognized field is a plain
- * re-validated assignment (`editPlainRefField`). Written as two early-return branches rather than
- * a ternary — this repo's oxlint config forbids `no-ternary`. */
+ * re-validated assignment (`editPlainRefField`). */
 const resolveUpdatedEntry = (
   ctx: CliContext,
   args: {

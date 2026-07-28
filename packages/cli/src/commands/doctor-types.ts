@@ -4,10 +4,10 @@
 
 type CheckStatus = 'fail' | 'ok' | 'warn';
 
-interface CheckResult {
+type CheckResult = {
   detail: string;
   name: string;
   status: CheckStatus;
-}
+};
 
-export type { CheckResult, CheckStatus };
+export type { CheckResult };
