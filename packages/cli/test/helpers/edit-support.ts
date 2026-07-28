@@ -34,12 +34,12 @@ const SETTINGS_SUFFIX_REF_ENTRY = {
 
 const CLONE_SUCCESS_EXIT_CODE = 0;
 
-interface EditEnvelope {
+type EditEnvelope = {
   data?: { field: string; key: string; new: unknown; old: unknown };
   error?: { code: string; message: string };
   ok: boolean;
   warnings?: string[];
-}
+};
 
 const parseSoleEnvelope = (stdout: readonly string[]): EditEnvelope => {
   const [line] = stdout;
@@ -49,11 +49,11 @@ const parseSoleEnvelope = (stdout: readonly string[]): EditEnvelope => {
   return JSON.parse(line) as EditEnvelope;
 };
 
-interface EditFixture {
+type EditFixture = {
   ctx: CliContext;
   stderr: string[];
   stdout: string[];
-}
+};
 
 /** Seeds a fresh temp home with `REF_KEY` (default settings, one registered package) — the common
  * setup every non-git `refs edit` case needs. */

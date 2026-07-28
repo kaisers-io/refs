@@ -136,14 +136,14 @@ const requireTagFormat = (candidate: TagFormat | null): TagFormat => {
   return candidate;
 };
 
-interface FinalizedRefInput {
+type FinalizedRefInput = {
   default_branch: string;
   description: string;
   key: RefKey;
   packages?: Record<string, PackageEntry>;
   tag_format: TagFormat;
   url: string;
-}
+};
 
 const buildRefEntry = (ref: FinalizedRefInput): RefEntry => {
   if (ref.packages === undefined) {

@@ -29,20 +29,20 @@ import { mkdir } from 'node:fs/promises';
 
 type SyncStatus = 'cloned' | 'fresh' | 'restored' | 'updated';
 
-interface RefSyncOutcome {
+type RefSyncOutcome = {
   headSha: string;
   status: SyncStatus;
   branchRenamedTo?: string;
   effectiveCloneMode?: CloneMode;
   warning?: string;
-}
+};
 
-interface RefSyncContext {
+type RefSyncContext = {
   home: RefsHome;
   key: RefKey;
   ref: RefEntry;
   settings: Settings;
-}
+};
 
 const unsupportedHeadShaMessage = (key: RefKey, dest: string, sha: string): string =>
   `sync produced a HEAD sha for '${key}' at ${dest} that refs cannot store yet ` +
@@ -58,10 +58,10 @@ const validateHeadSha = (key: RefKey, dest: string, sha: string): string => {
   return sha;
 };
 
-interface ClonedFields {
+type ClonedFields = {
   actualBranch: string;
   headSha: string;
-}
+};
 
 /** Shapes a fresh clone's outcome — split out of `syncMissingCheckout` purely to keep that
  * function under the repo's max-statements cap. */

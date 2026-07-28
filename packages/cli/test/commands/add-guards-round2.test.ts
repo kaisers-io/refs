@@ -29,10 +29,10 @@ import { run } from '../../src/main.ts';
 
 const TEST_TIMEOUT_MS = 30_000;
 
-interface ErrorEnvelope {
+type ErrorEnvelope = {
   error?: { code: string; message: string };
   ok: boolean;
-}
+};
 
 describe('refs add: SHA-256 (--object-format=sha256) repo head_sha guard', () => {
   it(

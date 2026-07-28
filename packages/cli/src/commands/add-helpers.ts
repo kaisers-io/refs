@@ -35,12 +35,12 @@ const refLockName = (key: RefKey): string => `${REF_LOCK_PREFIX}${key.replaceAll
 const allowFileUrlsFrom = (env: NodeJS.ProcessEnv): boolean =>
   env['REFS_ALLOW_FILE_URLS'] === ALLOW_FILE_URLS_FLAG;
 
-interface ResolvedSource {
+type ResolvedSource = {
   cloneUrl: string;
   key: RefKey;
   npmDirectory?: string;
   npmPkgName?: string;
-}
+};
 
 const resolveGitUrlSource = (ctx: CliContext, source: string): ResolvedSource => {
   const canonical = canonicalizeGitUrl(source, { allowFileUrls: allowFileUrlsFrom(ctx.env) });

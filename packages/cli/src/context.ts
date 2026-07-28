@@ -6,7 +6,7 @@ import { SpawnRunner } from '@kaisers-io/refs-core';
 // Directly — it takes a `CliContext` and calls through it. `realContext()` below is the ONLY
 // Place in this package allowed to reach for the real globals; every other module (and every
 // Test) goes through the injected seam instead.
-interface CliContext {
+type CliContext = {
   env: NodeJS.ProcessEnv;
   errLine: (line: string) => void;
   fetcher: Fetcher;
@@ -20,7 +20,7 @@ interface CliContext {
   // Needs (spec: `--proposal <file|->`, `-` meaning "read the proposal JSON from stdin").
   readStdin: () => Promise<string>;
   runner: Runner;
-}
+};
 
 const readRealStdin = async (): Promise<string> => {
   const chunks: Buffer[] = [];

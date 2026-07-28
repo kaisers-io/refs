@@ -32,15 +32,15 @@ const TEST_TIMEOUT_MS = 30_000;
 const TWO_PACKAGES = 2;
 const HTTP_STATUS_OK = 200;
 
-interface FinalizeEnvelope {
+type FinalizeEnvelope = {
   data: { entry: { description: string; packages?: unknown }; key: string };
   ok: boolean;
-}
+};
 
-interface ErrorEnvelope {
+type ErrorEnvelope = {
   error?: { code: string; message: string };
   ok: boolean;
-}
+};
 
 // Fills in the top-level `description` and every package's description (falling back to a
 // placeholder for `@fixture/b`, which the fixture deliberately ships without one) — the human

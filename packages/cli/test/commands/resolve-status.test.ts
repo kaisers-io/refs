@@ -34,10 +34,10 @@ const NEXT_ENTRY = {
   url: 'https://github.com/vercel/next.js',
 };
 
-interface ResolveDataShape {
+type ResolveDataShape = {
   missing: boolean;
   stale: boolean;
-}
+};
 
 const parseSoleEnvelope = (stdout: readonly string[]): { data: ResolveDataShape } => {
   const [line] = stdout;

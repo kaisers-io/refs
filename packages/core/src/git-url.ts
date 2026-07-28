@@ -10,16 +10,16 @@ const MIN_FILE_SEGMENTS = 2;
 const LAST_SEGMENT_OFFSET = -1;
 const SECOND_LAST_SEGMENT_OFFSET = -2;
 
-interface CanonicalizeGitUrlOptions {
+type CanonicalizeGitUrlOptions = {
   allowFileUrls?: boolean;
-}
+};
 
-interface BuildKeyInput {
+type BuildKeyInput = {
   host: string;
   path: string;
   port: string;
   protocol: string;
-}
+};
 
 const stripGitSuffix = (path: string): string => path.replace(/\.git$/u, '');
 
@@ -248,11 +248,11 @@ const assertKeyInvariant = (input: string, transformed: string, originalKey: Ref
   return transformed;
 };
 
-interface TransformContext {
+type TransformContext = {
   cloneUrl: string;
   originalKey: RefKey;
   transport: GitTransport;
-}
+};
 
 // The scp branch of `applyGitTransport`: an scp url IS the ssh transport, so it either stays
 // verbatim or rewrites to the https form.

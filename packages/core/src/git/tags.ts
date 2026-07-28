@@ -97,10 +97,10 @@ const buildFormatCounts = (
   return counts;
 };
 
-interface FormatCandidate {
+type FormatCandidate = {
   count: number;
   index: number;
-}
+};
 
 /** Compares two format candidates to determine the best one. */
 const isBetter = (newCandidate: FormatCandidate, bestCandidate: FormatCandidate): boolean =>

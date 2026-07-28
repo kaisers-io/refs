@@ -34,12 +34,12 @@ const ESCAPE_ENTRY = {
   url: 'https://evil.example.com/acme/widget',
 };
 
-interface RemoveEnvelope {
+type RemoveEnvelope = {
   data?: { key: string; removed_checkout: boolean };
   error?: { code: string; message: string };
   ok: boolean;
   warnings?: string[];
-}
+};
 
 const parseSoleEnvelope = (stdout: readonly string[]): RemoveEnvelope => {
   const [line] = stdout;

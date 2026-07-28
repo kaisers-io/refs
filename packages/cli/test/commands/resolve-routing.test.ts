@@ -85,11 +85,11 @@ const SCOPED_PKG_ENTRY = {
   url: 'https://github.com/acme/scoped',
 };
 
-interface JsonEnvelope {
+type JsonEnvelope = {
   data: unknown;
   error?: { code: string; message: string };
   ok: boolean;
-}
+};
 
 const parseSoleEnvelope = (stdout: readonly string[]): JsonEnvelope => {
   const [line] = stdout;
@@ -103,11 +103,11 @@ const parseSoleEnvelope = (stdout: readonly string[]): JsonEnvelope => {
 // `vitest/no-conditional-in-test` doesn't flag the nullish-coalescing fallback.
 const messageOf = (envelope: JsonEnvelope): string => envelope.error?.message ?? '';
 
-interface SeedAndResolveOptions {
+type SeedAndResolveOptions = {
   envExtra?: Record<string, string>;
   query: string;
   refs: Record<string, unknown>;
-}
+};
 
 /** Seeds a fresh temp home's config with `options.refs`, runs `refs resolve <query> --json`
  * (optionally with extra env vars, e.g. `REFS_ALLOW_FILE_URLS`), and hands back both the parsed

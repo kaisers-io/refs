@@ -38,21 +38,21 @@ import { usageError } from '@kaisers-io/refs-core';
 // some ref would have matched, appends a `note:` warning to the JSON envelope naming that ref (or,
 // for an ambiguous suffix match, naming the situation) so the mistake is visible instead of silent.
 
-interface EditData {
+type EditData = {
   field: string;
   key: string;
   new: unknown;
   old: unknown;
-}
+};
 
-interface EditOptions {
+type EditOptions = {
   packageName?: string;
-}
+};
 
-interface EditResult {
+type EditResult = {
   data: EditData;
   warnings: string[];
-}
+};
 
 const SETTINGS_MODE_KEYWORD = 'settings';
 const NO_WARNINGS: string[] = [];
@@ -69,12 +69,12 @@ const buildEditOptions = (localOpts: { package?: string }): EditOptions => {
   return opts;
 };
 
-interface EditArgs {
+type EditArgs = {
   first: string;
   opts: EditOptions;
   second: string;
   value: string;
-}
+};
 
 const runEdit = async (ctx: CliContext, args: EditArgs): Promise<EditResult> => {
   if (args.first === SETTINGS_MODE_KEYWORD) {

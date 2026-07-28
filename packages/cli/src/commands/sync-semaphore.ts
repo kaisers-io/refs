@@ -5,10 +5,10 @@
 
 const SLOT_STEP = 1;
 
-interface Semaphore {
+type Semaphore = {
   acquire: () => Promise<void>;
   release: () => void;
-}
+};
 
 const createSemaphore = (limit: number): Semaphore => {
   let active = 0;

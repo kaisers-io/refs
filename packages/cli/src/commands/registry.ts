@@ -7,12 +7,10 @@ import { registerInit } from './init.ts';
 import { registerList } from './list.ts';
 
 // The real `--json`/`--verbose` global option shape every command inherits from the root program
-// Built in `main.ts#buildProgram`. Named here (rather than left for each command module to
-// Re-derive) so it is defined exactly once. Deliberately a `type` alias, not an `interface`: an
-// Interface has no implicit index signature, so `Command<[], ..., GlobalCliOptions>` below would
-// Fail its `GlobalOpts extends OptionValues` (`Record<string, any>`) constraint — only an object
-// Type literal satisfies that check.
-// eslint-disable-next-line @typescript-eslint/consistent-type-definitions -- see comment above
+// built in `main.ts#buildProgram`. Named here (rather than left for each command module to
+// re-derive) so it is defined exactly once. Must stay a type alias (never an `interface`): an
+// interface has no implicit index signature, so `Command<[], ..., GlobalCliOptions>` below would
+// fail its `GlobalOpts extends OptionValues` (`Record<string, any>`) constraint.
 type GlobalCliOptions = { json?: boolean; verbose?: boolean };
 
 // The registrar wiring point's `program` parameter, parameterized with the real inherited-globals

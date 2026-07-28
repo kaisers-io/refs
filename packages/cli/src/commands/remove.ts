@@ -35,15 +35,15 @@ const MISSING_CHECKOUT_WARNING = 'checkout was already missing';
 const EMPTY_ENTRIES = 0;
 const NO_WARNINGS: string[] = [];
 
-interface RemoveData {
+type RemoveData = {
   key: RefKey;
   removed_checkout: boolean;
-}
+};
 
-interface RemoveResult {
+type RemoveResult = {
   data: RemoveData;
   warnings: string[];
-}
+};
 
 // Kept out of `runRemove` only to avoid a ternary there (repo style forbids `no-ternary`),
 // mirroring `output.ts`'s `toLines`/`show.ts`'s `warningsFor`.
@@ -157,10 +157,10 @@ const pruneEmptyParents = async (home: RefsHome, dir: string): Promise<void> => 
   await pruneEmptyParents(home, dirname(dir));
 };
 
-interface CheckoutRemoval {
+type CheckoutRemoval = {
   removedCheckout: boolean;
   warning?: string;
-}
+};
 
 /** Deletes the checkout at `dest` if one is present, containment-checked via `assertInsideSources`
  * immediately before the actual `fs.rm` — per `home.ts`'s destructive-caller contract, which names

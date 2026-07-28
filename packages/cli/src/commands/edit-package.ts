@@ -15,7 +15,7 @@ import { z } from 'zod';
 // (the task brief calls out `edit`'s three-mode split up front). Never touches the checkout or git
 // — packages carry no `url`/transport concerns of their own, unlike the ref-level `url` field.
 
-interface EditPackageArgs {
+type EditPackageArgs = {
   config: Config;
   entry: RefEntry;
   field: string;
@@ -23,7 +23,7 @@ interface EditPackageArgs {
   key: RefKey;
   packageName: string;
   value: string;
-}
+};
 
 const packageFieldNames = (): string => Object.keys(zPackageEntry.shape).toSorted().join(', ');
 
@@ -44,12 +44,12 @@ const requirePackage = (entry: RefEntry, key: RefKey, packageName: string): Pack
   return pkg;
 };
 
-interface PackageFieldEdit {
+type PackageFieldEdit = {
   field: keyof typeof zPackageEntry.shape;
   newValue: unknown;
   oldValue: unknown;
   updated: PackageEntry;
-}
+};
 
 /** Pure (sync) core of the edit: validates `field` against `zPackageEntry`'s own shape, then
  * re-validates the WHOLE package entry (not just the touched field) — mirrors

@@ -23,7 +23,7 @@ import { z } from 'zod';
 // its `--proposal` and `--description` flows; everything it needs to build a `FinalizeOpts` lives
 // there, not here.
 
-interface FinalizeOpts {
+type FinalizeOpts = {
   dest: string;
   // Known directly only in the `--description` one-shot flow (its dry-run core ran in the same
   // process); `--proposal` never re-clones, so it falls back to whatever a prior `--dry-run`
@@ -32,13 +32,13 @@ interface FinalizeOpts {
   effectiveCloneMode?: CloneMode;
   home: RefsHome;
   ref: FinalizedRefInput;
-}
+};
 
-interface FinalDocs {
+type FinalDocs = {
   config: Config;
   entry: RefEntry;
   state: State;
-}
+};
 
 // Validates BOTH the new config document and the new state document in full — the exact schemas
 // `writeConfig`/`writeState` themselves parse against — before either is ever written. Split out

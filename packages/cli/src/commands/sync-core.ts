@@ -9,12 +9,12 @@ import { syncCheckout } from './sync-checkout.ts';
 // `sync-state.ts`, the concurrency primitive in `sync-semaphore.ts`; this file wires them
 // together into one ref's start-to-finish outcome and the parallel batch over all of them.
 
-interface SyncResultItem {
+type SyncResultItem = {
   key: string;
   status: SyncStatus | 'failed';
   error?: string;
   warning?: string;
-}
+};
 
 const errorMessage = (error: unknown): string => {
   if (error instanceof Error) {

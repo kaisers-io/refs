@@ -21,15 +21,15 @@ import { z } from 'zod';
 // `edit-package.ts` purely to keep each mode's file small and independently readable — the task
 // brief calls out that `edit` has three modes and should be planned as a split up front.
 
-interface EditSettingsArgs {
+type EditSettingsArgs = {
   key: string;
   value: string;
-}
+};
 
-interface EditSettingsResult {
+type EditSettingsResult = {
   data: EditData;
   warnings: string[];
-}
+};
 
 const SETTINGS_MODE_KEY = 'settings';
 const NO_WARNINGS: string[] = [];
@@ -71,12 +71,12 @@ const collisionWarnings = (config: Config): string[] => {
   }
 };
 
-interface SettingsEditOutcome {
+type SettingsEditOutcome = {
   config: Config;
   key: keyof typeof zSettings.shape;
   old: unknown;
   parsed: Settings;
-}
+};
 
 /** Builds the final `{data, warnings}` result once the write has already gone through — split out
  * of `runEditSettings` purely to keep that function's statement count under the repo's

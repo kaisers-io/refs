@@ -6,10 +6,10 @@ import { basename } from 'node:path';
 // eslint-disable-next-line import/no-relative-parent-imports -- package.json lives at the package root, one level above src/
 import pkg from '../../package.json' with { type: 'json' };
 
-interface MigrateData {
+type MigrateData = {
   backup: string | null;
   result: 'migrated' | 'noop' | 'seeded';
-}
+};
 
 // Pure command body: `migrateConfig` alone decides seed/migrate/noop — this only adds the
 // home-wide lock (matching `init.ts`'s own `withLock(home, 'home', ...)` wrapping of the same

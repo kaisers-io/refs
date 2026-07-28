@@ -9,10 +9,10 @@ import type { ChildProcess } from 'node:child_process';
 // invocation, never a long-running daemon that might need time to flush state on `SIGTERM`).
 const KILL_GRACE_MS = 2000;
 
-interface TimeoutHandle {
+type TimeoutHandle = {
   markedTimedOut: () => boolean;
   clear: () => void;
-}
+};
 
 const noopTimeout: TimeoutHandle = { clear: () => {}, markedTimedOut: () => false };
 

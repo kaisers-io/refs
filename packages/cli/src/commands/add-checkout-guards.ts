@@ -119,14 +119,14 @@ const ensureManagedCheckout = async (
  * write outside the managed tree, or make the reuse branch ADOPT a checkout that physically lives
  * outside it (`isGitCheckout`'s existsSync follows symlinked ancestors) — every later sync would
  * then operate out there. */
-interface CloneCheckoutOpts {
+type CloneCheckoutOpts = {
   allowFileUrls: boolean;
   cloneUrl: string;
   dest: string;
   home: RefsHome;
   hooksDir: string;
   mode: CloneMode;
-}
+};
 
 // The fresh-clone branch of `ensureClonedCheckout` (`dest` doesn't exist as a checkout yet) —
 // split out purely to keep that function under the repo's 10-statement oxlint cap. Creates

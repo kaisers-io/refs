@@ -23,6 +23,7 @@
   ],
   "rules": {
     "capitalized-comments": ["error", "always", { "ignoreConsecutiveComments": true }],
+    "typescript/consistent-type-definitions": ["error", "type"],
     "import/no-named-export": "off",
     "no-duplicate-imports": ["error", { "allowSeparateTypeImports": true }],
     "import/no-nodejs-modules": "off",
