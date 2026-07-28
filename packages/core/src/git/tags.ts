@@ -18,9 +18,6 @@ const SEMVER = /\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?/u;
 // Embeds two versions and is not reliably derivable.
 const BARE_VERSION = /\d+\.\d+\.\d+/gu;
 const MAX_UNAMBIGUOUS_VERSION_COUNT = 1;
-const FIRST_INDEX = 0;
-const INITIAL_COUNT = 1;
-const INCREMENT = 1;
 
 /** Validates that a derived format is acceptable. */
 const isValidFormat = (format: string): boolean => {
@@ -71,9 +68,9 @@ const incrementFormatCount = (
 ): void => {
   const existing = counts.get(format);
   if (existing === undefined) {
-    counts.set(format, { count: INITIAL_COUNT, index });
+    counts.set(format, { count: 1, index });
   } else {
-    existing.count += INCREMENT;
+    existing.count += 1;
   }
 };
 
@@ -99,14 +96,14 @@ const isBetter = (newCandidate: FormatCandidate, bestCandidate: FormatCandidate)
 /** Finds the most frequent format; on a tie, the earliest index (most recent) wins. */
 const findBestFormat = (formatCounts: Map<string, FormatCandidate>): string | null => {
   const entries = [...formatCounts.entries()];
-  const firstEntry = entries[FIRST_INDEX];
+  const [firstEntry] = entries;
   if (firstEntry === undefined) {
     // eslint-disable-next-line unicorn/no-null -- public API returns `TagFormat | null`
     return null;
   }
 
   const [best, firstCandidate] = firstEntry;
-  return entries.slice(INCREMENT).reduce(
+  return entries.slice(1).reduce(
     ({ format: fmt, data: current }, [candidate, data]) => {
       if (isBetter(data, current)) {
         return { data, format: candidate };

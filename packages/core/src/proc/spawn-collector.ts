@@ -14,8 +14,6 @@ const STREAM_CAP_MIB = 64;
 // below) so the caller can see output was cut, rather than the process crashing or hanging.
 const MAX_STREAM_BYTES = STREAM_CAP_MIB * KIB_PER_MIB * BYTES_PER_KIB;
 
-const EMPTY_BYTES = 0;
-
 type CollectedStream = {
   text: string;
   truncated: boolean;
@@ -31,7 +29,7 @@ type StreamCollector = {
 // not stored, so a runaway stream can never grow this collector's memory past the cap itself.
 const createCollector = (): StreamCollector => {
   const chunks: Buffer[] = [];
-  let bytes = EMPTY_BYTES;
+  let bytes = 0;
   let truncated = false;
   return {
     finish: (): CollectedStream => ({ text: Buffer.concat(chunks).toString('utf8'), truncated }),
@@ -45,8 +43,8 @@ const createCollector = (): StreamCollector => {
         bytes += chunk.length;
         return;
       }
-      if (remaining > EMPTY_BYTES) {
-        chunks.push(chunk.subarray(EMPTY_BYTES, remaining));
+      if (remaining > 0) {
+        chunks.push(chunk.subarray(0, remaining));
       }
       truncated = true;
     },

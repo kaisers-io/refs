@@ -32,7 +32,6 @@ const parseNpmWorkspaces = (workspacesField: unknown): string[] => {
 const END_OF_SECTION = Symbol('end-of-section');
 
 const NO_HEADER_FOUND = -1;
-const FIRST_SECTION_LINE_OFFSET = 1;
 
 // Classifies one line inside the `packages:` section: END_OF_SECTION for a non-list `key:` line,
 // the trimmed pattern for a list item, or `undefined` for a line to skip (blank lines, comments,
@@ -83,7 +82,7 @@ const collectPnpmPatterns = (lines: string[]): string[] => {
   if (headerIndex === NO_HEADER_FOUND) {
     return [];
   }
-  return collectSectionPatterns(lines.slice(headerIndex + FIRST_SECTION_LINE_OFFSET));
+  return collectSectionPatterns(lines.slice(headerIndex + 1));
 };
 
 // Extract name field from package data

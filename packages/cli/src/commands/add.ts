@@ -28,9 +28,6 @@ import { loadFinalProposal } from './add-proposal-io.ts';
 // pipeline in `add-dry-run.ts`, package/proposal shaping in `add-packages.ts`, proposal-file/
 // stdin loading in `add-proposal-io.ts`, and the finalize write path in `add-finalize.ts`.
 
-const NO_ACTIVE_MODES = 0;
-const MAX_ACTIVE_MODES = 1;
-
 type AddOutcome = {
   data: unknown;
   human: string[];
@@ -139,10 +136,10 @@ const assertSingleMode = (opts: AddOptions): void => {
     opts.proposal !== undefined,
     opts.description !== undefined,
   ].filter(Boolean).length;
-  if (activeCount > MAX_ACTIVE_MODES) {
+  if (activeCount > 1) {
     throw usageError(MUTUALLY_EXCLUSIVE_MESSAGE);
   }
-  if (activeCount === NO_ACTIVE_MODES) {
+  if (activeCount === 0) {
     throw usageError(NEEDS_MODE_MESSAGE);
   }
 };

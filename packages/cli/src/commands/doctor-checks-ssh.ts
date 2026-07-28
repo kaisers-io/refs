@@ -6,7 +6,6 @@ import type { Config } from '@kaisers-io/refs-core';
 // url. Only present in doctor's check list at all when at least one such ref exists — a config
 // with no ssh urls reports no ssh-auth line.
 
-const EMPTY_LENGTH = 0;
 const SCP_HOST_PATTERN = /^(?<user>[^/\s@]+)@(?<host>[^:/\s]+):/u;
 const SSH_PROTOCOL = 'ssh:';
 const DEFAULT_SSH_USER = 'git';
@@ -185,7 +184,7 @@ const timeoutResult = (probes: readonly SshProbe[], timeoutMs: number): CheckRes
   const timedOutHosts = probes
     .filter((probe) => probe.outcome === 'timeout')
     .map((probe) => probe.host);
-  if (timedOutHosts.length === EMPTY_LENGTH) {
+  if (timedOutHosts.length === 0) {
     return undefined;
   }
   const seconds = timeoutMs / MS_PER_SECOND;
@@ -200,7 +199,7 @@ const deniedResult = (probes: readonly SshProbe[]): CheckResult | undefined => {
   const deniedHosts = probes
     .filter((probe) => probe.outcome === 'denied')
     .map((probe) => probe.host);
-  if (deniedHosts.length === EMPTY_LENGTH) {
+  if (deniedHosts.length === 0) {
     return undefined;
   }
   return {
@@ -212,7 +211,7 @@ const deniedResult = (probes: readonly SshProbe[]): CheckResult | undefined => {
 
 const connectionWarnResult = (probes: readonly SshProbe[]): CheckResult | undefined => {
   const warnProbes = probes.filter((probe) => probe.outcome === 'connection-warn');
-  if (warnProbes.length === EMPTY_LENGTH) {
+  if (warnProbes.length === 0) {
     return undefined;
   }
   const detail = warnProbes.map((probe) => `${probe.host} (${probe.detail ?? ''})`).join('; ');
@@ -245,7 +244,7 @@ const checkSshAuth = async (
   opts?: CheckSshAuthOptions,
 ): Promise<CheckResult | undefined> => {
   const targets = uniqueSshTargets(config);
-  if (targets.length === EMPTY_LENGTH) {
+  if (targets.length === 0) {
     return undefined;
   }
   const timeoutMs = opts?.timeoutMs ?? SSH_PROBE_TIMEOUT_MS;

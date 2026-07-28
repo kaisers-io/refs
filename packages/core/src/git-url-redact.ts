@@ -17,7 +17,6 @@ const THROUGH_LAST_AT_PATTERN = /^(?<scheme>[a-z][a-z0-9+.-]*:\/\/)?[\s\S]*@/iu;
 const REDACTED_THROUGH_LAST_AT = '$<scheme><redacted>@';
 
 const MAX_REDACTED_LENGTH = 200;
-const TRUNCATION_START = 0;
 const TRUNCATION_SUFFIX = '…';
 
 /** Strips any potential userinfo from `raw` (`scheme://user:pass@host/...` →
@@ -31,7 +30,7 @@ const redactUrl = (raw: string): string => {
   if (withoutCredentials.length <= MAX_REDACTED_LENGTH) {
     return withoutCredentials;
   }
-  return `${withoutCredentials.slice(TRUNCATION_START, MAX_REDACTED_LENGTH)}${TRUNCATION_SUFFIX}`;
+  return `${withoutCredentials.slice(0, MAX_REDACTED_LENGTH)}${TRUNCATION_SUFFIX}`;
 };
 
 export { redactUrl };

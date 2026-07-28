@@ -25,6 +25,7 @@
     "capitalized-comments": ["error", "always", { "ignoreConsecutiveComments": true }],
     "typescript/consistent-type-definitions": ["error", "type"],
     "import/no-named-export": "off",
+    "no-magic-numbers": ["error", { "ignore": [0, 1] }],
     "no-duplicate-imports": ["error", { "allowSeparateTypeImports": true }],
     "import/no-nodejs-modules": "off",
     "import/prefer-default-export": "off",

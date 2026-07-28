@@ -17,7 +17,6 @@ const DURATION = /^(?<amount>[1-9]\d{0,3})(?<unit>[mhd])$/u;
 // eslint-disable-next-line id-length -- keys are the literal duration unit suffixes (m/h/d)
 const MS_PER_UNIT = { d: 86_400_000, h: 3_600_000, m: 60_000 } as const;
 const MIN_PATH_SEGMENTS = 2;
-const EMPTY_PATH_LENGTH = 0;
 const MIN_PORT = 1;
 const MAX_PORT = 65_535;
 
@@ -90,10 +89,7 @@ const zPackagePath = z.string().refine((raw) => {
     return true;
   }
   const segments = raw.split('/');
-  return (
-    segments.length > EMPTY_PATH_LENGTH &&
-    segments.every((seg) => SAFE_SEGMENT.test(seg) && seg !== '.')
-  );
+  return segments.length > 0 && segments.every((seg) => SAFE_SEGMENT.test(seg) && seg !== '.');
 }, 'package path must be "." or a normalized relative path without traversal');
 
 type CloneMode = z.infer<typeof zCloneMode>;

@@ -1,7 +1,5 @@
 import { z } from 'zod';
 
-const MIN_LENGTH = 1;
-
 // Dangerous own-keys that must never be silently accepted or silently dropped from a record.
 const DANGEROUS_RECORD_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
@@ -35,7 +33,7 @@ const PACKAGE_KEY_ISSUE_MESSAGE =
   'package key must be non-empty and not "__proto__", "constructor", or "prototype"';
 
 const isSafePackageKey = (key: string): boolean =>
-  key.length >= MIN_LENGTH && !DANGEROUS_RECORD_KEYS.has(key);
+  key.length > 0 && !DANGEROUS_RECORD_KEYS.has(key);
 
 // Shared guard for any "packages" record (config refs, proposal, final proposal): rejects
 // empty keys and dangerous own-keys (`__proto__`, `constructor`, `prototype`) instead of
@@ -44,7 +42,7 @@ const zSafePackagesRecord = <Value extends z.ZodType>(valueSchema: Value) =>
   withValidatedKeys(
     isSafePackageKey,
     () => PACKAGE_KEY_ISSUE_MESSAGE,
-    z.record(z.string().min(MIN_LENGTH), valueSchema),
+    z.record(z.string().min(1), valueSchema),
   );
 
 export { DANGEROUS_RECORD_KEYS, PACKAGE_KEY_ISSUE_MESSAGE, withValidatedKeys, zSafePackagesRecord };

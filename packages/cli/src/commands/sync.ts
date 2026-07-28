@@ -32,8 +32,6 @@ const buildContext = (home: RefsHome, config: Config, key: RefKey): RefSyncConte
   settings: config.settings,
 });
 
-const NO_REQUESTED = 0;
-
 /** No `refs` argument → every configured ref, sorted for deterministic output (mirrors `list.ts`);
  * otherwise each argument is resolved via `matchRefKey` (full key or unique suffix) — an unmatched
  * or ambiguous query throws immediately (fail fast), before any ref in the batch is touched. */
@@ -42,7 +40,7 @@ const resolveTargets = (
   config: Config,
   requested: readonly string[],
 ): RefSyncContext[] => {
-  if (requested.length === NO_REQUESTED) {
+  if (requested.length === 0) {
     return Object.keys(config.refs)
       .toSorted()
       .map((key) => buildContext(home, config, zRefKey.parse(key)));
@@ -170,8 +168,6 @@ const buildSyncOptions = (refs: string[], localOpts: { staleOnly?: boolean }): S
   staleOnly: localOpts.staleOnly === true,
 });
 
-const NO_FAILURES = 0;
-
 const registerSync = (program: RefsCommand, ctx: CliContext): void => {
   program
     .command('sync')
@@ -192,7 +188,7 @@ const registerSync = (program: RefsCommand, ctx: CliContext): void => {
         // `wrapAction` only sets `process.exitCode` on a THROWN error; a batch with per-ref
         // failures is not one (the envelope itself is still `ok: true`), so this is the one place
         // that needs to set it directly — exactly once, and only in the failure case.
-        if (outcome.failedCount > NO_FAILURES) {
+        if (outcome.failedCount > 0) {
           process.exitCode = EXIT.UNEXPECTED;
         }
       })();

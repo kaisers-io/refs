@@ -29,10 +29,6 @@ import { requireEntry } from './ref-context.ts';
 // four-step precedence (see `routeQuery` below). No match at all → `notFoundError` with the fixed
 // "no ref matches" message every step below ultimately funnels into.
 
-const PREFIX_START = 0;
-const PREFIX_STEP = 1;
-const SINGLE_MATCH = 1;
-
 type ResolvePackage = {
   local_path: string;
   name: string;
@@ -159,7 +155,7 @@ const findPackageByName = (
   if (first === undefined) {
     return undefined;
   }
-  if (matches.length > SINGLE_MATCH) {
+  if (matches.length > 1) {
     throw usageError(
       ambiguousPackageMessage(
         name,
@@ -177,8 +173,8 @@ const findPackageByName = (
 // `@scope/pkg` (a 2-segment prefix) without hard-coding scoped-vs-unscoped segment counts.
 const findPackageByPrefix = (config: Config, query: string): PackageMatch | undefined => {
   const segments = query.split('/');
-  for (let length = segments.length - PREFIX_STEP; length >= PREFIX_STEP; length -= PREFIX_STEP) {
-    const candidate = segments.slice(PREFIX_START, length).join('/');
+  for (let length = segments.length - 1; length >= 1; length -= 1) {
+    const candidate = segments.slice(0, length).join('/');
     const found = findPackageByName(config, candidate);
     if (found !== undefined) {
       return { ...found, name: candidate };

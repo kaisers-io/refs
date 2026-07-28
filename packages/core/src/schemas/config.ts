@@ -10,7 +10,6 @@ import {
 import { z } from 'zod';
 
 const SCHEMA_VERSION = 1;
-const MIN_LENGTH = 1;
 
 const SETTINGS_DEFAULTS = {
   clone_mode: 'blobless',
@@ -62,24 +61,24 @@ const removeDefaults = <Shape extends z.ZodRawShape>(shape: Shape): WithoutDefau
 const zRefSettingsOverride = z.strictObject(removeDefaults(zSettings.shape));
 
 const zPackageEntry = z.strictObject({
-  description: z.string().min(MIN_LENGTH),
+  description: z.string().min(1),
   path: zPackagePath,
   tag_format: zTagFormat.optional(),
 });
 
 const zRefEntry = z.strictObject({
-  default_branch: z.string().min(MIN_LENGTH),
-  description: z.string().min(MIN_LENGTH),
+  default_branch: z.string().min(1),
+  description: z.string().min(1),
   packages: zSafePackagesRecord(zPackageEntry).optional(),
   tag_format: zTagFormat,
-  url: z.string().min(MIN_LENGTH),
+  url: z.string().min(1),
   ...zRefSettingsOverride.shape,
 });
 
 // Meta is looseObject: keys written by future CLI versions must survive a read → write
 // round-trip by an older CLI (forward-compat guarantee).
 const zMeta = z.looseObject({
-  cli_version: z.string().min(MIN_LENGTH),
+  cli_version: z.string().min(1),
   schema_version: z.number().int().positive(),
 });
 

@@ -10,8 +10,6 @@ import { readdir } from 'node:fs/promises';
 // anything else reports as a true orphan with the exact rm -rf <path> a human/agent can run by
 // hand.
 
-const EMPTY_LENGTH = 0;
-
 /** Never throws: `readState` is already self-healing for a corrupt/malformed state file, but an
  * unexpected fs fault (e.g. permission denied) still propagates from it — caught here too, since
  * `doctor` must run every check regardless of what it finds. */
@@ -85,7 +83,7 @@ const checkOrphans = async (home: RefsHome, config: Config, state: State): Promi
   const candidates = segmentsList
     .map((segments) => toCandidate(home, segments))
     .filter((candidate) => !Object.hasOwn(config.refs, candidate.key));
-  if (candidates.length === EMPTY_LENGTH) {
+  if (candidates.length === 0) {
     return { detail: 'no orphaned checkouts under sources/', name: 'orphans', status: 'ok' };
   }
   const now = Date.now();

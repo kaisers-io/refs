@@ -32,7 +32,6 @@ import { refLockName } from './add-helpers.ts';
 // recoverable only by manually finding it on disk, which is strictly worse than a retryable no-op.
 
 const MISSING_CHECKOUT_WARNING = 'checkout was already missing';
-const EMPTY_ENTRIES = 0;
 const NO_WARNINGS: string[] = [];
 
 type RemoveData = {
@@ -106,7 +105,7 @@ const removeEmptyDirectory = async (dir: string): Promise<boolean> => {
   if (entries === undefined) {
     return true;
   }
-  if (entries.length !== EMPTY_ENTRIES) {
+  if (entries.length > 0) {
     return false;
   }
   try {

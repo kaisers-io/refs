@@ -13,7 +13,6 @@ import { validationError } from '@kaisers-io/refs-core';
 // resolution/guards and `add-proposal-io.ts` for proposal-file/stdin loading.
 
 const ROOT_PACKAGE_PATH = '.';
-const NO_ITEMS = 0;
 
 type ProposalPackages = Proposal['packages'];
 type ProposalPackageEntry = ProposalPackages[string];
@@ -34,7 +33,7 @@ const buildProposalPackages = (
   npmDirectory: string | undefined,
   npmPkgName: string | undefined,
 ): Record<string, ProposalPackageEntry> => {
-  if (detected.length > NO_ITEMS) {
+  if (detected.length > 0) {
     return Object.fromEntries(detected.map((pkg) => [pkg.name, toProposalEntry(pkg)]));
   }
   if (npmPkgName !== undefined) {
@@ -66,7 +65,7 @@ const buildFinalPackages = (
   proposalPackages: Record<string, ProposalPackageEntry>,
 ): Record<string, PackageEntry> | undefined => {
   const entries = Object.entries(proposalPackages);
-  if (entries.length === NO_ITEMS) {
+  if (entries.length === 0) {
     return undefined;
   }
   return Object.fromEntries(entries.map(([name, pkg]) => [name, toFinalPackageEntry(pkg)]));
@@ -99,7 +98,7 @@ const packagesMissingDescription = (
  * before `finalizeRef` ever runs, so a rejection here writes nothing to config or state. */
 const requireAllDescribed = (proposalPackages: Record<string, ProposalPackageEntry>): void => {
   const missing = packagesMissingDescription(proposalPackages);
-  if (missing.length === NO_ITEMS) {
+  if (missing.length === 0) {
     return;
   }
   throw validationError(
@@ -115,7 +114,7 @@ const requireAllDescribed = (proposalPackages: Record<string, ProposalPackageEnt
 const finalProposalPackages = (
   packages: Record<string, PackageEntry>,
 ): Record<string, PackageEntry> | undefined => {
-  if (Object.keys(packages).length === NO_ITEMS) {
+  if (Object.keys(packages).length === 0) {
     return undefined;
   }
   return packages;

@@ -27,18 +27,16 @@ type BuildSyncResultOpts = {
 const RESTORED_WARNING =
   'checkout had local changes (managed checkouts are read-only) — discarded and restored to the remote state';
 
-const NO_WARNINGS = 0;
 const EXCERPT_MAX_LENGTH = 200;
-const FIRST_LINE_INDEX = 0;
 
 /** Best-effort one-line summary of a failed command's output, for a `SyncResult` warning. */
 const excerpt = (result: { stdout: string; stderr: string; exitCode: number }): string => {
   const detail = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
-  const firstLine = detail.split('\n')[FIRST_LINE_INDEX] ?? detail;
+  const firstLine = detail.split('\n')[0] ?? detail;
   if (firstLine.length <= EXCERPT_MAX_LENGTH) {
     return firstLine;
   }
-  return `${firstLine.slice(FIRST_LINE_INDEX, EXCERPT_MAX_LENGTH)}…`;
+  return `${firstLine.slice(0, EXCERPT_MAX_LENGTH)}…`;
 };
 
 const computeStatus = (shas: SyncResultShas, dirty: boolean): SyncStatus => {
@@ -59,7 +57,7 @@ const computeWarning = (dirty: boolean, setHeadWarning?: string): string | undef
   if (setHeadWarning !== undefined) {
     warnings.push(setHeadWarning);
   }
-  if (warnings.length === NO_WARNINGS) {
+  if (warnings.length === 0) {
     return undefined;
   }
   return warnings.join(' | ');

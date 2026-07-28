@@ -11,7 +11,6 @@ import { join } from 'node:path';
 // reconcile two independently-derived checkout lists.
 
 const SUCCESS_EXIT_CODE = 0;
-const EMPTY_LENGTH = 0;
 
 type ExistingCheckout = {
   dest: string;
@@ -68,7 +67,7 @@ const buildHooksGuardResult = (opts: {
   checkoutCount: number;
   missingHooks: readonly string[];
 }): CheckResult => {
-  if (opts.missingHooks.length > EMPTY_LENGTH) {
+  if (opts.missingHooks.length > 0) {
     const names = opts.missingHooks.map((name) => `hooks/${name}`).join(', ');
     return {
       detail: `${names} missing or not executable — run: refs init`,
@@ -76,7 +75,7 @@ const buildHooksGuardResult = (opts: {
       status: 'fail',
     };
   }
-  if (opts.badKeys.length > EMPTY_LENGTH) {
+  if (opts.badKeys.length > 0) {
     return {
       detail: `core.hooksPath not set for: ${opts.badKeys.join(', ')} — run: refs init`,
       name: 'hooks-guard',
@@ -132,14 +131,14 @@ const checkoutStatusFor = async (
 
 const buildDirtyCheckoutsResult = (statuses: readonly CheckoutStatus[]): CheckResult => {
   const broken = statuses.filter((status) => status.broken);
-  if (broken.length > EMPTY_LENGTH) {
+  if (broken.length > 0) {
     const detail = broken
       .map((status) => `${status.key}: git status failed — ${status.detail}`)
       .join('; ');
     return { detail, name: 'dirty-checkouts', status: 'fail' };
   }
   const dirtyKeys = statuses.filter((status) => status.dirty).map((status) => status.key);
-  if (dirtyKeys.length === EMPTY_LENGTH) {
+  if (dirtyKeys.length === 0) {
     return { detail: 'no local changes in any checkout', name: 'dirty-checkouts', status: 'ok' };
   }
   return {
