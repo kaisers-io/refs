@@ -3,8 +3,6 @@
 // queues the waiter (FIFO, via `Promise.withResolvers` rather than a `new Promise` executor);
 // `release` frees the slot and wakes the next waiter, if any.
 
-const SLOT_STEP = 1;
-
 type Semaphore = {
   acquire: () => Promise<void>;
   release: () => void;
@@ -14,7 +12,7 @@ const createSemaphore = (limit: number): Semaphore => {
   let active = 0;
   const queue: (() => void)[] = [];
   const release = (): void => {
-    active -= SLOT_STEP;
+    active -= 1;
     const wake = queue.shift();
     if (wake !== undefined) {
       wake();
@@ -22,12 +20,12 @@ const createSemaphore = (limit: number): Semaphore => {
   };
   const acquire = (): Promise<void> => {
     if (active < limit) {
-      active += SLOT_STEP;
+      active += 1;
       return Promise.resolve();
     }
     const { promise, resolve } = Promise.withResolvers<void>();
     queue.push(() => {
-      active += SLOT_STEP;
+      active += 1;
       resolve();
     });
     return promise;

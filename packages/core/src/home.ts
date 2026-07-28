@@ -4,7 +4,6 @@ import type { RefKey } from './schemas/primitives.ts';
 import { homedir } from 'node:os';
 import { validationError } from './errors.ts';
 
-const NO_MISSING_SEGMENTS = 0;
 const PARENT_DIR_SEGMENT = '..';
 
 type RefsHome = {
@@ -67,7 +66,7 @@ const realpathDeepestExisting = (target: string): string => {
   const { ancestor, missing } = findExistingAncestor(target);
   // eslint-disable-next-line node/no-sync -- containment guard must resolve synchronously before any destructive fs operation proceeds
   const resolved = realpathSync(ancestor);
-  if (missing.length === NO_MISSING_SEGMENTS) {
+  if (missing.length === 0) {
     return resolved;
   }
   return join(resolved, ...missing);

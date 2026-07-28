@@ -82,7 +82,6 @@ const unwrapEnvelope = (value: unknown): unknown => {
   throw validationError(NO_USABLE_DATA_MESSAGE);
 };
 
-const NO_ITEMS = 0;
 const TOP_LEVEL_PATH = '';
 
 type ZodIssue = z.core.$ZodIssue;
@@ -91,7 +90,7 @@ type UnrecognizedKeysIssue = Extract<ZodIssue, { code: 'unrecognized_keys' }>;
 const isUnrecognizedKeysIssue = (issue: ZodIssue): issue is UnrecognizedKeysIssue =>
   issue.code === 'unrecognized_keys';
 
-const hasEmptyPath = (issue: ZodIssue): boolean => issue.path.length === NO_ITEMS;
+const hasEmptyPath = (issue: ZodIssue): boolean => issue.path.length === 0;
 
 /** One named line per offending location — the repo's established "list ALL offending keys"
  * precedent (see `resolve.ts`'s multi-ref ambiguity message). A top-level issue (empty dot-path)
@@ -151,7 +150,7 @@ const formatProposalError = (error: z.core.$ZodError<FinalProposal>): string => 
   );
   const rest = error.issues.filter((issue) => !isUnrecognizedKeysIssue(issue));
   const restEmptyPath = rest.filter((issue) => hasEmptyPath(issue));
-  if (unrecognized.length === NO_ITEMS && restEmptyPath.length === NO_ITEMS) {
+  if (unrecognized.length === 0 && restEmptyPath.length === 0) {
     return z.prettifyError(error);
   }
   const restPathed = rest.filter((issue) => !hasEmptyPath(issue));
@@ -159,7 +158,7 @@ const formatProposalError = (error: z.core.$ZodError<FinalProposal>): string => 
     ...unrecognizedKeysLines(unrecognized),
     ...restEmptyPath.map((issue) => emptyPathLine(issue)),
   ];
-  if (restPathed.length > NO_ITEMS) {
+  if (restPathed.length > 0) {
     lines.push(z.prettifyError({ issues: restPathed }));
   }
   return lines.join('\n');

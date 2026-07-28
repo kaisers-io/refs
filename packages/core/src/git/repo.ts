@@ -35,7 +35,6 @@ type SyncOpts = {
 type SyncResult = BuiltSyncResult;
 
 const DEFAULT_TAG_LIMIT = 20;
-const TAG_LIST_START = 0;
 const SUCCESS_EXIT_CODE = 0;
 const HOOK_MODE = 0o755;
 
@@ -246,7 +245,7 @@ const listTags = async (
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line !== '');
-  return tags.slice(TAG_LIST_START, limit);
+  return tags.slice(0, limit);
 };
 
 // `show-ref --verify` checks the LITERAL ref name, unlike `rev-parse --verify` — which also

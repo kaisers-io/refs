@@ -39,9 +39,6 @@ type ListItem = {
   stale: boolean;
 };
 
-const EMPTY_LENGTH = 0;
-const SINGLE_MATCH = 1;
-
 type ListArgs = {
   config: Config;
   home: RefsHome;
@@ -97,7 +94,7 @@ const suffixesFor = (item: ListItem): string => {
   if (item.missing) {
     suffixes.push('[missing]');
   }
-  if (suffixes.length === EMPTY_LENGTH) {
+  if (suffixes.length === 0) {
     return '';
   }
   return ` ${suffixes.join(' ')}`;
@@ -106,7 +103,7 @@ const suffixesFor = (item: ListItem): string => {
 const NO_REFS_LINE = 'no refs configured — run: refs add <source>';
 
 const listHuman = (items: readonly ListItem[]): string[] => {
-  if (items.length === EMPTY_LENGTH) {
+  if (items.length === 0) {
     return [NO_REFS_LINE];
   }
   return items.map((item) => `${item.key}  ${item.description}${suffixesFor(item)}`);
@@ -144,7 +141,7 @@ const matchRefKey = (config: Config, query: string): RefKey => {
   if (first === undefined) {
     throw notFoundError(`no ref matches '${query}'`);
   }
-  if (matches.length > SINGLE_MATCH) {
+  if (matches.length > 1) {
     throw usageError(`'${query}' matches more than one ref: ${matches.join(', ')}`);
   }
   return zRefKey.parse(first);

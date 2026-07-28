@@ -20,7 +20,6 @@ const BARE_GLOB = '*';
 const CURRENT_DIR_SEGMENT = '.';
 const PARENT_DIR_SEGMENT = '..';
 const PATH_SEGMENT_SEPARATOR_PATTERN = /[/\\]/u;
-const ZERO = 0;
 const MAX_WILDCARDS_PER_PATTERN = 1;
 
 // Reject any workspace pattern that is absolute or contains `.`/`..` path segments before
@@ -124,7 +123,7 @@ const expandGlobPattern = async (repoDir: string, pattern: string): Promise<stri
   }
 
   if (pattern.endsWith(GLOB_SUFFIX)) {
-    const baseDir = pattern.slice(ZERO, -GLOB_SUFFIX.length);
+    const baseDir = pattern.slice(0, -GLOB_SUFFIX.length);
     return expandGlobSingleLevel(repoDir, baseDir);
   }
 
@@ -274,7 +273,7 @@ const detectWorkspacePackages = async (repoDir: string): Promise<WorkspacePackag
 
   const patterns = new Set<string>([...npmPatterns, ...pnpmPatternsSet]);
 
-  if (patterns.size === ZERO) {
+  if (patterns.size === 0) {
     return [];
   }
 

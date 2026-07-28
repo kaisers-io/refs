@@ -18,7 +18,6 @@ import { requireEntry } from './ref-context.ts';
 // `SAMPLE_TAG_LIMIT` recent tags (only when the checkout actually exists).
 
 const SAMPLE_TAG_LIMIT = 5;
-const EMPTY_LENGTH = 0;
 const EMPTY_STATE: RefState = {};
 
 type ShowData = RefEntry & {
@@ -96,7 +95,7 @@ const showHuman = (data: ShowData): string[] => {
     `url: ${data.url}`,
     `local_path: ${data.local_path}`,
   ];
-  if (data.sample_tags.length > EMPTY_LENGTH) {
+  if (data.sample_tags.length > 0) {
     lines.push(`tags: ${data.sample_tags.join(', ')}`);
   }
   return lines;

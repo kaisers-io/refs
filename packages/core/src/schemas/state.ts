@@ -2,8 +2,6 @@ import { DANGEROUS_RECORD_KEYS, withValidatedKeys } from './record-keys.ts';
 import { z } from 'zod';
 import { zCloneMode } from './primitives.ts';
 
-const MIN_LENGTH = 1;
-
 const zRefState = z.strictObject({
   effective_clone_mode: zCloneMode.optional(),
   head_sha: z
@@ -26,7 +24,7 @@ const zStateRefsRecord = z.record(z.string(), zRefState);
 // key instead of rejecting it (see the `withValidatedKeys` comment in record-keys.ts), which
 // would make `safeParse` report success with the ref silently gone.
 const zStateRefs = withValidatedKeys(
-  (key) => key.length >= MIN_LENGTH && !DANGEROUS_RECORD_KEYS.has(key),
+  (key) => key.length > 0 && !DANGEROUS_RECORD_KEYS.has(key),
   () => STATE_KEY_ISSUE_MESSAGE,
   zStateRefsRecord,
 );
