@@ -7,9 +7,10 @@ import { join } from 'node:path';
 
 // The four checks that need neither a per-checkout `Runner` loop nor the `sources/` directory
 // walk: `git`/`node` are environment probes, `config` wraps `readConfig`'s own typed errors,
-// `skill` is a plain fs existence check. Split out of `doctor.ts` purely to keep that file under
-// the repo's 300-line oxlint cap; `hooks-guard`/`dirty-checkouts` (checkout iteration) and
-// `orphans`/`ssh-auth` (heavier per-check logic) live in their own sibling modules.
+// `skill` is a plain fs existence check.
+// Sibling modules own the rest: doctor-checks-checkouts.ts (per-checkout git iteration),
+// doctor-checks-orphans.ts (sources/ directory walk), doctor-checks-ssh.ts (ssh auth probing);
+// doctor.ts only orders and collects them.
 
 const SUCCESS_EXIT_CODE = 0;
 
@@ -32,8 +33,8 @@ type ParsedNodeVersion = {
 };
 
 // Parses only the major/minor out of `process.version` (e.g. `v24.12.0`) — deliberately without a
-// `semver` dependency, per the task brief: the supported range (`>=24.12`, open-ended) only ever
-// needs major/minor comparison, never patch or prerelease handling.
+// `semver` dependency: the supported range (`>=24.12`, open-ended) only ever needs major/minor
+// comparison, never patch or prerelease handling.
 const parseNodeVersion = (version: string): ParsedNodeVersion | undefined => {
   const match = NODE_VERSION_PATTERN.exec(version);
   const majorText = match?.groups?.['major'];
@@ -122,9 +123,10 @@ const CLAUDE_SKILL_SEGMENTS = ['.claude', 'skills', 'refs', 'SKILL.md'] as const
 const CODEX_SKILL_SEGMENTS = ['.codex', 'skills', 'refs', 'SKILL.md'] as const;
 const SKILL_INSTALL_HINT = 'npx skills add kaisers-io/refs';
 
-/** `home` is `ctx.env['HOME']`, never the real process env directly (per the task brief) — an
- * unset `HOME` (e.g. a test's bare `testContext()`) yields no candidates at all, which reports as
- * "not found" below rather than throwing on a `join()` with `undefined`. */
+/** `home` is `ctx.env['HOME']`, never the real process env directly (per `context.ts`'s
+ * injected-seam invariant) — an unset `HOME` (e.g. a test's bare `testContext()`) yields no
+ * candidates at all, which reports as "not found" below rather than throwing on a `join()` with
+ * `undefined`. */
 const skillCandidatePaths = (home: string | undefined): string[] => {
   if (home === undefined) {
     return [];

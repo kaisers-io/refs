@@ -8,7 +8,7 @@ import { mkdir } from 'node:fs/promises';
 import pkg from '../../package.json' with { type: 'json' };
 
 // Printed verbatim in human mode and mirrored into `data.skill_hint` in json mode — this string
-// Is only ever printed, never executed: `refs init` must stay free of anything network-facing
+// is only ever printed, never executed: `refs init` must stay free of anything network-facing
 // (spec §8), so the actual `npx skills add` install step is left for the human/agent to run.
 const SKILL_HINT =
   'Install the agent skill: npx skills add kaisers-io/refs   ' +
@@ -21,10 +21,10 @@ type InitData = {
 };
 
 // Every home subdirectory `init` guarantees exists on return. Init's contract is that all four
-// Exist unconditionally when it resolves — including on a `'noop'` run that touches neither
+// exist unconditionally when it resolves — including on a `'noop'` run that touches neither
 // `migrateConfig` nor `installHooksGuard` — so they are created up front here rather than relying
-// On the incidental mkdir-recursive calls buried inside those two functions' own atomic-write
-// Helpers (`withLock` itself also mkdir's `locksDir` recursively, independent of this).
+// on the incidental mkdir-recursive calls buried inside those two functions' own atomic-write
+// helpers (`withLock` itself also mkdir's `locksDir` recursively, independent of this).
 const ensureHomeDirs = async (home: RefsHome): Promise<void> => {
   await mkdir(home.root, { recursive: true });
   await mkdir(home.sourcesDir, { recursive: true });
@@ -33,7 +33,7 @@ const ensureHomeDirs = async (home: RefsHome): Promise<void> => {
 };
 
 // Pure command body: no `--json`/`--verbose` of its own (only the global flags apply to `init`),
-// So — unlike a command with its own options — there is no `opts` to thread through here.
+// so — unlike a command with its own options — there is no `opts` to thread through here.
 const runInit = async (ctx: CliContext): Promise<InitData> => {
   const home = resolveHome(ctx.env);
   await ensureHomeDirs(home);

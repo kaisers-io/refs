@@ -1,13 +1,7 @@
 import type { RefEntry, RefKey } from '@kaisers-io/refs-core';
-import {
-  checkoutPath,
-  notFoundError,
-  readConfig,
-  resolveHome,
-  resolveTag,
-} from '@kaisers-io/refs-core';
+import { checkoutPath, readConfig, resolveHome, resolveTag } from '@kaisers-io/refs-core';
 import { emit, wrapAction } from '../output.ts';
-import { requireCheckout, requireEntry } from './ref-context.ts';
+import { requireCheckout, requireEntry, requirePackage } from './ref-context.ts';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
 import { matchRefKey } from './list.ts';
@@ -45,11 +39,7 @@ const formatFor = (entry: RefEntry, key: RefKey, packageName: string | undefined
   if (packageName === undefined) {
     return entry.tag_format;
   }
-  const pkg = entry.packages?.[packageName];
-  if (pkg === undefined) {
-    throw notFoundError(`no package '${packageName}' registered on ref '${key}'`);
-  }
-  return pkg.tag_format ?? entry.tag_format;
+  return requirePackage(entry, key, packageName).tag_format ?? entry.tag_format;
 };
 
 const runTag = async (ctx: CliContext, args: TagArgs): Promise<TagData> => {

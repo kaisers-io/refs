@@ -219,7 +219,7 @@ const routeQuery = (config: Config, query: string, options: RouteOptions): Route
 
 const packageDataFor = (match: RouteMatch, dest: string): ResolvePackage | null => {
   if (match.packageMatch === undefined) {
-    // eslint-disable-next-line unicorn/no-null — cross-process JSON contract requires null, not undefined
+    // eslint-disable-next-line unicorn/no-null -- cross-process JSON contract requires null, not undefined
     return null;
   }
   const { entry, name } = match.packageMatch;
@@ -243,8 +243,7 @@ const runResolve = async (ctx: CliContext, query: string): Promise<ResolveData> 
   };
 };
 
-// Labeled-field convention mirroring `show.ts`'s `showHuman` (`local_path: ...`) rather than the
-// terser "key + bare path" pairing this command used before.
+// Labeled-field convention mirroring show.ts's showHuman ('local_path: ...').
 const resolveHuman = (data: ResolveData): string[] => {
   const lines = [data.key, `local_path: ${data.local_path}`];
   if (data.package !== null) {

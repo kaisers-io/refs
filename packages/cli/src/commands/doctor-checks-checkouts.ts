@@ -6,10 +6,9 @@ import type { CliContext } from '../context.ts';
 import { join } from 'node:path';
 
 // `hooks-guard` and `dirty-checkouts` — the two checks that iterate configured refs whose checkout
-// currently exists, each running one `git` command per checkout via the injected `Runner`. Split
-// out of `doctor.ts` purely to keep that file under the repo's 300-line oxlint cap; the shared
-// `existingCheckouts` filter is exported so `doctor.ts` never has to recompute or reconcile two
-// independently-derived checkout lists.
+// currently exists, each running one `git` command per checkout via the injected `Runner`.
+// The shared existingCheckouts filter is exported so doctor.ts never has to recompute or
+// reconcile two independently-derived checkout lists.
 
 const SUCCESS_EXIT_CODE = 0;
 const EMPTY_LENGTH = 0;
@@ -29,9 +28,9 @@ const existingCheckouts = (home: RefsHome, config: Config): ExistingCheckout[] =
 
 const PRE_COMMIT_HOOK_NAME = 'pre-commit';
 const PRE_PUSH_HOOK_NAME = 'pre-push';
-// Both are installed together by core's `installHooksGuard` (§4's read-only guard covers commits
-// AND pushes) — Task 15's own tests assert both exist, so this check must fail if either one is
-// missing or not executable, not just `pre-commit`.
+// Both hooks are installed together by core's installHooksGuard (the read-only guard covers
+// commits AND pushes). The guard is only intact when BOTH are present and executable, so this
+// check fails if either one is missing — never just pre-commit.
 const GUARD_HOOK_NAMES = [PRE_COMMIT_HOOK_NAME, PRE_PUSH_HOOK_NAME] as const;
 
 const hookExecutable = async (home: RefsHome, name: string): Promise<boolean> => {

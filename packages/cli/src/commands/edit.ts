@@ -29,14 +29,11 @@ import { usageError } from '@kaisers-io/refs-core';
 // works via a longer suffix (`acme/settings`) or its full key, both of which are never equal to
 // the bare word 'settings' and so never collide with the reserved dispatch check.
 //
-// That said, this IS a real silent-wrong-target risk: `clone_mode`/`sync_ttl`/`git_transport`
-// exist on both `zSettings` and `zRefSettingsOverride`, so `refs edit settings sync_ttl 2h` looks
-// exactly as valid whether or not the user actually meant the ref suffixed `.../settings` — nothing
-// about the command's shape signals which document got mutated. Rather than change the
-// deterministic dispatch (settings always wins — see above), `edit-settings.ts`'s
-// `collisionWarnings` fails LOUD-ENOUGH: it re-probes `matchRefKey` for the reserved suffix and, if
-// some ref would have matched, appends a `note:` warning to the JSON envelope naming that ref (or,
-// for an ambiguous suffix match, naming the situation) so the mistake is visible instead of silent.
+// That said, this IS a real silent-wrong-target risk: `refs edit settings sync_ttl 2h` looks
+// exactly as valid whether or not the user actually meant the ref suffixed `.../settings`, and
+// nothing about the command's shape signals which document got mutated;
+// edit-settings.ts#collisionWarnings makes that case loud by appending a 'note:' warning naming
+// the shadowed ref.
 
 type EditData = {
   field: string;

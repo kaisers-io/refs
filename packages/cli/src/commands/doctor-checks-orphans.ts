@@ -4,11 +4,11 @@ import type { CheckResult } from './doctor-types.ts';
 import { join } from 'node:path';
 import { readdir } from 'node:fs/promises';
 
-// `orphans` — a checkout directory under `sources/` that is not (or no longer) a configured ref.
-// Split out of `doctor.ts` purely to keep that file under the repo's 300-line oxlint cap. Never
-// deletes anything (YAGNI per the task brief): a fresh `pending_proposal_at` (a dry-run clone still
-// awaiting `refs add --proposal`/`--description`) reports as `pending add`; anything else reports
-// as a true orphan with the exact `rm -rf <path>` a human/agent can run by hand.
+// The orphans check: a checkout directory under sources/ that is not (or no longer) a configured
+// ref. Deliberately read-only — it never deletes anything: a fresh pending_proposal_at (a
+// dry-run clone still awaiting refs add --proposal/--description) reports as 'pending add';
+// anything else reports as a true orphan with the exact rm -rf <path> a human/agent can run by
+// hand.
 
 const EMPTY_LENGTH = 0;
 
@@ -38,8 +38,7 @@ const listSubdirNames = async (dir: string): Promise<string[]> => {
 /** Recursively walks `dir`, returning the segment path (relative to `sources/`) of every git
  * checkout found. A directory containing `.git` ends that branch of the walk rather than being
  * descended into further — a checkout's own internal folders are never mistaken for nested
- * checkouts. Recursive (mirroring `remove.ts#pruneEmptyParents`'s "recursive rather than an
- * imperative loop" discipline) so no single function's statement count grows with tree depth. */
+ * checkouts. Recursive — the natural shape for the tree walk. */
 const findCheckoutSegments = async (
   dir: string,
   segments: readonly string[],
