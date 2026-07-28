@@ -7,7 +7,7 @@ import {
   readState,
   resolveHome,
 } from '@kaisers-io/refs-core';
-import { emit, wrapAction } from '../output.ts';
+import { cliOptsOf, emit, errorMessageOf, warningsFor, wrapAction } from '../output.ts';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
 import { matchRefKey } from './list.ts';
@@ -27,13 +27,6 @@ type ShowData = RefEntry & {
   state: RefState;
 };
 
-const errorDetail = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-};
-
 type SampleTagsResult = {
   tags: string[];
   warning?: string;
@@ -51,24 +44,13 @@ const sampleTagsFor = async (ctx: CliContext, dest: string): Promise<SampleTagsR
     const tags = await listTags(ctx.runner, dest, SAMPLE_TAG_LIMIT);
     return { tags };
   } catch (error) {
-    return { tags: [], warning: `could not list tags: ${errorDetail(error)}` };
+    return { tags: [], warning: `could not list tags: ${errorMessageOf(error)}` };
   }
 };
 
 type ShowResult = {
   data: ShowData;
   warnings: string[];
-};
-
-const NO_WARNINGS: string[] = [];
-
-// Kept out of `runShow` only to avoid a ternary there (repo style forbids `no-ternary`), mirroring
-// `output.ts`'s `toLines`.
-const warningsFor = (warning: string | undefined): string[] => {
-  if (warning === undefined) {
-    return NO_WARNINGS;
-  }
-  return [warning];
 };
 
 const runShow = async (ctx: CliContext, query: string): Promise<ShowResult> => {
@@ -107,8 +89,7 @@ const registerShow = (program: RefsCommand, ctx: CliContext): void => {
     .description('Show a configured ref: full entry, state, local path, and sample tags.')
     .argument('<ref>', 'full ref key or a unique suffix, e.g. zod')
     .action((ref, _localOpts, command) => {
-      const globals = command.optsWithGlobals();
-      const opts = { json: globals.json === true, verbose: globals.verbose === true };
+      const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
         const { data, warnings } = await runShow(ctx, ref);
         emit(ctx, opts, showHuman(data), data, warnings);

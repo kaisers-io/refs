@@ -9,7 +9,7 @@ import type {
 import { validationError } from '@kaisers-io/refs-core';
 
 // `packages`/`tag_format` shaping between the proposal shape (partial, machine-detected) and the
-// config shape (full `zPackageEntry`s, `zRefEntry`). See `add-helpers.ts` for source
+// config shape (full `zPackageEntry`s, `zRefEntry`). See `add-source.ts` for source
 // resolution/guards and `add-proposal-io.ts` for proposal-file/stdin loading.
 
 const ROOT_PACKAGE_PATH = '.';

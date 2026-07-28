@@ -1,4 +1,4 @@
-import { emit, wrapAction } from '../output.ts';
+import { cliOptsOf, emit, wrapAction } from '../output.ts';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
 import { runEditRef } from './edit-ref.ts';
@@ -118,8 +118,7 @@ const registerEdit = (program: RefsCommand, ctx: CliContext): void => {
     .option('--package <name>', "edit this package's field instead of a top-level ref field")
     // eslint-disable-next-line max-params -- fixed 5-arg shape commander gives a 3-argument command
     .action((first, second, value, localOpts, command) => {
-      const globals = command.optsWithGlobals();
-      const opts = { json: globals.json === true, verbose: globals.verbose === true };
+      const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
         const { data, warnings } = await runEdit(ctx, {
           first,

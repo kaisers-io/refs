@@ -16,7 +16,7 @@ import {
 } from '../helpers/add-support.ts';
 import { access } from 'node:fs/promises';
 import { createFixtureRepo } from '../helpers/fixture-repo.ts';
-import { resolveAddSource } from '../../src/commands/add-helpers.ts';
+import { resolveAddSource } from '../../src/commands/add-source.ts';
 import { run } from '../../src/main.ts';
 import { testContext } from '../helpers/context.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`

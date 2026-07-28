@@ -16,7 +16,7 @@ import {
   withTempHome,
 } from '../helpers/add-support.ts';
 import { createFixtureRepo } from '../helpers/fixture-repo.ts';
-import { resolveAddSource } from '../../src/commands/add-helpers.ts';
+import { resolveAddSource } from '../../src/commands/add-source.ts';
 import { rm } from 'node:fs/promises';
 import { run } from '../../src/main.ts';
 

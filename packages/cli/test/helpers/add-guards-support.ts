@@ -4,12 +4,12 @@ import { SpawnRunner, checkoutPath, readConfig, resolveHome } from '@kaisers-io/
 import { access, mkdir, mkdtemp, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { initHome, realContextFor, runAddDryRunJson } from './add-support.ts';
 import type { CliContext } from '../../src/context.ts';
-import type { ResolvedSource } from '../../src/commands/add-helpers.ts';
+import type { ResolvedSource } from '../../src/commands/add-source.ts';
 import { createFixtureRepo } from './fixture-repo.ts';
 import { expect } from 'vitest';
 import { join } from 'node:path';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
-import { resolveAddSource } from '../../src/commands/add-helpers.ts';
+import { resolveAddSource } from '../../src/commands/add-source.ts';
 import { tmpdir } from 'node:os';
 
 // Scaffolding specific to `add-guards.test.ts`'s review-round regression suite (checkout-identity
