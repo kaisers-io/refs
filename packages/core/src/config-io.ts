@@ -13,14 +13,10 @@ type JsonRecord = Record<string, unknown>;
 const isPlainObject = (value: unknown): value is JsonRecord =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-// Returns `value` if it is a plain object, otherwise `fallback` — used in place of a ternary
-// (house style avoids `no-ternary`) wherever a raw TOML field may be absent/malformed.
-const asRecordOr = (value: unknown, fallback: JsonRecord): JsonRecord => {
-  if (isPlainObject(value)) {
-    return value;
-  }
-  return fallback;
-};
+// Returns `value` if it is a plain object, otherwise `fallback` — for raw TOML fields that may
+// be absent or malformed.
+const asRecordOr = (value: unknown, fallback: JsonRecord): JsonRecord =>
+  isPlainObject(value) ? value : fallback;
 
 const DEFAULT_CONFIG_TOML = `# refs configuration
 #
