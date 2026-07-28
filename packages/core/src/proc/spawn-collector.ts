@@ -1,5 +1,5 @@
-// Byte-capped stream collection shared by `spawn-runner`'s stdout/stderr handling — split out of
-// `runner.ts` purely to keep that file under the repo's 300-line oxlint cap.
+// Byte-capped collection of a child process's stdout/stderr streams, used by `SpawnRunner`
+// (runner.ts). Buffers raw chunks up to a hard cap so a runaway child can never OOM the CLI.
 
 const BYTES_PER_KIB = 1024;
 const KIB_PER_MIB = 1024;
@@ -55,11 +55,9 @@ const createCollector = (): StreamCollector => {
 
 // Appends `note` to `text` rather than replacing it — a child's own partial output (if it produced
 // any before being killed/erroring/truncating) stays visible alongside the reason it's incomplete.
-// ONE trailing newline — LF or CRLF, the same terminators the previous runner stripped — is
-// removed from `text` first (only here, at note-append time; `RunResult` output is otherwise
-// never trimmed), so `"partial\n"` joins as `"partial\n<note>"` rather than
-// stacking a blank line (`"partial\n\n<note>"`) — matching what the previous, final-newline-
-// stripping runner produced.
+// ONE trailing newline — LF or CRLF — is removed from `text` first (only here, at
+// note-append time; `RunResult` output is otherwise never trimmed), so `"partial\n"` joins as
+// `"partial\n<note>"` rather than stacking a blank line (`"partial\n\n<note>"`).
 const appendNote = (text: string, note: string): string => {
   const base = text.replace(/\r?\n$/u, '');
   return [base, note].filter((part) => part !== '').join('\n');

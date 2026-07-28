@@ -1,5 +1,5 @@
-// Pure, `Runner`-independent helpers for assembling `syncRef`'s return value — split out of
-// `git/repo.ts` purely to keep that file under this repo's max-lines-per-file limit.
+// Pure, `Runner`-independent assembly of `syncRef`'s (git/repo.ts) return value: status
+// classification (fresh/updated/restored) and warning aggregation.
 
 type SyncResultShas = {
   oldSha: string;
@@ -23,7 +23,7 @@ type BuildSyncResultOpts = {
   setHeadWarning?: string;
 };
 
-// A restore discards local changes even though the sync succeeded — reported per §4 step 4.
+// A restore discards local changes even though the sync succeeded — surfaced as a warning.
 const RESTORED_WARNING =
   'checkout had local changes (managed checkouts are read-only) — discarded and restored to the remote state';
 
@@ -66,8 +66,8 @@ const computeWarning = (dirty: boolean, setHeadWarning?: string): string | undef
 };
 
 // Assembles `syncRef`'s return value: dirty → 'restored' + warning, else 'fresh'/'updated' by HEAD
-// Movement. A failed `origin/HEAD` refresh (`setHeadWarning`) is merged alongside any restore
-// Warning rather than replacing it — both can legitimately fire in the same sync.
+// movement. A failed `origin/HEAD` refresh (`setHeadWarning`) is merged alongside any restore
+// warning rather than replacing it — both can legitimately fire in the same sync.
 const buildSyncResult = (opts: BuildSyncResultOpts): BuiltSyncResult => {
   const { branchRenamedTo, dirty, setHeadWarning, shas } = opts;
   const result: BuiltSyncResult = { ...shas, status: computeStatus(shas, dirty) };
@@ -82,7 +82,7 @@ const buildSyncResult = (opts: BuildSyncResultOpts): BuiltSyncResult => {
 };
 
 // Reshapes `resolveSyncBranch`'s result into `buildSyncResult`'s input — kept as a separate step
-// So `syncRef` (repo.ts) doesn't have to: `exactOptionalPropertyTypes` forbids assigning
+// so `syncRef` (repo.ts) doesn't have to: `exactOptionalPropertyTypes` forbids assigning
 // `undefined` into an object literal's optional slots, hence the `if`s below.
 const toBuildSyncResultOpts = (
   syncBranch: { branchRenamedTo?: string; warning?: string },
@@ -100,4 +100,4 @@ const toBuildSyncResultOpts = (
 };
 
 export { buildSyncResult, excerpt, toBuildSyncResultOpts };
-export type { BuiltSyncResult };
+export type { BuiltSyncResult, SyncStatus };
