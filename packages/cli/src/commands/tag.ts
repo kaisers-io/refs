@@ -10,7 +10,7 @@ import { matchRefKey } from './list.ts';
 // git tag it corresponds to, by rendering the applicable `tag_format` and verifying the rendered
 // tag exists in the ref's checkout (core's `resolveTag`, itself built on `tagExists`/`renderTag`).
 // `--package <name>` targets one of the ref's registered packages instead of the ref itself; its
-// `tag_format` inherits the ref's own when the package does not override one (spec §3):
+// `tag_format` inherits the ref's own when the package does not override one:
 // `package.tag_format ?? ref.tag_format`. An unresolvable `--package` name is a `notFoundError`,
 // exactly like an unresolvable `<ref>` is (via `matchRefKey`).
 
@@ -32,8 +32,8 @@ type TagArgs = {
 };
 
 /** Resolves the `tag_format` to render `version` against: the named package's own override when
- * `packageName` is given and it has one, else the ref's own `tag_format` — the inheritance rule
- * from spec §3. An unregistered `packageName` is a `notFoundError`, not a silent ref-level
+ * `packageName` is given and it has one, else the ref's own `tag_format`. An unregistered
+ * `packageName` is a `notFoundError`, not a silent ref-level
  * fallback. */
 const formatFor = (entry: RefEntry, key: RefKey, packageName: string | undefined): string => {
   if (packageName === undefined) {
