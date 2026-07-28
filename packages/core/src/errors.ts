@@ -13,7 +13,7 @@ class RefsError extends Error {
   readonly code: ErrorCode;
   readonly exitCode: number;
 
-  // eslint-disable-next-line oxc/max-params -- opts needed for cause-chaining per contract
+  // eslint-disable-next-line oxc/max-params -- mirrors Error's (message, opts) tail so `cause` chains through, prefixed by refs' exit metadata
   constructor(exitCode: number, code: ErrorCode, message: string, opts?: { cause?: unknown }) {
     super(message, opts);
     this.code = code;
