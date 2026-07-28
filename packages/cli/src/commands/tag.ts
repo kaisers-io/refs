@@ -83,5 +83,4 @@ const registerTag = (program: RefsCommand, ctx: CliContext): void => {
     });
 };
 
-export { registerTag, runTag };
-export type { TagData };
+export { registerTag };

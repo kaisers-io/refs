@@ -58,5 +58,4 @@ const registerInit = (program: RefsCommand, ctx: CliContext): void => {
     });
 };
 
-export { registerInit, runInit };
-export type { InitData };
+export { registerInit };

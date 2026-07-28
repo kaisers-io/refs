@@ -44,4 +44,3 @@ const runGated = async <TResult>(sem: Semaphore, fn: () => Promise<TResult>): Pr
 };
 
 export { createSemaphore, runGated };
-export type { Semaphore };

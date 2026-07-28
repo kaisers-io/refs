@@ -160,5 +160,4 @@ const registerList = (program: RefsCommand, ctx: CliContext): void => {
     });
 };
 
-export { matchRefKey, registerList, runList };
-export type { ListItem };
+export { matchRefKey, registerList };

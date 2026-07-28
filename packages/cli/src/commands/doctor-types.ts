@@ -10,4 +10,4 @@ type CheckResult = {
   status: CheckStatus;
 };
 
-export type { CheckResult, CheckStatus };
+export type { CheckResult };

@@ -180,7 +180,6 @@ const ensureNoCaseCollision = async (home: RefsHome, key: RefKey): Promise<void>
 export {
   allowFileUrlsFrom,
   applyConfiguredTransport,
-  conflictMessage,
   ensureNoCaseCollision,
   ensureNoConflict,
   refLockName,

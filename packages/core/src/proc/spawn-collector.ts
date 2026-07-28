@@ -80,4 +80,4 @@ const withTruncationNote = (
 };
 
 export { appendNote, createCollector, withTruncationNote };
-export type { CollectedStream, StreamCollector };
+export type { CollectedStream };

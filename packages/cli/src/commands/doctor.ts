@@ -121,6 +121,4 @@ const registerDoctor = (program: RefsCommand, ctx: CliContext): void => {
     });
 };
 
-export { registerDoctor, runDoctor, runStepsInOrder };
-export type { CheckResult } from './doctor-types.ts';
-export type { CheckStep };
+export { registerDoctor };

@@ -131,5 +131,5 @@ const registerEdit = (program: RefsCommand, ctx: CliContext): void => {
     });
 };
 
-export { registerEdit, runEdit };
+export { registerEdit };
 export type { EditData };

@@ -7,8 +7,8 @@ import { join } from 'node:path';
 
 // `hooks-guard` and `dirty-checkouts` — the two checks that iterate configured refs whose checkout
 // currently exists, each running one `git` command per checkout via the injected `Runner`.
-// The shared existingCheckouts filter is exported so doctor.ts never has to recompute or
-// reconcile two independently-derived checkout lists.
+// Both checks derive their checkout list from the shared existingCheckouts filter below, so they
+// never work from two independently-derived (and potentially diverging) lists.
 
 const SUCCESS_EXIT_CODE = 0;
 
@@ -158,4 +158,4 @@ const checkDirtyCheckouts = async (
   return buildDirtyCheckoutsResult(statuses);
 };
 
-export { checkDirtyCheckouts, checkHooksGuard, existingCheckouts };
+export { checkDirtyCheckouts, checkHooksGuard };

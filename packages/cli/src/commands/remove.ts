@@ -237,5 +237,4 @@ const registerRemove = (program: RefsCommand, ctx: CliContext): void => {
     });
 };
 
-export { registerRemove, runRemove };
-export type { RemoveData };
+export { registerRemove };
