@@ -170,4 +170,4 @@ export {
   requireAllDescribed,
   requireTagFormat,
 };
-export type { FinalizedRefInput, ProposalPackageEntry };
+export type { FinalizedRefInput };

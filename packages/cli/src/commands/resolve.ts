@@ -264,5 +264,4 @@ const registerResolve = (program: RefsCommand, ctx: CliContext): void => {
     });
 };
 
-export { registerResolve, runResolve };
-export type { ResolveData };
+export { registerResolve };

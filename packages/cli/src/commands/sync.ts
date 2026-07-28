@@ -194,5 +194,4 @@ const registerSync = (program: RefsCommand, ctx: CliContext): void => {
     });
 };
 
-export { registerSync, runSync };
-export type { SyncOptions, SyncOutcome };
+export { registerSync };

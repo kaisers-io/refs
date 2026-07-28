@@ -51,5 +51,4 @@ const registerMigrate = (program: RefsCommand, ctx: CliContext): void => {
     });
 };
 
-export { registerMigrate, runMigrate };
-export type { MigrateData };
+export { registerMigrate };

@@ -204,5 +204,4 @@ const registerAdd = (program: RefsCommand, ctx: CliContext): void => {
     });
 };
 
-export { registerAdd, runAdd };
-export type { AddOutcome };
+export { registerAdd };

@@ -48,4 +48,3 @@ const armTimeout = (child: ChildProcess, timeoutMs: number | undefined): Timeout
 };
 
 export { armTimeout };
-export type { TimeoutHandle };

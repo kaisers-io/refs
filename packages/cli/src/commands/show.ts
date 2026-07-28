@@ -97,5 +97,5 @@ const registerShow = (program: RefsCommand, ctx: CliContext): void => {
     });
 };
 
-export { registerShow, runShow };
+export { registerShow };
 export type { ShowData };
