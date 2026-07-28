@@ -1,40 +1,23 @@
+// IO orchestration for workspace package detection: readdir walks, package.json probes, and
+// realpath containment guards. The pure decision logic (pattern classification, containment
+// decisions, candidate selection, result shaping) lives in `workspaces-patterns.ts`.
+import {
+  CURRENT_DIR_SEGMENT,
+  classifyWorkspacePattern,
+  deduplicateAndSort,
+  isRelPathContained,
+  selectPackageDirs,
+  toWorkspacePackage,
+} from './workspaces-patterns.ts';
+import type { PackageManifestInfo, WorkspacePackage } from './workspaces-patterns.ts';
 import {
   collectPnpmPatterns,
   extractPackageDescription,
   extractPackageName,
   parseNpmWorkspaces,
 } from './workspaces-parse.ts';
-import { isAbsolute, join, relative, sep } from 'node:path';
+import { join, relative } from 'node:path';
 import { readFile, readdir, realpath } from 'node:fs/promises';
-
-type WorkspacePackage = {
-  // Missing description is `undefined` (omitted in JSON), matching the proposal schema's
-  // optional description (`zPackageEntry.partial({ description: true })` in proposal.ts).
-  description: string | undefined;
-  name: string;
-  path: string;
-};
-
-const GLOB_SUFFIX = '/*';
-const BARE_GLOB = '*';
-const CURRENT_DIR_SEGMENT = '.';
-const PARENT_DIR_SEGMENT = '..';
-const PATH_SEGMENT_SEPARATOR_PATTERN = /[/\\]/u;
-const MAX_WILDCARDS_PER_PATTERN = 1;
-
-// Reject any workspace pattern that is absolute or contains `.`/`..` path segments before
-// it is ever used in a filesystem call. Defense in depth; `isContainedInRepo` still
-// re-checks each resolved candidate via realpath below.
-const isSafeWorkspacePattern = (pattern: string): boolean => {
-  if (isAbsolute(pattern)) {
-    return false;
-  }
-
-  const segments = pattern.split(PATH_SEGMENT_SEPARATOR_PATTERN);
-  return segments.every(
-    (segment) => segment !== CURRENT_DIR_SEGMENT && segment !== PARENT_DIR_SEGMENT,
-  );
-};
 
 // Check if target is contained within repoDir: gates a directory read before it happens
 // (a textually-safe path component can still be a symlink pointing outside the repo) and,
@@ -50,17 +33,7 @@ const isContainedInRepo = async (
   try {
     const repoReal = await realpath(repoDir);
     const targetReal = await realpath(targetPath);
-    const rel = relative(repoReal, targetReal);
-    if (allowSelf && rel === '') {
-      return true;
-    }
-
-    // `rel.startsWith('..')` alone is wrong: an in-repo entry literally named `..packages`
-    // also starts with `..` without escaping repoReal. Only an exact `..` or a `..`
-    // followed by a path separator means escape.
-    const isParentOrAbove = rel === PARENT_DIR_SEGMENT || rel.startsWith(PARENT_DIR_SEGMENT + sep);
-
-    return rel !== '' && !isParentOrAbove && !isAbsolute(rel);
+    return isRelPathContained(relative(repoReal, targetReal), allowSelf);
   } catch {
     return false;
   }
@@ -98,45 +71,29 @@ const expandGlobSingleLevel = async (repoDir: string, baseDir: string): Promise<
     const hasPackageFlags = await Promise.all(
       dirs.map((entry) => hasPackageJson(repoDir, join(fullPath, entry.name))),
     );
-    return dirs
-      .filter((_entry, index) => hasPackageFlags[index] === true)
-      .map((entry) => join(baseDir, entry.name));
+    return selectPackageDirs(
+      baseDir,
+      dirs.map((entry) => entry.name),
+      hasPackageFlags,
+    );
   } catch {
     return [];
   }
 };
 
-// Expand glob pattern (one level only)
-// eslint-disable-next-line max-statements -- flat dispatch over the supported glob forms; splitting would hide the precedence order
+// Expand glob pattern (one level only). Which form the pattern takes is decided purely in
+// `classifyWorkspacePattern`; only the plan's filesystem side runs here.
 const expandGlobPattern = async (repoDir: string, pattern: string): Promise<string[]> => {
-  if (!isSafeWorkspacePattern(pattern)) {
-    return [];
+  const plan = classifyWorkspacePattern(pattern);
+  if (plan.kind === 'expand-children') {
+    return expandGlobSingleLevel(repoDir, plan.baseDir);
   }
 
-  if (pattern.startsWith('!') || pattern.includes('**')) {
-    return [];
-  }
-
-  const globCount = (pattern.match(/\*/gu) ?? []).length;
-  if (globCount > MAX_WILDCARDS_PER_PATTERN) {
-    return [];
-  }
-
-  if (pattern.endsWith(GLOB_SUFFIX)) {
-    const baseDir = pattern.slice(0, -GLOB_SUFFIX.length);
-    return expandGlobSingleLevel(repoDir, baseDir);
-  }
-
-  // Bare `*` (a flat workspaces layout) expands the repo root as glob base, same as `<dir>/*`.
-  if (pattern === BARE_GLOB) {
-    return expandGlobSingleLevel(repoDir, CURRENT_DIR_SEGMENT);
-  }
-
-  if (!pattern.includes('*')) {
-    const dirPath = join(repoDir, pattern);
+  if (plan.kind === 'probe-dir') {
+    const dirPath = join(repoDir, plan.dir);
     // Guard the file read itself: `pattern` can be a symlink resolving outside the repo.
     if ((await isContainedInRepo(repoDir, dirPath)) && (await hasPackageJson(repoDir, dirPath))) {
-      return [pattern];
+      return [plan.dir];
     }
   }
 
@@ -147,7 +104,7 @@ const expandGlobPattern = async (repoDir: string, pattern: string): Promise<stri
 const readPackageInfo = async (
   repoDir: string,
   packageDir: string,
-): Promise<{ description: string | undefined; name: string | undefined } | undefined> => {
+): Promise<PackageManifestInfo | undefined> => {
   try {
     const pkgJsonPath = join(packageDir, 'package.json');
     if (!(await isContainedInRepo(repoDir, pkgJsonPath))) {
@@ -164,14 +121,6 @@ const readPackageInfo = async (
   } catch {
     return undefined;
   }
-};
-
-// Deduplicate by path and sort
-const deduplicateAndSort = (packages: WorkspacePackage[]): WorkspacePackage[] => {
-  const mapEntries = packages.map((pkg) => [pkg.path, pkg] as const);
-  const deduped = [...new Map<string, WorkspacePackage>(mapEntries).values()];
-  deduped.sort((packageA, packageB) => packageA.path.localeCompare(packageB.path));
-  return deduped;
 };
 
 // Collect npm workspace patterns; guards the manifest FILE itself (see `hasPackageJson`)
@@ -239,16 +188,7 @@ const processSinglePackageDir = async (
     return undefined;
   }
 
-  const info = await readPackageInfo(repoDir, fullPath);
-  if (!info?.name) {
-    return undefined;
-  }
-
-  return {
-    description: info.description,
-    name: info.name,
-    path: packageDir,
-  };
+  return toWorkspacePackage(packageDir, await readPackageInfo(repoDir, fullPath));
 };
 
 // Process all package directories
@@ -284,4 +224,4 @@ const detectWorkspacePackages = async (repoDir: string): Promise<WorkspacePackag
 };
 
 export { detectWorkspacePackages };
-export type { WorkspacePackage };
+export type { WorkspacePackage } from './workspaces-patterns.ts';
