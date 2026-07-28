@@ -18,10 +18,9 @@ import { buildRefEntry } from './add-packages.ts';
 import { resolveCheckoutHead } from './add-checkout-guards.ts';
 import { z } from 'zod';
 
-// `finalizeRef` and its supporting document-build/validate helpers — split out of `add.ts` purely
-// to keep that file under the repo's 300-line oxlint cap. `add.ts` calls `finalizeRef` from both
-// its `--proposal` and `--description` flows; everything it needs to build a `FinalizeOpts` lives
-// there, not here.
+// The finalize write path: `finalizeRef` re-verifies the checkout, then lands the new config and
+// state documents. `add.ts` calls it from both its `--proposal` and `--description` flows;
+// everything needed to build a `FinalizeOpts` lives there, not here.
 
 type FinalizeOpts = {
   dest: string;
@@ -41,8 +40,7 @@ type FinalDocs = {
 };
 
 // Validates BOTH the new config document and the new state document in full — the exact schemas
-// `writeConfig`/`writeState` themselves parse against — before either is ever written. Split out
-// of `buildValidatedFinalDocs` purely to keep both functions under the repo's `max-statements` cap.
+// `writeConfig`/`writeState` themselves parse against — before either is ever written.
 const parseFinalDocsOrThrow = (config: Config, state: State): { config: Config; state: State } => {
   const configResult = zConfig.safeParse(config);
   if (!configResult.success) {
@@ -95,11 +93,7 @@ const buildValidatedFinalDocs = async (opts: FinalizeOpts, headSha: string): Pro
 //       b) write state FIRST, config LAST: config is the commit point for a configured ref, so an
 //          orphaned state entry for a not-yet-configured ref is harmless by design (state is
 //          machine-managed and self-healing — see `state-io.ts`'s `readState`), whereas the reverse
-//          (a configured ref with no state entry) would be a real, user-visible inconsistency. This
-//          is also what made finalize atomic in practice: previously `writeConfig` landed BEFORE
-//          `writeState`'s own validation ran, so e.g. a SHA-256 (`--object-format=sha256`) repo's
-//          64-character head sha could persist the config entry and only then fail `writeState`,
-//          leaving the ref stuck (retrying hit `ensureNoConflict`).
+//          (a configured ref with no state entry) would be a real, user-visible inconsistency.
 const finalizeRef = async (
   ctx: CliContext,
   opts: FinalizeOpts,

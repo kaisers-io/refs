@@ -35,15 +35,12 @@ import { progress } from '../output.ts';
 
 // The `--dry-run` core: resolve source → conflict/collision guards → idempotent clone → detect
 // default branch/tags/workspace packages → shape a `Proposal`. Shared by both `refs add --dry-run`
-// and the `refs add --description` one-shot flow (see `add.ts`). Split out purely to keep `add.ts`
-// under the repo's 300-line oxlint cap.
-
-const NO_WARNINGS: readonly string[] = [];
+// and the `refs add --description` one-shot flow (see `add.ts`).
 
 /** Normalizes an optional warning string into the envelope's `warnings` array shape. */
 const toWarningsList = (warning: string | undefined): string[] => {
   if (warning === undefined) {
-    return [...NO_WARNINGS];
+    return [];
   }
   return [warning];
 };
@@ -153,10 +150,10 @@ const runDryRunCore = async (ctx: CliContext, source: string): Promise<DryRunOut
 };
 
 /** Records that a dry-run proposal is pending for `key` — cleared again once `--proposal`/
- * `--description` finalizes it (see `finalizeRef` in `add.ts`). Also persists `effectiveCloneMode`
- * when this dry-run actually cloned (see `ensureClonedCheckout`'s partial-clone-fallback note) so a
- * later `--proposal` finalize — which never re-clones — can recover the real mode used instead of
- * silently guessing the global default.
+ * `--description` finalizes it (see `finalizeRef` in `add-finalize.ts`). Also persists
+ * `effectiveCloneMode` when this dry-run actually cloned (see `ensureClonedCheckout`'s
+ * partial-clone-fallback note) so a later `--proposal` finalize — which never re-clones — can
+ * recover the real mode used instead of silently guessing the global default.
  *
  * Re-checks the conflict guard again here, under the home lock: `runDryRunCore`'s own
  * `ensureNoConflict` call ran unlocked, earlier — a `--proposal`/`--description` finalize could

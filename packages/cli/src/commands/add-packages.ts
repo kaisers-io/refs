@@ -9,9 +9,8 @@ import type {
 import { validationError } from '@kaisers-io/refs-core';
 
 // `packages`/`tag_format` shaping between the proposal shape (partial, machine-detected) and the
-// config shape (full `zPackageEntry`s, `zRefEntry`) — split out of `add.ts` purely to keep that
-// file under the repo's 300-line oxlint cap. See `add-helpers.ts` for source resolution/guards and
-// `add-proposal-io.ts` for proposal-file/stdin loading.
+// config shape (full `zPackageEntry`s, `zRefEntry`). See `add-helpers.ts` for source
+// resolution/guards and `add-proposal-io.ts` for proposal-file/stdin loading.
 
 const ROOT_PACKAGE_PATH = '.';
 const NO_ITEMS = 0;

@@ -4,14 +4,16 @@ import { createSemaphore, runGated } from './sync-semaphore.ts';
 import type { CliContext } from '../context.ts';
 import { syncCheckout } from './sync-checkout.ts';
 
-// Batch orchestration for `sync.ts` — split out purely to keep that file under the repo's
-// 300-line oxlint cap. Per-ref git ops live in `sync-checkout.ts`, config/state persistence in
-// `sync-state.ts`, the concurrency primitive in `sync-semaphore.ts`; this file wires them
-// together into one ref's start-to-finish outcome and the parallel batch over all of them.
+// Batch orchestration for `refs sync`: wires one ref's start-to-finish outcome (git ops, then
+// persistence, never throwing) and the capped-concurrency batch over all targets. Per-ref git ops
+// live in `sync-checkout.ts`, config/state persistence in `sync-state.ts`, the concurrency
+// primitive in `sync-semaphore.ts`.
+
+type SyncItemStatus = SyncStatus | 'failed';
 
 type SyncResultItem = {
   key: string;
-  status: SyncStatus | 'failed';
+  status: SyncItemStatus;
   error?: string;
   warning?: string;
 };
@@ -110,4 +112,4 @@ const syncAll = async (
 };
 
 export { syncAll };
-export type { SyncResultItem };
+export type { SyncItemStatus, SyncResultItem };

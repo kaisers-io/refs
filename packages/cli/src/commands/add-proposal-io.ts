@@ -4,8 +4,8 @@ import type { FinalProposal } from '@kaisers-io/refs-core';
 import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 
-// Loads and validates the `--proposal <file|->` JSON payload — split out of `add.ts` purely to
-// keep that file under the repo's 300-line oxlint cap.
+// Loads and validates the `--proposal <file|->` JSON payload: raw read (file or stdin), `--json`
+// envelope unwrapping, and legible `zFinalProposal` error rendering for hand-edited proposals.
 
 const STDIN_MARKER = '-';
 

@@ -14,10 +14,12 @@ import { join } from 'node:path';
 import { progress } from '../output.ts';
 import { readdir } from 'node:fs/promises';
 
-// Source resolution + pre-clone guards for `add.ts` — split out purely to keep that file under the
-// repo's 300-line oxlint cap. Checkout-identity/head-sha guards (origin verification, the
-// managed-checkout marker, `resolveCheckoutHead`) live in `add-checkout-guards.ts`; package/
-// proposal shaping in `add-packages.ts`; proposal-file/stdin loading in `add-proposal-io.ts`.
+// Source resolution + pre-clone guards for `refs add`: turning `<source>` into a clone url + ref
+// key, the configured-transport rewrite, and the conflict/case-collision checks that run BEFORE
+// anything is cloned. Guards that run against an already-existing checkout directory (origin
+// verification, the managed-checkout marker, `resolveCheckoutHead`) live in
+// `add-checkout-guards.ts`; package/proposal shaping in `add-packages.ts`; proposal-file/stdin
+// loading in `add-proposal-io.ts`.
 
 const NPM_PREFIX = 'npm:';
 const REF_LOCK_PREFIX = 'ref:';
@@ -73,7 +75,7 @@ const resolveAddSource = (ctx: CliContext, source: string): Promise<ResolvedSour
   return Promise.resolve(resolveGitUrlSource(ctx, source));
 };
 
-/** Spec §3 transport rule: a url the user typed explicitly is used verbatim — typing the url IS
+/** Transport rule: a url the user typed explicitly is used verbatim — typing the url IS
  * choosing the transport — so only `npm:`-resolved sources are rewritten to the configured
  * `git_transport`, before cloning and before the url lands in the proposal/config entry. A NEW
  * ref cannot carry a per-ref override yet, so the global setting governs (`ref` = undefined). The
@@ -117,10 +119,10 @@ type SegmentStep =
   | { kind: 'continue'; nextDir: string }
   | { kind: 'stop' };
 
-// One step of the segment-by-segment descent below, split out purely to keep `descend` itself
-// under the max-statements cap: reads `currentDir`, then reports whether `segment` exactly
-// matches an existing subdirectory (continue descending), matches only case-insensitively (a
-// collision), or matches nothing at all (stop — nothing beyond this point exists to collide with).
+// One step of `descend`'s segment-by-segment walk: reads `currentDir`, then reports whether
+// `segment` exactly matches an existing subdirectory (continue descending), matches only
+// case-insensitively (a collision), or matches nothing at all (stop — nothing beyond this point
+// exists to collide with).
 const stepSegment = async (currentDir: string, segment: string): Promise<SegmentStep> => {
   const entries = await readDirSafe(currentDir);
   if (entries === undefined) {
@@ -137,9 +139,9 @@ const stepSegment = async (currentDir: string, segment: string): Promise<Segment
   return { kind: 'collision', name: collided };
 };
 
-/** Walks the existing directory tree under `sourcesDir` one key segment at a time (recursively, so
- * no single function carries the whole loop's statement count), looking for a directory whose name
- * matches the next segment case-INsensitively but not exactly. */
+/** Walks the existing directory tree under `sourcesDir` one key segment at a time (recursively),
+ * looking for a directory whose name matches the next segment case-INsensitively but not
+ * exactly. */
 const descend = async (
   currentDir: string,
   remaining: readonly string[],
