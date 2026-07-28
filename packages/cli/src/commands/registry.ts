@@ -14,18 +14,18 @@ import { registerList } from './list.ts';
 type GlobalCliOptions = { json?: boolean; verbose?: boolean };
 
 // The registrar wiring point's `program` parameter, parameterized with the real inherited-globals
-// Shape (`GlobalCliOptions`) instead of the bare `Command` type — whose extra-typings generics all
-// Default to `{}` — so a registrar's `command.optsWithGlobals()` returns `GlobalCliOptions`
-// Directly and command modules like `init.ts` no longer need an `as unknown` cast to read it.
+// shape (`GlobalCliOptions`) instead of the bare `Command` type — whose extra-typings generics all
+// default to `{}` — so a registrar's `command.optsWithGlobals()` returns `GlobalCliOptions`
+// directly and command modules like `init.ts` no longer need an `as unknown` cast to read it.
 // `Record<never, never>` — structurally the same empty-object type as extra-typings' own
 // `Opts extends OptionValues = {}` default, without the literal `{}` oxlint's `ban-types` rule
-// Rejects. `Record<string, never>` would NOT work here: its index signature would force every key
-// Of the `Opts & GlobalOpts` intersection extra-typings computes for subcommands down to `never`.
+// rejects. `Record<string, never>` would NOT work here: its index signature would force every key
+// of the `Opts & GlobalOpts` intersection extra-typings computes for subcommands down to `never`.
 type RefsCommand = Command<[], Record<never, never>, GlobalCliOptions>;
 
 // The single wiring point: every command module exports a `registerX(program, ctx)` function and
-// Gets one entry added to this list. `buildProgram` calls `registerCommands` once and nothing else
-// In the package touches `program.command(...)` directly.
+// gets one entry added to this list. `buildProgram` calls `registerCommands` once and nothing else
+// in the package touches `program.command(...)` directly.
 const REGISTRARS: readonly ((program: RefsCommand, ctx: CliContext) => void)[] = [
   registerInit,
   registerAdd,

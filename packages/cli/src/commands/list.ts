@@ -25,8 +25,8 @@ import type { RefsCommand } from './registry.ts';
 import { isStale } from './ref-status.ts';
 
 // `refs list` prints one row per configured ref with resolved staleness/missing status. This file
-// also exports `matchRefKey`, the suffix-matching resolver `show` (and `sync`/Tasks 20-22's
-// edit/remove/tag) reuse to turn a full ref key or a unique suffix into an exact key. The
+// also exports `matchRefKey`, the suffix-matching resolver `show`/`sync`/`edit`/`remove`/`tag`/
+// `resolve` reuse to turn a full ref key or a unique suffix into an exact key. The
 // staleness check itself (`isStale`) lives in `ref-status.ts`, shared with `sync.ts`'s
 // `--stale-only` filter.
 
@@ -112,7 +112,7 @@ const listHuman = (items: readonly ListItem[]): string[] => {
   return items.map((item) => `${item.key}  ${item.description}${suffixesFor(item)}`);
 };
 
-// Suffix matching, shared by `show` (and future resolve/sync/edit/remove/tag commands) ------------
+// Suffix matching, shared by show/resolve/sync/edit/remove/tag ------------
 
 const keySegments = (key: string): string[] => key.split('/');
 

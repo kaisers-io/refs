@@ -2,9 +2,9 @@ import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
 import type { Config } from '@kaisers-io/refs-core';
 
-// `ssh-auth` — only present in the check list at all when at least one configured ref uses an ssh
-// transport url (task brief). Split out of `doctor.ts` purely to keep that file under the repo's
-// 300-line oxlint cap.
+// The ssh-auth check: probes each unique ssh target referenced by a configured ref's transport
+// url. Only present in doctor's check list at all when at least one such ref exists — a config
+// with no ssh urls reports no ssh-auth line.
 
 const EMPTY_LENGTH = 0;
 const SCP_HOST_PATTERN = /^(?<user>[^/\s@]+)@(?<host>[^:/\s]+):/u;
@@ -34,9 +34,8 @@ const portOpt = (port: string): { port?: string } => {
   return { port };
 };
 
-/** The `ssh://[user@]host[:port]/path` form only — split out of `sshTargetFor` (below) purely to
- * keep that function's own statement count under the repo's `max-statements` cap. `new URL(...)`
- * throwing (a genuinely malformed url) reports the same `undefined` as "not an ssh url". An absent
+/** The `ssh://[user@]host[:port]/path` form only. `new URL(...)` throwing (a genuinely malformed
+ * url) reports the same `undefined` as "not an ssh url". An absent
  * `url.username` leaves `user` unset (`undefined`) rather than defaulting to `git`: a real
  * `ssh <host>`/clone with no explicit user lets the LOCAL ssh config decide who connects, and
  * forcing `git@` here would probe a different principal than the one the actual clone uses. Only
@@ -68,14 +67,12 @@ const sshTargetFor = (url: string): SshTarget | undefined => {
   return sshTargetFromUrl(url);
 };
 
-/** The label used both to dedupe targets and to display them in a check's `detail`, covering the
- * FULL probe identity — `user@` whenever `target.user` is actually known (finding: host-only
- * dedupe collapsed two same-host refs with different users into one probe, reporting one ref's
- * auth from another ref's user; a second finding required a bare, userless `ssh://` target to
- * stay visibly distinct from an explicit `git@host` one, since the two can probe different
- * principals), `:port` only when an `ssh://` url actually carried a non-default one (finding: a
- * dropped port silently probed 22). Hostnames can never contain `@` or `:` in the url forms core
- * accepts, so distinct identities always yield distinct labels. */
+/** The label used both to dedupe targets and to display them, covering the FULL probe identity:
+ * 'user@' whenever the user is known — two same-host refs with different users are different
+ * principals and must be probed separately, and a bare userless ssh:// target must stay distinct
+ * from an explicit git@host one; ':port' whenever an ssh:// url carried a non-default port —
+ * dropping it would silently probe 22. Hostnames can never contain '@' or ':' in the url forms
+ * core accepts, so distinct identities always yield distinct labels. */
 const hostPartFor = (target: SshTarget): string => {
   if (target.port === undefined) {
     return target.host;
@@ -149,11 +146,10 @@ const buildSshArgs = (target: SshTarget): string[] => {
 };
 
 /** `-o BatchMode=yes` prevents an interactive password/passphrase prompt from ever blocking this
- * probe; `-o ConnectTimeout=<n>` is the task brief's "5s timeout" for the connection phase only —
- * `timeoutMs` (passed straight to the injected `Runner`, which `SpawnRunner` wires to its own
- * SIGTERM/SIGKILL escalation) bounds the whole probe, including anything after the connection
- * succeeds, AND
- * — unlike a hand-rolled race — actually kills the underlying `ssh` child on expiry rather than
+ * probe; `-o ConnectTimeout=<n>` bounds the connection phase only (5s) — `timeoutMs` (passed
+ * straight to the injected `Runner`, which `SpawnRunner` wires to its own SIGTERM/SIGKILL
+ * escalation) bounds the whole probe, including anything after the connection succeeds, AND —
+ * unlike a hand-rolled race — actually kills the underlying `ssh` child on expiry rather than
  * abandoning it to keep running (and keep this short-lived CLI process alive) after doctor has
  * already reported. Any exit code is accepted: GitHub's own successful `ssh -T` documented
  * behaviour actually exits 1 — including, genuinely, `124`, so the timeout branch below must key
@@ -183,9 +179,8 @@ const probeSshHost = async (
   return { host, outcome: 'ok' };
 };
 
-/** Each of the four `*Result` helpers below (timeout/denied/connection-warn/ok) owns exactly one
- * outcome tier, checked in that priority order — split out of a single `buildSshAuthResult` purely
- * to keep it (and each helper) under the repo's `max-statements` cap. */
+/** Each helper below owns exactly one outcome tier, checked in priority order: timeout >
+ * denied > connection-warn > ok. */
 const timeoutResult = (probes: readonly SshProbe[], timeoutMs: number): CheckResult | undefined => {
   const timedOutHosts = probes
     .filter((probe) => probe.outcome === 'timeout')

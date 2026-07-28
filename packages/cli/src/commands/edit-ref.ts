@@ -27,8 +27,8 @@ import { z } from 'zod';
 // `url` gets its own path (`editUrlField`): the new value is canonicalized and MUST derive the
 // same ref key the ref is already stored under (spec: editing url can't silently re-key a ref —
 // that's what remove + re-add is for), and the checkout's `origin` remote is rewritten to match
-// when a checkout exists. Split out of `edit.ts`/`edit-package.ts` purely to keep each mode's file
-// small, per the task brief's up-front three-mode file split.
+// when a checkout exists. Each of edit's three modes lives in its own module (edit-settings.ts /
+// edit-ref.ts / edit-package.ts); edit.ts only dispatches.
 
 type EditRefArgs = {
   field: string;

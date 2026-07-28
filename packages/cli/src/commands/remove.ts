@@ -19,8 +19,8 @@ import { matchRefKey } from './list.ts';
 import { refLockName } from './add-helpers.ts';
 
 // `refs remove <ref>` — the CLI's only destructive command: it always removes BOTH the ref's
-// config/state entry AND its checkout directory (no partial-removal flag, per the task brief's
-// "user decision: always both").
+// config/state entry AND its checkout directory (deliberately all-or-nothing — there is no flag
+// to keep either half).
 //
 // Ordering (deliberate, see `home.ts`'s destructive-caller contract): the checkout is
 // containment-checked (`assertInsideSources`) and deleted FIRST, under the ref's own per-ref lock;
@@ -100,8 +100,7 @@ const isRealDirectory = async (dir: string): Promise<boolean | undefined> => {
 };
 
 /** The actual `readdir`-then-`rmdir` removal, once `removeIfEmpty` has already confirmed `dir` is
- * a real directory — split out purely to keep `removeIfEmpty` itself under the repo's
- * `max-statements` cap. Same "gone either way" contract as `removeIfEmpty`. */
+ * a real directory. Same "gone either way" contract as `removeIfEmpty`. */
 const removeEmptyDirectory = async (dir: string): Promise<boolean> => {
   const entries = await readdirSafe(dir);
   if (entries === undefined) {
@@ -144,8 +143,7 @@ const removeIfEmpty = async (dir: string): Promise<boolean> => {
  * stopping at (and never removing) `home.sourcesDir` itself — e.g. deleting the sole checkout
  * under `github.com/vercel/` also prunes that now-empty `vercel/` directory, and `github.com/`
  * above it if that too is now empty, but `sources/` always survives. Recursive (one `await` per
- * call, mirroring `lock.ts#acquireWithRetry`'s "recursive rather than a loop" discipline) rather
- * than an imperative loop, purely to keep every function under the repo's `max-statements` cap. */
+ * call) — the natural shape for the upward walk. */
 const pruneEmptyParents = async (home: RefsHome, dir: string): Promise<void> => {
   if (dir === home.sourcesDir) {
     return;

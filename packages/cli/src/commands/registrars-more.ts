@@ -8,11 +8,9 @@ import { registerShow } from './show.ts';
 import { registerSync } from './sync.ts';
 import { registerTag } from './tag.ts';
 
-// Split out of `registry.ts` purely to keep that file's distinct-module import count under the
-// repo's `import/max-dependencies` cap (10) — every new command module adds one more import to
-// whichever file lists it, so registrars land here once `registry.ts` itself is full. No
-// behavioural difference from being listed directly there: `MORE_REGISTRARS` is just concatenated
-// onto `registry.ts`'s own `REGISTRARS` array, in the same order commander sees them.
+// Overflow list for command registrars: registry.ts is at the repo's import/max-dependencies
+// cap (10 distinct modules), so new registrars land here and are concatenated onto its
+// REGISTRARS array.
 const MORE_REGISTRARS: readonly ((program: RefsCommand, ctx: CliContext) => void)[] = [
   registerDoctor,
   registerMigrate,

@@ -22,8 +22,8 @@ import { checkSshAuth } from './doctor-checks-ssh.ts';
 // ever appears when a configured ref uses an ssh transport url). Every check runs to completion
 // before anything is reported — a failing `config` check must never prevent `orphans`/
 // `dirty-checkouts`/etc. from still running against whatever they can determine — so the actual
-// check implementations are split across sibling `doctor-checks-*.ts` modules (each purely to stay
-// under the repo's 300-line oxlint cap) and simply collected here, in the spec's own order. Each
+// check implementations live in sibling doctor-checks-*.ts modules, grouped by
+// what they touch, and are simply collected here in the order they are reported. Each
 // step also carries its own `name`: an UNEXPECTED throw from one check (e.g. `orphans`' directory
 // walk rethrowing a non-ENOENT `readdir` fault such as EACCES/ENOTDIR/ELOOP) must never abort the
 // whole batch — `runStepSafely` below catches it and reports that one check as `fail` instead,
@@ -49,9 +49,7 @@ const runStepSafely = async (step: CheckStep): Promise<CheckResult | undefined> 
 /** Runs `steps` one at a time, strictly in order — never `Promise.all`, so two checks that both
  * shell out via the same injected `Runner` (e.g. `hooks-guard`'s and `dirty-checkouts`' per-checkout
  * git calls) produce a deterministic, spec-ordered call sequence instead of an interleaving that
- * would depend on each check's own internal await shape. Recursive (mirroring
- * `remove.ts#pruneEmptyParents`'s "recursive rather than an imperative loop" discipline) purely to
- * keep this function's own statement count trivial regardless of how many checks exist. */
+ * would depend on each check's own internal await shape. */
 const runStepsInOrder = async (steps: readonly CheckStep[]): Promise<CheckResult[]> => {
   const [step, ...rest] = steps;
   if (step === undefined) {
