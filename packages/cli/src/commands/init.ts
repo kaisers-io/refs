@@ -14,11 +14,11 @@ const SKILL_HINT =
   'Install the agent skill: npx skills add kaisers-io/refs   ' +
   '(private phase: npx skills add <path-to-this-repo> --skill refs)';
 
-interface InitData {
+type InitData = {
   config: 'seeded' | 'migrated' | 'noop';
   home: string;
   skill_hint: string;
-}
+};
 
 // Every home subdirectory `init` guarantees exists on return. Init's contract is that all four
 // Exist unconditionally when it resolves — including on a `'noop'` run that touches neither

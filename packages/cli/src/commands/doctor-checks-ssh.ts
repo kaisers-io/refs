@@ -11,11 +11,11 @@ const SCP_HOST_PATTERN = /^(?<user>[^/\s@]+)@(?<host>[^:/\s]+):/u;
 const SSH_PROTOCOL = 'ssh:';
 const DEFAULT_SSH_USER = 'git';
 
-interface SshTarget {
+type SshTarget = {
   host: string;
   port?: string;
   user?: string;
-}
+};
 
 // Present only when `parsed.username`/`parsed.port` actually carried a value — spread into the
 // `SshTarget` literal below so an absent one is genuinely omitted (never an explicit `undefined`)
@@ -123,11 +123,11 @@ const CONNECTION_WARN_PATTERNS: readonly RegExp[] = [
 
 type SshProbeOutcome = 'connection-warn' | 'denied' | 'ok' | 'timeout';
 
-interface SshProbe {
+type SshProbe = {
   detail?: string;
   host: string;
   outcome: SshProbeOutcome;
-}
+};
 
 // A userless target (no `user@` prefix) is probed as the bare host — matching a real
 // `ssh <host>`/clone with no explicit user, which lets the LOCAL ssh config pick the principal
@@ -240,9 +240,9 @@ const buildSshAuthResult = (probes: readonly SshProbe[], timeoutMs: number): Che
   connectionWarnResult(probes) ??
   okResult(probes);
 
-interface CheckSshAuthOptions {
+type CheckSshAuthOptions = {
   timeoutMs?: number;
-}
+};
 
 const checkSshAuth = async (
   ctx: CliContext,

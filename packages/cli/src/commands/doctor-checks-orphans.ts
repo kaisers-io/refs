@@ -64,10 +64,10 @@ const isFreshPendingProposal = (state: State, key: string, now: number): boolean
   return now - Date.parse(pendingAt) < TWENTY_FOUR_HOURS_MS;
 };
 
-interface OrphanCandidate {
+type OrphanCandidate = {
   dest: string;
   key: string;
-}
+};
 
 const classifyOrphan = (candidate: OrphanCandidate, state: State, now: number): string => {
   if (isFreshPendingProposal(state, candidate.key, now)) {

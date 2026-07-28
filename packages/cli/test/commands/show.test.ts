@@ -42,10 +42,10 @@ const MIRROR_NEXTJS_ENTRY = {
   url: 'https://corp-mirror.example.com/github.com/vercel/next.js',
 };
 
-interface ErrorEnvelope {
+type ErrorEnvelope = {
   error?: { code: string; message: string };
   ok: boolean;
-}
+};
 
 const parseSoleEnvelope = (stdout: readonly string[]): { data: unknown; ok: boolean } => {
   const [line] = stdout;

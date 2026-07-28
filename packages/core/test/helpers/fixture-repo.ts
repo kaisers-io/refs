@@ -10,21 +10,21 @@ import { tmpdir } from 'node:os';
 
 const setupRunner = new SpawnRunner();
 
-interface FixtureOpts {
+type FixtureOpts = {
   monorepo?: boolean;
   tags?: string[];
-}
+};
 
-interface FixtureRepo {
+type FixtureRepo = {
   dir: string;
   url: string;
-}
+};
 
-interface PackageSpec {
+type PackageSpec = {
   folder: string;
   pkgName: string;
   description?: string;
-}
+};
 
 const JSON_INDENT = 2;
 const SUCCESS_EXIT_CODE = 0;

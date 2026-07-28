@@ -45,11 +45,11 @@ const CLONE_SUCCESS_EXIT_CODE = 0;
 // Test-setup-only `SpawnRunner`, mirroring `add-guards-support.ts`'s own local `setupRunner`.
 const setupRunner = new SpawnRunner();
 
-interface TagEnvelope {
+type TagEnvelope = {
   data?: { key: string; ref_path: string; tag: string; version: string };
   error?: { code: string; message: string };
   ok: boolean;
-}
+};
 
 const parseSoleEnvelope = (stdout: readonly string[]): TagEnvelope => {
   const [line] = stdout;
@@ -69,10 +69,10 @@ const cloneFixtureInto = async (fixtureDir: string, dest: string): Promise<void>
   }
 };
 
-interface TagFixture {
+type TagFixture = {
   ctx: CliContext;
   stdout: string[];
-}
+};
 
 /** Bootstraps a fresh temp home, seeds `REF_KEY` (with a ref-level `v{version}` format and a
  * `pkg` package override, `pkg@{version}`), and clones a real tag-bearing fixture into its

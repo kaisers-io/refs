@@ -20,22 +20,22 @@ import { matchRefKey } from './list.ts';
 // `package.tag_format ?? ref.tag_format`. An unresolvable `--package` name is a `notFoundError`,
 // exactly like an unresolvable `<ref>` is (via `matchRefKey`).
 
-interface TagData {
+type TagData = {
   key: string;
   ref_path: string;
   tag: string;
   version: string;
-}
+};
 
-interface TagOptions {
+type TagOptions = {
   packageName?: string;
-}
+};
 
-interface TagArgs {
+type TagArgs = {
   opts: TagOptions;
   query: string;
   version: string;
-}
+};
 
 /** Resolves the `tag_format` to render `version` against: the named package's own override when
  * `packageName` is given and it has one, else the ref's own `tag_format` — the inheritance rule

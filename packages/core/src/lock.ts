@@ -63,11 +63,11 @@ const LOCK_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_.:-]*$/u;
 
 // Identifies one lock (its dir, the shared locks dir it lives in, and its validated name) so the
 // Acquire/steal pipeline passes a single value instead of threading three strings everywhere.
-interface LockCtx {
+type LockCtx = {
   lockPath: string;
   locksDir: string;
   name: string;
-}
+};
 
 const isLockStale = async (lockPath: string): Promise<boolean> => {
   const meta = await readLockMeta(lockPath);

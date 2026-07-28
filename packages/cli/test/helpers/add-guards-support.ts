@@ -28,14 +28,14 @@ const expectRefNotConfigured = async (home: RefsHome, key: string): Promise<void
   expect(config.refs[key]).toBeUndefined();
 };
 
-interface DryRunFixture {
+type DryRunFixture = {
   ctx: CliContext;
   dest: string;
   home: RefsHome;
   proposal: Proposal;
   sourceUrl: string;
   stdout: string[];
-}
+};
 
 // `exactOptionalPropertyTypes` forbids assigning a `boolean | undefined` value directly onto
 // `FixtureOpts.monorepo?: boolean` — built field-by-field so `monorepo` is only ever set when
@@ -65,14 +65,14 @@ const setupDryRunFixture = async (
   return { ctx, dest, home, proposal, sourceUrl: fixture.url, stdout };
 };
 
-interface SourceFixture {
+type SourceFixture = {
   ctx: CliContext;
   dest: string;
   home: RefsHome;
   resolved: ResolvedSource;
   sourceUrl: string;
   stdout: string[];
-}
+};
 
 /** Like `setupDryRunFixture`, but stops right after resolving the source (no clone yet) — needed
  * by the checkout-identity guard test that must pre-create a bogus checkout at the derived path

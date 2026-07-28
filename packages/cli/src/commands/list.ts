@@ -30,31 +30,31 @@ import { isStale } from './ref-status.ts';
 // staleness check itself (`isStale`) lives in `ref-status.ts`, shared with `sync.ts`'s
 // `--stale-only` filter.
 
-interface ListItem {
+type ListItem = {
   clone_mode: CloneMode;
   description: string;
   key: string;
   missing: boolean;
   packages: string[];
   stale: boolean;
-}
+};
 
 const EMPTY_LENGTH = 0;
 const SINGLE_MATCH = 1;
 
-interface ListArgs {
+type ListArgs = {
   config: Config;
   home: RefsHome;
   now: number;
   state: State;
-}
+};
 
-interface ItemArgs {
+type ItemArgs = {
   home: RefsHome;
   now: number;
   settings: Settings;
   state: State;
-}
+};
 
 const buildListItem = (args: ItemArgs, key: string, ref: RefEntry): ListItem => {
   const refState = args.state.refs[key];

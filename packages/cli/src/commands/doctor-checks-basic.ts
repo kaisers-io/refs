@@ -26,10 +26,10 @@ const NODE_VERSION_PATTERN = /^v(?<major>\d+)\.(?<minor>\d+)/u;
 const MIN_SUPPORTED_MAJOR = 24;
 const MIN_SUPPORTED_MINOR = 12;
 
-interface ParsedNodeVersion {
+type ParsedNodeVersion = {
   major: number;
   minor: number;
-}
+};
 
 // Parses only the major/minor out of `process.version` (e.g. `v24.12.0`) — deliberately without a
 // `semver` dependency, per the task brief: the supported range (`>=24.12`, open-ended) only ever
@@ -72,10 +72,10 @@ const checkNode = (ctx: CliContext): CheckResult => {
   };
 };
 
-interface ConfigLoad {
+type ConfigLoad = {
   config: Config;
   errorMessage?: string;
-}
+};
 
 const errorMessageOf = (error: unknown): string => {
   if (error instanceof Error) {

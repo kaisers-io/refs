@@ -20,11 +20,11 @@ const assertFormatNotDetected = (tags: readonly string[]): void => {
   expect(result).toBeNull();
 };
 
-interface TagResolutionFixture {
+type TagResolutionFixture = {
   dir: string;
   format: string;
   version: string;
-}
+};
 
 const resolveTagForTest = async (fixture: TagResolutionFixture): Promise<unknown> => {
   try {

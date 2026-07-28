@@ -28,10 +28,10 @@ import { checkSshAuth } from './doctor-checks-ssh.ts';
 // walk rethrowing a non-ENOENT `readdir` fault such as EACCES/ENOTDIR/ELOOP) must never abort the
 // whole batch — `runStepSafely` below catches it and reports that one check as `fail` instead,
 // exactly like any other check failure the corresponding module already handles internally.
-interface CheckStep {
+type CheckStep = {
   name: string;
   run: () => Promise<CheckResult | undefined>;
-}
+};
 
 /** Runs a single step, converting an unexpected throw into a `fail` result labeled with the step's
  * own `name` rather than letting it escape and abort every other check — the one property this
@@ -65,12 +65,12 @@ const runStepsInOrder = async (steps: readonly CheckStep[]): Promise<CheckResult
   return [result, ...remaining];
 };
 
-interface DoctorLoad {
+type DoctorLoad = {
   configLoad: ConfigLoad;
   ctx: CliContext;
   home: RefsHome;
   state: State;
-}
+};
 
 const buildCheckSteps = (load: DoctorLoad): CheckStep[] => {
   const { configLoad, ctx, home, state } = load;

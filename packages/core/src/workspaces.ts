@@ -7,13 +7,13 @@ import {
 import { isAbsolute, join, relative, sep } from 'node:path';
 import { readFile, readdir, realpath } from 'node:fs/promises';
 
-interface WorkspacePackage {
+type WorkspacePackage = {
   // Missing description is `undefined` (omitted in JSON), matching the proposal schema's
   // optional description (`zPackageEntry.partial({ description: true })` in proposal.ts).
   description: string | undefined;
   name: string;
   path: string;
-}
+};
 
 const GLOB_SUFFIX = '/*';
 const BARE_GLOB = '*';

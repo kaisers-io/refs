@@ -4,16 +4,16 @@ import { renderError } from '@kaisers-io/refs-core';
 // The two shapes every command reply takes on stdout in `--json` mode. Kept as types (not
 // Exported) so the envelope stays an implementation detail of `emit`/`emitError` — callers pass
 // Plain data, never construct the envelope themselves.
-interface SuccessEnvelope {
+type SuccessEnvelope = {
   data: unknown;
   ok: true;
   warnings: string[];
-}
+};
 
-interface ErrorEnvelope {
+type ErrorEnvelope = {
   error: { code: string; message: string };
   ok: false;
-}
+};
 
 const NO_WARNINGS: string[] = [];
 

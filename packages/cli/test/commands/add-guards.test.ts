@@ -46,10 +46,10 @@ const CREDENTIALED_BOGUS_ORIGIN = 'https://token:sekrit@example.com/someone/else
 // knows a fresh `effectiveCloneMode`).
 const NO_CLONE_MODE_OVERRIDE: CloneMode | undefined = undefined;
 
-interface ErrorEnvelope {
+type ErrorEnvelope = {
   error?: { code: string; message: string };
   ok: boolean;
-}
+};
 
 // `--dry-run` proposals default `description` to `''` (a human is expected to fill it in before
 // finalizing — see `zFinalProposal`'s non-empty requirement); these guard tests finalize against a

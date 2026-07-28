@@ -12,32 +12,32 @@ import { writeFileAtomic } from '../fs-atomic.ts';
 // Via SpawnRunner in production, scripted via FakeRunner in unit tests). Implements the exact
 // Command sequences from the design doc §4 (clone modes, sync semantics, read-only hook guards).
 
-interface CloneOpts {
+type CloneOpts = {
   cloneUrl: string;
   dest: string;
   mode: CloneMode;
   hooksDir: string;
-}
+};
 
-interface CloneResult {
+type CloneResult = {
   effectiveMode: CloneMode;
   warning?: string;
-}
+};
 
-interface SyncOpts {
+type SyncOpts = {
   dir: string;
   defaultBranch: string;
-}
+};
 
 type SyncStatus = 'updated' | 'fresh' | 'restored';
 
-interface SyncResult {
+type SyncResult = {
   status: SyncStatus;
   branchRenamedTo?: string;
   oldSha: string;
   newSha: string;
   warning?: string;
-}
+};
 
 const DEFAULT_TAG_LIMIT = 20;
 const TAG_LIST_START = 0;
@@ -48,12 +48,12 @@ const HOOK_MODE = 0o755;
 // Repo.test.ts) when the server ignores `--filter=...` and performs a full clone instead.
 const FILTER_NOT_HONOURED_PATTERN = /filtering not recognized/iu;
 
-interface CommandSpec {
+type CommandSpec = {
   action: string;
   cmd: string;
   args: readonly string[];
   cwd?: string;
-}
+};
 
 const cwdOpt = (cwd: string | undefined): { cwd?: string } => {
   if (cwd === undefined) {

@@ -30,12 +30,12 @@ import { z } from 'zod';
 // when a checkout exists. Split out of `edit.ts`/`edit-package.ts` purely to keep each mode's file
 // small, per the task brief's up-front three-mode file split.
 
-interface EditRefArgs {
+type EditRefArgs = {
   field: string;
   opts: { packageName?: string };
   query: string;
   value: string;
-}
+};
 
 const PACKAGES_FIELD = 'packages';
 const URL_FIELD = 'url';

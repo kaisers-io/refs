@@ -7,11 +7,11 @@ import { zPackagePath } from './schemas/primitives.ts';
 // Injectable HTTP client; production passes the global `fetch`.
 type Fetcher = (url: string) => Promise<{ json: () => Promise<unknown>; status: number }>;
 
-interface ResolvedNpmPackage {
+type ResolvedNpmPackage = {
   cloneUrl: string;
   directory?: string;
   key: RefKey;
-}
+};
 
 // External data → loose objects (unknown extra keys pass through).
 const zRepositoryObject = z.looseObject({

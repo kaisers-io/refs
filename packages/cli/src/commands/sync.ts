@@ -70,15 +70,15 @@ const filterStale = (
   });
 };
 
-interface SyncOptions {
+type SyncOptions = {
   refs: string[];
   staleOnly: boolean;
-}
+};
 
-interface SyncOutcome {
+type SyncOutcome = {
   failedCount: number;
   results: SyncResultItem[];
-}
+};
 
 /** Applies `--stale-only`'s filter, reading state only when it's actually needed. */
 const scopeTargets = async (

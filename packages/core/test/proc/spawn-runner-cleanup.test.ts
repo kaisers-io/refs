@@ -88,10 +88,10 @@ const requireMiddlePid = (child: ChildProcess): number => {
   return pid;
 };
 
-interface Scenario {
+type Scenario = {
   childAliveBeforeKill: boolean;
   childAliveAfterKill: boolean;
-}
+};
 
 // Spawns the middle process, waits for its `sleep`-holding child to actually start, kills the
 // middle process, then waits for that child to die — split out of the `it` body purely to keep

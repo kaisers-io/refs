@@ -35,10 +35,10 @@ const errorDetail = (error: unknown): string => {
   return String(error);
 };
 
-interface SampleTagsResult {
+type SampleTagsResult = {
   tags: string[];
   warning?: string;
-}
+};
 
 // A present checkout can still be broken (corrupt `.git`, detached from its remote, etc.) — `git
 // tag` then throws (via core's `runOrThrow` → `validationError`) rather than returning cleanly.
@@ -56,10 +56,10 @@ const sampleTagsFor = async (ctx: CliContext, dest: string): Promise<SampleTagsR
   }
 };
 
-interface ShowResult {
+type ShowResult = {
   data: ShowData;
   warnings: string[];
-}
+};
 
 const NO_WARNINGS: string[] = [];
 

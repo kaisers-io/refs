@@ -33,34 +33,34 @@ const PREFIX_START = 0;
 const PREFIX_STEP = 1;
 const SINGLE_MATCH = 1;
 
-interface ResolvePackage {
+type ResolvePackage = {
   local_path: string;
   name: string;
   path: string;
-}
+};
 
-interface ResolveData {
+type ResolveData = {
   key: string;
   local_path: string;
   missing: boolean;
   package: ResolvePackage | null;
   stale: boolean;
-}
+};
 
-interface PackageMatch {
+type PackageMatch = {
   entry: PackageEntry;
   key: RefKey;
   name: string;
-}
+};
 
-interface RouteMatch {
+type RouteMatch = {
   key: RefKey;
   packageMatch?: PackageMatch;
-}
+};
 
-interface RouteOptions {
+type RouteOptions = {
   allowFileUrls: boolean;
-}
+};
 
 const notFoundMessage = (query: string): string =>
   `no ref matches '${query}' — run refs list, or add it: refs add <url>`;
@@ -124,10 +124,10 @@ const tryUrlRoute = (
   throw notFoundError(notFoundMessage(query));
 };
 
-interface PackageEntryMatch {
+type PackageEntryMatch = {
   entry: PackageEntry;
   key: RefKey;
-}
+};
 
 // Every ref (sorted by key, for determinism) whose `packages` map registers exactly `name` —
 // shared by step 2 (exact query match) and step 3 (segment-prefix match, via `findPackageByPrefix`

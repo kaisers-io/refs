@@ -19,7 +19,7 @@ import { spawn } from 'node:child_process';
 // `spawn-timeout.ts`, and parent-death child cleanup in `spawn-cleanup.ts` — split out purely to
 // keep every file under the repo's 300-line oxlint cap.
 
-interface RunResult {
+type RunResult = {
   stdout: string;
   stderr: string;
   exitCode: number;
@@ -30,16 +30,16 @@ interface RunResult {
   // line may be a partial fragment, and counting lines no longer proves anything about how much
   // output the child really produced.
   stdoutTruncated?: true;
-}
+};
 
-interface RunOpts {
+type RunOpts = {
   cwd?: string;
   timeoutMs?: number;
-}
+};
 
-interface Runner {
+type Runner = {
   run: (cmd: string, args: readonly string[], opts?: RunOpts) => Promise<RunResult>;
-}
+};
 
 // A killed-by-signal result has no real exit code — fall back to a generic non-zero code so
 // `Runner.run`'s contract (`exitCode: number`, never throws) always holds.
@@ -82,12 +82,12 @@ const normalizeTimedOutResult = (stderr: string, timeoutMs: number | undefined):
   timedOut: true,
 });
 
-interface RunningChild {
+type RunningChild = {
   child: ChildProcess;
   stdoutCollector: ReturnType<typeof createCollector>;
   stderrCollector: ReturnType<typeof createCollector>;
   timeout: ReturnType<typeof armTimeout>;
-}
+};
 
 const startChild = (
   cmd: string,
@@ -127,10 +127,10 @@ const startChildSafely = (
 
 const isRunResult = (value: RunningChild | RunResult): value is RunResult => !('child' in value);
 
-interface CloseOutcome {
+type CloseOutcome = {
   code: number | null;
   errorMessage?: string;
-}
+};
 
 const errorMessageOf = (error: unknown): string => {
   if (error instanceof Error) {
@@ -156,14 +156,14 @@ const waitForClose = async (child: ChildProcess): Promise<CloseOutcome> => {
   }
 };
 
-interface CloseContext {
+type CloseContext = {
   code: number | null;
   stdout: CollectedStream;
   stderr: CollectedStream;
   errorMessage: string | undefined;
   timedOut: boolean;
   timeoutMs: number | undefined;
-}
+};
 
 const resolveExitCode = (code: number | null): number => {
   if (code === null) {

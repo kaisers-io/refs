@@ -31,11 +31,11 @@ import { loadFinalProposal } from './add-proposal-io.ts';
 const NO_ACTIVE_MODES = 0;
 const MIN_ACTIVE_MODES = 1;
 
-interface AddOutcome {
+type AddOutcome = {
   data: unknown;
   human: string[];
   warnings: string[];
-}
+};
 
 const dryRunHuman = (key: string, dest: string): string[] => [
   `refs add: dry-run proposal ready for '${key}' (checkout: ${dest})`,
@@ -121,12 +121,12 @@ const runAddDescription = async (
   return { data: { entry, key }, human: finalizeHuman(key), warnings };
 };
 
-interface AddOptions {
+type AddOptions = {
   description?: string;
   dryRun: boolean;
   proposal?: string;
   source?: string;
-}
+};
 
 const NEEDS_MODE_MESSAGE = 'refs add needs --dry-run, --proposal, or --description';
 const MUTUALLY_EXCLUSIVE_MESSAGE =

@@ -1,27 +1,27 @@
 // Pure, `Runner`-independent helpers for assembling `syncRef`'s return value — split out of
 // `git/repo.ts` purely to keep that file under this repo's max-lines-per-file limit.
 
-interface SyncResultShas {
+type SyncResultShas = {
   oldSha: string;
   newSha: string;
-}
+};
 
 type SyncStatus = 'updated' | 'fresh' | 'restored';
 
-interface BuiltSyncResult {
+type BuiltSyncResult = {
   status: SyncStatus;
   branchRenamedTo?: string;
   oldSha: string;
   newSha: string;
   warning?: string;
-}
+};
 
-interface BuildSyncResultOpts {
+type BuildSyncResultOpts = {
   shas: SyncResultShas;
   dirty: boolean;
   branchRenamedTo?: string;
   setHeadWarning?: string;
-}
+};
 
 // A restore discards local changes even though the sync succeeded — reported per §4 step 4.
 const RESTORED_WARNING =

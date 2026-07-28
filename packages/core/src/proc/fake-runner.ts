@@ -27,7 +27,7 @@ import type { RunOpts, RunResult, Runner } from './runner.ts';
 // `{ exitCode: 124 }` (no `timedOut`) for a real command that just happens to exit 124; a caller
 // that branches on `RunResult.timedOut` treats the two differently, per `runner.ts`'s contract.
 
-interface FakeResult {
+type FakeResult = {
   stdout?: string;
   stderr?: string;
   exitCode?: number;
@@ -36,20 +36,20 @@ interface FakeResult {
   // simulate a child whose stdout hit `SpawnRunner`'s byte cap; omitted otherwise, exactly as
   // `SpawnRunner` itself omits the flag.
   stdoutTruncated?: true;
-}
+};
 
-interface FakeRunnerCall {
+type FakeRunnerCall = {
   cmd: string;
   args: readonly string[];
   cwd?: string;
   timeoutMs?: number;
-}
+};
 
-interface ScriptedCall {
+type ScriptedCall = {
   cmdPrefix: string;
   result: FakeResult;
   cwd?: string;
-}
+};
 
 const DEFAULT_EXIT_CODE = 0;
 const DEFAULT_STDOUT = '';

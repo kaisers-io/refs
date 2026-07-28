@@ -9,10 +9,10 @@ import { randomUUID } from 'node:crypto';
 const NO_SIGNAL = 0;
 const META_FILENAME = 'meta.json';
 
-interface LockMeta {
+type LockMeta = {
   acquiredAtMs: number;
   pid: number;
-}
+};
 
 const errnoCode = (err: unknown): string | undefined => {
   if (typeof err === 'object' && err !== null && 'code' in err) {

@@ -48,18 +48,18 @@ const toWarningsList = (warning: string | undefined): string[] => {
   return [warning];
 };
 
-interface DryRunOutcome {
+type DryRunOutcome = {
   dest: string;
   effectiveCloneMode?: CloneMode;
   proposal: Proposal;
   warning?: string;
-}
+};
 
-interface DetectedFields {
+type DetectedFields = {
   defaultBranch: string;
   packages: Proposal['packages'];
   tagFormatCandidate: TagFormat | null;
-}
+};
 
 const detectProposalFields = async (
   ctx: CliContext,
@@ -75,18 +75,18 @@ const detectProposalFields = async (
   return { defaultBranch, packages, tagFormatCandidate };
 };
 
-interface CloneAndDetectOpts {
+type CloneAndDetectOpts = {
   cloneMode: CloneMode;
   dest: string;
   home: RefsHome;
   resolved: ResolvedSource;
-}
+};
 
-interface CloneAndDetectResult {
+type CloneAndDetectResult = {
   effectiveMode?: CloneMode;
   fields: DetectedFields;
   warning?: string;
-}
+};
 
 // Clone (idempotent — reuses a healthy existing checkout) and detect, both under the per-ref lock:
 // keeps the checkout stable between cloning and reading it back, rather than racing a concurrent
@@ -112,11 +112,11 @@ const cloneAndDetect = (ctx: CliContext, opts: CloneAndDetectOpts): Promise<Clon
     return result;
   });
 
-interface BuildDryRunOutcomeOpts {
+type BuildDryRunOutcomeOpts = {
   cloneResult: CloneAndDetectResult;
   dest: string;
   resolved: ResolvedSource;
-}
+};
 
 const buildDryRunOutcome = (opts: BuildDryRunOutcomeOpts): DryRunOutcome => {
   const proposal: Proposal = {

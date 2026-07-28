@@ -60,11 +60,11 @@ const snapshotTree = (root: string): string[] => {
     .toSorted((left, right) => left.localeCompare(right));
 };
 
-interface StressResult {
+type StressResult = {
   entered: number[];
   exited: number[];
   maxConcurrent: number;
-}
+};
 
 // Runs `STRESS_WAITER_COUNT` concurrent `withLock` calls against whatever lock state `home`
 // Already has, tracking how many critical sections were ever simultaneously entered.

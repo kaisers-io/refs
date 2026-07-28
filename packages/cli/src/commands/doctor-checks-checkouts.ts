@@ -14,10 +14,10 @@ import { join } from 'node:path';
 const SUCCESS_EXIT_CODE = 0;
 const EMPTY_LENGTH = 0;
 
-interface ExistingCheckout {
+type ExistingCheckout = {
   dest: string;
   key: string;
-}
+};
 
 /** Every configured ref whose checkout directory currently exists on disk — a ref with a missing
  * checkout is out of scope for both checks below (`refs list`/`refs sync` already surface that
@@ -108,12 +108,12 @@ const checkHooksGuard = async (
   return buildHooksGuardResult({ badKeys, checkoutCount: checkouts.length, missingHooks });
 };
 
-interface CheckoutStatus {
+type CheckoutStatus = {
   broken: boolean;
   detail: string;
   dirty: boolean;
   key: string;
-}
+};
 
 /** A non-zero exit from `git status --porcelain` (e.g. a stripped/corrupt `.git`, permissions
  * denied on the working tree) means the checkout couldn't be inspected at all — that is a

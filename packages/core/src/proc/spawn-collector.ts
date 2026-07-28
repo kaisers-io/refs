@@ -16,15 +16,15 @@ const MAX_STREAM_BYTES = STREAM_CAP_MIB * KIB_PER_MIB * BYTES_PER_KIB;
 
 const EMPTY_BYTES = 0;
 
-interface CollectedStream {
+type CollectedStream = {
   text: string;
   truncated: boolean;
-}
+};
 
-interface StreamCollector {
+type StreamCollector = {
   push: (chunk: Buffer) => void;
   finish: () => CollectedStream;
-}
+};
 
 // Buffers `Buffer` chunks (never decoding until `finish()`, so a multi-byte utf8 character split
 // across two chunks decodes correctly) up to `MAX_STREAM_BYTES`; anything past the cap is dropped,

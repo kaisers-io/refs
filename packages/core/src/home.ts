@@ -7,14 +7,14 @@ import { validationError } from './errors.ts';
 const NO_MISSING_SEGMENTS = 0;
 const PARENT_DIR_SEGMENT = '..';
 
-interface RefsHome {
+type RefsHome = {
   root: string;
   configPath: string;
   statePath: string;
   locksDir: string;
   sourcesDir: string;
   hooksDir: string;
-}
+};
 
 // `resolve()` the configured root so a relative REFS_HOME (e.g. "./refs-home") still yields
 // absolute derived paths — every command and the containment guard above assume absolute paths.
