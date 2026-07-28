@@ -7,17 +7,16 @@ import { once } from 'node:events';
 import { spawn } from 'node:child_process';
 
 // Thin process-execution seam so `git/repo.ts` never calls `child_process` directly: production
-// Code depends on `Runner`, tests depend on `FakeRunner` (fake-runner.ts), and only `SpawnRunner`
-// Touches a real child process. `run()` never throws on a non-zero exit — a failed git command is
-// Data (inspect `exitCode`/`stderr`), not a control-flow exception; callers decide what a given
-// Exit code means for their operation.
+// code depends on `Runner`, tests depend on `FakeRunner` (fake-runner.ts), and only `SpawnRunner`
+// touches a real child process. `run()` never throws on a non-zero exit — a failed git command is
+// data (inspect `exitCode`/`stderr`), not a control-flow exception; callers decide what a given
+// exit code means for their operation.
 //
 // Built directly on `node:child_process.spawn` (never `execFile`/promisified variants, whose
 // throw-on-everything semantics fight the never-throw contract above, and never `shell: true` —
 // every caller passes `cmd`/`args` as separate values, so there is never a shell to inject into).
 // Byte-capped stream collection lives in `spawn-collector.ts`, `timeoutMs` escalation in
-// `spawn-timeout.ts`, and parent-death child cleanup in `spawn-cleanup.ts` — split out purely to
-// keep every file under the repo's 300-line oxlint cap.
+// `spawn-timeout.ts`, and parent-death child cleanup in `spawn-cleanup.ts`.
 
 type RunResult = {
   stdout: string;
@@ -74,7 +73,7 @@ const withTimeoutNote = (stderr: string, timeoutMs: number | undefined): string 
 // as the actual, unambiguous signal a caller must branch on (a real child that exits 124 on its
 // own gets this same `exitCode` but never this flag), and the timeout note so `--verbose`/log
 // output still explains why the command has no real output. `stdout` is always discarded here —
-// a killed child's partial stdout is not interesting, matching this runner's original design.
+// a timed-out command's partial stdout is never useful to callers, so it is always discarded.
 const normalizeTimedOutResult = (stderr: string, timeoutMs: number | undefined): RunResult => ({
   exitCode: TIMEOUT_EXIT_CODE,
   stderr: withTimeoutNote(stderr, timeoutMs),
