@@ -21,10 +21,10 @@ const STATE_KEY_ISSUE_MESSAGE =
 const zStateRefsRecord = z.record(z.string(), zRefState);
 
 // State stays intentionally lax — no `zRefKey` requirement, since this record is
-// Machine-managed and self-healing (state entries are derived, not user-authored config).
+// machine-managed and self-healing (state entries are derived, not user-authored config).
 // It still needs the dangerous/empty-key guard: bare `z.record` silently DROPS a `"__proto__"`
-// Key instead of rejecting it (see the `withValidatedKeys` comment in record-keys.ts), which
-// Would make `safeParse` report success with the ref silently gone.
+// key instead of rejecting it (see the `withValidatedKeys` comment in record-keys.ts), which
+// would make `safeParse` report success with the ref silently gone.
 const zStateRefs = withValidatedKeys(
   (key) => key.length >= MIN_LENGTH && !DANGEROUS_RECORD_KEYS.has(key),
   () => STATE_KEY_ISSUE_MESSAGE,

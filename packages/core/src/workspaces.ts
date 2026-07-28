@@ -17,12 +17,11 @@ type WorkspacePackage = {
 
 const GLOB_SUFFIX = '/*';
 const BARE_GLOB = '*';
-const EMPTY_STRING = '';
 const CURRENT_DIR_SEGMENT = '.';
 const PARENT_DIR_SEGMENT = '..';
 const PATH_SEGMENT_SEPARATOR_PATTERN = /[/\\]/u;
 const ZERO = 0;
-const ONE = 1;
+const MAX_WILDCARDS_PER_PATTERN = 1;
 
 // Reject any workspace pattern that is absolute or contains `.`/`..` path segments before
 // it is ever used in a filesystem call. Defense in depth; `isContainedInRepo` still
@@ -53,7 +52,7 @@ const isContainedInRepo = async (
     const repoReal = await realpath(repoDir);
     const targetReal = await realpath(targetPath);
     const rel = relative(repoReal, targetReal);
-    if (allowSelf && rel === EMPTY_STRING) {
+    if (allowSelf && rel === '') {
       return true;
     }
 
@@ -62,7 +61,7 @@ const isContainedInRepo = async (
     // followed by a path separator means escape.
     const isParentOrAbove = rel === PARENT_DIR_SEGMENT || rel.startsWith(PARENT_DIR_SEGMENT + sep);
 
-    return rel !== EMPTY_STRING && !isParentOrAbove && !isAbsolute(rel);
+    return rel !== '' && !isParentOrAbove && !isAbsolute(rel);
   } catch {
     return false;
   }
@@ -85,7 +84,6 @@ const hasPackageJson = async (repoDir: string, dirPath: string): Promise<boolean
 };
 
 // Handle one-level glob pattern expansion
-// eslint-disable-next-line max-statements -- directory traversal with async file checks, unavoidable complexity
 const expandGlobSingleLevel = async (repoDir: string, baseDir: string): Promise<string[]> => {
   try {
     const fullPath = join(repoDir, baseDir);
@@ -97,27 +95,20 @@ const expandGlobSingleLevel = async (repoDir: string, baseDir: string): Promise<
     }
 
     const entries = await readdir(fullPath, { withFileTypes: true });
-    const checkPromises = entries
-      .filter((entry) => entry.isDirectory())
-      .map(async (entry) => {
-        const hasPackage = await hasPackageJson(repoDir, join(fullPath, entry.name));
-        if (!hasPackage) {
-          // eslint-disable-next-line unicorn/no-useless-undefined -- undefined is filtered by type guard below
-          return undefined;
-        }
-
-        return join(baseDir, entry.name);
-      });
-
-    const results = await Promise.all(checkPromises);
-    return results.filter((result): result is string => result !== undefined);
+    const dirs = entries.filter((entry) => entry.isDirectory());
+    const hasPackageFlags = await Promise.all(
+      dirs.map((entry) => hasPackageJson(repoDir, join(fullPath, entry.name))),
+    );
+    return dirs
+      .filter((_entry, index) => hasPackageFlags[index] === true)
+      .map((entry) => join(baseDir, entry.name));
   } catch {
     return [];
   }
 };
 
 // Expand glob pattern (one level only)
-// eslint-disable-next-line max-statements -- pattern matching with multiple glob expansion forms, unavoidable complexity
+// eslint-disable-next-line max-statements -- flat dispatch over the supported glob forms; splitting would hide the precedence order
 const expandGlobPattern = async (repoDir: string, pattern: string): Promise<string[]> => {
   if (!isSafeWorkspacePattern(pattern)) {
     return [];
@@ -128,7 +119,7 @@ const expandGlobPattern = async (repoDir: string, pattern: string): Promise<stri
   }
 
   const globCount = (pattern.match(/\*/gu) ?? []).length;
-  if (globCount > ONE) {
+  if (globCount > MAX_WILDCARDS_PER_PATTERN) {
     return [];
   }
 
@@ -274,7 +265,6 @@ const processAllPackageDirs = async (
   return results.filter((pkg): pkg is WorkspacePackage => pkg !== undefined);
 };
 
-// eslint-disable-next-line max-statements, max-lines-per-function -- orchestration function reading multiple sources and coordinating async operations, unavoidable complexity
 const detectWorkspacePackages = async (repoDir: string): Promise<WorkspacePackage[]> => {
   const packageJsonPath = join(repoDir, 'package.json');
   const pnpmWorkspacePath = join(repoDir, 'pnpm-workspace.yaml');
@@ -282,9 +272,7 @@ const detectWorkspacePackages = async (repoDir: string): Promise<WorkspacePackag
   const npmPatterns = await collectNpmPatterns(repoDir, packageJsonPath);
   const pnpmPatternsSet = await collectPnpmPatternsFromFile(repoDir, pnpmWorkspacePath);
 
-  const patterns = new Set<string>();
-  npmPatterns.forEach((pattern) => patterns.add(pattern));
-  pnpmPatternsSet.forEach((pattern) => patterns.add(pattern));
+  const patterns = new Set<string>([...npmPatterns, ...pnpmPatternsSet]);
 
   if (patterns.size === ZERO) {
     return [];

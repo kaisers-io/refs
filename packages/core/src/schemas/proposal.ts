@@ -8,8 +8,8 @@ const MIN_LENGTH = 1;
 
 // Partial package entry: description is optional (detected packages may lack descriptions).
 // `.partial({ description: true })` is safe here because `zPackageEntry` has no `.default()`
-// Fields — unlike `zSettings`, there is no default to silently reapply on an absent key (see
-// The `zRefSettingsOverride` comment in config.ts for the case where `.partial()` is NOT safe).
+// fields — unlike `zSettings`, there is no default to silently reapply on an absent key (see
+// the `zRefSettingsOverride` comment in config.ts for the case where `.partial()` is NOT safe).
 const zPackageEntryPartial = zPackageEntry.partial({ description: true });
 
 const zProposalBase = z.strictObject({
