@@ -1,25 +1,24 @@
 import { activeChildren, installCleanupOnce } from './spawn-cleanup.ts';
 import { appendNote, createCollector, withTruncationNote } from './spawn-collector.ts';
 import type { ChildProcess } from 'node:child_process';
+import type { CollectedStream } from './spawn-collector.ts';
 import { armTimeout } from './spawn-timeout.ts';
 import { once } from 'node:events';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { spawn } from 'node:child_process';
 
 // Thin process-execution seam so `git/repo.ts` never calls `child_process` directly: production
-// Code depends on `Runner`, tests depend on `FakeRunner` (fake-runner.ts), and only `SpawnRunner`
-// Touches a real child process. `run()` never throws on a non-zero exit — a failed git command is
-// Data (inspect `exitCode`/`stderr`), not a control-flow exception; callers decide what a given
-// Exit code means for their operation.
+// code depends on `Runner`, tests depend on `FakeRunner` (fake-runner.ts), and only `SpawnRunner`
+// touches a real child process. `run()` never throws on a non-zero exit — a failed git command is
+// data (inspect `exitCode`/`stderr`), not a control-flow exception; callers decide what a given
+// exit code means for their operation.
 //
 // Built directly on `node:child_process.spawn` (never `execFile`/promisified variants, whose
 // throw-on-everything semantics fight the never-throw contract above, and never `shell: true` —
 // every caller passes `cmd`/`args` as separate values, so there is never a shell to inject into).
 // Byte-capped stream collection lives in `spawn-collector.ts`, `timeoutMs` escalation in
-// `spawn-timeout.ts`, and parent-death child cleanup in `spawn-cleanup.ts` — split out purely to
-// keep every file under the repo's 300-line oxlint cap.
+// `spawn-timeout.ts`, and parent-death child cleanup in `spawn-cleanup.ts`.
 
-interface RunResult {
+type RunResult = {
   stdout: string;
   stderr: string;
   exitCode: number;
@@ -30,16 +29,16 @@ interface RunResult {
   // line may be a partial fragment, and counting lines no longer proves anything about how much
   // output the child really produced.
   stdoutTruncated?: true;
-}
+};
 
-interface RunOpts {
+type RunOpts = {
   cwd?: string;
   timeoutMs?: number;
-}
+};
 
-interface Runner {
+type Runner = {
   run: (cmd: string, args: readonly string[], opts?: RunOpts) => Promise<RunResult>;
-}
+};
 
 // A killed-by-signal result has no real exit code — fall back to a generic non-zero code so
 // `Runner.run`'s contract (`exitCode: number`, never throws) always holds.
@@ -59,12 +58,7 @@ const TIMEOUT_EXIT_CODE = 124;
 // `exitCode === 0` or reads `stderr`), so there is no compatibility reason to pick anything else.
 const SPAWN_ERROR_EXIT_CODE = 127;
 
-const cwdOpt = (cwd: string | undefined): { cwd?: string } => {
-  if (cwd === undefined) {
-    return {};
-  }
-  return { cwd };
-};
+const cwdOpt = (cwd: string | undefined): { cwd?: string } => (cwd === undefined ? {} : { cwd });
 
 const withTimeoutNote = (stderr: string, timeoutMs: number | undefined): string =>
   appendNote(stderr, `refs: command timed out after ${String(timeoutMs)}ms`);
@@ -74,7 +68,7 @@ const withTimeoutNote = (stderr: string, timeoutMs: number | undefined): string 
 // as the actual, unambiguous signal a caller must branch on (a real child that exits 124 on its
 // own gets this same `exitCode` but never this flag), and the timeout note so `--verbose`/log
 // output still explains why the command has no real output. `stdout` is always discarded here —
-// a killed child's partial stdout is not interesting, matching this runner's original design.
+// a timed-out command's partial stdout is never useful to callers, so it is always discarded.
 const normalizeTimedOutResult = (stderr: string, timeoutMs: number | undefined): RunResult => ({
   exitCode: TIMEOUT_EXIT_CODE,
   stderr: withTimeoutNote(stderr, timeoutMs),
@@ -82,12 +76,12 @@ const normalizeTimedOutResult = (stderr: string, timeoutMs: number | undefined):
   timedOut: true,
 });
 
-interface RunningChild {
+type RunningChild = {
   child: ChildProcess;
   stdoutCollector: ReturnType<typeof createCollector>;
   stderrCollector: ReturnType<typeof createCollector>;
   timeout: ReturnType<typeof armTimeout>;
-}
+};
 
 const startChild = (
   cmd: string,
@@ -127,10 +121,10 @@ const startChildSafely = (
 
 const isRunResult = (value: RunningChild | RunResult): value is RunResult => !('child' in value);
 
-interface CloseOutcome {
+type CloseOutcome = {
   code: number | null;
   errorMessage?: string;
-}
+};
 
 const errorMessageOf = (error: unknown): string => {
   if (error instanceof Error) {
@@ -156,21 +150,14 @@ const waitForClose = async (child: ChildProcess): Promise<CloseOutcome> => {
   }
 };
 
-// Derived from `createCollector`'s own return type rather than a separate `import type` of
-// `CollectedStream` from `spawn-collector.ts` — importing both the value AND the type from that
-// module would trigger the same `no-duplicate-imports`/`consistent-type-specifier-style` conflict
-// documented in `state-io.ts`; deriving locally sidesteps it while staying byte-for-byte the same
-// shape `spawn-collector.ts` actually returns.
-type CollectedStream = ReturnType<ReturnType<typeof createCollector>['finish']>;
-
-interface CloseContext {
+type CloseContext = {
   code: number | null;
   stdout: CollectedStream;
   stderr: CollectedStream;
   errorMessage: string | undefined;
   timedOut: boolean;
   timeoutMs: number | undefined;
-}
+};
 
 const resolveExitCode = (code: number | null): number => {
   if (code === null) {

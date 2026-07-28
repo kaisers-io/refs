@@ -1,15 +1,13 @@
 import type { RefKey, RefState, RefsHome } from '@kaisers-io/refs-core';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { readConfig, readState, withLock, writeConfig, writeState } from '@kaisers-io/refs-core';
 import type { RefSyncOutcome } from './sync-checkout.ts';
 
-// Config/state persistence for `sync-core.ts` — split out purely to keep both files under the
-// repo's 300-line oxlint cap. Every write here runs under a SEPARATE, short home-lock acquisition,
-// sequential after (never nested inside) `sync-checkout.ts#syncCheckout`'s per-ref lock — mirrors
-// `add-finalize.ts#finalizeRef`'s own two-step lock sequence. Chosen deliberately per-ref (one
-// short home-lock acquisition per ref) rather than batching every ref's state update under a
-// single lock at the end of the whole run: a later ref's failure must never lose an earlier ref's
-// already-successful state update.
+// Config/state persistence for `refs sync`. Every write here runs under a SEPARATE, short
+// home-lock acquisition, sequential after (never nested inside) `sync-checkout.ts#syncCheckout`'s
+// per-ref lock — mirrors `add-finalize.ts#finalizeRef`'s own two-step lock sequence. Chosen
+// deliberately per-ref (one short home-lock acquisition per ref) rather than batching every ref's
+// state update under a single lock at the end of the whole run: a later ref's failure must never
+// lose an earlier ref's already-successful state update.
 
 /** Builds `key`'s next `RefState` on a successful sync/clone: a fresh object (not a spread of
  * `previous`) so a prior `last_error`/`pending_proposal_at` is dropped on success rather than

@@ -1,4 +1,4 @@
-import { emit, wrapAction } from '../output.ts';
+import { cliOptsOf, emit, wrapAction } from '../output.ts';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
 import { runEditRef } from './edit-ref.ts';
@@ -29,30 +29,27 @@ import { usageError } from '@kaisers-io/refs-core';
 // works via a longer suffix (`acme/settings`) or its full key, both of which are never equal to
 // the bare word 'settings' and so never collide with the reserved dispatch check.
 //
-// That said, this IS a real silent-wrong-target risk: `clone_mode`/`sync_ttl`/`git_transport`
-// exist on both `zSettings` and `zRefSettingsOverride`, so `refs edit settings sync_ttl 2h` looks
-// exactly as valid whether or not the user actually meant the ref suffixed `.../settings` — nothing
-// about the command's shape signals which document got mutated. Rather than change the
-// deterministic dispatch (settings always wins — see above), `edit-settings.ts`'s
-// `collisionWarnings` fails LOUD-ENOUGH: it re-probes `matchRefKey` for the reserved suffix and, if
-// some ref would have matched, appends a `note:` warning to the JSON envelope naming that ref (or,
-// for an ambiguous suffix match, naming the situation) so the mistake is visible instead of silent.
+// That said, this IS a real silent-wrong-target risk: `refs edit settings sync_ttl 2h` looks
+// exactly as valid whether or not the user actually meant the ref suffixed `.../settings`, and
+// nothing about the command's shape signals which document got mutated;
+// edit-settings.ts#collisionWarnings makes that case loud by appending a 'note:' warning naming
+// the shadowed ref.
 
-interface EditData {
+type EditData = {
   field: string;
   key: string;
   new: unknown;
   old: unknown;
-}
+};
 
-interface EditOptions {
+type EditOptions = {
   packageName?: string;
-}
+};
 
-interface EditResult {
+type EditResult = {
   data: EditData;
   warnings: string[];
-}
+};
 
 const SETTINGS_MODE_KEYWORD = 'settings';
 const NO_WARNINGS: string[] = [];
@@ -69,12 +66,12 @@ const buildEditOptions = (localOpts: { package?: string }): EditOptions => {
   return opts;
 };
 
-interface EditArgs {
+type EditArgs = {
   first: string;
   opts: EditOptions;
   second: string;
   value: string;
-}
+};
 
 const runEdit = async (ctx: CliContext, args: EditArgs): Promise<EditResult> => {
   if (args.first === SETTINGS_MODE_KEYWORD) {
@@ -121,8 +118,7 @@ const registerEdit = (program: RefsCommand, ctx: CliContext): void => {
     .option('--package <name>', "edit this package's field instead of a top-level ref field")
     // eslint-disable-next-line max-params -- fixed 5-arg shape commander gives a 3-argument command
     .action((first, second, value, localOpts, command) => {
-      const globals = command.optsWithGlobals();
-      const opts = { json: globals.json === true, verbose: globals.verbose === true };
+      const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
         const { data, warnings } = await runEdit(ctx, {
           first,
@@ -135,5 +131,5 @@ const registerEdit = (program: RefsCommand, ctx: CliContext): void => {
     });
 };
 
-export { registerEdit, runEdit };
+export { registerEdit };
 export type { EditData };

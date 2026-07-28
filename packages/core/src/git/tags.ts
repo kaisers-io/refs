@@ -2,7 +2,6 @@ import type { Runner } from '../proc/runner.ts';
 import type { TagFormat } from '../schemas/primitives.ts';
 import { notFoundError } from '../errors.ts';
 import { tagExists } from './repo.ts';
-// eslint-disable-next-line no-duplicate-imports
 import { zTagFormat } from '../schemas/primitives.ts';
 
 // Regex for semantic version: major.minor.patch with optional prerelease and optional build metadata.
@@ -19,9 +18,6 @@ const SEMVER = /\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?/u;
 // Embeds two versions and is not reliably derivable.
 const BARE_VERSION = /\d+\.\d+\.\d+/gu;
 const MAX_UNAMBIGUOUS_VERSION_COUNT = 1;
-const FIRST_INDEX = 0;
-const INITIAL_COUNT = 1;
-const INCREMENT = 1;
 
 /** Validates that a derived format is acceptable. */
 const isValidFormat = (format: string): boolean => {
@@ -59,49 +55,38 @@ const tryDeriveFormat = (tag: string): string | undefined => {
   return format;
 };
 
+type FormatCandidate = {
+  count: number;
+  index: number;
+};
+
 /** Increments format count in the frequency map. */
 const incrementFormatCount = (
-  counts: Map<string, { count: number; index: number }>,
+  counts: Map<string, FormatCandidate>,
   format: string,
   index: number,
 ): void => {
   const existing = counts.get(format);
   if (existing === undefined) {
-    counts.set(format, { count: INITIAL_COUNT, index });
+    counts.set(format, { count: 1, index });
   } else {
-    existing.count += INCREMENT;
+    existing.count += 1;
   }
 };
 
 /** Builds a frequency map of formats from tags. */
-const buildFormatCounts = (
-  tags: readonly string[],
-): Map<string, { count: number; index: number }> => {
-  const counts = new Map<string, { count: number; index: number }>();
+const buildFormatCounts = (tags: readonly string[]): Map<string, FormatCandidate> => {
+  const counts = new Map<string, FormatCandidate>();
 
-  for (let idx = 0; idx < tags.length; idx += INCREMENT) {
-    const tag = tags[idx];
-    if (tag === undefined) {
-      // eslint-disable-next-line no-continue
-      continue;
-    }
-
+  for (const [idx, tag] of tags.entries()) {
     const format = tryDeriveFormat(tag);
-    if (!format) {
-      // eslint-disable-next-line no-continue
-      continue;
+    if (format) {
+      incrementFormatCount(counts, format, idx);
     }
-
-    incrementFormatCount(counts, format, idx);
   }
 
   return counts;
 };
-
-interface FormatCandidate {
-  count: number;
-  index: number;
-}
 
 /** Compares two format candidates to determine the best one. */
 const isBetter = (newCandidate: FormatCandidate, bestCandidate: FormatCandidate): boolean =>
@@ -109,23 +94,16 @@ const isBetter = (newCandidate: FormatCandidate, bestCandidate: FormatCandidate)
   (newCandidate.count === bestCandidate.count && newCandidate.index < bestCandidate.index);
 
 /** Finds the most frequent format; on a tie, the earliest index (most recent) wins. */
-const findBestFormat = (
-  formatCounts: Map<string, { count: number; index: number }>,
-): string | null => {
+const findBestFormat = (formatCounts: Map<string, FormatCandidate>): string | null => {
   const entries = [...formatCounts.entries()];
-  if (entries.length === FIRST_INDEX) {
-    // eslint-disable-next-line unicorn/no-null — Cross-package contract requires null return type
-    return null;
-  }
-
-  const firstEntry = entries[FIRST_INDEX];
-  if (!firstEntry) {
-    // eslint-disable-next-line unicorn/no-null — Cross-package contract requires null return type
+  const [firstEntry] = entries;
+  if (firstEntry === undefined) {
+    // eslint-disable-next-line unicorn/no-null -- public API returns `TagFormat | null`
     return null;
   }
 
   const [best, firstCandidate] = firstEntry;
-  return entries.slice(INCREMENT).reduce(
+  return entries.slice(1).reduce(
     ({ format: fmt, data: current }, [candidate, data]) => {
       if (isBetter(data, current)) {
         return { data, format: candidate };
@@ -161,7 +139,7 @@ const renderTag = (format: TagFormat, version: string): string =>
  * Resolves a tag by rendering it with the provided version and verifying it exists.
  * Throws notFoundError if the tag does not exist.
  */
-// eslint-disable-next-line max-params — Cross-package contract requires this signature
+// eslint-disable-next-line max-params -- exported API: (runner, dir, format, version) is the established call signature
 const resolveTag = async (
   runner: Runner,
   dir: string,

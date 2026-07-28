@@ -1,7 +1,7 @@
 import type { ChildProcess } from 'node:child_process';
 
-// Parent-death cleanup for `SpawnRunner`'s children — split out of `runner.ts` purely to keep that
-// file under the repo's 300-line oxlint cap.
+// Parent-death cleanup for `SpawnRunner`'s children (runner.ts): ensures no spawned git/ssh
+// process outlives the CLI itself.
 //
 // When `refs`'s own process is killed mid-command (Ctrl-C, `kill`, a terminal hangup), whatever
 // git/ssh child a `run()` call is waiting on must not become an orphan that keeps a partial clone

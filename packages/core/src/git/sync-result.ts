@@ -1,44 +1,42 @@
-// Pure, `Runner`-independent helpers for assembling `syncRef`'s return value — split out of
-// `git/repo.ts` purely to keep that file under this repo's max-lines-per-file limit.
+// Pure, `Runner`-independent assembly of `syncRef`'s (git/repo.ts) return value: status
+// classification (fresh/updated/restored) and warning aggregation.
 
-interface SyncResultShas {
+type SyncResultShas = {
   oldSha: string;
   newSha: string;
-}
+};
 
 type SyncStatus = 'updated' | 'fresh' | 'restored';
 
-interface BuiltSyncResult {
+type BuiltSyncResult = {
   status: SyncStatus;
   branchRenamedTo?: string;
   oldSha: string;
   newSha: string;
   warning?: string;
-}
+};
 
-interface BuildSyncResultOpts {
+type BuildSyncResultOpts = {
   shas: SyncResultShas;
   dirty: boolean;
   branchRenamedTo?: string;
   setHeadWarning?: string;
-}
+};
 
-// A restore discards local changes even though the sync succeeded — reported per §4 step 4.
+// A restore discards local changes even though the sync succeeded — surfaced as a warning.
 const RESTORED_WARNING =
   'checkout had local changes (managed checkouts are read-only) — discarded and restored to the remote state';
 
-const NO_WARNINGS = 0;
 const EXCERPT_MAX_LENGTH = 200;
-const FIRST_LINE_INDEX = 0;
 
 /** Best-effort one-line summary of a failed command's output, for a `SyncResult` warning. */
 const excerpt = (result: { stdout: string; stderr: string; exitCode: number }): string => {
   const detail = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
-  const firstLine = detail.split('\n')[FIRST_LINE_INDEX] ?? detail;
+  const firstLine = detail.split('\n')[0] ?? detail;
   if (firstLine.length <= EXCERPT_MAX_LENGTH) {
     return firstLine;
   }
-  return `${firstLine.slice(FIRST_LINE_INDEX, EXCERPT_MAX_LENGTH)}…`;
+  return `${firstLine.slice(0, EXCERPT_MAX_LENGTH)}…`;
 };
 
 const computeStatus = (shas: SyncResultShas, dirty: boolean): SyncStatus => {
@@ -59,15 +57,15 @@ const computeWarning = (dirty: boolean, setHeadWarning?: string): string | undef
   if (setHeadWarning !== undefined) {
     warnings.push(setHeadWarning);
   }
-  if (warnings.length === NO_WARNINGS) {
+  if (warnings.length === 0) {
     return undefined;
   }
   return warnings.join(' | ');
 };
 
 // Assembles `syncRef`'s return value: dirty → 'restored' + warning, else 'fresh'/'updated' by HEAD
-// Movement. A failed `origin/HEAD` refresh (`setHeadWarning`) is merged alongside any restore
-// Warning rather than replacing it — both can legitimately fire in the same sync.
+// movement. A failed `origin/HEAD` refresh (`setHeadWarning`) is merged alongside any restore
+// warning rather than replacing it — both can legitimately fire in the same sync.
 const buildSyncResult = (opts: BuildSyncResultOpts): BuiltSyncResult => {
   const { branchRenamedTo, dirty, setHeadWarning, shas } = opts;
   const result: BuiltSyncResult = { ...shas, status: computeStatus(shas, dirty) };
@@ -82,7 +80,7 @@ const buildSyncResult = (opts: BuildSyncResultOpts): BuiltSyncResult => {
 };
 
 // Reshapes `resolveSyncBranch`'s result into `buildSyncResult`'s input — kept as a separate step
-// So `syncRef` (repo.ts) doesn't have to: `exactOptionalPropertyTypes` forbids assigning
+// so `syncRef` (repo.ts) doesn't have to: `exactOptionalPropertyTypes` forbids assigning
 // `undefined` into an object literal's optional slots, hence the `if`s below.
 const toBuildSyncResultOpts = (
   syncBranch: { branchRenamedTo?: string; warning?: string },
@@ -100,4 +98,4 @@ const toBuildSyncResultOpts = (
 };
 
 export { buildSyncResult, excerpt, toBuildSyncResultOpts };
-export type { BuiltSyncResult };
+export type { BuiltSyncResult, SyncStatus };

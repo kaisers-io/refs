@@ -18,44 +18,40 @@ import {
   resolveSetting,
   usageError,
   zRefKey,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
-import { emit, wrapAction } from '../output.ts';
+import { cliOptsOf, emit, wrapAction } from '../output.ts';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
 import { isStale } from './ref-status.ts';
 
 // `refs list` prints one row per configured ref with resolved staleness/missing status. This file
-// also exports `matchRefKey`, the suffix-matching resolver `show` (and `sync`/Tasks 20-22's
-// edit/remove/tag) reuse to turn a full ref key or a unique suffix into an exact key. The
+// also exports `matchRefKey`, the suffix-matching resolver `show`/`sync`/`edit`/`remove`/`tag`/
+// `resolve` reuse to turn a full ref key or a unique suffix into an exact key. The
 // staleness check itself (`isStale`) lives in `ref-status.ts`, shared with `sync.ts`'s
 // `--stale-only` filter.
 
-interface ListItem {
+type ListItem = {
   clone_mode: CloneMode;
   description: string;
   key: string;
   missing: boolean;
   packages: string[];
   stale: boolean;
-}
+};
 
-const EMPTY_LENGTH = 0;
-const SINGLE_MATCH = 1;
-
-interface ListArgs {
+type ListArgs = {
   config: Config;
   home: RefsHome;
   now: number;
   state: State;
-}
+};
 
-interface ItemArgs {
+type ItemArgs = {
   home: RefsHome;
   now: number;
   settings: Settings;
   state: State;
-}
+};
 
 const buildListItem = (args: ItemArgs, key: string, ref: RefEntry): ListItem => {
   const refState = args.state.refs[key];
@@ -98,7 +94,7 @@ const suffixesFor = (item: ListItem): string => {
   if (item.missing) {
     suffixes.push('[missing]');
   }
-  if (suffixes.length === EMPTY_LENGTH) {
+  if (suffixes.length === 0) {
     return '';
   }
   return ` ${suffixes.join(' ')}`;
@@ -107,13 +103,13 @@ const suffixesFor = (item: ListItem): string => {
 const NO_REFS_LINE = 'no refs configured — run: refs add <source>';
 
 const listHuman = (items: readonly ListItem[]): string[] => {
-  if (items.length === EMPTY_LENGTH) {
+  if (items.length === 0) {
     return [NO_REFS_LINE];
   }
   return items.map((item) => `${item.key}  ${item.description}${suffixesFor(item)}`);
 };
 
-// Suffix matching, shared by `show` (and future resolve/sync/edit/remove/tag commands) ------------
+// Suffix matching, shared by show/resolve/sync/edit/remove/tag ------------
 
 const keySegments = (key: string): string[] => key.split('/');
 
@@ -145,7 +141,7 @@ const matchRefKey = (config: Config, query: string): RefKey => {
   if (first === undefined) {
     throw notFoundError(`no ref matches '${query}'`);
   }
-  if (matches.length > SINGLE_MATCH) {
+  if (matches.length > 1) {
     throw usageError(`'${query}' matches more than one ref: ${matches.join(', ')}`);
   }
   return zRefKey.parse(first);
@@ -156,8 +152,7 @@ const registerList = (program: RefsCommand, ctx: CliContext): void => {
     .command('list')
     .description('List configured refs with their staleness/missing checkout status.')
     .action((_localOpts, command) => {
-      const globals = command.optsWithGlobals();
-      const opts = { json: globals.json === true, verbose: globals.verbose === true };
+      const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
         const items = await runList(ctx);
         emit(ctx, opts, listHuman(items), items);
@@ -165,5 +160,4 @@ const registerList = (program: RefsCommand, ctx: CliContext): void => {
     });
 };
 
-export { matchRefKey, registerList, runList };
-export type { ListItem };
+export { matchRefKey, registerList };

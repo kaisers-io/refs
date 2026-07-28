@@ -32,10 +32,10 @@ import { run } from '../../src/main.ts';
 const TEST_TIMEOUT_MS = 30_000;
 const NO_ENTRIES: readonly string[] = [];
 
-interface ErrorEnvelope {
+type ErrorEnvelope = {
   error?: { code: string; message: string };
   ok: boolean;
-}
+};
 
 describe('refs add: containment guard on fresh clone', () => {
   it(

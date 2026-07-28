@@ -13,12 +13,11 @@ import {
   usageError,
   validationError,
   zRefKey,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
-import { emit, wrapAction } from '../output.ts';
+import { cliOptsOf, emit, wrapAction } from '../output.ts';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
-import { allowFileUrlsFrom } from './add-helpers.ts';
+import { allowFileUrlsFrom } from './add-source.ts';
 import { isStale } from './ref-status.ts';
 import { join } from 'node:path';
 import { matchRefKey } from './list.ts';
@@ -26,42 +25,38 @@ import { requireEntry } from './ref-context.ts';
 
 // `refs resolve <query>` — the agent-routing command. Turns a git url, an exact npm package name,
 // an import path (e.g. `@scope/pkg/sub/path`), or a unique ref-key suffix into the one configured ref (and,
-// where applicable, the one package within it) the query denotes, per spec §5's deterministic
+// where applicable, the one package within it) the query denotes, via a deterministic
 // four-step precedence (see `routeQuery` below). No match at all → `notFoundError` with the fixed
 // "no ref matches" message every step below ultimately funnels into.
 
-const PREFIX_START = 0;
-const PREFIX_STEP = 1;
-const SINGLE_MATCH = 1;
-
-interface ResolvePackage {
+type ResolvePackage = {
   local_path: string;
   name: string;
   path: string;
-}
+};
 
-interface ResolveData {
+type ResolveData = {
   key: string;
   local_path: string;
   missing: boolean;
   package: ResolvePackage | null;
   stale: boolean;
-}
+};
 
-interface PackageMatch {
+type PackageMatch = {
   entry: PackageEntry;
   key: RefKey;
   name: string;
-}
+};
 
-interface RouteMatch {
+type RouteMatch = {
   key: RefKey;
   packageMatch?: PackageMatch;
-}
+};
 
-interface RouteOptions {
+type RouteOptions = {
   allowFileUrls: boolean;
-}
+};
 
 const notFoundMessage = (query: string): string =>
   `no ref matches '${query}' — run refs list, or add it: refs add <url>`;
@@ -125,10 +120,10 @@ const tryUrlRoute = (
   throw notFoundError(notFoundMessage(query));
 };
 
-interface PackageEntryMatch {
+type PackageEntryMatch = {
   entry: PackageEntry;
   key: RefKey;
-}
+};
 
 // Every ref (sorted by key, for determinism) whose `packages` map registers exactly `name` —
 // shared by step 2 (exact query match) and step 3 (segment-prefix match, via `findPackageByPrefix`
@@ -160,7 +155,7 @@ const findPackageByName = (
   if (first === undefined) {
     return undefined;
   }
-  if (matches.length > SINGLE_MATCH) {
+  if (matches.length > 1) {
     throw usageError(
       ambiguousPackageMessage(
         name,
@@ -178,8 +173,8 @@ const findPackageByName = (
 // `@scope/pkg` (a 2-segment prefix) without hard-coding scoped-vs-unscoped segment counts.
 const findPackageByPrefix = (config: Config, query: string): PackageMatch | undefined => {
   const segments = query.split('/');
-  for (let length = segments.length - PREFIX_STEP; length >= PREFIX_STEP; length -= PREFIX_STEP) {
-    const candidate = segments.slice(PREFIX_START, length).join('/');
+  for (let length = segments.length - 1; length >= 1; length -= 1) {
+    const candidate = segments.slice(0, length).join('/');
     const found = findPackageByName(config, candidate);
     if (found !== undefined) {
       return { ...found, name: candidate };
@@ -220,7 +215,7 @@ const routeQuery = (config: Config, query: string, options: RouteOptions): Route
 
 const packageDataFor = (match: RouteMatch, dest: string): ResolvePackage | null => {
   if (match.packageMatch === undefined) {
-    // eslint-disable-next-line unicorn/no-null — cross-process JSON contract requires null, not undefined
+    // eslint-disable-next-line unicorn/no-null -- cross-process JSON contract requires null, not undefined
     return null;
   }
   const { entry, name } = match.packageMatch;
@@ -244,8 +239,7 @@ const runResolve = async (ctx: CliContext, query: string): Promise<ResolveData> 
   };
 };
 
-// Labeled-field convention mirroring `show.ts`'s `showHuman` (`local_path: ...`) rather than the
-// terser "key + bare path" pairing this command used before.
+// Labeled-field convention mirroring show.ts's showHuman ('local_path: ...').
 const resolveHuman = (data: ResolveData): string[] => {
   const lines = [data.key, `local_path: ${data.local_path}`];
   if (data.package !== null) {
@@ -262,8 +256,7 @@ const registerResolve = (program: RefsCommand, ctx: CliContext): void => {
     )
     .argument('<query>', 'git url, npm package name, import path, or unique ref-key suffix')
     .action((query, _localOpts, command) => {
-      const globals = command.optsWithGlobals();
-      const opts = { json: globals.json === true, verbose: globals.verbose === true };
+      const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
         const data = await runResolve(ctx, query);
         emit(ctx, opts, resolveHuman(data), data);
@@ -271,5 +264,4 @@ const registerResolve = (program: RefsCommand, ctx: CliContext): void => {
     });
 };
 
-export { registerResolve, runResolve };
-export type { ResolveData };
+export { registerResolve };

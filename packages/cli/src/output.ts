@@ -2,37 +2,55 @@ import type { CliContext } from './context.ts';
 import { renderError } from '@kaisers-io/refs-core';
 
 // The two shapes every command reply takes on stdout in `--json` mode. Kept as types (not
-// Exported) so the envelope stays an implementation detail of `emit`/`emitError` — callers pass
-// Plain data, never construct the envelope themselves.
-interface SuccessEnvelope {
+// exported) so the envelope stays an implementation detail of `emit`/`emitError` — callers pass
+// plain data, never construct the envelope themselves.
+type SuccessEnvelope = {
   data: unknown;
   ok: true;
   warnings: string[];
-}
+};
 
-interface ErrorEnvelope {
+type ErrorEnvelope = {
   error: { code: string; message: string };
   ok: false;
-}
+};
 
 const NO_WARNINGS: string[] = [];
 
-// Normalizes `emit`'s `human` parameter (one line, or several) to an array — kept out of `emit`
-// Itself only to avoid a ternary there (repo style forbids `no-ternary`).
-const toLines = (human: string | string[]): string[] => {
-  if (Array.isArray(human)) {
-    return human;
+// Normalizes `emit`'s `human` parameter (one line, or several) to an array.
+const toLines = (human: string | string[]): string[] => (Array.isArray(human) ? human : [human]);
+
+// Normalizes a command's optional single warning to `emit`'s warnings array.
+const warningsFor = (warning: string | undefined): string[] =>
+  warning === undefined ? NO_WARNINGS : [warning];
+
+// Renders a caught `unknown` as a plain message string: an `Error`'s own `.message`, anything else
+// via `String(...)`. The CLI-side twin of core's private helper of the same name in
+// `proc/runner.ts` (core stays self-contained, so it is not imported from there).
+const errorMessageOf = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message;
   }
-  return [human];
+  return String(error);
+};
+
+// Reads the inherited `--json`/`--verbose` globals off a registrar's commander `command` and
+// normalizes both to definite booleans (absent → false). Structurally typed — only the
+// `optsWithGlobals` shape, never a commander import — so this module stays commander-free.
+const cliOptsOf = (command: {
+  optsWithGlobals: () => { json?: boolean; verbose?: boolean };
+}): { json: boolean; verbose: boolean } => {
+  const globals = command.optsWithGlobals();
+  return { json: globals.json === true, verbose: globals.verbose === true };
 };
 
 // Human mode prints one line per element of `human` (a single string is treated as one line) to
-// Stdout, then — if `warnings` is non-empty — each warning as its own `refs: warning: <warning>`
-// Line on stderr, mirroring `emitError`'s `refs: <message>` prefix convention. Warnings go to
-// Stderr rather than stdout so scripts piping a command's human-mode stdout stay clean/parseable
-// Even when a warning fires. Json mode instead prints exactly one `JSON.stringify`d envelope line
-// On stdout, with `data`/`warnings` folded into that envelope and nothing written to stderr.
-// eslint-disable-next-line max-params -- fixed 5-arg contract shape mandated by the CLI spec (ctx, opts, human, data, warnings)
+// stdout, then — if `warnings` is non-empty — each warning as its own `refs: warning: <warning>`
+// line on stderr, mirroring `emitError`'s `refs: <message>` prefix convention. Warnings go to
+// stderr rather than stdout so scripts piping a command's human-mode stdout stay clean/parseable
+// even when a warning fires. Json mode instead prints exactly one `JSON.stringify`d envelope line
+// on stdout, with `data`/`warnings` folded into that envelope and nothing written to stderr.
+// eslint-disable-next-line max-params -- (ctx, opts, human, data, warnings?): the trailing optional would only move into a wrapper object, obscuring the dominant 4-arg call shape
 const emit = (
   ctx: CliContext,
   opts: { json: boolean },
@@ -54,8 +72,8 @@ const emit = (
 };
 
 // Human mode writes a single `refs: <message>` line to stderr. Json mode instead writes the
-// Error envelope to STDOUT (not stderr) — agents parsing `--json` output only ever need to read
-// One stream, success or failure.
+// error envelope to STDOUT (not stderr) — agents parsing `--json` output only ever need to read
+// one stream, success or failure.
 const emitError = (
   ctx: CliContext,
   opts: { json: boolean },
@@ -73,18 +91,18 @@ const emitError = (
 };
 
 // A short, unconditional `refs: <message>` progress line to stderr — fires in BOTH `--json` and
-// Human mode (unlike `emit`'s warnings, which only reach stderr in human mode; json warnings fold
-// Into the final envelope instead). Used by long-running steps of `refs add` (npm resolution,
-// Cloning, package detection) that would otherwise print nothing for minutes. Deliberately dumb:
-// No spinner, no TTY detection, no timer — just a line, written as the step starts.
+// human mode (unlike `emit`'s warnings, which only reach stderr in human mode; json warnings fold
+// into the final envelope instead). Used by long-running steps of `refs add` (npm resolution,
+// cloning, package detection) that would otherwise print nothing for minutes. Deliberately dumb:
+// no spinner, no TTY detection, no timer — just a line, written as the step starts.
 const progress = (ctx: CliContext, message: string): void => {
   ctx.errLine(`refs: ${message}`);
 };
 
 // Shared action wrapper for every `registerX` command: run the pure action body, and on any
-// Thrown error (a `RefsError` or otherwise) render it, emit the envelope, and set the process
-// Exit code — exactly once, right here. Command actions themselves never touch `process` or
-// Catch their own errors; that's this function's job alone.
+// thrown error (a `RefsError` or otherwise) render it, emit the envelope, and set the process
+// exit code — exactly once, right here. Command actions themselves never touch `process` or
+// catch their own errors; that's this function's job alone.
 const wrapAction =
   (ctx: CliContext, opts: { json: boolean; verbose: boolean }, action: () => Promise<void>) =>
   async (): Promise<void> => {
@@ -97,4 +115,4 @@ const wrapAction =
     }
   };
 
-export { emit, emitError, progress, wrapAction };
+export { cliOptsOf, emit, emitError, errorMessageOf, progress, warningsFor, wrapAction };

@@ -4,19 +4,17 @@ import { z } from 'zod';
 import { zPackageEntry } from './config.ts';
 import { zSafePackagesRecord } from './record-keys.ts';
 
-const MIN_LENGTH = 1;
-
 // Partial package entry: description is optional (detected packages may lack descriptions).
 // `.partial({ description: true })` is safe here because `zPackageEntry` has no `.default()`
-// Fields — unlike `zSettings`, there is no default to silently reapply on an absent key (see
-// The `zRefSettingsOverride` comment in config.ts for the case where `.partial()` is NOT safe).
+// fields — unlike `zSettings`, there is no default to silently reapply on an absent key (see
+// the `zRefSettingsOverride` comment in config.ts for the case where `.partial()` is NOT safe).
 const zPackageEntryPartial = zPackageEntry.partial({ description: true });
 
 const zProposalBase = z.strictObject({
-  default_branch: z.string().min(MIN_LENGTH),
+  default_branch: z.string().min(1),
   key: zRefKey,
   tag_format_candidate: zTagFormat.nullable(),
-  url: z.string().min(MIN_LENGTH),
+  url: z.string().min(1),
 });
 
 const zProposal = zProposalBase.extend({
@@ -25,7 +23,7 @@ const zProposal = zProposalBase.extend({
 });
 
 const zFinalProposal = zProposalBase.extend({
-  description: z.string().min(MIN_LENGTH),
+  description: z.string().min(1),
   packages: zSafePackagesRecord(zPackageEntry),
 });
 

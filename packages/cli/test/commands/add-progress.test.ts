@@ -10,7 +10,7 @@ import type { CliContext } from '../../src/context.ts';
 import type { FixtureRepo } from '../helpers/fixture-repo.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { createFixtureRepo } from '../helpers/fixture-repo.ts';
-import { resolveAddSource } from '../../src/commands/add-helpers.ts';
+import { resolveAddSource } from '../../src/commands/add-source.ts';
 import { run } from '../../src/main.ts';
 import { testContext } from '../helpers/context.ts';
 

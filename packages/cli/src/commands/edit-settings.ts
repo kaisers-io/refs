@@ -8,7 +8,6 @@ import {
   withLock,
   writeConfig,
   zSettings,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
 import type { CliContext } from '../context.ts';
 import type { EditData } from './edit.ts';
@@ -18,19 +17,18 @@ import { z } from 'zod';
 
 // `refs edit settings <key> <value>` — mutates exactly one global setting, re-validating the
 // WHOLE `zSettings` object (not just the one field) so a value that's individually well-formed but
-// breaks some future cross-field invariant would still be caught. Split out of `edit-ref.ts`/
-// `edit-package.ts` purely to keep each mode's file small and independently readable — the task
-// brief calls out that `edit` has three modes and should be planned as a split up front.
+// breaks some future cross-field invariant would still be caught. One of edit's three mode
+// modules (see edit.ts for the dispatch).
 
-interface EditSettingsArgs {
+type EditSettingsArgs = {
   key: string;
   value: string;
-}
+};
 
-interface EditSettingsResult {
+type EditSettingsResult = {
   data: EditData;
   warnings: string[];
-}
+};
 
 const SETTINGS_MODE_KEY = 'settings';
 const NO_WARNINGS: string[] = [];
@@ -72,16 +70,15 @@ const collisionWarnings = (config: Config): string[] => {
   }
 };
 
-interface SettingsEditOutcome {
+type SettingsEditOutcome = {
   config: Config;
   key: keyof typeof zSettings.shape;
   old: unknown;
   parsed: Settings;
-}
+};
 
-/** Builds the final `{data, warnings}` result once the write has already gone through — split out
- * of `runEditSettings` purely to keep that function's statement count under the repo's
- * `max-statements` oxlint cap, mirroring `edit-package.ts`'s `applyPackageFieldEdit` split. */
+/** Builds the final `{data, warnings}` result once the write has already gone through (kept
+ * separate so `runEditSettings` stays under the max-statements lint cap). */
 const buildEditSettingsResult = (outcome: SettingsEditOutcome): EditSettingsResult => {
   const data: EditData = {
     field: outcome.key,

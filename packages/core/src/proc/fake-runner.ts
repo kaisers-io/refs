@@ -1,33 +1,33 @@
 import type { RunOpts, RunResult, Runner } from './runner.ts';
 
 // Scripted `Runner` for unit tests of code that depends on git commands but must not shell out for
-// Real (that's what the `git/repo.ts` integration suite is for). Kept under `src/` rather than
+// real (that's what the `git/repo.ts` integration suite is for). Kept under `src/` rather than
 // `test/` — it is shipped source, deliberately: the CLI package (and any future consumer) imports
-// It for its own unit tests instead of re-implementing a fake.
+// it for its own unit tests instead of re-implementing a fake.
 //
 // Usage: `runner.expect('git status', { stdout: '...' })` queues one scripted response, matched
 // FIFO against the next `run()` call by prefix (`${cmd} ${args.join(' ')}` must start with
 // `cmdPrefix`). Calling `run()` with nothing queued, or against a mismatched prefix, throws
-// Immediately — a fake that silently returned defaults would hide a caller bug instead of failing
-// The test that exercises it.
+// immediately — a fake that silently returned defaults would hide a caller bug instead of failing
+// the test that exercises it.
 //
 // Prefix matching is intentionally loose, not exact: `expect('git fetch', ...)` matches an actual
-// Call of `git fetch --prune --tags origin` — the short form is shorthand for tests that don't
-// Care about the full argument list. Pass the FULL `cmd + args` string (e.g.
+// call of `git fetch --prune --tags origin` — the short form is shorthand for tests that don't
+// care about the full argument list. Pass the FULL `cmd + args` string (e.g.
 // `'git fetch --prune --tags origin'`) whenever two scripted commands could otherwise be confused
-// With each other (two `git reset --hard <ref>` calls against different refs, for example).
+// with each other (two `git reset --hard <ref>` calls against different refs, for example).
 //
 // Every call — matched or not yet asserted on — is recorded in `calls`, in invocation order,
-// Including its `cwd` when the caller passed one. Tests can inspect `calls` directly, or pass
+// including its `cwd` when the caller passed one. Tests can inspect `calls` directly, or pass
 // `{ cwd }` as `expect()`'s third argument to assert the *next* call's cwd inline with its
-// Scripted response.
+// scripted response.
 //
 // `exitCode: 124` alone never means "timed out" — a real child can exit 124 on its own. Script
 // `{ exitCode: 124, timedOut: true }` for a genuine `SpawnRunner`-style timeout, and plain
 // `{ exitCode: 124 }` (no `timedOut`) for a real command that just happens to exit 124; a caller
 // that branches on `RunResult.timedOut` treats the two differently, per `runner.ts`'s contract.
 
-interface FakeResult {
+type FakeResult = {
   stdout?: string;
   stderr?: string;
   exitCode?: number;
@@ -36,20 +36,20 @@ interface FakeResult {
   // simulate a child whose stdout hit `SpawnRunner`'s byte cap; omitted otherwise, exactly as
   // `SpawnRunner` itself omits the flag.
   stdoutTruncated?: true;
-}
+};
 
-interface FakeRunnerCall {
+type FakeRunnerCall = {
   cmd: string;
   args: readonly string[];
   cwd?: string;
   timeoutMs?: number;
-}
+};
 
-interface ScriptedCall {
+type ScriptedCall = {
   cmdPrefix: string;
   result: FakeResult;
   cwd?: string;
-}
+};
 
 const DEFAULT_EXIT_CODE = 0;
 const DEFAULT_STDOUT = '';
@@ -88,7 +88,7 @@ class FakeRunner implements Runner {
   }
 
   // Appends this invocation to `calls` — always, whether or not it goes on to match the next
-  // Scripted response.
+  // scripted response.
   #record(cmd: string, args: readonly string[], opts?: RunOpts): void {
     const call: FakeRunnerCall = { args, cmd };
     if (opts?.cwd !== undefined) {
@@ -102,7 +102,7 @@ class FakeRunner implements Runner {
 
   // Pops and validates the next scripted response against the actual `full` command string (and
   // `cwd`, when scripted) — throws immediately on an empty queue or a mismatch, per the class doc
-  // Comment above.
+  // comment above.
   #matchNext(full: string, opts?: RunOpts): FakeResult {
     const next = this.#queue.shift();
     if (next === undefined) {

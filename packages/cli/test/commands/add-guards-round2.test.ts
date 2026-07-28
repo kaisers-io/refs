@@ -16,7 +16,7 @@ import {
   withTempHome,
 } from '../helpers/add-support.ts';
 import { createFixtureRepo } from '../helpers/fixture-repo.ts';
-import { resolveAddSource } from '../../src/commands/add-helpers.ts';
+import { resolveAddSource } from '../../src/commands/add-source.ts';
 import { rm } from 'node:fs/promises';
 import { run } from '../../src/main.ts';
 
@@ -29,10 +29,10 @@ import { run } from '../../src/main.ts';
 
 const TEST_TIMEOUT_MS = 30_000;
 
-interface ErrorEnvelope {
+type ErrorEnvelope = {
   error?: { code: string; message: string };
   ok: boolean;
-}
+};
 
 describe('refs add: SHA-256 (--object-format=sha256) repo head_sha guard', () => {
   it(

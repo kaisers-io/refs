@@ -1,14 +1,7 @@
 import type { RefEntry, RefKey } from '@kaisers-io/refs-core';
-import {
-  checkoutPath,
-  notFoundError,
-  readConfig,
-  resolveHome,
-  resolveTag,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
-} from '@kaisers-io/refs-core';
-import { emit, wrapAction } from '../output.ts';
-import { requireCheckout, requireEntry } from './ref-context.ts';
+import { checkoutPath, readConfig, resolveHome, resolveTag } from '@kaisers-io/refs-core';
+import { cliOptsOf, emit, wrapAction } from '../output.ts';
+import { requireCheckout, requireEntry, requirePackage } from './ref-context.ts';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
 import { matchRefKey } from './list.ts';
@@ -17,40 +10,36 @@ import { matchRefKey } from './list.ts';
 // git tag it corresponds to, by rendering the applicable `tag_format` and verifying the rendered
 // tag exists in the ref's checkout (core's `resolveTag`, itself built on `tagExists`/`renderTag`).
 // `--package <name>` targets one of the ref's registered packages instead of the ref itself; its
-// `tag_format` inherits the ref's own when the package does not override one (spec §3):
+// `tag_format` inherits the ref's own when the package does not override one:
 // `package.tag_format ?? ref.tag_format`. An unresolvable `--package` name is a `notFoundError`,
 // exactly like an unresolvable `<ref>` is (via `matchRefKey`).
 
-interface TagData {
+type TagData = {
   key: string;
   ref_path: string;
   tag: string;
   version: string;
-}
+};
 
-interface TagOptions {
+type TagOptions = {
   packageName?: string;
-}
+};
 
-interface TagArgs {
+type TagArgs = {
   opts: TagOptions;
   query: string;
   version: string;
-}
+};
 
 /** Resolves the `tag_format` to render `version` against: the named package's own override when
- * `packageName` is given and it has one, else the ref's own `tag_format` — the inheritance rule
- * from spec §3. An unregistered `packageName` is a `notFoundError`, not a silent ref-level
+ * `packageName` is given and it has one, else the ref's own `tag_format`. An unregistered
+ * `packageName` is a `notFoundError`, not a silent ref-level
  * fallback. */
 const formatFor = (entry: RefEntry, key: RefKey, packageName: string | undefined): string => {
   if (packageName === undefined) {
     return entry.tag_format;
   }
-  const pkg = entry.packages?.[packageName];
-  if (pkg === undefined) {
-    throw notFoundError(`no package '${packageName}' registered on ref '${key}'`);
-  }
-  return pkg.tag_format ?? entry.tag_format;
+  return requirePackage(entry, key, packageName).tag_format ?? entry.tag_format;
 };
 
 const runTag = async (ctx: CliContext, args: TagArgs): Promise<TagData> => {
@@ -86,8 +75,7 @@ const registerTag = (program: RefsCommand, ctx: CliContext): void => {
     .option('--package <name>', "resolve against this package's tag_format instead of the ref's")
     // eslint-disable-next-line max-params -- fixed 4-arg shape commander gives a 2-argument command
     .action((ref, version, localOpts, command) => {
-      const globals = command.optsWithGlobals();
-      const opts = { json: globals.json === true, verbose: globals.verbose === true };
+      const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
         const data = await runTag(ctx, { opts: buildTagOptions(localOpts), query: ref, version });
         emit(ctx, opts, tagHuman(data), data);
@@ -95,5 +83,4 @@ const registerTag = (program: RefsCommand, ctx: CliContext): void => {
     });
 };
 
-export { registerTag, runTag };
-export type { TagData };
+export { registerTag };
