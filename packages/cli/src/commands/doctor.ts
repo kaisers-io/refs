@@ -1,9 +1,5 @@
 import { EXIT, resolveHome } from '@kaisers-io/refs-core';
-import type {
-  RefsHome,
-  State,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
-} from '@kaisers-io/refs-core';
+import type { RefsHome, State } from '@kaisers-io/refs-core';
 import {
   buildConfigCheck,
   checkGit,
@@ -17,7 +13,6 @@ import { checkOrphans, loadStateSafely } from './doctor-checks-orphans.ts';
 import { emit, wrapAction } from '../output.ts';
 import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { ConfigLoad } from './doctor-checks-basic.ts';
 import type { RefsCommand } from './registry.ts';
 import { checkSshAuth } from './doctor-checks-ssh.ts';

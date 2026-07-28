@@ -8,7 +8,6 @@ import {
   withLock,
   writeConfig,
   zSettings,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
 import type { CliContext } from '../context.ts';
 import type { EditData } from './edit.ts';

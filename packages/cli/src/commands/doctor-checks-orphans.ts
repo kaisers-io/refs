@@ -1,11 +1,5 @@
 import type { Config, RefsHome, State } from '@kaisers-io/refs-core';
-import {
-  isEnoent,
-  isGitCheckout,
-  readState,
-  zState,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
-} from '@kaisers-io/refs-core';
+import { isEnoent, isGitCheckout, readState, zState } from '@kaisers-io/refs-core';
 import type { CheckResult } from './doctor-types.ts';
 import { join } from 'node:path';
 import { readdir } from 'node:fs/promises';

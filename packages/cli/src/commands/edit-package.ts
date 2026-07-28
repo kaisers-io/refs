@@ -5,7 +5,6 @@ import {
   validationError,
   writeConfig,
   zPackageEntry,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
 import type { EditData } from './edit.ts';
 import { normalizeEditValue } from './edit-envelope.ts';

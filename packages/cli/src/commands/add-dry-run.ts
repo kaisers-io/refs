@@ -26,10 +26,8 @@ import {
   resolveSetting,
   withLock,
   writeState,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
 import type { CliContext } from '../context.ts';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { ResolvedSource } from './add-helpers.ts';
 import { buildProposalPackages } from './add-packages.ts';
 import { ensureClonedCheckout } from './add-checkout-guards.ts';

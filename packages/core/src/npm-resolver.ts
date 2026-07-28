@@ -2,7 +2,6 @@ import { notFoundError, usageError, validationError } from './errors.ts';
 import type { RefKey } from './schemas/primitives.ts';
 import { canonicalizeGitUrl } from './git-url.ts';
 import { z } from 'zod';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { zPackagePath } from './schemas/primitives.ts';
 
 // Injectable HTTP client; production passes the global `fetch`.

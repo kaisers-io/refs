@@ -1,17 +1,10 @@
 import { isEnoent, writeFileAtomic } from './fs-atomic.ts';
 import type { RefsHome } from './home.ts';
+import type { State } from './schemas/state.ts';
 import { readFile } from 'node:fs/promises';
 import { validationError } from './errors.ts';
 import { z } from 'zod';
 import { zState } from './schemas/state.ts';
-
-// Derived from `zState` rather than imported as `State` alongside the `zState` value import —
-// Importing both the value and the type from the same module triggers a real conflict between
-// This repo's `no-duplicate-imports` and `consistent-type-specifier-style` lint rules (one wants
-// A single merged statement, the other wants the type specifier split into its own top-level
-// `import type`, and splitting re-triggers `no-duplicate-imports`). Deriving locally sidesteps it
-// While staying byte-for-byte the same type as `schemas/state.ts`'s exported `State`.
-type State = z.infer<typeof zState>;
 
 const JSON_INDENT = 2;
 

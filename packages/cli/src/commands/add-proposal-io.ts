@@ -1,6 +1,5 @@
 import { validationError, zFinalProposal } from '@kaisers-io/refs-core';
 import type { CliContext } from '../context.ts';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { FinalProposal } from '@kaisers-io/refs-core';
 import { readFile } from 'node:fs/promises';
 import { z } from 'zod';

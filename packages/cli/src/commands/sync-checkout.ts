@@ -11,7 +11,6 @@ import {
   validationError,
   withLock,
   zRefState,
-  // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
 import {
   ensureCheckoutOrigin,

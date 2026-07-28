@@ -6,7 +6,6 @@ import type {
   TagFormat,
   WorkspacePackage,
 } from '@kaisers-io/refs-core';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { validationError } from '@kaisers-io/refs-core';
 
 // `packages`/`tag_format` shaping between the proposal shape (partial, machine-detected) and the
