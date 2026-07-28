@@ -17,6 +17,7 @@ jobs:
         with: { node-version-file: .node-version, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      - run: pnpm exec vitest run --config bench/vitest.config.mjs
   bundle-determinism:
     runs-on: ubuntu-latest
     steps:
