@@ -21,8 +21,7 @@ import type { CliContext } from '../context.ts';
 import { dirname } from 'node:path';
 import { mkdir } from 'node:fs/promises';
 
-// The per-ref git pipeline for `sync.ts`/`sync-core.ts` — split out purely to keep both files
-// under the repo's 300-line oxlint cap. Owns the missing-checkout re-clone path, the
+// The per-ref git pipeline for `refs sync`. Owns the missing-checkout re-clone path, the
 // existing-checkout sync path (guarded by the same managed-checkout marker `add`'s reuse path
 // checks), and the per-ref lock around both. No config/state write happens here — that is
 // `sync-state.ts`'s job, under a SEPARATE, sequential (never nested) home-lock acquisition.
@@ -63,8 +62,8 @@ type ClonedFields = {
   headSha: string;
 };
 
-/** Shapes a fresh clone's outcome — split out of `syncMissingCheckout` purely to keep that
- * function under the repo's max-statements cap. */
+/** Shapes `syncMissingCheckout`'s `'cloned'` outcome, recording a detected branch rename and any
+ * clone warning. */
 const buildClonedOutcome = (
   rsc: RefSyncContext,
   cloneResult: { effectiveMode: CloneMode; warning?: string },

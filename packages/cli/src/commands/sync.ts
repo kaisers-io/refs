@@ -10,20 +10,20 @@ import {
   resolveSetting,
   zRefKey,
 } from '@kaisers-io/refs-core';
-import type { RefSyncContext, SyncStatus } from './sync-checkout.ts';
+import type { SyncItemStatus, SyncResultItem } from './sync-core.ts';
 import { emit, wrapAction } from '../output.ts';
 import type { CliContext } from '../context.ts';
+import type { RefSyncContext } from './sync-checkout.ts';
 import type { RefsCommand } from './registry.ts';
-import type { SyncResultItem } from './sync-core.ts';
 import { isStale } from './ref-status.ts';
 import { matchRefKey } from './list.ts';
 import { requireEntry } from './ref-context.ts';
 import { syncAll } from './sync-core.ts';
 
 // `refs sync [refs…] [--stale-only]` — fetches (or, if the checkout is missing, re-clones) every
-// requested ref, defaulting to all configured refs. Target resolution/staleness-filtering and
-// human-mode summary formatting live here; the actual per-ref clone/sync/lock pipeline is in
-// `sync-core.ts`, split out purely to keep this file under the repo's 300-line oxlint cap.
+// requested ref, defaulting to all configured refs. This file owns target resolution, staleness
+// filtering, and human-mode summary formatting; the per-ref clone/sync/lock pipeline is in
+// `sync-core.ts`.
 
 const buildContext = (home: RefsHome, config: Config, key: RefKey): RefSyncContext => ({
   home,
@@ -103,7 +103,7 @@ const runSync = async (ctx: CliContext, opts: SyncOptions): Promise<SyncOutcome>
   return { failedCount, results };
 };
 
-const STATUS_ORDER: readonly (SyncStatus | 'failed')[] = [
+const STATUS_ORDER: readonly SyncItemStatus[] = [
   'updated',
   'fresh',
   'cloned',
@@ -111,7 +111,7 @@ const STATUS_ORDER: readonly (SyncStatus | 'failed')[] = [
   'failed',
 ];
 
-const STATUS_LABEL: Record<SyncStatus | 'failed', string> = {
+const STATUS_LABEL: Record<SyncItemStatus, string> = {
   cloned: 'Cloned',
   failed: 'Failed',
   fresh: 'Fresh',
@@ -123,8 +123,8 @@ const SUMMARY_SEP = ' / ';
 
 const groupByStatus = (
   results: readonly SyncResultItem[],
-): Record<SyncStatus | 'failed', SyncResultItem[]> => {
-  const groups: Record<SyncStatus | 'failed', SyncResultItem[]> = {
+): Record<SyncItemStatus, SyncResultItem[]> => {
+  const groups: Record<SyncItemStatus, SyncResultItem[]> = {
     cloned: [],
     failed: [],
     fresh: [],
@@ -170,6 +170,8 @@ const buildSyncOptions = (refs: string[], localOpts: { staleOnly?: boolean }): S
   staleOnly: localOpts.staleOnly === true,
 });
 
+const NO_FAILURES = 0;
+
 const registerSync = (program: RefsCommand, ctx: CliContext): void => {
   program
     .command('sync')
@@ -182,15 +184,15 @@ const registerSync = (program: RefsCommand, ctx: CliContext): void => {
       const globals = command.optsWithGlobals();
       const opts = { json: globals.json === true, verbose: globals.verbose === true };
       return wrapAction(ctx, opts, async () => {
-        // `runSync` is this command's pure async body (mirrors runInit/runAdd/runList/runShow),
-        // not a synchronous fs call — the no-sync rule below only matches on the name suffix.
-        // eslint-disable-next-line node/no-sync -- see comment above
+        // `runSync` is this command's pure async body (mirrors runInit/runAdd/runList/runShow) —
+        // the rule fires on the `Sync` name suffix alone, not on any synchronous fs call.
+        // eslint-disable-next-line node/no-sync -- runSync is an async command body; the rule matches the name suffix only
         const outcome = await runSync(ctx, buildSyncOptions(refs, localOpts));
         emit(ctx, opts, syncHuman(outcome.results), { results: outcome.results });
         // `wrapAction` only sets `process.exitCode` on a THROWN error; a batch with per-ref
         // failures is not one (the envelope itself is still `ok: true`), so this is the one place
         // that needs to set it directly — exactly once, and only in the failure case.
-        if (outcome.failedCount > NO_REQUESTED) {
+        if (outcome.failedCount > NO_FAILURES) {
           process.exitCode = EXIT.UNEXPECTED;
         }
       })();

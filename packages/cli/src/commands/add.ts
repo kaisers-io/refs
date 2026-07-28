@@ -23,13 +23,13 @@ import { finalizeRef } from './add-finalize.ts';
 import { loadFinalProposal } from './add-proposal-io.ts';
 
 // `refs add` — the two-phase flow (`--dry-run` proposes, `--proposal` finalizes) plus the
-// `--description` one-shot convenience. Source resolution/guards live in `add-helpers.ts`, the
-// dry-run pipeline in `add-dry-run.ts`, package/proposal shaping in `add-packages.ts`,
-// proposal-file/stdin loading in `add-proposal-io.ts`, and the finalize write path in
-// `add-finalize.ts` — split out to keep this file under the repo's 300-line oxlint cap.
+// `--description` one-shot convenience. This file owns mode selection, argument validation, and
+// command registration; source resolution/pre-clone guards live in `add-helpers.ts`, the dry-run
+// pipeline in `add-dry-run.ts`, package/proposal shaping in `add-packages.ts`, proposal-file/
+// stdin loading in `add-proposal-io.ts`, and the finalize write path in `add-finalize.ts`.
 
 const NO_ACTIVE_MODES = 0;
-const MIN_ACTIVE_MODES = 1;
+const MAX_ACTIVE_MODES = 1;
 
 type AddOutcome = {
   data: unknown;
@@ -139,7 +139,7 @@ const assertSingleMode = (opts: AddOptions): void => {
     opts.proposal !== undefined,
     opts.description !== undefined,
   ].filter(Boolean).length;
-  if (activeCount > MIN_ACTIVE_MODES) {
+  if (activeCount > MAX_ACTIVE_MODES) {
     throw usageError(MUTUALLY_EXCLUSIVE_MESSAGE);
   }
   if (activeCount === NO_ACTIVE_MODES) {
