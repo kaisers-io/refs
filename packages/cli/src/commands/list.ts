@@ -19,7 +19,7 @@ import {
   usageError,
   zRefKey,
 } from '@kaisers-io/refs-core';
-import { emit, wrapAction } from '../output.ts';
+import { cliOptsOf, emit, wrapAction } from '../output.ts';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
 import { isStale } from './ref-status.ts';
@@ -152,8 +152,7 @@ const registerList = (program: RefsCommand, ctx: CliContext): void => {
     .command('list')
     .description('List configured refs with their staleness/missing checkout status.')
     .action((_localOpts, command) => {
-      const globals = command.optsWithGlobals();
-      const opts = { json: globals.json === true, verbose: globals.verbose === true };
+      const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
         const items = await runList(ctx);
         emit(ctx, opts, listHuman(items), items);

@@ -15,7 +15,7 @@ import {
 } from '@kaisers-io/refs-core';
 import type { CliContext } from '../context.ts';
 import type { EditData } from './edit.ts';
-import { allowFileUrlsFrom } from './add-helpers.ts';
+import { allowFileUrlsFrom } from './add-source.ts';
 import { editPackageField } from './edit-package.ts';
 import { matchRefKey } from './list.ts';
 import { normalizeEditValue } from './edit-envelope.ts';

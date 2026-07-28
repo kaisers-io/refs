@@ -1,6 +1,6 @@
 import type { RefEntry, RefKey } from '@kaisers-io/refs-core';
 import { checkoutPath, readConfig, resolveHome, resolveTag } from '@kaisers-io/refs-core';
-import { emit, wrapAction } from '../output.ts';
+import { cliOptsOf, emit, wrapAction } from '../output.ts';
 import { requireCheckout, requireEntry, requirePackage } from './ref-context.ts';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
@@ -75,8 +75,7 @@ const registerTag = (program: RefsCommand, ctx: CliContext): void => {
     .option('--package <name>', "resolve against this package's tag_format instead of the ref's")
     // eslint-disable-next-line max-params -- fixed 4-arg shape commander gives a 2-argument command
     .action((ref, version, localOpts, command) => {
-      const globals = command.optsWithGlobals();
-      const opts = { json: globals.json === true, verbose: globals.verbose === true };
+      const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
         const data = await runTag(ctx, { opts: buildTagOptions(localOpts), query: ref, version });
         emit(ctx, opts, tagHuman(data), data);

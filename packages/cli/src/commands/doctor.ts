@@ -5,12 +5,11 @@ import {
   checkGit,
   checkNode,
   checkSkill,
-  errorMessageOf,
   loadConfigSafely,
 } from './doctor-checks-basic.ts';
 import { checkDirtyCheckouts, checkHooksGuard } from './doctor-checks-checkouts.ts';
 import { checkOrphans, loadStateSafely } from './doctor-checks-orphans.ts';
-import { emit, wrapAction } from '../output.ts';
+import { cliOptsOf, emit, errorMessageOf, wrapAction } from '../output.ts';
 import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
 import type { ConfigLoad } from './doctor-checks-basic.ts';
@@ -108,8 +107,7 @@ const registerDoctor = (program: RefsCommand, ctx: CliContext): void => {
     .command('doctor')
     .description('Run environment/integrity checks (git, node, config, hooks, checkouts, ssh).')
     .action((_localOpts, command) => {
-      const globals = command.optsWithGlobals();
-      const opts = { json: globals.json === true, verbose: globals.verbose === true };
+      const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
         const checks = await runDoctor(ctx);
         emit(ctx, opts, doctorHuman(checks), { checks });

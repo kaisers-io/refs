@@ -19,7 +19,7 @@ import { progress } from '../output.ts';
 // already-existing (or just-cloned) checkout directory: origin identity verification, the
 // reuse-path managed-checkout marker check, and the finalize-time `HEAD` sha
 // resolution/validation. Source resolution and the pre-clone case-collision guard live in
-// `add-helpers.ts`.
+// `add-source.ts`.
 
 const SUCCESS_EXIT_CODE = 0;
 

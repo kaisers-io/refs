@@ -1,5 +1,5 @@
 import type { CloneMode, Config, RefEntry, RefKey, RefsHome, State } from '@kaisers-io/refs-core';
-import { allowFileUrlsFrom, ensureNoConflict, refLockName } from './add-helpers.ts';
+import { allowFileUrlsFrom, ensureNoConflict, refLockName } from './add-source.ts';
 import {
   assertInsideSources,
   readConfig,

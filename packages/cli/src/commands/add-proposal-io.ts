@@ -1,6 +1,7 @@
 import { validationError, zFinalProposal } from '@kaisers-io/refs-core';
 import type { CliContext } from '../context.ts';
 import type { FinalProposal } from '@kaisers-io/refs-core';
+import { errorMessageOf } from '../output.ts';
 import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 
@@ -19,18 +20,11 @@ const readProposalText = (ctx: CliContext, location: string): Promise<string> =>
   return readFile(location, 'utf8');
 };
 
-const errorDetail = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-};
-
 const parseProposalJson = (text: string): unknown => {
   try {
     return JSON.parse(text) as unknown;
   } catch (error) {
-    throw validationError(`invalid JSON in proposal: ${errorDetail(error)}`);
+    throw validationError(`invalid JSON in proposal: ${errorMessageOf(error)}`);
   }
 };
 

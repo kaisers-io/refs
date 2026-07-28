@@ -26,6 +26,35 @@ const toLines = (human: string | string[]): string[] => {
   return [human];
 };
 
+// Normalizes a command's optional single warning to `emit`'s warnings array — same "kept out only
+// to avoid a ternary" reasoning as `toLines` above. Shared by `show.ts`/`remove.ts`.
+const warningsFor = (warning: string | undefined): string[] => {
+  if (warning === undefined) {
+    return NO_WARNINGS;
+  }
+  return [warning];
+};
+
+// Renders a caught `unknown` as a plain message string: an `Error`'s own `.message`, anything else
+// via `String(...)`. The CLI-side twin of core's private helper of the same name in
+// `proc/runner.ts` (core stays self-contained, so it is not imported from there).
+const errorMessageOf = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+};
+
+// Reads the inherited `--json`/`--verbose` globals off a registrar's commander `command` and
+// normalizes both to definite booleans (absent → false). Structurally typed — only the
+// `optsWithGlobals` shape, never a commander import — so this module stays commander-free.
+const cliOptsOf = (command: {
+  optsWithGlobals: () => { json?: boolean; verbose?: boolean };
+}): { json: boolean; verbose: boolean } => {
+  const globals = command.optsWithGlobals();
+  return { json: globals.json === true, verbose: globals.verbose === true };
+};
+
 // Human mode prints one line per element of `human` (a single string is treated as one line) to
 // stdout, then — if `warnings` is non-empty — each warning as its own `refs: warning: <warning>`
 // line on stderr, mirroring `emitError`'s `refs: <message>` prefix convention. Warnings go to
@@ -97,4 +126,4 @@ const wrapAction =
     }
   };
 
-export { emit, emitError, progress, wrapAction };
+export { cliOptsOf, emit, emitError, errorMessageOf, progress, warningsFor, wrapAction };

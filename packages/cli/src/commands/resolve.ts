@@ -14,10 +14,10 @@ import {
   validationError,
   zRefKey,
 } from '@kaisers-io/refs-core';
-import { emit, wrapAction } from '../output.ts';
+import { cliOptsOf, emit, wrapAction } from '../output.ts';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
-import { allowFileUrlsFrom } from './add-helpers.ts';
+import { allowFileUrlsFrom } from './add-source.ts';
 import { isStale } from './ref-status.ts';
 import { join } from 'node:path';
 import { matchRefKey } from './list.ts';
@@ -256,8 +256,7 @@ const registerResolve = (program: RefsCommand, ctx: CliContext): void => {
     )
     .argument('<query>', 'git url, npm package name, import path, or unique ref-key suffix')
     .action((query, _localOpts, command) => {
-      const globals = command.optsWithGlobals();
-      const opts = { json: globals.json === true, verbose: globals.verbose === true };
+      const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
         const data = await runResolve(ctx, query);
         emit(ctx, opts, resolveHuman(data), data);

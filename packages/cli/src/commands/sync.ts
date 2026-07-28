@@ -11,7 +11,7 @@ import {
   zRefKey,
 } from '@kaisers-io/refs-core';
 import type { SyncItemStatus, SyncResultItem } from './sync-core.ts';
-import { emit, wrapAction } from '../output.ts';
+import { cliOptsOf, emit, wrapAction } from '../output.ts';
 import type { CliContext } from '../context.ts';
 import type { RefSyncContext } from './sync-checkout.ts';
 import type { RefsCommand } from './registry.ts';
@@ -177,8 +177,7 @@ const registerSync = (program: RefsCommand, ctx: CliContext): void => {
     .argument('[refs...]', 'ref keys or unique suffixes to sync (default: every configured ref)')
     .option('--stale-only', "skip refs whose last sync is still within their ref's sync_ttl")
     .action((refs, localOpts, command) => {
-      const globals = command.optsWithGlobals();
-      const opts = { json: globals.json === true, verbose: globals.verbose === true };
+      const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
         // `runSync` is this command's pure async body (mirrors runInit/runAdd/runList/runShow) —
         // the rule fires on the `Sync` name suffix alone, not on any synchronous fs call.

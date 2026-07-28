@@ -2,6 +2,7 @@ import type { RefSyncContext, RefSyncOutcome, SyncStatus } from './sync-checkout
 import { applySyncSuccess, recordFailure } from './sync-state.ts';
 import { createSemaphore, runGated } from './sync-semaphore.ts';
 import type { CliContext } from '../context.ts';
+import { errorMessageOf } from '../output.ts';
 import { syncCheckout } from './sync-checkout.ts';
 
 // Batch orchestration for `refs sync`: wires one ref's start-to-finish outcome (git ops, then
@@ -16,13 +17,6 @@ type SyncResultItem = {
   status: SyncItemStatus;
   error?: string;
   warning?: string;
-};
-
-const errorMessage = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
 };
 
 const RENAME_WARNING_SEP = ' | ';
@@ -63,7 +57,7 @@ const syncOneKey = async (ctx: CliContext, rsc: RefSyncContext): Promise<SyncRes
     await applySyncSuccess(rsc.home, rsc.key, outcome);
     return buildSuccessItem(rsc.key, outcome);
   } catch (error) {
-    const message = errorMessage(error);
+    const message = errorMessageOf(error);
     await recordFailure(rsc.home, rsc.key, message);
     return { error: message, key: rsc.key, status: 'failed' };
   }
@@ -84,7 +78,7 @@ const toResultItem = (
   if (settled.status === 'fulfilled') {
     return settled.value;
   }
-  return { error: errorMessage(settled.reason), key, status: 'failed' };
+  return { error: errorMessageOf(settled.reason), key, status: 'failed' };
 };
 
 /** Syncs every target in `targets`, at most `SYNC_CONCURRENCY_CAP` at a time, via

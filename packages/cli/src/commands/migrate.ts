@@ -1,5 +1,5 @@
+import { cliOptsOf, emit, wrapAction } from '../output.ts';
 import { configBackupPath, migrateConfig, resolveHome, withLock } from '@kaisers-io/refs-core';
-import { emit, wrapAction } from '../output.ts';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
 import { basename } from 'node:path';
@@ -43,8 +43,7 @@ const registerMigrate = (program: RefsCommand, ctx: CliContext): void => {
     .command('migrate')
     .description('Migrate the refs config to the current schema, seeding it if absent.')
     .action((_localOpts, command) => {
-      const globals = command.optsWithGlobals();
-      const opts = { json: globals.json === true, verbose: globals.verbose === true };
+      const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
         const data = await runMigrate(ctx);
         emit(ctx, opts, migrateHuman(data), data);

@@ -19,7 +19,9 @@ import { readdir } from 'node:fs/promises';
 // anything is cloned. Guards that run against an already-existing checkout directory (origin
 // verification, the managed-checkout marker, `resolveCheckoutHead`) live in
 // `add-checkout-guards.ts`; package/proposal shaping in `add-packages.ts`; proposal-file/stdin
-// loading in `add-proposal-io.ts`.
+// loading in `add-proposal-io.ts`. `refLockName`/`allowFileUrlsFrom` are shared beyond `refs add`
+// with the sync pipeline (`sync-checkout.ts`) and other commands (`remove.ts`, `resolve.ts`,
+// `edit-ref.ts`).
 
 const NPM_PREFIX = 'npm:';
 const REF_LOCK_PREFIX = 'ref:';

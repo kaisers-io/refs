@@ -1,4 +1,4 @@
-import { emit, wrapAction } from '../output.ts';
+import { cliOptsOf, emit, wrapAction } from '../output.ts';
 import { installHooksGuard, migrateConfig, resolveHome, withLock } from '@kaisers-io/refs-core';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
@@ -50,8 +50,7 @@ const registerInit = (program: RefsCommand, ctx: CliContext): void => {
     .command('init')
     .description('Seed or migrate the refs home directory, its config, and the git hooks guard.')
     .action((_localOpts, command) => {
-      const globals = command.optsWithGlobals();
-      const opts = { json: globals.json === true, verbose: globals.verbose === true };
+      const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
         const data = await runInit(ctx);
         emit(ctx, opts, [`refs home: ${data.home} (${data.config})`, SKILL_HINT], data);

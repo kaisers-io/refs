@@ -11,7 +11,7 @@ import {
   resolveHome,
   usageError,
 } from '@kaisers-io/refs-core';
-import { emit, wrapAction } from '../output.ts';
+import { cliOptsOf, emit, wrapAction } from '../output.ts';
 import { runDryRunCore, toWarningsList, writePendingProposal } from './add-dry-run.ts';
 import type { CliContext } from '../context.ts';
 import type { DryRunOutcome } from './add-dry-run.ts';
@@ -24,7 +24,7 @@ import { loadFinalProposal } from './add-proposal-io.ts';
 
 // `refs add` — the two-phase flow (`--dry-run` proposes, `--proposal` finalizes) plus the
 // `--description` one-shot convenience. This file owns mode selection, argument validation, and
-// command registration; source resolution/pre-clone guards live in `add-helpers.ts`, the dry-run
+// command registration; source resolution/pre-clone guards live in `add-source.ts`, the dry-run
 // pipeline in `add-dry-run.ts`, package/proposal shaping in `add-packages.ts`, proposal-file/
 // stdin loading in `add-proposal-io.ts`, and the finalize write path in `add-finalize.ts`.
 
@@ -196,8 +196,7 @@ const registerAdd = (program: RefsCommand, ctx: CliContext): void => {
       'one-shot: dry-run then finalize immediately with this description',
     )
     .action((source, localOpts, command) => {
-      const globals = command.optsWithGlobals();
-      const opts = { json: globals.json === true, verbose: globals.verbose === true };
+      const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
         const outcome = await runAdd(ctx, buildAddOptions(source, localOpts));
         emit(ctx, opts, outcome.human, outcome.data, outcome.warnings);

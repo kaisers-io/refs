@@ -13,7 +13,7 @@ import {
   ensureNoConflict,
   refLockName,
   resolveAddSource,
-} from './add-helpers.ts';
+} from './add-source.ts';
 import {
   checkoutPath,
   detectDefaultBranch,
@@ -28,7 +28,7 @@ import {
   writeState,
 } from '@kaisers-io/refs-core';
 import type { CliContext } from '../context.ts';
-import type { ResolvedSource } from './add-helpers.ts';
+import type { ResolvedSource } from './add-source.ts';
 import { buildProposalPackages } from './add-packages.ts';
 import { ensureClonedCheckout } from './add-checkout-guards.ts';
 import { progress } from '../output.ts';

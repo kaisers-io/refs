@@ -3,6 +3,7 @@ import { SCHEMA_VERSION, readConfig, zConfig } from '@kaisers-io/refs-core';
 import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
 import { access } from 'node:fs/promises';
+import { errorMessageOf } from '../output.ts';
 import { join } from 'node:path';
 
 // The four checks that need neither a per-checkout `Runner` loop nor the `sources/` directory
@@ -78,13 +79,6 @@ type ConfigLoad = {
   errorMessage?: string;
 };
 
-const errorMessageOf = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-};
-
 // A placeholder `meta` — never written to disk, only held in memory so the OTHER checks (which
 // all need `config.refs`/`config.settings` to iterate refs) still have something to iterate over
 // when the real config is unreadable/mismatched. The `config` check itself reports the real
@@ -156,5 +150,5 @@ const checkSkill = async (ctx: CliContext): Promise<CheckResult> => {
   };
 };
 
-export { buildConfigCheck, checkGit, checkNode, checkSkill, errorMessageOf, loadConfigSafely };
+export { buildConfigCheck, checkGit, checkNode, checkSkill, loadConfigSafely };
 export type { ConfigLoad };

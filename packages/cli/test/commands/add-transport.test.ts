@@ -1,4 +1,4 @@
-import { applyConfiguredTransport, resolveAddSource } from '../../src/commands/add-helpers.ts';
+import { applyConfiguredTransport, resolveAddSource } from '../../src/commands/add-source.ts';
 import { describe, expect, it } from 'vitest';
 import type { CliContext } from '../../src/context.ts';
 import { testContext } from '../helpers/context.ts';
