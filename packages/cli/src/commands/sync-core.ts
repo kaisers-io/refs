@@ -75,13 +75,12 @@ const toResultItem = (
   settled: PromiseSettledResult<SyncResultItem>,
   key: string,
 ): SyncResultItem => {
-  /* v8 ignore next 5 -- the rejected arm is defense-in-depth per the doc comment above:
-     `syncOneKey` catches everything, so a rejected slot cannot be produced without a bug in the
-     semaphore wiring (the fulfilled arm stays behaviorally covered by the sync e2e suite). */
-  if (settled.status === 'fulfilled') {
-    return settled.value;
+  /* v8 ignore next 3 -- defense-in-depth per the doc comment above: `syncOneKey` catches
+     everything, so a rejected slot cannot be produced without a bug in the semaphore wiring. */
+  if (settled.status === 'rejected') {
+    return { error: errorMessageOf(settled.reason), key, status: 'failed' };
   }
-  return { error: errorMessageOf(settled.reason), key, status: 'failed' };
+  return settled.value;
 };
 
 /** Syncs every target in `targets`, at most `SYNC_CONCURRENCY_CAP` at a time, via
