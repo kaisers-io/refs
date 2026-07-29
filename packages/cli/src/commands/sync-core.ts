@@ -75,10 +75,12 @@ const toResultItem = (
   settled: PromiseSettledResult<SyncResultItem>,
   key: string,
 ): SyncResultItem => {
-  if (settled.status === 'fulfilled') {
-    return settled.value;
+  /* v8 ignore next 3 -- defense-in-depth per the doc comment above: `syncOneKey` catches
+     everything, so a rejected slot cannot be produced without a bug in the semaphore wiring. */
+  if (settled.status === 'rejected') {
+    return { error: errorMessageOf(settled.reason), key, status: 'failed' };
   }
-  return { error: errorMessageOf(settled.reason), key, status: 'failed' };
+  return settled.value;
 };
 
 /** Syncs every target in `targets`, at most `SYNC_CONCURRENCY_CAP` at a time, via
@@ -96,9 +98,10 @@ const syncAll = async (
   );
   return settled.map((outcome, index) => {
     const target = targets[index];
+    /* v8 ignore next 5 -- `settled` is produced by mapping over `targets`, so it is always the
+       same length; this only satisfies `noUncheckedIndexedAccess` and can never actually
+       trigger. */
     if (target === undefined) {
-      // `settled` is produced by mapping over `targets`, so it is always the same length —
-      // this only guards `noUncheckedIndexedAccess`, it can never actually trigger.
       throw new Error(`internal: sync target at index ${index} is missing`);
     }
     return toResultItem(outcome, target.key);
