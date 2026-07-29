@@ -75,6 +75,9 @@ const toResultItem = (
   settled: PromiseSettledResult<SyncResultItem>,
   key: string,
 ): SyncResultItem => {
+  /* v8 ignore next 5 -- the rejected arm is defense-in-depth per the doc comment above:
+     `syncOneKey` catches everything, so a rejected slot cannot be produced without a bug in the
+     semaphore wiring (the fulfilled arm stays behaviorally covered by the sync e2e suite). */
   if (settled.status === 'fulfilled') {
     return settled.value;
   }
@@ -96,9 +99,10 @@ const syncAll = async (
   );
   return settled.map((outcome, index) => {
     const target = targets[index];
+    /* v8 ignore next 5 -- `settled` is produced by mapping over `targets`, so it is always the
+       same length; this only satisfies `noUncheckedIndexedAccess` and can never actually
+       trigger. */
     if (target === undefined) {
-      // `settled` is produced by mapping over `targets`, so it is always the same length —
-      // this only guards `noUncheckedIndexedAccess`, it can never actually trigger.
       throw new Error(`internal: sync target at index ${index} is missing`);
     }
     return toResultItem(outcome, target.key);
