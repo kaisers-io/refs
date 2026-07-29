@@ -45,3 +45,16 @@ describe('redactUrl leaves no secret behind', () => {
     );
   });
 });
+
+const MAX_REDACTED_LENGTH = 200;
+
+describe('redactUrl truncation', () => {
+  it('caps an overlong redacted string at 200 chars plus an ellipsis', () => {
+    expect.hasAssertions();
+    const overlong = `https://user:sekrit@host/${'a'.repeat(MAX_REDACTED_LENGTH)}`;
+    const redacted = redactUrl(overlong);
+    expect(redacted).toHaveLength(MAX_REDACTED_LENGTH + '…'.length);
+    expect(redacted.endsWith('…')).toBe(true);
+    expect(redacted).not.toContain('sekrit');
+  });
+});
