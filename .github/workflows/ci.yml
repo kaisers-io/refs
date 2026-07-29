@@ -18,6 +18,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm exec vitest run --config bench/vitest.config.mjs
+      # Coverage thresholds (vitest.config.ts) act as a regression gate; one OS suffices.
+      - run: pnpm test:coverage
+        if: matrix.os == 'ubuntu-latest'
   bundle-determinism:
     runs-on: ubuntu-latest
     steps:
