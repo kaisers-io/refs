@@ -197,3 +197,13 @@ describe('json parsing', () => {
     await expect(resolveNpmPackage(fetcher, 'pkg')).rejects.toThrow(/not parseable JSON/u);
   });
 });
+
+describe('packument shape validation', () => {
+  it('rejects a non-object registry body with an actionable validation error', async () => {
+    expect.hasAssertions();
+    const fetcher = fetcherWithBody('not a packument');
+    await expect(resolveNpmPackage(fetcher, 'next')).rejects.toThrow(
+      "invalid npm package response for 'next'",
+    );
+  });
+});

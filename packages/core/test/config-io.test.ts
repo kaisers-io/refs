@@ -160,3 +160,27 @@ describe('atomic write', () => {
     expect(readdirSync(home.root).filter((entry) => entry.includes('.tmp'))).toStrictEqual([]);
   });
 });
+
+describe('migrate — newer schema and cli_version stamping', () => {
+  it('refuses to migrate a config from a newer CLI', async () => {
+    expect.hasAssertions();
+    const home = freshHome();
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    writeFileSync(
+      home.configPath,
+      '[meta]\nschema_version = 999\ncli_version = "9.9.9"\n[settings]\n[refs]\n',
+    );
+    await expect(migrateConfig(home, '0.1.0')).rejects.toThrow(/upgrade refs/u);
+  });
+
+  it('restamps only the cli_version on an otherwise current config', async () => {
+    expect.hasAssertions();
+    const home = freshHome();
+    await seedConfig(home, '0.1.0');
+    await expect(migrateConfig(home, '0.2.0')).resolves.toBe('noop');
+    // eslint-disable-next-line node/no-sync -- assertion reads the file written by the impl under test
+    const text = readFileSync(home.configPath, 'utf8');
+    expect(text).toContain('cli_version = "0.2.0"');
+    expect(text).toContain(`schema_version = ${String(SCHEMA_VERSION)}`);
+  });
+});

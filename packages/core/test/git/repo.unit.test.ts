@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { detectDefaultBranch, syncRef } from '../../src/git/repo.ts';
 import { mkdir, mkdtemp } from 'node:fs/promises';
 import { FakeRunner } from '../../src/proc/fake-runner.ts';
 import { join } from 'node:path';
-import { syncRef } from '../../src/git/repo.ts';
 import { tmpdir } from 'node:os';
 
 // Scripted-runner unit suite for `syncRef()` branches the real-git integration suite
@@ -138,5 +138,35 @@ describe('syncRef() combined dirty-checkout + set-head-refresh-failure warning',
     expect(result.status).toBe('restored');
     expect(result.warning).toMatch(/read-only/u);
     expect(result.warning).toMatch(/could not refresh origin\/HEAD/u);
+  });
+});
+
+// `detectDefaultBranch`'s refresh-and-retry: a stale/absent `origin/HEAD` triggers one
+// `git remote set-head origin --auto` refresh and one retry; a branch that stays undetectable
+// after that must fail with the actionable checkout-path message, never hand back garbage.
+describe('default-branch detection retry', () => {
+  it('refreshes origin/HEAD and retries once when the first read fails', async () => {
+    expect.hasAssertions();
+    const dir = await makeManagedCheckoutDir();
+    const runner = new FakeRunner();
+    runner.expect('git symbolic-ref --short refs/remotes/origin/HEAD', {
+      exitCode: 1,
+      stderr: 'fatal: ref refs/remotes/origin/HEAD is not a symbolic ref\n',
+    });
+    runner.expect('git remote set-head origin --auto', {});
+    runner.expect('git symbolic-ref --short refs/remotes/origin/HEAD', { stdout: 'origin/main\n' });
+    await expect(detectDefaultBranch(runner, dir)).resolves.toBe('main');
+  });
+
+  it('throws the actionable error when the branch stays undetectable after the refresh', async () => {
+    expect.hasAssertions();
+    const dir = await makeManagedCheckoutDir();
+    const runner = new FakeRunner();
+    runner.expect('git symbolic-ref --short refs/remotes/origin/HEAD', { exitCode: 1 });
+    runner.expect('git remote set-head origin --auto', {});
+    runner.expect('git symbolic-ref --short refs/remotes/origin/HEAD', { exitCode: 1 });
+    await expect(detectDefaultBranch(runner, dir)).rejects.toThrow(
+      /could not detect the default branch/u,
+    );
   });
 });
