@@ -12,6 +12,8 @@ import { isGitCheckout, notFoundError } from '@kaisers-io/refs-core';
 // ever did.
 const requireEntry = (config: Config, key: RefKey): RefEntry => {
   const entry = config.refs[key];
+  /* v8 ignore next 3 -- per the doc comment above: `matchRefKey`/`routeQuery` only ever produce
+     keys present in `config.refs`, so this guard exists purely for `noUncheckedIndexedAccess`. */
   if (entry === undefined) {
     throw new Error(`internal: matched ref key '${key}' is missing from config.refs`);
   }
