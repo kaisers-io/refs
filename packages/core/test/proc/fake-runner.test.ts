@@ -44,3 +44,46 @@ describe('stdoutTruncated passthrough (FakeRunner)', () => {
     expect('stdoutTruncated' in clean).toBe(false);
   });
 });
+
+describe('mismatch failures (FakeRunner)', () => {
+  it('throws immediately when the actual command does not start with the scripted prefix', () => {
+    expect.hasAssertions();
+    const runner = new FakeRunner();
+    runner.expect('git fetch', {});
+    expect(() => runner.run('git', ['status'])).toThrow(
+      'expected next command to start with "git fetch", got "git status"',
+    );
+  });
+
+  it('throws when a scripted cwd does not match the actual call, naming both', () => {
+    expect.hasAssertions();
+    const runner = new FakeRunner();
+    runner.expect('git status', {}, { cwd: '/expected' });
+    expect(() => runner.run('git', ['status'], { cwd: '/actual' })).toThrow(
+      'expected cwd "/expected" for "git status", got "/actual"',
+    );
+  });
+
+  it('reports a missing cwd as "(none)" rather than matching silently', () => {
+    expect.hasAssertions();
+    const runner = new FakeRunner();
+    runner.expect('git status', {}, { cwd: '/expected' });
+    expect(() => runner.run('git', ['status'])).toThrow('got "(none)"');
+  });
+});
+
+describe('call recording (FakeRunner)', () => {
+  it('throws on a run with nothing scripted instead of inventing a default', () => {
+    expect.hasAssertions();
+    const runner = new FakeRunner();
+    expect(() => runner.run('git', ['status'])).toThrow('no scripted response left');
+  });
+
+  it('records a forwarded timeoutMs on the call for later assertion', async () => {
+    expect.hasAssertions();
+    const runner = new FakeRunner();
+    runner.expect('git fetch', {});
+    await runner.run('git', ['fetch'], { timeoutMs: 1234 });
+    expect(runner.calls).toStrictEqual([{ args: ['fetch'], cmd: 'git', timeoutMs: 1234 }]);
+  });
+});

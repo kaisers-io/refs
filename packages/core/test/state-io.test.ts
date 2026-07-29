@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { readState, writeState } from '../src/state-io.ts';
 import { join } from 'node:path';
 import { resolveHome } from '../src/home.ts';
@@ -70,5 +70,26 @@ describe('atomic write', () => {
     await writeState(home, { refs: {} });
     // eslint-disable-next-line node/no-sync -- assertion reads dir written by the impl under test
     expect(readdirSync(home.root).filter((entry) => entry.includes('.tmp'))).toStrictEqual([]);
+  });
+});
+
+describe('state io error paths', () => {
+  it('surfaces a non-ENOENT read error instead of self-healing over it', async () => {
+    expect.hasAssertions();
+    const home = freshHome();
+    // A DIRECTORY at statePath makes readFile fail with EISDIR — unlike a merely-missing or
+    // corrupt file, an unexpected fs error must propagate, not silently become an empty state.
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    mkdirSync(home.statePath);
+    await expect(readState(home)).rejects.toThrow(/EISDIR/u);
+  });
+
+  it('rejects writing a schema-invalid state before touching the disk', async () => {
+    expect.hasAssertions();
+    const home = freshHome();
+    // An empty ref key violates zState's key guard — writeState re-validates rather than
+    // trusting its (compile-time-only) parameter type.
+    await expect(writeState(home, { refs: { '': {} } })).rejects.toThrow(/key/u);
+    await expect(readState(home)).resolves.toStrictEqual({ refs: {} });
   });
 });
