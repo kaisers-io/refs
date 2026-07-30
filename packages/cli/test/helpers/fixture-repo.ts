@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { SpawnRunner } from '@kaisers-io/refs-core';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { tmpdir } from 'node:os';
 
 // Local copy of `packages/core/test/helpers/fixture-repo.ts` — deliberately duplicated rather than
@@ -129,7 +130,9 @@ const createFixtureRepo = async (opts?: FixtureOpts): Promise<FixtureRepo> => {
   }
   await commitAll(dir, 'init');
   await Promise.all((opts?.tags ?? []).map((tag) => git(dir, ['tag', tag])));
-  return { dir, url: `file://${dir}` };
+  // `pathToFileURL`, not string concatenation: on Windows `dir` contains `\` and a drive letter,
+  // which only the URL encoder turns into a valid `file:///C:/...` form.
+  return { dir, url: pathToFileURL(dir).href };
 };
 
 export { createFixtureRepo };

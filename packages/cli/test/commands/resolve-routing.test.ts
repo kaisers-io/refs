@@ -1,6 +1,7 @@
 import { canonicalizeGitUrl, checkoutPath, resolveHome, zRefKey } from '@kaisers-io/refs-core';
 import { describe, expect, it } from 'vitest';
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
+import { pathToFileURL } from 'node:url';
 import { run } from '../../src/main.ts';
 import { seedConfig } from '../helpers/ref-fixtures.ts';
 import { testContext } from '../helpers/context.ts';
@@ -14,7 +15,6 @@ import { testContext } from '../helpers/context.ts';
 // prefix match, and the package-path `.` join-normalization case.
 
 const NEXT_KEY = 'github.com/vercel/next.js';
-
 const OTHER_KEY = 'github.com/acme/other';
 
 const OTHER_ENTRY = {
@@ -130,7 +130,7 @@ describe('refs resolve: file:// url resolves when REFS_ALLOW_FILE_URLS is set (s
     expect.hasAssertions();
     await withResetExitCode(() =>
       withTempHome(async (homeDir) => {
-        const fileUrl = `file://${homeDir}/local-repos/widget`;
+        const fileUrl = pathToFileURL(`${homeDir}/local-repos/widget`).href;
         const { key } = canonicalizeGitUrl(fileUrl, { allowFileUrls: true });
         const { envelope } = await seedAndResolve(homeDir, {
           envExtra: { REFS_ALLOW_FILE_URLS: '1' },
