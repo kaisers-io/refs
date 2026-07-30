@@ -21,7 +21,7 @@ import { randomUUID } from 'node:crypto';
 // waiters can detect abandoned locks and a holder can prove, at release time, that the lock it's
 // about to remove is still the one it acquired.
 //
-// Lock names (`'home'` or `ref:<key>`, `/` already replaced by `_`) are checked against a strict
+// Lock names (`'home'` or `ref.<key>`, `/` already replaced by `_`) are checked against a strict
 // allowlist (`LOCK_NAME_PATTERN`) before ever being joined onto `locksDir`, since the result is
 // used verbatim in `rm -rf`/`rename` targets — an unvalidated `..` would let a lock name delete
 // the refs home itself.
@@ -56,10 +56,11 @@ const MISSING_META_GRACE_MS = 5000;
 // rather than left to permanently block stealing of that lock name.
 const STEAL_CLAIM_STALE_MS = 2000;
 
-// Strict allowlist: alphanumeric start, then alphanumerics/`_`/`.`/`:`/`-`. Also rejects "." and
-// ".." explicitly (though the leading-alphanumeric requirement already excludes them) to make the
-// intent unmistakable at the one call site that guards every destructive fs op below.
-const LOCK_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_.:-]*$/u;
+// Strict allowlist: alphanumeric start, then alphanumerics/`_`/`.`/`-`. No `:` — it is not a
+// legal character in Windows file names, and lock names become directory names. Also rejects "."
+// and ".." explicitly (though the leading-alphanumeric requirement already excludes them) to make
+// the intent unmistakable at the one call site that guards every destructive fs op below.
+const LOCK_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u;
 
 // Identifies one lock (its dir, the shared locks dir it lives in, and its validated name) so the
 // acquire/steal pipeline passes a single value instead of threading three strings everywhere.
@@ -257,7 +258,7 @@ const validateLockName = (name: string): void => {
   if (name === '.' || name === '..' || !LOCK_NAME_PATTERN.test(name)) {
     throw validationError(
       `lock name must not contain "/" or other unsafe characters — only letters, digits, and ` +
-        `"_.:-" are allowed, and it may not be "." or "..": ${name}`,
+        `"_.-" are allowed, and it may not be "." or "..": ${name}`,
     );
   }
 };
@@ -267,7 +268,7 @@ const validateLockName = (name: string): void => {
  * Waits up to `opts.timeoutMs` (default 10s) for the lock, stealing it if abandoned; on timeout
  * rejects with a conflictError (exit code 5). `name` must match the strict allowlist enforced by
  * `validateLockName` — ref-key callers replace `/` with `_` before calling (e.g.
- * `ref:github.com_owner_repo`).
+ * `ref.github.com_owner_repo`).
  */
 // eslint-disable-next-line oxc/max-params -- public with-resource shape: (home, name, fn, opts?); an options object would bury the callback
 const withLock = async <TResult>(

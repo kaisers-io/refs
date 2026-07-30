@@ -272,6 +272,14 @@ describe('withLock name validation', () => {
     ).rejects.toThrow(/must not contain/u);
   });
 
+  it('rejects lock names containing ":" (not a legal character in Windows file names)', async () => {
+    expect.hasAssertions();
+    const home = makeHome();
+    await expect(
+      withLock(home, 'ref:github.com_owner_repo', () => Promise.resolve('unreachable')),
+    ).rejects.toThrow(/must not contain/u);
+  });
+
   it.each([['.'], ['..'], ['a/../b']])(
     'rejects %j without touching the filesystem',
     async (name) => {
