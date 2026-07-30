@@ -95,6 +95,10 @@ const seedMonorepo = async (dir: string): Promise<void> => {
 const createFixtureRepo = async (opts?: FixtureOpts): Promise<FixtureRepo> => {
   const dir = await mkdtemp(join(tmpdir(), 'refs-fixture-'));
   await initFixtureGit(dir);
+  // The suites assert on exact file bytes after clone/sync; without this, Git for Windows'
+  // default `core.autocrlf=true` turns `\n` into `\r\n` in every clone's working tree and the
+  // assertions become platform-dependent.
+  await writeFile(join(dir, '.gitattributes'), '* -text\n');
   await writeFile(join(dir, 'README.md'), '# fixture repo\n');
   if (opts?.monorepo === true) {
     await seedMonorepo(dir);

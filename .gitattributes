@@ -1,0 +1,4 @@
+# LF everywhere, on every platform: the formatter (oxfmt) and byte-exact test assertions both
+# assume LF working trees; without this, Git for Windows' default autocrlf=true checks the repo
+# out with CRLF and `pnpm fmt:check` fails before a single line of code is touched.
+* text=auto eol=lf
