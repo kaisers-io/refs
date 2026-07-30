@@ -170,15 +170,23 @@ const acquireStealClaim = async (claimPath: string): Promise<boolean> => {
   return tryMkdirClaim(claimPath);
 };
 
+// ENOENT: already gone (holder released / a previous steal won). EPERM/EACCES/EBUSY: Windows
+// refuses to rename a directory while another process holds an open handle inside it — treated
+// exactly like losing the race: leave the lock, release the claim, let the acquire loop retry
+// (bounded by the caller's timeout). On POSIX these codes would mean a genuine permission
+// problem, which then surfaces as the standard lock-timeout conflict instead of a crash.
+const TOMBSTONE_LOST_RACE_CODES = new Set(['ENOENT', 'EPERM', 'EACCES', 'EBUSY']);
+
 // Atomically removes `ctx.lockPath` (rename-to-tombstone then `rm`, so a reader never observes a
-// half-deleted dir), or does nothing if it's already gone (holder released, or a previous steal
-// already removed it) between the caller's re-diagnosis and this rename.
+// half-deleted dir), or does nothing if it's already gone or currently un-renamable (see
+// `TOMBSTONE_LOST_RACE_CODES`) between the caller's re-diagnosis and this rename.
 const renameToTombstoneOrNoop = async (ctx: LockCtx): Promise<string | undefined> => {
   const tombstonePath = tombstonePathFor(ctx);
   try {
     await rename(ctx.lockPath, tombstonePath);
   } catch (error) {
-    if (errnoCode(error) === 'ENOENT') {
+    const code = errnoCode(error);
+    if (code !== undefined && TOMBSTONE_LOST_RACE_CODES.has(code)) {
       return undefined;
     }
     throw error;
