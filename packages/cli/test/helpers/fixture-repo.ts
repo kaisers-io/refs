@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { SpawnRunner } from '@kaisers-io/refs-core';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { tmpdir } from 'node:os';
 
 // Local copy of `packages/core/test/helpers/fixture-repo.ts` — deliberately duplicated rather than
@@ -123,13 +124,19 @@ const seedMonorepo = async (dir: string, packageB: PackageSpec): Promise<void> =
 const createFixtureRepo = async (opts?: FixtureOpts): Promise<FixtureRepo> => {
   const dir = await mkdtemp(join(tmpdir(), 'refs-cli-fixture-'));
   await initFixtureGit(dir, opts?.objectFormat);
+  // The suites assert on exact file bytes after clone/sync; without this, Git for Windows'
+  // default `core.autocrlf=true` turns `\n` into `\r\n` in every clone's working tree and the
+  // assertions become platform-dependent.
+  await writeFile(join(dir, '.gitattributes'), '* -text\n');
   await writeFile(join(dir, 'README.md'), '# fixture repo\n');
   if (opts?.monorepo === true) {
     await seedMonorepo(dir, packageBSpec(opts));
   }
   await commitAll(dir, 'init');
   await Promise.all((opts?.tags ?? []).map((tag) => git(dir, ['tag', tag])));
-  return { dir, url: `file://${dir}` };
+  // `pathToFileURL`, not string concatenation: on Windows `dir` contains `\` and a drive letter,
+  // which only the URL encoder turns into a valid `file:///C:/...` form.
+  return { dir, url: pathToFileURL(dir).href };
 };
 
 export { createFixtureRepo };

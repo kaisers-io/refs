@@ -122,9 +122,18 @@ describe('candidate package dir selection', () => {
   it('keeps only the dirs whose manifest probe succeeded, in input order', () => {
     expect.hasAssertions();
     expect(selectPackageDirs('packages', ['b', 'a', 'c'], [true, false, true])).toStrictEqual([
-      join('packages', 'b'),
-      join('packages', 'c'),
+      'packages/b',
+      'packages/c',
     ]);
+  });
+
+  it('always emits /-separated package paths (platform-independent identifiers)', () => {
+    expect.hasAssertions();
+    const dirs = selectPackageDirs('packages', ['a', 'b'], [true, true]);
+    expect(dirs).toStrictEqual(['packages/a', 'packages/b']);
+    for (const dir of dirs) {
+      expect(dir).not.toContain('\\');
+    }
   });
 
   it('produces root-relative names for the bare `*` base dir `.`', () => {

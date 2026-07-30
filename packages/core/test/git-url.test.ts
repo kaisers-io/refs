@@ -70,6 +70,9 @@ const REJECTED_CASES: readonly [string, string][] = [
 const FILE_URL_CASES: readonly [string, string][] = [
   ['file:///tmp/fix-abc/myrepo', 'local/fix-abc/myrepo'],
   ['file:///tmp/a/b/', 'local/a/b'],
+  // Windows drive-letter form as produced by `pathToFileURL('C:\\repos\\team\\project')` — the
+  // drive segment never reaches the key (only the last two segments do).
+  ['file:///C:/repos/team/project', 'local/team/project'],
 ];
 
 // Secret-echo regression (Task 30): `assertNoBackslash`/`assertNoPercentEncodingUnlessFile`/
