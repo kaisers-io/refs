@@ -8,6 +8,7 @@ import {
 } from '../helpers/ref-fixtures.ts';
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
 import type { CliContext } from '../../src/context.ts';
+import { join } from 'node:path';
 import { run } from '../../src/main.ts';
 import { testContext } from '../helpers/context.ts';
 
@@ -89,7 +90,8 @@ describe('refs resolve: exact npm package name (step 2)', () => {
           local_path: dest,
           missing: false,
           package: {
-            local_path: `${dest}/packages/next`,
+            // `join`, not `/`-concatenation: the product emits a real, platform-native fs path.
+            local_path: join(dest, 'packages', 'next'),
             name: 'next',
             path: 'packages/next',
           },
@@ -266,7 +268,7 @@ describe('refs resolve: human mode', () => {
           NEXT_KEY,
           `local_path: ${dest}`,
           'package: next',
-          `local_path: ${dest}/packages/next`,
+          `local_path: ${join(dest, 'packages', 'next')}`,
         ]);
       }),
     );
