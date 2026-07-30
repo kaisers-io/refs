@@ -1,7 +1,23 @@
 {
   "name": "@kaisers-io/refs",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Managed read-only git checkouts of reference repositories for coding agents.",
+  "keywords": [
+    "ai",
+    "checkout",
+    "claude-code",
+    "cli",
+    "codex",
+    "coding-agents",
+    "git",
+    "monorepo",
+    "references",
+    "source-code"
+  ],
+  "homepage": "https://github.com/kaisers-io/refs#readme",
+  "bugs": {
+    "url": "https://github.com/kaisers-io/refs/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -11,6 +27,7 @@
     "refs": "./bin/refs.mjs"
   },
   "files": [
+    "CHANGELOG.md",
     "bin",
     "dist"
   ],
