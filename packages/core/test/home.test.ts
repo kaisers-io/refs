@@ -1,6 +1,6 @@
 import { assertInsideSources, checkoutPath, configBackupPath, resolveHome } from '../src/home.ts';
 import { describe, expect, it } from 'vitest';
-import { isAbsolute, join } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { mkdirSync, mkdtempSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { zRefKey } from '../src/schemas/primitives.ts';
@@ -15,20 +15,23 @@ const makeHome = (): ReturnType<typeof resolveHome> => {
 describe('resolveHome', () => {
   it('honours REFS_HOME and derives all paths', () => {
     expect.hasAssertions();
+    // `resolve()` for the expected values: on Windows '/x/y' gains the cwd drive (e.g. D:\x\y),
+    // so the expectation must be built the same way the implementation builds its paths.
+    const root = resolve('/x/y');
     const home = resolveHome({ REFS_HOME: '/x/y' });
     expect(home).toStrictEqual({
-      configPath: '/x/y/config.toml',
-      hooksDir: '/x/y/hooks',
-      locksDir: '/x/y/locks',
-      root: '/x/y',
-      sourcesDir: '/x/y/sources',
-      statePath: '/x/y/state.json',
+      configPath: join(root, 'config.toml'),
+      hooksDir: join(root, 'hooks'),
+      locksDir: join(root, 'locks'),
+      root,
+      sourcesDir: join(root, 'sources'),
+      statePath: join(root, 'state.json'),
     });
   });
 
   it('defaults to ~/.kaisers-io/refs', () => {
     expect.hasAssertions();
-    expect(resolveHome({}).root.endsWith('/.kaisers-io/refs')).toBe(true);
+    expect(resolveHome({}).root.endsWith(join('.kaisers-io', 'refs'))).toBe(true);
   });
 
   it('resolves a relative REFS_HOME to absolute paths', () => {
@@ -44,7 +47,7 @@ describe('home: configBackupPath', () => {
   it('derives the single shared backup path from configPath', () => {
     expect.hasAssertions();
     const home = resolveHome({ REFS_HOME: '/x/y' });
-    expect(configBackupPath(home)).toBe('/x/y/config.toml.bak');
+    expect(configBackupPath(home)).toBe(join(resolve('/x/y'), 'config.toml.bak'));
   });
 });
 
@@ -88,14 +91,16 @@ describe('containment: boundary predicate edge cases', () => {
      * '/broot-marker' collapsed to the identical corrupted ancestor 'root-marker' and
      * the guard would have wrongly accepted the escape.
      */
-    const home = resolveHome({ REFS_HOME: '/aroot-marker' });
-    expect(() => assertInsideSources(home, '/broot-marker/sources/repo')).toThrow(/containment/u);
+    const home = resolveHome({ REFS_HOME: resolve('/aroot-marker') });
+    expect(() => assertInsideSources(home, resolve('/broot-marker/sources/repo'))).toThrow(
+      /containment/u,
+    );
   });
 
   it('rejects sibling top-level paths that would collide under the old slice bug', () => {
     expect.hasAssertions();
-    const home = resolveHome({ REFS_HOME: '/abc' });
-    expect(() => assertInsideSources(home, '/dbc/sources/repo')).toThrow(/containment/u);
+    const home = resolveHome({ REFS_HOME: resolve('/abc') });
+    expect(() => assertInsideSources(home, resolve('/dbc/sources/repo'))).toThrow(/containment/u);
   });
 
   it('accepts a ref-key segment starting with ".." that is not an escape', () => {
