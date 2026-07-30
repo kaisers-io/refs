@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-30
+
+### Added
+
+- Full Windows support: every command, the lock/steal machinery, sync/clone/remove with their
+  containment guards, and the read-only hook guards now behave on Windows exactly as on
+  macOS/Linux (Git for Windows required). CI runs the full test suite plus a PowerShell smoke
+  test — which exercises the npm-generated `.cmd` shims — on `windows-latest`.
+
+### Fixed
+
+- Lock directory names no longer contain `:` (illegal in Windows file names; every locked
+  command failed with `EINVAL` there). Per-ref locks are now named `ref.<key>`; a stale
+  `ref:<key>` directory left by an older version is inert and can be deleted.
+- The lock-steal pipeline treats Windows sharing-violation errors (`EPERM`/`EACCES`/`EBUSY` on
+  the tombstone rename or on re-creating a directory that is still delete-pending) as a lost
+  race and retries, instead of crashing.
+- Workspace package paths are `/`-separated identifiers on every platform (they previously used
+  `\` on Windows, breaking sorting, deduplication, and stored config paths).
+- Child-process cleanup also listens for `SIGBREAK`, so Ctrl-Break on Windows kills spawned
+  git/ssh children like Ctrl-C does.
+
 ## [0.4.0] - 2026-07-28
 
 ### Changed
