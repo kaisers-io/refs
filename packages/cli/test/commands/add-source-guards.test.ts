@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { ensureNoCaseCollision, resolveAddSource } from '../../src/commands/add-source.ts';
+import {
+  ensureNoCaseCollision,
+  refLockName,
+  resolveAddSource,
+} from '../../src/commands/add-source.ts';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolveHome, zRefKey } from '@kaisers-io/refs-core';
 import { dirname } from 'node:path';
@@ -17,6 +21,15 @@ const MONOREPO_PACKUMENT = {
 };
 
 const HTTP_OK = 200;
+
+describe('add source: refLockName', () => {
+  it('derives a Windows-safe lock name (no ":", "/" replaced by "_")', () => {
+    expect.hasAssertions();
+    expect(refLockName(zRefKey.parse('github.com/vercel/next.js'))).toBe(
+      'ref.github.com_vercel_next.js',
+    );
+  });
+});
 
 describe('add source: npm resolution edges', () => {
   it('rejects a bare npm: source with an actionable usage error', async () => {

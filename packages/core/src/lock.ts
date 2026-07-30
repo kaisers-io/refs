@@ -7,7 +7,8 @@ import {
   readLockToken,
   writeInitialMeta,
 } from './lock-meta.ts';
-import { mkdir, rename, rm } from 'node:fs/promises';
+import { mkdir, rm } from 'node:fs/promises';
+import { renameOrLostRace, tryExclusiveMkdir } from './lock-fs.ts';
 import type { RefsHome } from './home.ts';
 import { setTimeout as delay } from 'node:timers/promises';
 import { join } from 'node:path';
@@ -21,7 +22,7 @@ import { randomUUID } from 'node:crypto';
 // waiters can detect abandoned locks and a holder can prove, at release time, that the lock it's
 // about to remove is still the one it acquired.
 //
-// Lock names (`'home'` or `ref:<key>`, `/` already replaced by `_`) are checked against a strict
+// Lock names (`'home'` or `ref.<key>`, `/` already replaced by `_`) are checked against a strict
 // allowlist (`LOCK_NAME_PATTERN`) before ever being joined onto `locksDir`, since the result is
 // used verbatim in `rm -rf`/`rename` targets — an unvalidated `..` would let a lock name delete
 // the refs home itself.
@@ -56,10 +57,11 @@ const MISSING_META_GRACE_MS = 5000;
 // rather than left to permanently block stealing of that lock name.
 const STEAL_CLAIM_STALE_MS = 2000;
 
-// Strict allowlist: alphanumeric start, then alphanumerics/`_`/`.`/`:`/`-`. Also rejects "." and
-// ".." explicitly (though the leading-alphanumeric requirement already excludes them) to make the
-// intent unmistakable at the one call site that guards every destructive fs op below.
-const LOCK_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_.:-]*$/u;
+// Strict allowlist: alphanumeric start, then alphanumerics/`_`/`.`/`-`. No `:` — it is not a
+// legal character in Windows file names, and lock names become directory names. Also rejects "."
+// and ".." explicitly (though the leading-alphanumeric requirement already excludes them) to make
+// the intent unmistakable at the one call site that guards every destructive fs op below.
+const LOCK_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u;
 
 // Identifies one lock (its dir, the shared locks dir it lives in, and its validated name) so the
 // acquire/steal pipeline passes a single value instead of threading three strings everywhere.
@@ -105,22 +107,11 @@ const writeMetaOrRetrySignal = async (
   return token;
 };
 
-const mkdirIfAbsent = async (lockPath: string): Promise<boolean> => {
-  try {
-    await mkdir(lockPath, { recursive: false });
-    return true;
-  } catch (error) {
-    if (errnoCode(error) === 'EEXIST') {
-      return false;
-    }
-    throw error;
-  }
-};
-
 // True → we own the lock (dir created and meta.json written); returns this acquisition's fresh
-// ownership token. `undefined` → held by someone else (EEXIST).
+// ownership token. `undefined` → held by someone else (lost the mkdir race — see `lock-fs.ts`
+// for the Windows-aware code classification).
 const tryAcquire = async (lockPath: string): Promise<string | undefined> => {
-  const created = await mkdirIfAbsent(lockPath);
+  const created = await tryExclusiveMkdir(lockPath);
   if (!created) {
     return undefined;
   }
@@ -138,18 +129,6 @@ const claimPathFor = (ctx: LockCtx): string => join(ctx.locksDir, `${ctx.name}.s
 const tombstonePathFor = (ctx: LockCtx): string =>
   join(ctx.locksDir, `${ctx.name}.steal.${randomUUID()}`);
 
-const tryMkdirClaim = async (claimPath: string): Promise<boolean> => {
-  try {
-    await mkdir(claimPath, { recursive: false });
-    return true;
-  } catch (error) {
-    if (errnoCode(error) === 'EEXIST') {
-      return false;
-    }
-    throw error;
-  }
-};
-
 const isClaimStale = async (claimPath: string): Promise<boolean> => {
   const mtimeMs = await dirMtimeMs(claimPath);
   return mtimeMs !== undefined && Date.now() - mtimeMs > STEAL_CLAIM_STALE_MS;
@@ -159,30 +138,24 @@ const isClaimStale = async (claimPath: string): Promise<boolean> => {
 // older than `STEAL_CLAIM_STALE_MS` is assumed leftover from a crashed stealer (a claim's normal
 // lifetime is a couple of fs calls) and is reclaimed instead of permanently blocking this name.
 const acquireStealClaim = async (claimPath: string): Promise<boolean> => {
-  if (await tryMkdirClaim(claimPath)) {
+  if (await tryExclusiveMkdir(claimPath)) {
     return true;
   }
   if (!(await isClaimStale(claimPath))) {
     return false;
   }
   await rm(claimPath, { force: true, recursive: true });
-  return tryMkdirClaim(claimPath);
+  return tryExclusiveMkdir(claimPath);
 };
 
 // Atomically removes `ctx.lockPath` (rename-to-tombstone then `rm`, so a reader never observes a
-// half-deleted dir), or does nothing if it's already gone (holder released, or a previous steal
-// already removed it) between the caller's re-diagnosis and this rename.
+// half-deleted dir), or does nothing (`undefined`) if the rename race was lost — already gone, or
+// currently un-renamable on Windows (see `lock-fs.ts`) — between the caller's re-diagnosis and
+// this rename. Either way the acquire loop's retry recovers.
 const renameToTombstoneOrNoop = async (ctx: LockCtx): Promise<string | undefined> => {
   const tombstonePath = tombstonePathFor(ctx);
-  try {
-    await rename(ctx.lockPath, tombstonePath);
-  } catch (error) {
-    if (errnoCode(error) === 'ENOENT') {
-      return undefined;
-    }
-    throw error;
-  }
-  return tombstonePath;
+  const renamed = await renameOrLostRace(ctx.lockPath, tombstonePath);
+  return renamed ? tombstonePath : undefined;
 };
 
 const removeIfStillStale = async (ctx: LockCtx): Promise<void> => {
@@ -257,7 +230,7 @@ const validateLockName = (name: string): void => {
   if (name === '.' || name === '..' || !LOCK_NAME_PATTERN.test(name)) {
     throw validationError(
       `lock name must not contain "/" or other unsafe characters — only letters, digits, and ` +
-        `"_.:-" are allowed, and it may not be "." or "..": ${name}`,
+        `"_.-" are allowed, and it may not be "." or "..": ${name}`,
     );
   }
 };
@@ -267,7 +240,7 @@ const validateLockName = (name: string): void => {
  * Waits up to `opts.timeoutMs` (default 10s) for the lock, stealing it if abandoned; on timeout
  * rejects with a conflictError (exit code 5). `name` must match the strict allowlist enforced by
  * `validateLockName` — ref-key callers replace `/` with `_` before calling (e.g.
- * `ref:github.com_owner_repo`).
+ * `ref.github.com_owner_repo`).
  */
 // eslint-disable-next-line oxc/max-params -- public with-resource shape: (home, name, fn, opts?); an options object would bury the callback
 const withLock = async <TResult>(

@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { SpawnRunner } from '../../src/proc/runner.ts';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { tmpdir } from 'node:os';
 
 // Test-only fixture builder: a real local git repo used as a `file://` "remote" for the
@@ -94,13 +95,19 @@ const seedMonorepo = async (dir: string): Promise<void> => {
 const createFixtureRepo = async (opts?: FixtureOpts): Promise<FixtureRepo> => {
   const dir = await mkdtemp(join(tmpdir(), 'refs-fixture-'));
   await initFixtureGit(dir);
+  // The suites assert on exact file bytes after clone/sync; without this, Git for Windows'
+  // default `core.autocrlf=true` turns `\n` into `\r\n` in every clone's working tree and the
+  // assertions become platform-dependent.
+  await writeFile(join(dir, '.gitattributes'), '* -text\n');
   await writeFile(join(dir, 'README.md'), '# fixture repo\n');
   if (opts?.monorepo === true) {
     await seedMonorepo(dir);
   }
   await commitAll(dir, 'init');
   await Promise.all((opts?.tags ?? []).map((tag) => git(dir, ['tag', tag])));
-  return { dir, url: `file://${dir}` };
+  // `pathToFileURL`, not string concatenation: on Windows `dir` contains `\` and a drive letter,
+  // which only the URL encoder turns into a valid `file:///C:/...` form.
+  return { dir, url: pathToFileURL(dir).href };
 };
 
 /** Adds one commit writing `content` to `file` (relative to `dir`) — used to simulate upstream progress between a clone and a later `syncRef`. */

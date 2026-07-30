@@ -24,7 +24,9 @@ import { readdir } from 'node:fs/promises';
 // `edit-ref.ts`).
 
 const NPM_PREFIX = 'npm:';
-const REF_LOCK_PREFIX = 'ref:';
+// `.` as the prefix separator, not `:` — lock names become directory names under `locksDir`, and
+// `:` is not a legal character in Windows file names (mkdir fails with EINVAL there).
+const REF_LOCK_PREFIX = 'ref.';
 const ALLOW_FILE_URLS_FLAG = '1';
 
 /** Per-ref advisory lock name for `key` — `/` replaced by `_` since lock names are joined verbatim

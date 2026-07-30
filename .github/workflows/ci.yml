@@ -8,7 +8,7 @@ permissions:
 jobs:
   check:
     strategy:
-      matrix: { os: [ubuntu-latest, macos-latest] }
+      matrix: { os: [ubuntu-latest, macos-latest, windows-latest] }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -18,7 +18,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm exec vitest run --config bench/vitest.config.mjs
-      # Coverage thresholds (vitest.config.ts) act as a regression gate; one OS suffices.
+      # Coverage thresholds (vitest.config.ts) act as a regression gate; one OS suffices — and
+      # keeping the gate off Windows means a justified platform skip can never flake the ratchet.
       - run: pnpm test:coverage
         if: matrix.os == 'ubuntu-latest'
   bundle-determinism:
@@ -53,4 +54,35 @@ jobs:
           refs list --json | grep -q '"ok":true'
           refs sync --json
           refs remove "$(refs list --json | node -e 'let d="";process.stdin.on("data",(c)=>d+=c).on("end",()=>console.log(JSON.parse(d).data[0].key))')" --json
+  # PowerShell (not bash) on purpose: this exercises the npm-generated `.cmd` shims and real
+  # Windows path handling — exactly what a Windows user hits first.
+  smoke-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with: { node-version-file: .node-version, cache: pnpm }
+      - run: pnpm install --frozen-lockfile && pnpm build
+      - name: smoke test against a file:// fixture (PowerShell)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          npm pack ./packages/cli --pack-destination $env:TEMP
+          npm install -g (Get-ChildItem "$env:TEMP\kaisers-io-refs-*.tgz").FullName
+          $env:REFS_ALLOW_FILE_URLS = '1'
+          $env:REFS_HOME = Join-Path $env:TEMP "refs-home-$([guid]::NewGuid())"
+          refs init --json
+          $fix = Join-Path $env:TEMP "refs-fix-$([guid]::NewGuid())"
+          New-Item -ItemType Directory -Path $fix | Out-Null
+          git -C $fix init -qb main
+          git -C $fix -c user.email=ci@refs -c user.name=ci commit -qm init --allow-empty
+          git -C $fix tag v1.0.0
+          $fixUrl = node -e "console.log(require('node:url').pathToFileURL(process.argv[1]).href)" $fix
+          refs add $fixUrl --description "smoke fixture" --json
+          if (-not (refs list --json | Select-String -Quiet '"ok":true')) { exit 1 }
+          refs sync --json
+          $key = refs list --json | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.parse(d).data[0].key))"
+          refs remove $key --json
 # NOTE: no publish job — private phase (spec §8). Added only at go-public.

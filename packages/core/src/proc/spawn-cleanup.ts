@@ -13,11 +13,17 @@ import type { ChildProcess } from 'node:child_process';
 //   instance) — every live child gets added right after `spawn()` and removed once its `close`
 //   event fires. The cleanup below iterates this one set regardless of which `Runner` instance
 //   started which child.
-// - Signal handlers for `SIGINT`/`SIGTERM`/`SIGHUP` are installed exactly once, lazily, on the
-//   first `run()` call ever made — never at module-load time, so merely importing this module
-//   never changes a host process's signal behavior for a process that never actually runs a
-//   command.
-// - On any of those three signals: `SIGKILL` every active child (best-effort — a child that
+// - Signal handlers for `SIGINT`/`SIGTERM`/`SIGHUP`/`SIGBREAK` are installed exactly once,
+//   lazily, on the first `run()` call ever made — never at module-load time, so merely importing
+//   this module never changes a host process's signal behavior for a process that never actually
+//   runs a command.
+// - Windows mapping: Node emulates `SIGINT` (Ctrl-C) and `SIGHUP` (console close, short grace
+//   window); `SIGBREAK` is Ctrl-Break (Windows-only — on POSIX the listener simply never fires);
+//   a `SIGTERM` listener installs fine but never fires there (kept for POSIX). The re-raise below
+//   terminates the process directly on Windows instead of restoring a default disposition — same
+//   observable outcome (children killed, process ends), different numeric exit code. A hard kill
+//   (`taskkill /F`) bypasses this cleanup exactly like `kill -9` does on POSIX.
+// - On any of those signals: `SIGKILL` every active child (best-effort — a child that
 //   already exited just no-ops), remove OUR OWN listener for that exact signal, then re-raise it
 //   against this same process (`process.kill(process.pid, signal)`). With our listener gone,
 //   Node's default disposition for that signal applies next — the process terminates exactly as
@@ -45,7 +51,7 @@ const killActiveChildren = (): void => {
   }
 };
 
-const CLEANUP_SIGNALS: readonly NodeJS.Signals[] = ['SIGINT', 'SIGTERM', 'SIGHUP'];
+const CLEANUP_SIGNALS: readonly NodeJS.Signals[] = ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK'];
 
 const installCleanupSignal = (signal: NodeJS.Signals): void => {
   const handler = (): void => {
