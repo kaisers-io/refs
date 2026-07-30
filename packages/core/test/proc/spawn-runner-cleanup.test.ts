@@ -67,18 +67,36 @@ const waitUntil = async (
   }
 };
 
-// The middle process's direct child (the `sh -c 'touch ... && sleep 30'` `SpawnRunner` started) —
-// found via `pgrep -P`, never captured from the middle process's own stdout, so this stays a
-// black-box assertion on real OS process state rather than trusting the thing under test to
-// self-report correctly.
-const directChildPid = async (parentPid: number): Promise<number> => {
-  const { stdout } = await execFileAsync('pgrep', ['-P', String(parentPid)]);
-  const [firstLine] = stdout.trim().split('\n');
+// The middle process's direct child (the marker-then-hang `node -e` `SpawnRunner` started) —
+// found via the OS process table (`pgrep -P` on POSIX, CIM on Windows), never captured from the
+// middle process's own stdout, so this stays a black-box assertion on real OS process state
+// rather than trusting the thing under test to self-report correctly.
+const firstPidLine = (stdout: string, description: string): number => {
+  const [firstLine] = stdout.trim().split(/\r?\n/u);
   if (firstLine === undefined || firstLine === '') {
-    throw new Error(`pgrep -P ${String(parentPid)}: no child found`);
+    throw new Error(`${description}: no child found`);
   }
   return Number(firstLine);
 };
+
+const directChildPid = async (parentPid: number): Promise<number> => {
+  if (process.platform === 'win32') {
+    const { stdout } = await execFileAsync('powershell.exe', [
+      '-NoProfile',
+      '-Command',
+      `(Get-CimInstance Win32_Process -Filter "ParentProcessId=${String(parentPid)}").ProcessId`,
+    ]);
+    return firstPidLine(stdout, `CIM children of ${String(parentPid)}`);
+  }
+  const { stdout } = await execFileAsync('pgrep', ['-P', String(parentPid)]);
+  return firstPidLine(stdout, `pgrep -P ${String(parentPid)}`);
+};
+
+// The signal the test delivers to the middle process. On POSIX, SIGTERM exercises the classic
+// catchable-termination path. On Windows, `ChildProcess#kill('SIGTERM')` is an unconditional
+// TerminateProcess (handlers never run), so the only *injectable* catchable signal is SIGBREAK
+// (Ctrl-Break via a console ctrl event) — which `spawn-cleanup.ts` handles on Windows.
+const CATCHABLE_KILL_SIGNAL: NodeJS.Signals = process.platform === 'win32' ? 'SIGBREAK' : 'SIGTERM';
 
 const requireMiddlePid = (child: ChildProcess): number => {
   const { pid } = child;
@@ -93,7 +111,7 @@ type Scenario = {
   childAliveAfterKill: boolean;
 };
 
-// Spawns the middle process, waits for its `sleep`-holding child to actually start, kills the
+// Spawns the middle process, waits for its hang-holding child to actually start, kills the
 // middle process, then waits for that child to die — split out of the `it` body purely to keep
 // both this function's and the test's own statement counts under the repo's `max-statements` cap,
 // and to keep the pid-undefined guard (`requireMiddlePid`) out of the test body entirely (the
@@ -107,14 +125,14 @@ const runParentDeathScenario = async (dir: string): Promise<Scenario> => {
   const childPid = await directChildPid(middlePid);
   const childAliveBeforeKill = isPidAlive(childPid);
 
-  middle.kill('SIGTERM');
+  middle.kill(CATCHABLE_KILL_SIGNAL);
   await waitUntil(() => !isPidAlive(childPid), DEATH_TIMEOUT_MS);
 
   return { childAliveAfterKill: isPidAlive(childPid), childAliveBeforeKill };
 };
 
 describe('parent-death cleanup', { timeout: TEST_TIMEOUT_MS }, () => {
-  it('kills the real child a SpawnRunner#run() is waiting on when the host process is SIGTERM-ed', async () => {
+  it('kills the real child a SpawnRunner#run() is waiting on when the host process gets a catchable termination signal', async () => {
     expect.hasAssertions();
     const dir = await mkdtemp(join(tmpdir(), 'refs-spawn-cleanup-'));
 
