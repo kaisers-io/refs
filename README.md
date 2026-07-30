@@ -40,7 +40,9 @@ method and honest caveats are in
 
 ## Install
 
-Requirements: Node.js `>=24.12`, git, macOS or Linux (Windows is not supported).
+Requirements: Node.js `>=24.12` and git. macOS, Linux, and Windows are fully
+supported — every command, locking, sync, and the read-only guards behave the same on
+all three, and the full test suite plus a smoke test run in CI on each of them.
 
 ```bash
 npm i -g @kaisers-io/refs
@@ -51,6 +53,16 @@ Then verify the setup:
 ```bash
 refs --version
 refs doctor
+```
+
+### Windows
+
+Use [Git for Windows](https://gitforwindows.org/) as the git installation. Everything
+in this README works unchanged; where a shell example sets an environment variable, the
+PowerShell equivalent is:
+
+```powershell
+$env:REFS_HOME = "D:\refs"
 ```
 
 ### Agent skill
