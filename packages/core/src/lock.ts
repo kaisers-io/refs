@@ -7,7 +7,8 @@ import {
   readLockToken,
   writeInitialMeta,
 } from './lock-meta.ts';
-import { mkdir, rename, rm } from 'node:fs/promises';
+import { mkdir, rm } from 'node:fs/promises';
+import { renameOrLostRace, tryExclusiveMkdir } from './lock-fs.ts';
 import type { RefsHome } from './home.ts';
 import { setTimeout as delay } from 'node:timers/promises';
 import { join } from 'node:path';
@@ -106,22 +107,11 @@ const writeMetaOrRetrySignal = async (
   return token;
 };
 
-const mkdirIfAbsent = async (lockPath: string): Promise<boolean> => {
-  try {
-    await mkdir(lockPath, { recursive: false });
-    return true;
-  } catch (error) {
-    if (errnoCode(error) === 'EEXIST') {
-      return false;
-    }
-    throw error;
-  }
-};
-
 // True → we own the lock (dir created and meta.json written); returns this acquisition's fresh
-// ownership token. `undefined` → held by someone else (EEXIST).
+// ownership token. `undefined` → held by someone else (lost the mkdir race — see `lock-fs.ts`
+// for the Windows-aware code classification).
 const tryAcquire = async (lockPath: string): Promise<string | undefined> => {
-  const created = await mkdirIfAbsent(lockPath);
+  const created = await tryExclusiveMkdir(lockPath);
   if (!created) {
     return undefined;
   }
@@ -139,18 +129,6 @@ const claimPathFor = (ctx: LockCtx): string => join(ctx.locksDir, `${ctx.name}.s
 const tombstonePathFor = (ctx: LockCtx): string =>
   join(ctx.locksDir, `${ctx.name}.steal.${randomUUID()}`);
 
-const tryMkdirClaim = async (claimPath: string): Promise<boolean> => {
-  try {
-    await mkdir(claimPath, { recursive: false });
-    return true;
-  } catch (error) {
-    if (errnoCode(error) === 'EEXIST') {
-      return false;
-    }
-    throw error;
-  }
-};
-
 const isClaimStale = async (claimPath: string): Promise<boolean> => {
   const mtimeMs = await dirMtimeMs(claimPath);
   return mtimeMs !== undefined && Date.now() - mtimeMs > STEAL_CLAIM_STALE_MS;
@@ -160,38 +138,24 @@ const isClaimStale = async (claimPath: string): Promise<boolean> => {
 // older than `STEAL_CLAIM_STALE_MS` is assumed leftover from a crashed stealer (a claim's normal
 // lifetime is a couple of fs calls) and is reclaimed instead of permanently blocking this name.
 const acquireStealClaim = async (claimPath: string): Promise<boolean> => {
-  if (await tryMkdirClaim(claimPath)) {
+  if (await tryExclusiveMkdir(claimPath)) {
     return true;
   }
   if (!(await isClaimStale(claimPath))) {
     return false;
   }
   await rm(claimPath, { force: true, recursive: true });
-  return tryMkdirClaim(claimPath);
+  return tryExclusiveMkdir(claimPath);
 };
 
-// ENOENT: already gone (holder released / a previous steal won). EPERM/EACCES/EBUSY: Windows
-// refuses to rename a directory while another process holds an open handle inside it — treated
-// exactly like losing the race: leave the lock, release the claim, let the acquire loop retry
-// (bounded by the caller's timeout). On POSIX these codes would mean a genuine permission
-// problem, which then surfaces as the standard lock-timeout conflict instead of a crash.
-const TOMBSTONE_LOST_RACE_CODES = new Set(['ENOENT', 'EPERM', 'EACCES', 'EBUSY']);
-
 // Atomically removes `ctx.lockPath` (rename-to-tombstone then `rm`, so a reader never observes a
-// half-deleted dir), or does nothing if it's already gone or currently un-renamable (see
-// `TOMBSTONE_LOST_RACE_CODES`) between the caller's re-diagnosis and this rename.
+// half-deleted dir), or does nothing (`undefined`) if the rename race was lost — already gone, or
+// currently un-renamable on Windows (see `lock-fs.ts`) — between the caller's re-diagnosis and
+// this rename. Either way the acquire loop's retry recovers.
 const renameToTombstoneOrNoop = async (ctx: LockCtx): Promise<string | undefined> => {
   const tombstonePath = tombstonePathFor(ctx);
-  try {
-    await rename(ctx.lockPath, tombstonePath);
-  } catch (error) {
-    const code = errnoCode(error);
-    if (code !== undefined && TOMBSTONE_LOST_RACE_CODES.has(code)) {
-      return undefined;
-    }
-    throw error;
-  }
-  return tombstonePath;
+  const renamed = await renameOrLostRace(ctx.lockPath, tombstonePath);
+  return renamed ? tombstonePath : undefined;
 };
 
 const removeIfStillStale = async (ctx: LockCtx): Promise<void> => {
