@@ -211,25 +211,33 @@ describe('large / interleaved output', () => {
 });
 
 describe('resolution waits for close, not exit', () => {
-  it('does not resolve until a backgrounded grandchild releases the inherited stdout pipe', async () => {
-    expect.hasAssertions();
-    const start = Date.now();
-    const GRANDCHILD_DELAY_MS = 300;
-    const MIN_ELAPSED_MS = 250;
+  // Windows skip: the demonstration needs a grandchild whose *inherited* stdout handle keeps the
+  // pipe open past the direct child's exit — on Windows (libuv named-pipe stdio) the pipe EOFs
+  // when the direct child exits, so the scenario is unbuildable there, not merely flaky. The
+  // close-not-exit contract itself lives in platform-independent code (`SpawnRunner` resolves on
+  // Node's `close` event) and stays proven by the ubuntu/macos CI legs.
+  it.skipIf(process.platform === 'win32')(
+    'does not resolve until a backgrounded grandchild releases the inherited stdout pipe',
+    async () => {
+      expect.hasAssertions();
+      const start = Date.now();
+      const GRANDCHILD_DELAY_MS = 300;
+      const MIN_ELAPSED_MS = 250;
 
-    // The direct child exits ~immediately; a grandchild it spawned keeps the SAME inherited
-    // stdout pipe open for another ~300ms. Node's `exit` event would fire as soon as the direct
-    // child terminates; `close` (what `SpawnRunner` resolves on) waits for every process holding
-    // that pipe open to release it — proving `run()` really waits for `close`, not `exit`.
-    const grandchildScript = `setTimeout(() => { console.log('late-grandchild-output'); }, ${GRANDCHILD_DELAY_MS});`;
-    const parentScript = [
-      "const { spawn } = require('node:child_process');",
-      `spawn(process.execPath, ['-e', ${JSON.stringify(grandchildScript)}], { stdio: 'inherit' });`,
-      'process.exit(0);',
-    ].join('\n');
-    const result = await runner.run(process.execPath, ['-e', parentScript]);
+      // The direct child exits ~immediately; a grandchild it spawned keeps the SAME inherited
+      // stdout pipe open for another ~300ms. Node's `exit` event would fire as soon as the direct
+      // child terminates; `close` (what `SpawnRunner` resolves on) waits for every process holding
+      // that pipe open to release it — proving `run()` really waits for `close`, not `exit`.
+      const grandchildScript = `setTimeout(() => { console.log('late-grandchild-output'); }, ${GRANDCHILD_DELAY_MS});`;
+      const parentScript = [
+        "const { spawn } = require('node:child_process');",
+        `spawn(process.execPath, ['-e', ${JSON.stringify(grandchildScript)}], { stdio: 'inherit' });`,
+        'process.exit(0);',
+      ].join('\n');
+      const result = await runner.run(process.execPath, ['-e', parentScript]);
 
-    expect(Date.now() - start).toBeGreaterThanOrEqual(MIN_ELAPSED_MS);
-    expect(result.stdout).toContain('late-grandchild-output');
-  });
+      expect(Date.now() - start).toBeGreaterThanOrEqual(MIN_ELAPSED_MS);
+      expect(result.stdout).toContain('late-grandchild-output');
+    },
+  );
 });
