@@ -42,18 +42,6 @@ jobs:
             exit 1
           fi
           echo "tag $TAG matches package version $PKG_VERSION"
-      - name: Guard — every version site declares this CLI version
-        # The skill frontmatter and the plugin manifests both repeat packages/cli/package.json's
-        # version, and both can drift: the skill ships from git (`npx skills add`) while the CLI
-        # ships from npm, and `doctor`'s `skill` check compares them at runtime, so a release
-        # whose skill still pins the previous version makes every user's doctor report a false
-        # mismatch; the manifests are what the Claude Code / Codex marketplaces show users, yet
-        # nothing else in the publish path reads them, so a stale one publishes cleanly while
-        # advertising an old version. This ran as two inline guards until scripts/versions.mjs
-        # took the job — same checks, every problem still reported in one run, but now also
-        # runnable on a PR (ci.yml) and paired with `--set` so the five files stay in step by
-        # construction rather than by hand. Deliberately before `pnpm install`: no dependencies.
-        run: node scripts/versions.mjs --check
       - name: Guard — packaged CHANGELOG.md matches the repository one
         # The tarball ships packages/cli/CHANGELOG.md so npm users can see changes while the
         # GitHub repo is private; this fails the release when a bump edits only the root copy.
@@ -71,6 +59,20 @@ jobs:
             echo "::error::tagged commit $GITHUB_SHA is not reachable from origin/main — refusing to publish from a stray branch" >&2
             exit 1
           fi
+      - name: Guard — every version site declares this CLI version
+        # The skill frontmatter and the plugin manifests both repeat packages/cli/package.json's
+        # version, and both can drift: the skill ships from git (`npx skills add`) while the CLI
+        # ships from npm, and `doctor`'s `skill` check compares them at runtime, so a release
+        # whose skill still pins the previous version makes every user's doctor report a false
+        # mismatch; the manifests are what the Claude Code / Codex marketplaces show users, yet
+        # nothing else in the publish path reads them, so a stale one publishes cleanly while
+        # advertising an old version. This ran as two inline guards until scripts/versions.mjs
+        # took the job — same checks, every problem still reported in one run, but now also
+        # runnable on a PR (ci.yml) and paired with `--set` so the five files stay in step by
+        # construction rather than by hand. Placed after the origin/main containment guard and
+        # before `pnpm install`: it needs no dependencies, and running repo-controlled code only
+        # once the commit is known to be reachable from main keeps that exposure as late as it can be.
+        run: node scripts/versions.mjs --check
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm check
       - run: pnpm build
