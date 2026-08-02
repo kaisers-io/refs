@@ -83,7 +83,11 @@ jobs:
           PKG_VERSION="$(node -p "require('./packages/cli/package.json').version")"
           # An absent `version` key must fail like a wrong one, so the comparison is against the
           # parsed value (undefined), never against a shell string that would read as empty.
+          # Unreadable files, malformed JSON, and non-object entries are reported the same way
+          # rather than thrown: five files get hand-edited in lockstep at release time, so a JSON
+          # typo is an ordinary slip and deserves one actionable line, not a Node stack trace.
           node -e '
+            const { readFileSync } = require("node:fs");
             const expected = process.argv[1];
             const problems = [];
             const check = (label, actual) => {
@@ -92,16 +96,50 @@ jobs:
                 problems.push(label + " says " + found + ", but packages/cli/package.json is " + expected);
               }
             };
-            check(".claude-plugin/plugin.json .version", require("./.claude-plugin/plugin.json").version);
-            check(".codex-plugin/plugin.json .version", require("./.codex-plugin/plugin.json").version);
-            const marketplace = require("./.claude-plugin/marketplace.json");
-            if (!Array.isArray(marketplace.plugins) || marketplace.plugins.length === 0) {
-              problems.push(".claude-plugin/marketplace.json has no .plugins entries to check");
-            } else {
-              // Every entry, not just [0] — a second plugin added later must not slip through.
-              marketplace.plugins.forEach((plugin, i) => {
-                check(".claude-plugin/marketplace.json .plugins[" + i + "] (" + (plugin.name ?? "unnamed") + ")", plugin.version);
-              });
+            // Records why and returns undefined instead of throwing, so one unreadable file never
+            // hides the state of the others — every problem still surfaces in a single run.
+            const readManifest = (file) => {
+              let text;
+              try {
+                text = readFileSync(file, "utf8");
+              } catch (error) {
+                problems.push(file + " could not be read: " + error.message);
+                return undefined;
+              }
+              let data;
+              try {
+                data = JSON.parse(text);
+              } catch (error) {
+                problems.push(file + " is not valid JSON: " + error.message);
+                return undefined;
+              }
+              if (data === null || typeof data !== "object" || Array.isArray(data)) {
+                problems.push(file + " is not a JSON object");
+                return undefined;
+              }
+              return data;
+            };
+            for (const file of [".claude-plugin/plugin.json", ".codex-plugin/plugin.json"]) {
+              const manifest = readManifest(file);
+              if (manifest !== undefined) {
+                check(file + " .version", manifest.version);
+              }
+            }
+            const marketplace = readManifest(".claude-plugin/marketplace.json");
+            if (marketplace !== undefined) {
+              if (!Array.isArray(marketplace.plugins) || marketplace.plugins.length === 0) {
+                problems.push(".claude-plugin/marketplace.json has no .plugins entries to check");
+              } else {
+                // Every entry, not just [0] — a second plugin added later must not slip through.
+                marketplace.plugins.forEach((plugin, i) => {
+                  const label = ".claude-plugin/marketplace.json .plugins[" + i + "]";
+                  if (plugin === null || typeof plugin !== "object" || Array.isArray(plugin)) {
+                    problems.push(label + " is not a JSON object");
+                    return;
+                  }
+                  check(label + " (" + (plugin.name ?? "unnamed") + ")", plugin.version);
+                });
+              }
             }
             if (problems.length > 0) {
               for (const problem of problems) {
