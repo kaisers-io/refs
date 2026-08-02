@@ -7,8 +7,9 @@ import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
 
 // The four checks that need neither a per-checkout `Runner` loop nor the `sources/` directory
-// walk: `git`/`node` are environment probes, `config` wraps `readConfig`'s own typed errors,
-// `skill` is a plain fs existence check.
+// walk: `git`/`node` are environment probes, `config` wraps `readConfig`'s own typed errors, and
+// `skill` — the largest of the four — reads the installed skill's YAML frontmatter out of each
+// agent home and compares the `metadata.cli_version` it pins against the running CLI version.
 // Sibling modules own the rest: doctor-checks-checkouts.ts (per-checkout git iteration),
 // doctor-checks-orphans.ts (sources/ directory walk), doctor-checks-ssh.ts (ssh auth probing);
 // doctor.ts only orders and collects them.
@@ -149,17 +150,18 @@ const skillCliVersionOf = (source: string): string | undefined => {
   return CLI_VERSION_PATTERN.exec(body)?.groups?.['version'];
 };
 
-const VERSION_PART_COUNT = 3;
+// Guards the split because `Number` is far more permissive than the `x.y.z` this ever means:
+// `Number('0x2') === 2` would let `1.0x2.3` through as `[1, 2, 3]`, and `Number('') === 0` would
+// let `1..3` through as `[1, 0, 3]`. Anything that is not three plain decimal components is left
+// to the `unknown` verdict, which tells the user to reinstall both sides rather than guessing an
+// ordering. Once this matches, the split can only yield three non-negative integers.
+const PLAIN_VERSION_PATTERN = /^\d+\.\d+\.\d+$/u;
 
 const parseVersionParts = (version: string): number[] | undefined => {
-  const parts = version.split('.').map(Number);
-  if (parts.length !== VERSION_PART_COUNT) {
+  if (!PLAIN_VERSION_PATTERN.test(version)) {
     return undefined;
   }
-  if (parts.some((part) => !Number.isInteger(part) || part < 0)) {
-    return undefined;
-  }
-  return parts;
+  return version.split('.').map(Number);
 };
 
 type SkillVerdict = 'cli-older' | 'match' | 'skill-older' | 'unknown';
