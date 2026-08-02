@@ -22,9 +22,10 @@ are likewise omitted throughout.
 Two failures reach almost every command and are **not** repeated in the per-command lists:
 
 - **Unreadable config** — every command except `init`, `migrate`, and `doctor` reads
-  `config.toml` before doing anything, so each can exit `4` when no config exists yet (the
+  `config.toml` to do its work, so each can exit `4` when no config exists yet (the
   message points at `refs init`) or `3` when the TOML is malformed or its schema version is
-  one this CLI can't read. `init` and `migrate` create or migrate the config instead of
+  one this CLI can't read. Don't assume the read comes first: `edit` reads inside the home
+  lock, and `remove` re-reads under that lock after the checkout is already deleted. `init` and `migrate` create or migrate the config instead of
   requiring one, but still exit `3` if it is malformed beyond automatic migration. `doctor`
   reports the same condition as a `fail` on its `config` check rather than exiting.
 - **Lock contention** — `init`, `migrate`, `add`, `edit`, and `remove` take the home (or a
