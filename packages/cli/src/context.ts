@@ -1,5 +1,7 @@
 import type { Fetcher, Runner } from '@kaisers-io/refs-core';
 import { SpawnRunner } from '@kaisers-io/refs-core';
+// eslint-disable-next-line import/no-relative-parent-imports -- package.json lives at the package root, one level above src/
+import pkg from '../package.json' with { type: 'json' };
 
 // Every side effect the CLI can perform (reading env, writing stdout/stderr, shelling out,
 // fetching over HTTP) is captured here. Production code never touches `process`/stdio/`fetch`
@@ -7,6 +9,10 @@ import { SpawnRunner } from '@kaisers-io/refs-core';
 // place in this package allowed to reach for the real globals; every other module (and every
 // test) goes through the injected seam instead.
 type CliContext = {
+  // This package's own version (`package.json`'s `version` in `realContext()`) — routed through
+  // the context like every other real global so `doctor`'s `skill` check can be exercised against
+  // an arbitrary version instead of only ever observing the version under test.
+  cliVersion: string;
   env: NodeJS.ProcessEnv;
   errLine: (line: string) => void;
   fetcher: Fetcher;
@@ -33,6 +39,7 @@ const readRealStdin = async (): Promise<string> => {
 };
 
 const realContext = (): CliContext => ({
+  cliVersion: pkg.version,
   env: process.env,
   errLine: (line: string) => {
     process.stderr.write(`${line}\n`);
