@@ -46,8 +46,9 @@ A `warn` on `skill` means one of three things: the skill wasn't found in
 `~/.claude/skills` or `~/.codex/skills` (the only two paths the check looks at — a
 project-level, plugin, or symlinked install reads the same way), the installed copy
 predates the version gate, or the CLI version it pins in its frontmatter doesn't match the
-running CLI. Every `detail` carries the command that fixes it; only the version-comparison
-outcomes also name which side is behind. Relay it verbatim rather than guessing. A `fail`
+running CLI. Every `detail` carries the command that fixes it, but only a version mismatch
+it can order names which side is behind — an unorderable pair (a prerelease on either side)
+says to reinstall both. Relay it verbatim rather than guessing. A `fail`
 on `dirty-checkouts` means a managed checkout picked up local changes outside of
 `refs sync`'s own self-heal, which is worth investigating rather than ignoring. Like
 `sync` above, the exit code goes non-zero on any `fail` even though the envelope is
