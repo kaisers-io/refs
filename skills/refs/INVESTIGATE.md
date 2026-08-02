@@ -1,8 +1,8 @@
 # Investigate — answering source/behavior/history questions
 
 Use this flow whenever a question is about what a dependency or reference repo
-actually does, why, or how it changed — not for adding new refs (`add.md`) or
-housekeeping (`maintain.md`).
+actually does, why, or how it changed — not for adding new refs (`ADD.md`) or
+housekeeping (`MAINTAIN.md`).
 
 ## Hard rules (always)
 
@@ -46,7 +46,7 @@ we use") — then match against the `description` fields. If nothing matches
 confidently, ask the user which ref they mean rather than guessing.
 
 If `resolve` exits `4` (not found), the ref isn't tracked yet — tell the user and
-point them at `add.md` instead of inventing an answer from training knowledge.
+point them at `ADD.md` instead of inventing an answer from training knowledge.
 
 ### 2. Sync only if stale
 

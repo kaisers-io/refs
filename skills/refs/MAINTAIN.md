@@ -42,8 +42,10 @@ Runs environment/integrity checks and returns `{checks: [{name, status, detail}]
 `status` one of `ok`, `warn`, `fail`: `git`, `node`, `config`, `hooks-guard`,
 `dirty-checkouts`, `orphans`, `skill`, and (when any ref uses ssh) `ssh-auth`. Report
 every non-`ok` check with its `detail` message, and explain what it means in plain
-terms — e.g. a `warn` on `skill` means this skill isn't installed for a detected agent
-yet (point at the README's install instructions, same as the capability gate); a `fail`
+terms — e.g. a `warn` on `skill` means this skill isn't installed for a detected agent,
+or that the CLI version it pins in its frontmatter doesn't match the running CLI; the
+`detail` names which side is behind and the exact command to fix it, so relay that
+verbatim rather than guessing. A `fail`
 on `dirty-checkouts` means a managed checkout picked up local changes outside of
 `refs sync`'s own self-heal, which is worth investigating rather than ignoring. Like
 `sync` above, the exit code goes non-zero on any `fail` even though the envelope is
@@ -62,6 +64,6 @@ refs remove <ref> --json
 
 `<ref>` accepts the full key or a unique suffix. After confirmation and removal, report
 that both the config entry and the on-disk checkout are gone — there's no undo short of
-re-adding (`add.md`). Since checkouts are read-only, there shouldn't be any local-only
+re-adding (`ADD.md`). Since checkouts are read-only, there shouldn't be any local-only
 history to lose; if doctor's `dirty-checkouts`/`restored` history suggests otherwise,
 say so.
