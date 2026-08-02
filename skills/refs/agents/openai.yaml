@@ -1,0 +1,5 @@
+interface:
+  display_name: 'Refs'
+  short_description: 'Answer from real dependency source'
+policy:
+  allow_implicit_invocation: false
