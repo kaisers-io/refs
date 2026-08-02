@@ -2,9 +2,9 @@ import type { Config, RefsHome } from '@kaisers-io/refs-core';
 import { SCHEMA_VERSION, readConfig, zConfig } from '@kaisers-io/refs-core';
 import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
-import { access } from 'node:fs/promises';
 import { errorMessageOf } from '../output.ts';
 import { join } from 'node:path';
+import { readFile } from 'node:fs/promises';
 
 // The four checks that need neither a per-checkout `Runner` loop nor the `sources/` directory
 // walk: `git`/`node` are environment probes, `config` wraps `readConfig`'s own typed errors,
@@ -116,38 +116,138 @@ const buildConfigCheck = (errorMessage: string | undefined): CheckResult => {
 const CLAUDE_SKILL_SEGMENTS = ['.claude', 'skills', 'refs', 'SKILL.md'] as const;
 const CODEX_SKILL_SEGMENTS = ['.codex', 'skills', 'refs', 'SKILL.md'] as const;
 const SKILL_INSTALL_HINT = 'npx skills add kaisers-io/refs';
+const CLI_UPDATE_HINT = 'npm i -g @kaisers-io/refs@latest';
 
-/** `home` is `ctx.env['HOME']`, never the real process env directly (per `context.ts`'s
- * injected-seam invariant) — an unset `HOME` (e.g. a test's bare `testContext()`) yields no
- * candidates at all, which reports as "not found" below rather than throwing on a `join()` with
- * `undefined`. */
-const skillCandidatePaths = (home: string | undefined): string[] => {
-  if (home === undefined) {
-    return [];
-  }
-  return [join(home, ...CLAUDE_SKILL_SEGMENTS), join(home, ...CODEX_SKILL_SEGMENTS)];
-};
+/** The agent homes a skill can be installed into, each resolved below against `ctx.env['HOME']` —
+ * never the real process env directly (per `context.ts`'s injected-seam invariant). An unset
+ * `HOME` (e.g. a test's bare `testContext()`) means no candidates at all, which reports as "not
+ * found" rather than throwing on a `join()` with `undefined`. */
+const SKILL_LOCATIONS = [
+  { label: 'Claude Code', segments: CLAUDE_SKILL_SEGMENTS },
+  { label: 'Codex', segments: CODEX_SKILL_SEGMENTS },
+] as const;
 
-const pathExists = async (path: string): Promise<boolean> => {
+const readIfPresent = async (path: string): Promise<string | undefined> => {
   try {
-    await access(path);
-    return true;
+    return await readFile(path, 'utf8');
   } catch {
-    return false;
+    return undefined;
   }
 };
 
-const checkSkill = async (ctx: CliContext): Promise<CheckResult> => {
-  const candidates = skillCandidatePaths(ctx.env['HOME']);
-  const found = await Promise.all(candidates.map((path) => pathExists(path)));
-  if (found.some(Boolean)) {
-    return { detail: 'the refs skill is installed', name: 'skill', status: 'ok' };
+// Pulls `metadata.cli_version` out of the skill's YAML frontmatter without a YAML dependency —
+// same trade-off as `parseNodeVersion` above: one well-known key in a file this repo owns, so a
+// line scan beats pulling in a parser. Accepts the value quoted or bare, at any indentation.
+const FRONTMATTER_PATTERN = /^---\r?\n(?<body>[\s\S]*?)\r?\n---/u;
+const CLI_VERSION_PATTERN = /^\s*cli_version:\s*["']?(?<version>[^"'\s]+)["']?\s*$/mu;
+
+const skillCliVersionOf = (source: string): string | undefined => {
+  const body = FRONTMATTER_PATTERN.exec(source)?.groups?.['body'];
+  if (body === undefined) {
+    return undefined;
   }
+  return CLI_VERSION_PATTERN.exec(body)?.groups?.['version'];
+};
+
+const VERSION_PART_COUNT = 3;
+
+const parseVersionParts = (version: string): number[] | undefined => {
+  const parts = version.split('.').map(Number);
+  if (parts.length !== VERSION_PART_COUNT) {
+    return undefined;
+  }
+  if (parts.some((part) => !Number.isInteger(part) || part < 0)) {
+    return undefined;
+  }
+  return parts;
+};
+
+type SkillVerdict = 'cli-older' | 'match' | 'skill-older' | 'unknown';
+
+const NOT_FOUND_INDEX = -1;
+
+const compareSkillVersion = (skillVersion: string, cliVersion: string): SkillVerdict => {
+  if (skillVersion === cliVersion) {
+    return 'match';
+  }
+  const skillParts = parseVersionParts(skillVersion);
+  const cliParts = parseVersionParts(cliVersion);
+  if (skillParts === undefined || cliParts === undefined) {
+    return 'unknown';
+  }
+  const index = skillParts.findIndex((part, position) => part !== cliParts[position]);
+  if (index === NOT_FOUND_INDEX) {
+    return 'match';
+  }
+  return (skillParts[index] ?? 0) > (cliParts[index] ?? 0) ? 'cli-older' : 'skill-older';
+};
+
+const DETAIL_BY_VERDICT: Record<SkillVerdict, (skill: string, cli: string) => string> = {
+  'cli-older': (skill, cli) =>
+    `the refs skill targets CLI ${skill} but this CLI is ${cli} — update the CLI: ${CLI_UPDATE_HINT}`,
+  match: (_skill, cli) => `the refs skill is installed and matches this CLI (${cli})`,
+  'skill-older': (skill, cli) =>
+    `the refs skill targets CLI ${skill} but this CLI is ${cli} — update the skill: ${SKILL_INSTALL_HINT}`,
+  unknown: (skill, cli) =>
+    `the refs skill targets CLI ${skill} but this CLI is ${cli} — reinstall both: ${CLI_UPDATE_HINT} and ${SKILL_INSTALL_HINT}`,
+};
+
+type SkillVersionArgs = {
+  cliVersion: string;
+  label: string;
+  skillVersion: string | undefined;
+};
+
+const buildSkillVersionCheck = (args: SkillVersionArgs): CheckResult => {
+  const { cliVersion, label, skillVersion } = args;
+  if (skillVersion === undefined) {
+    return {
+      detail: `the refs skill (${label}) predates the version gate — update it: ${SKILL_INSTALL_HINT}`,
+      name: 'skill',
+      status: 'warn',
+    };
+  }
+  const verdict = compareSkillVersion(skillVersion, cliVersion);
   return {
-    detail: `refs skill not found — install it: ${SKILL_INSTALL_HINT}`,
+    detail: `${label}: ${DETAIL_BY_VERDICT[verdict](skillVersion, cliVersion)}`,
     name: 'skill',
-    status: 'warn',
+    status: verdict === 'match' ? 'ok' : 'warn',
   };
+};
+
+const NOT_INSTALLED: CheckResult = {
+  detail: `refs skill not found — install it: ${SKILL_INSTALL_HINT}`,
+  name: 'skill',
+  status: 'warn',
+};
+
+/** Reports the skill as installed AND in step with this CLI. The skill and the CLI ship through
+ * different channels (`npx skills add` from git, `npm i -g` from the registry), so they can drift
+ * silently; the skill pins the CLI version it was written against in its frontmatter, and this
+ * check is the only thing that ever compares the two.
+ *
+ * Both agent homes are checked, and a problem in EITHER wins over an `ok` in the other: `doctor`
+ * cannot know which agent is about to read the skill, so a stale Claude Code copy must not be
+ * hidden by a current Codex one. The `detail` names the platform so the fix is unambiguous. */
+const checkSkill = async (ctx: CliContext): Promise<CheckResult> => {
+  const home = ctx.env['HOME'];
+  const found = await Promise.all(
+    SKILL_LOCATIONS.map(async (location) => ({
+      label: location.label,
+      source:
+        home === undefined ? undefined : await readIfPresent(join(home, ...location.segments)),
+    })),
+  );
+  const checks = found
+    .filter((entry) => entry.source !== undefined)
+    .map((entry) =>
+      buildSkillVersionCheck({
+        cliVersion: ctx.cliVersion,
+        label: entry.label,
+        skillVersion: skillCliVersionOf(entry.source ?? ''),
+      }),
+    );
+  return checks.find((check) => check.status !== 'ok') ?? checks[0] ?? NOT_INSTALLED;
 };
 
 export { buildConfigCheck, checkGit, checkNode, checkSkill, loadConfigSafely };
