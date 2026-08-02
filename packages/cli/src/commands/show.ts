@@ -106,7 +106,9 @@ const showHuman = (data: ShowData): string[] => {
 const registerShow = (program: RefsCommand, ctx: CliContext): void => {
   program
     .command('show')
-    .description('Show a configured ref: full entry, state, local path, and sample tags.')
+    .description(
+      'Show a configured ref: entry, state, local path, package count; --packages/--tags add the package map and sample tags to --json.',
+    )
     .argument('<ref>', 'full ref key or a unique suffix, e.g. zod')
     .option('--packages', "include the ref's full package map (omitted by default)")
     .option('--tags', 'include sample tags in --json output (human output always probes for them)')

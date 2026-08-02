@@ -14,6 +14,7 @@ import { testContext } from '../helpers/context.ts';
 
 const PKG_KEY = 'github.com/acme/mono';
 const MONO_PACKAGE_COUNT = 2;
+const HUMAN_TAGS = ['v3.1.0', 'v3.0.0'];
 const NO_CALLS = 0;
 const ONE_CALL = 1;
 const ONE_LINE = 1;
@@ -106,6 +107,29 @@ describe('refs show: tag probe is opt-in in json mode', () => {
 
         expect(runner.calls).toHaveLength(NO_CALLS);
         expect(stdout).toHaveLength(ONE_LINE);
+      }),
+    );
+  });
+});
+
+// Human output has no opt-in: it must keep printing its `tags:` line, so the probe has to run even
+// with no flags at all. Guards the `!opts.json` disjunct of `show.ts`'s `tags:` option — dropping it
+// leaves every `--json` test green while human output silently loses the line.
+describe('refs show: human mode always probes for tags', () => {
+  it('prints the tags line with no flags at all', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, runner, stdout } = testContext();
+        ctx.env['REFS_HOME'] = homeDir;
+        const home = resolveHome(ctx.env);
+        await seedMonoWithCheckout(home);
+        runner.expect('git tag', { stdout: `${HUMAN_TAGS.join('\n')}\n` });
+
+        await run(ctx, ['node', 'refs', 'show', 'mono']);
+
+        expect(stdout).toContain(`tags: ${HUMAN_TAGS.join(', ')}`);
+        expect(runner.calls).toHaveLength(ONE_CALL);
       }),
     );
   });
