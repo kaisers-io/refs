@@ -58,28 +58,29 @@ help is the authoritative, always-current reference.
 
 ## Commands
 
-| Command        | What it does                                                                            |
-| -------------- | --------------------------------------------------------------------------------------- |
-| `refs init`    | Seed or migrate the refs home directory, its config, and the git hooks guard.           |
-| `refs add`     | Add a git reference in two phases: propose (`--dry-run`), then finalize (`--proposal`). |
-| `refs list`    | List configured refs with their staleness/missing checkout status.                      |
-| `refs show`    | Show a configured ref: full entry, state, local path, and sample tags.                  |
-| `refs sync`    | Fetch (or re-clone, if the checkout is missing) configured refs — all by default.       |
-| `refs resolve` | Resolve a git url, npm package name, import path, or ref-key suffix to its ref/package. |
-| `refs tag`     | Resolve a version to its git tag, via the ref's (or a package's) `tag_format`.          |
-| `refs edit`    | Edit one field of a global setting, a ref, or a package.                                |
-| `refs remove`  | Remove a configured ref: its config/state entry AND its checkout directory.             |
-| `refs doctor`  | Run environment/integrity checks (git, node, config, hooks, checkouts, ssh).            |
-| `refs migrate` | Migrate the refs config to the current schema, seeding it if absent.                    |
+| Command        | What it does                                                                                                                            |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `refs init`    | Seed or migrate the refs home directory, its config, and the git hooks guard.                                                           |
+| `refs add`     | Add a git reference in two phases: propose (`--dry-run`), then finalize (`--proposal`).                                                 |
+| `refs list`    | List configured refs with their staleness/missing checkout status.                                                                      |
+| `refs show`    | Show a configured ref: entry, state, local path, package count (`--packages`/`--tags` add the package map and sample tags to `--json`). |
+| `refs sync`    | Fetch (or re-clone, if the checkout is missing) configured refs — all by default.                                                       |
+| `refs resolve` | Resolve a git url, npm package name, import path, or ref-key suffix to its ref/package.                                                 |
+| `refs tag`     | Resolve a version to its git tag, via the ref's (or a package's) `tag_format`.                                                          |
+| `refs edit`    | Edit one field of a global setting, a ref, or a package.                                                                                |
+| `refs remove`  | Remove a configured ref: its config/state entry AND its checkout directory.                                                             |
+| `refs doctor`  | Run environment/integrity checks (git, node, config, hooks, checkouts, ssh).                                                            |
+| `refs migrate` | Migrate the refs config to the current schema, seeding it if absent.                                                                    |
 
 ## Agent skill
 
 The CLI pairs with one thin, cross-agent skill (Claude Code and Codex) that routes agent
 questions ("how does zod implement codecs") to the right checkout via `refs resolve
---json` and keeps things fresh with `refs sync`/`refs doctor`. `refs init` prints the
-exact install command for your setup. The skill is distributed from the GitHub
-repository, which is private during the current development phase — it opens up when
-`refs` goes public.
+--json` and keeps things fresh with `refs sync`/`refs doctor`. It is user-invoked — it
+does not activate on its own; invoke it with `/refs` in Claude Code or `$refs` in Codex.
+`refs init` prints the exact install command for your setup. The skill is distributed
+from the GitHub repository, which is private during the current development phase — it
+opens up when `refs` goes public.
 
 ## Changelog
 
