@@ -179,9 +179,10 @@ Checks always run in this order: `git`, `node`, `config`, `hooks-guard`,
 url). `status` is `ok` | `warn` | `fail`; `MAINTAIN.md` explains each check.
 
 The `skill` check reports whether this skill and the running CLI are in step. Every
-non-`ok` `detail` carries the command that fixes it; only the version-comparison outcomes
-also name which side is behind — _not found in either agent home_ and _predates the version
-gate_ name just the install command.
+non-`ok` `detail` carries the command that fixes it, but only a version mismatch it can
+order names which side is behind — _not found in either agent home_ and _predates the
+version gate_ name just the install command, and an unorderable pair (a prerelease on
+either side) says to reinstall both.
 
 Exit codes: `1` when any check is `fail` — even though the envelope stays `ok: true`.
 

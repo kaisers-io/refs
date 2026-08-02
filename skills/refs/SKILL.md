@@ -24,14 +24,18 @@ Run `refs --version`.
   refs needs Node.js `>=24.12`, and on a mismatched runtime that is the real problem
   (suggest `nvm install 24`) rather than a failed install. Otherwise tell the user the
   CLI is on npm as `@kaisers-io/refs`, ask permission to install it globally, and on yes
-  run `npm i -g @kaisers-io/refs` then verify with `refs --version`. On no, print the
-  command for later and stop.
-- **A version** → compare it against `metadata.cli_version` in this file's frontmatter.
-  Equal → continue. Different → say so, name which side is behind, relay the fix
-  (`npm i -g @kaisers-io/refs@latest` when the CLI is older, `npx skills add kaisers-io/refs`
-  when this skill is older), and stop — `COMMANDS.md` is written against the pinned version,
-  so the flags it documents may not exist here. The one exception is `refs --help` and
-  `refs <command> --help`, which stay usable either way (§2).
+  run `npm i -g @kaisers-io/refs`, then re-run `refs --version` and take the branch below.
+  On no, print the command for later and stop.
+- **A version** → compare it against `metadata.cli_version` above. Fixes:
+  `npm i -g @kaisers-io/refs@latest` (CLI behind), `npx skills add kaisers-io/refs` (skill behind).
+  - Equal → continue.
+  - Either side isn't a plain `x.y.z` (e.g. `0.6.0-rc.1`) → don't name a side; report both
+    versions, suggest both fixes, and stop.
+  - Only the patch differs → report it, name the side that's behind and its fix, note that
+    `refs --help` outranks `COMMANDS.md` where the two disagree, and continue.
+  - Major or minor differs → report likewise and stop; `COMMANDS.md` is written against the
+    pinned version, so commands or flags it documents may not exist here.
+  - `refs --help` and `refs <command> --help` stay usable whenever we stop (§2).
 
 `refs doctor --json` is the health check, not the gate — run it when something looks wrong
 or the user asks for it, and report every non-`ok` check in plain terms. `MAINTAIN.md`
@@ -42,8 +46,8 @@ explains each one.
 `refs` manages arbitrary git repositories (GitHub, GitLab, self-hosted) as local,
 read-only reference checkouts. `COMMANDS.md` beside this file is the command and
 `--json` reference; it is written against the CLI version pinned in this file's
-frontmatter. `refs --help` and `refs <command> --help` remain the fallback when the
-version check reports a mismatch, or for a flag `COMMANDS.md` doesn't cover.
+frontmatter. `refs --help` and `refs <command> --help` remain the fallback on any
+version mismatch, or for a flag `COMMANDS.md` doesn't cover.
 
 **Always pass `--json`** when running `refs` for agent purposes. Every command emits a
 stable envelope — `{"ok":true,"data":…,"warnings":[…]}` on success,
