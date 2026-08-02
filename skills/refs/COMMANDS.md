@@ -1,6 +1,6 @@
 # refs commands
 
-The `--json` contract for CLI **0.5.1** (the version pinned in `SKILL.md`). Shapes below
+The `--json` contract for the CLI version pinned in `SKILL.md`'s frontmatter. Shapes below
 are the `data` payload only — always wrapped in the envelope.
 
 ## Envelope, streams, exit codes
@@ -19,8 +19,20 @@ Global flags: `--json` (always pass it) and `--verbose` (stack traces on error �
 from the per-command lists below; you never need it). `-h`/`--help` and `-V`/`--version`
 are likewise omitted throughout.
 
-Every command can exit `1` on an unexpected error; only the extra codes are listed per
-command.
+Two failures reach almost every command and are **not** repeated in the per-command lists:
+
+- **Unreadable config** — every command except `init`, `migrate`, and `doctor` reads
+  `config.toml` before doing anything, so each can exit `4` when no config exists yet (the
+  message points at `refs init`) or `3` when the TOML is malformed or its schema version is
+  one this CLI can't read. `init` and `migrate` create or migrate the config instead of
+  requiring one, but still exit `3` if it is malformed beyond automatic migration. `doctor`
+  reports the same condition as a `fail` on its `config` check rather than exiting.
+- **Lock contention** — `init`, `migrate`, `add`, `edit`, and `remove` take the home (or a
+  per-ref) lock, so each can exit `5` when another refs process holds it. `sync` is the
+  exception: it reports a lock timeout as a per-item `failed` result, not a command failure.
+
+Every command can exit `1` on an unexpected error; beyond that and the two above, only the
+extra codes are listed per command.
 
 ## `refs init`
 
@@ -28,14 +40,15 @@ command.
 refs init
 ```
 
-Seeds the refs home (config, state, `sources/`, `locks/`, `hooks/`), migrates an older
-config, installs the git hooks guard. Idempotent.
+Creates the refs home and its `sources/`, `locks/`, and `hooks/` subdirectories, seeds or
+migrates `config.toml`, installs the git hooks guard. Idempotent.
 
 ```json
 { "config": "seeded", "home": "/Users/you/.kaisers-io/refs", "skill_hint": "…" }
 ```
 
-`config` is `"seeded"` | `"migrated"` | `"noop"`. No extra exit codes.
+`config` is `"seeded"` | `"migrated"` | `"noop"`. No command-specific exit codes beyond the
+shared `3`/`5` above.
 
 ## `refs add`
 
@@ -145,7 +158,8 @@ a monorepo ref can carry 140 names; you almost never need them here. Reach for
 `refs resolve <query> --json` instead — it does the package matching for you and returns
 the single hit.
 
-No extra exit codes (an unreadable config is a top-level error, not a per-ref one).
+No command-specific exit codes beyond the shared `3`/`4` above — an unreadable config is a
+top-level error, not a per-ref one.
 
 ## `refs doctor`
 
@@ -163,8 +177,10 @@ Checks always run in this order: `git`, `node`, `config`, `hooks-guard`,
 `dirty-checkouts`, `orphans`, `skill`, `ssh-auth` (the last only when some ref uses an ssh
 url). `status` is `ok` | `warn` | `fail`; `MAINTAIN.md` explains each check.
 
-The `skill` check reports whether this skill and the running CLI are in step. A non-`ok`
-result names which side is behind and the command to fix it.
+The `skill` check reports whether this skill and the running CLI are in step. Every
+non-`ok` `detail` carries the command that fixes it; only the version-comparison outcomes
+also name which side is behind — _not found in either agent home_ and _predates the version
+gate_ name just the install command.
 
 Exit codes: `1` when any check is `fail` — even though the envelope stays `ok: true`.
 
@@ -182,7 +198,7 @@ standalone.
 ```
 
 `result` is `"seeded"` | `"migrated"` | `"noop"`; `backup` is `null` unless `"migrated"`.
-No extra exit codes.
+No command-specific exit codes beyond the shared `3`/`5` above.
 
 ## `refs remove`
 
@@ -244,7 +260,8 @@ refs show <ref> [--packages] [--tags]
   per package). This is the only way to discover package names for
   `refs edit <ref> <field> --package <name>`.
 - `--tags` adds `sample_tags` (up to five recent tags) in `--json` mode. Off by default
-  because producing it costs a `git tag` subprocess. Human output always shows them.
+  because producing it costs a `git tag` subprocess. Human output always probes for them,
+  but only prints a `tags:` line when the probe found any.
 
 ```json
 {

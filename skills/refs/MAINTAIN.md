@@ -41,11 +41,13 @@ refs doctor --json
 Runs environment/integrity checks and returns `{checks: [{name, status, detail}]}` with
 `status` one of `ok`, `warn`, `fail`: `git`, `node`, `config`, `hooks-guard`,
 `dirty-checkouts`, `orphans`, `skill`, and (when any ref uses ssh) `ssh-auth`. Report
-every non-`ok` check with its `detail` message, and explain what it means in plain
-terms — e.g. a `warn` on `skill` means this skill isn't installed for a detected agent,
-or that the CLI version it pins in its frontmatter doesn't match the running CLI; the
-`detail` names which side is behind and the exact command to fix it, so relay that
-verbatim rather than guessing. A `fail`
+every non-`ok` check with its `detail` message, and explain what it means in plain terms.
+A `warn` on `skill` means one of three things: the skill wasn't found in
+`~/.claude/skills` or `~/.codex/skills` (the only two paths the check looks at — a
+project-level, plugin, or symlinked install reads the same way), the installed copy
+predates the version gate, or the CLI version it pins in its frontmatter doesn't match the
+running CLI. Every `detail` carries the command that fixes it; only the version-comparison
+outcomes also name which side is behind. Relay it verbatim rather than guessing. A `fail`
 on `dirty-checkouts` means a managed checkout picked up local changes outside of
 `refs sync`'s own self-heal, which is worth investigating rather than ignoring. Like
 `sync` above, the exit code goes non-zero on any `fail` even though the envelope is

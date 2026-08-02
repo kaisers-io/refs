@@ -26,9 +26,14 @@ explains each one. Two of them decide whether you can continue:
   (suggest `nvm install 24`) rather than a failed install. Otherwise tell the user the
   CLI is on npm as `@kaisers-io/refs`, ask permission to install it globally, and on yes
   run `npm i -g @kaisers-io/refs`. On no, print the command for later and stop.
-- **`skill` check not `ok`** → this skill and the CLI are out of step. The check names the
-  side that is behind and the exact command to fix it. Say so and stop before running
-  anything else; a mismatch means `COMMANDS.md` below may describe flags this CLI lacks.
+- **`skill` check not `ok`** → read its `detail`. A **version mismatch** (the skill pins a
+  newer CLI, an older CLI, or a pair that cannot be ordered) is a hard stop: say which side
+  is behind, relay the fix command, and run nothing else — `COMMANDS.md` is written against
+  the pinned CLI version, so the flags it documents may not exist here. The other two
+  non-`ok` outcomes are report-and-continue: _not found_ (the check only looks in
+  `~/.claude/skills` and `~/.codex/skills`, so a project-level, plugin, or symlinked install
+  reads that way with nothing actually wrong) and _predates the version gate_. Relay the
+  `detail` and carry on — see `MAINTAIN.md`.
 
 ## 2. What refs is
 
