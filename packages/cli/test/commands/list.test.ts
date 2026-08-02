@@ -31,7 +31,11 @@ const ALPHA_ENTRY = {
   clone_mode: 'full',
   default_branch: 'main',
   description: 'Alpha lib',
-  packages: { 'alpha-pkg': { description: 'pkg', path: '.' } },
+  // eslint-disable-next-line sort-keys -- reverse lexical order on purpose, so the --packages test below proves the sort, not just inclusion
+  packages: {
+    'zeta-pkg': { description: 'second', path: 'packages/zeta' },
+    'alpha-pkg': { description: 'pkg', path: '.' },
+  },
   tag_format: 'v{version}',
   url: 'https://github.com/acme/alpha',
 };
@@ -60,7 +64,7 @@ const expectListData = (envelope: JsonEnvelope, expected: unknown): void => {
   expect(envelope.data).toStrictEqual(expected);
 };
 
-describe('refs list: sorted data with resolved clone_mode/staleness/missing/packages', () => {
+describe('refs list: sorted data with resolved clone_mode/staleness/missing/packages_count', () => {
   it('lists alpha (fresh, present, override) before beta (stale, missing, default)', async () => {
     expect.hasAssertions();
     await withResetExitCode(() =>
@@ -82,7 +86,7 @@ describe('refs list: sorted data with resolved clone_mode/staleness/missing/pack
             description: 'Alpha lib',
             key: ALPHA_KEY,
             missing: false,
-            packages: ['alpha-pkg'],
+            packages_count: 2,
             stale: false,
           },
           {
@@ -90,7 +94,45 @@ describe('refs list: sorted data with resolved clone_mode/staleness/missing/pack
             description: 'Beta lib',
             key: BETA_KEY,
             missing: true,
+            packages_count: 0,
+            stale: true,
+          },
+        ]);
+      }),
+    );
+  });
+});
+
+// Split out of the describe above purely to keep it under the repo's max-lines-per-function cap.
+describe('refs list: --packages opt-in', () => {
+  it('includes the sorted package names when --packages is passed', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, stdout } = testContext();
+        ctx.env['REFS_HOME'] = homeDir;
+        const home = resolveHome(ctx.env);
+        await seedConfig(home, { [ALPHA_KEY]: ALPHA_ENTRY, [BETA_KEY]: BETA_ENTRY });
+
+        await run(ctx, ['node', 'refs', 'list', '--json', '--packages']);
+
+        expectListData(parseSoleEnvelope(stdout), [
+          {
+            clone_mode: 'full',
+            description: 'Alpha lib',
+            key: ALPHA_KEY,
+            missing: true,
+            packages: ['alpha-pkg', 'zeta-pkg'],
+            packages_count: 2,
+            stale: true,
+          },
+          {
+            clone_mode: 'blobless',
+            description: 'Beta lib',
+            key: BETA_KEY,
+            missing: true,
             packages: [],
+            packages_count: 0,
             stale: true,
           },
         ]);
