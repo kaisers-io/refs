@@ -42,113 +42,18 @@ jobs:
             exit 1
           fi
           echo "tag $TAG matches package version $PKG_VERSION"
-      - name: Guard — skill frontmatter pins this CLI version
-        # The skill ships from git (`npx skills add`) while the CLI ships from npm, so they can
-        # drift. `doctor`'s `skill` check compares them at runtime; this guard is what makes that
-        # comparison trustworthy — a release whose skill still pins the previous version would
-        # make every user's doctor report a false mismatch.
-        run: |
-          set -euo pipefail
-          PKG_VERSION="$(node -p "require('./packages/cli/package.json').version")"
-          # Bounded to the frontmatter (everything before the second `---` line) so a later
-          # mention of `cli_version` in the body can never be picked up, and rejecting a second
-          # match rather than silently taking the first. Strips single or double quotes.
-          FRONTMATTER="$(awk 'NR==1 && $0!="---" {exit 1} NR>1 && $0=="---" {exit} NR>1' skills/refs/SKILL.md)"
-          MATCHES="$(printf '%s\n' "$FRONTMATTER" | sed -n "s/^[[:space:]]*cli_version:[[:space:]]*['\"]\{0,1\}\([^'\"[:space:]]*\)['\"]\{0,1\}[[:space:]]*$/\1/p")"
-          COUNT="$(printf '%s\n' "$MATCHES" | grep -c . || true)"
-          if [ "$COUNT" -eq 0 ]; then
-            echo "::error::skills/refs/SKILL.md frontmatter has no metadata.cli_version" >&2
-            exit 1
-          fi
-          if [ "$COUNT" -gt 1 ]; then
-            echo "::error::skills/refs/SKILL.md frontmatter has $COUNT cli_version entries" >&2
-            exit 1
-          fi
-          SKILL_VERSION="$MATCHES"
-          if [ "$SKILL_VERSION" != "$PKG_VERSION" ]; then
-            echo "::error::skills/refs/SKILL.md pins CLI $SKILL_VERSION but package.json is $PKG_VERSION" >&2
-            exit 1
-          fi
-          echo "skill pins CLI $SKILL_VERSION, matching package version $PKG_VERSION"
-      - name: Guard — plugin manifests declare this CLI version
-        # These manifests are what the Claude Code / Codex marketplaces show users, yet nothing
-        # else in the publish path reads them: a release carrying a stale manifest would publish
-        # cleanly while advertising an old version alongside the current skill — the same drift
-        # the skill pin above exists to prevent, one layer out. Every entry is reported, not just
-        # the first, so a release engineer never needs a second CI run to find the next stale file.
-        # `.agents/plugins/marketplace.json` is deliberately not checked: it carries no version
-        # field at all, so there is nothing there to drift.
-        run: |
-          set -euo pipefail
-          PKG_VERSION="$(node -p "require('./packages/cli/package.json').version")"
-          # An absent `version` key must fail like a wrong one, so the comparison is against the
-          # parsed value (undefined), never against a shell string that would read as empty.
-          # Unreadable files, malformed JSON, and non-object entries are reported the same way
-          # rather than thrown: five files get hand-edited in lockstep at release time, so a JSON
-          # typo is an ordinary slip and deserves one actionable line, not a Node stack trace.
-          node -e '
-            const { readFileSync } = require("node:fs");
-            const expected = process.argv[1];
-            const problems = [];
-            const check = (label, actual) => {
-              if (actual !== expected) {
-                const found = actual === undefined ? "(no version field)" : JSON.stringify(actual);
-                problems.push(label + " says " + found + ", but packages/cli/package.json is " + expected);
-              }
-            };
-            // Records why and returns undefined instead of throwing, so one unreadable file never
-            // hides the state of the others — every problem still surfaces in a single run.
-            const readManifest = (file) => {
-              let text;
-              try {
-                text = readFileSync(file, "utf8");
-              } catch (error) {
-                problems.push(file + " could not be read: " + error.message);
-                return undefined;
-              }
-              let data;
-              try {
-                data = JSON.parse(text);
-              } catch (error) {
-                problems.push(file + " is not valid JSON: " + error.message);
-                return undefined;
-              }
-              if (data === null || typeof data !== "object" || Array.isArray(data)) {
-                problems.push(file + " is not a JSON object");
-                return undefined;
-              }
-              return data;
-            };
-            for (const file of [".claude-plugin/plugin.json", ".codex-plugin/plugin.json"]) {
-              const manifest = readManifest(file);
-              if (manifest !== undefined) {
-                check(file + " .version", manifest.version);
-              }
-            }
-            const marketplace = readManifest(".claude-plugin/marketplace.json");
-            if (marketplace !== undefined) {
-              if (!Array.isArray(marketplace.plugins) || marketplace.plugins.length === 0) {
-                problems.push(".claude-plugin/marketplace.json has no .plugins entries to check");
-              } else {
-                // Every entry, not just [0] — a second plugin added later must not slip through.
-                marketplace.plugins.forEach((plugin, i) => {
-                  const label = ".claude-plugin/marketplace.json .plugins[" + i + "]";
-                  if (plugin === null || typeof plugin !== "object" || Array.isArray(plugin)) {
-                    problems.push(label + " is not a JSON object");
-                    return;
-                  }
-                  check(label + " (" + (plugin.name ?? "unnamed") + ")", plugin.version);
-                });
-              }
-            }
-            if (problems.length > 0) {
-              for (const problem of problems) {
-                console.error("::error::" + problem);
-              }
-              process.exit(1);
-            }
-            console.log("all plugin manifests declare version " + expected);
-          ' "$PKG_VERSION"
+      - name: Guard — every version site declares this CLI version
+        # The skill frontmatter and the plugin manifests both repeat packages/cli/package.json's
+        # version, and both can drift: the skill ships from git (`npx skills add`) while the CLI
+        # ships from npm, and `doctor`'s `skill` check compares them at runtime, so a release
+        # whose skill still pins the previous version makes every user's doctor report a false
+        # mismatch; the manifests are what the Claude Code / Codex marketplaces show users, yet
+        # nothing else in the publish path reads them, so a stale one publishes cleanly while
+        # advertising an old version. This ran as two inline guards until scripts/versions.mjs
+        # took the job — same checks, every problem still reported in one run, but now also
+        # runnable on a PR (ci.yml) and paired with `--set` so the five files stay in step by
+        # construction rather than by hand. Deliberately before `pnpm install`: no dependencies.
+        run: node scripts/versions.mjs --check
       - name: Guard — packaged CHANGELOG.md matches the repository one
         # The tarball ships packages/cli/CHANGELOG.md so npm users can see changes while the
         # GitHub repo is private; this fails the release when a bump edits only the root copy.
