@@ -10,6 +10,7 @@ import { testContext } from '../helpers/context.ts';
 
 // CLI-wiring + unit tests for `refs show` and the `matchRefKey` suffix matcher it (and future
 // Tasks 18-22 commands) rely on. Config/state are seeded directly via `writeConfig`/`writeState`.
+// The `--packages`/`--tags` json opt-ins live in `show-payload.test.ts` (300-line cap).
 
 const NEXTJS_KEY = 'github.com/vercel/next.js';
 const MIRROR_NEXTJS_KEY = 'corp-mirror/github.com/vercel/next.js';
@@ -145,7 +146,7 @@ describe('refs show: full data via suffix match', () => {
         const home = resolveHome(ctx.env);
         const dest = await seedNextjsWithTags(home, runner);
 
-        await run(ctx, ['node', 'refs', 'show', 'next.js', '--json']);
+        await run(ctx, ['node', 'refs', 'show', 'next.js', '--json', '--tags']);
 
         const envelope = parseSoleEnvelope(stdout) as {
           data: {
@@ -180,7 +181,7 @@ describe('refs show: missing checkout', () => {
         const home = resolveHome(ctx.env);
         await seedConfig(home, { [NEXTJS_KEY]: NEXTJS_ENTRY });
 
-        await run(ctx, ['node', 'refs', 'show', NEXTJS_KEY, '--json']);
+        await run(ctx, ['node', 'refs', 'show', NEXTJS_KEY, '--json', '--tags']);
 
         const envelope = parseSoleEnvelope(stdout) as { data: { sample_tags: string[] } };
         expect(envelope.data.sample_tags).toStrictEqual([]);
@@ -213,7 +214,7 @@ describe('refs show: present but corrupt checkout', () => {
         const home = resolveHome(ctx.env);
         await seedNextjsWithBrokenGitTag(home, runner);
 
-        await run(ctx, ['node', 'refs', 'show', NEXTJS_KEY, '--json']);
+        await run(ctx, ['node', 'refs', 'show', NEXTJS_KEY, '--json', '--tags']);
 
         expect(process.exitCode).toBeUndefined();
         const envelope = parseSoleEnvelope(stdout) as {
