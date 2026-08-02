@@ -18,22 +18,24 @@ from an older manual install. Ignore it; the files beside this one are authorita
 
 ## 1. Capability gate
 
-Run `refs doctor --json` and report every non-`ok` check in plain terms — `MAINTAIN.md`
-explains each one. Two of them decide whether you can continue:
+Run `refs --version`.
 
 - **`refs: command not found`** → the CLI isn't installed. Check `node --version` first;
   refs needs Node.js `>=24.12`, and on a mismatched runtime that is the real problem
   (suggest `nvm install 24`) rather than a failed install. Otherwise tell the user the
   CLI is on npm as `@kaisers-io/refs`, ask permission to install it globally, and on yes
-  run `npm i -g @kaisers-io/refs`. On no, print the command for later and stop.
-- **`skill` check not `ok`** → read its `detail`. A **version mismatch** (the skill pins a
-  newer CLI, an older CLI, or a pair that cannot be ordered) is a hard stop: say which side
-  is behind, relay the fix command, and run nothing else — `COMMANDS.md` is written against
-  the pinned CLI version, so the flags it documents may not exist here. The other two
-  non-`ok` outcomes are report-and-continue: _not found_ (the check only looks in
-  `~/.claude/skills` and `~/.codex/skills`, so a project-level, plugin, or symlinked install
-  reads that way with nothing actually wrong) and _predates the version gate_. Relay the
-  `detail` and carry on — see `MAINTAIN.md`.
+  run `npm i -g @kaisers-io/refs` then verify with `refs --version`. On no, print the
+  command for later and stop.
+- **A version** → compare it against `metadata.cli_version` in this file's frontmatter.
+  Equal → continue. Different → say so, name which side is behind, relay the fix
+  (`npm i -g @kaisers-io/refs@latest` when the CLI is older, `npx skills add kaisers-io/refs`
+  when this skill is older), and stop — `COMMANDS.md` is written against the pinned version,
+  so the flags it documents may not exist here. The one exception is `refs --help` and
+  `refs <command> --help`, which stay usable either way (§2).
+
+`refs doctor --json` is the health check, not the gate — run it when something looks wrong
+or the user asks for it, and report every non-`ok` check in plain terms. `MAINTAIN.md`
+explains each one.
 
 ## 2. What refs is
 
