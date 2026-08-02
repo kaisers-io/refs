@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking (`--json` only):** `refs list --json` and `refs show --json` no longer include
+  the ref's package data by default. Both now report a `packages_count` number instead; pass
+  `--packages` to get the names back (a sorted `string[]` on `list`, the full package map on
+  `show`). `refs show <a-140-package-monorepo> --json` drops from roughly 4,400 tokens to
+  about 100. Human output is unchanged — it never showed package data.
+- **Breaking (`--json` only):** `refs show --json` no longer includes `sample_tags` unless
+  `--tags` is passed, and skips the `git tag` subprocess entirely when it isn't. Human
+  output is unchanged: it always probes for tags and still prints the `tags:` line.
+- The agent skill is now **explicitly invoked only** — it no longer activates on its own.
+  Invoke it with `/refs` (Claude Code) or `$refs` (Codex). This is `disable-model-invocation`
+  in the frontmatter plus `policy.allow_implicit_invocation: false` in the new
+  `skills/refs/agents/openai.yaml`.
+- The skill's reference files moved out of `references/` and now sit beside `SKILL.md` as
+  `INVESTIGATE.md`, `ADD.md`, `MAINTAIN.md`, and `ONBOARDING.md`, joined by a new
+  `COMMANDS.md` CLI reference. `npx skills add` and `skills update` replace the skill
+  directory wholesale, so nothing is left behind. **If you installed the skill by copying
+  files manually, delete the old `skills/refs/references/` directory** — it would otherwise
+  sit alongside the new files with stale instructions.
+- The skill now pins the CLI version it was written against
+  (`metadata.cli_version` in its frontmatter), and the release workflow fails if that pin
+  drifts from the published CLI version.
+- `refs doctor`'s `skill` check now compares that pinned `cli_version` against the running
+  CLI and names which side is behind, instead of only checking that `SKILL.md` exists. Both
+  `~/.claude/skills/refs` and `~/.codex/skills/refs` are checked, and a problem in either
+  wins over an `ok` in the other.
+
+### Fixed
+
+- The skill's frontmatter claimed macOS/Linux only. Windows has been fully supported since
+  0.5.0; the field is gone.
+
 ## [0.5.1] - 2026-07-30
 
 ### Added
