@@ -70,6 +70,47 @@ jobs:
             exit 1
           fi
           echo "skill pins CLI $SKILL_VERSION, matching package version $PKG_VERSION"
+      - name: Guard — plugin manifests declare this CLI version
+        # These manifests are what the Claude Code / Codex marketplaces show users, yet nothing
+        # else in the publish path reads them: a release carrying a stale manifest would publish
+        # cleanly while advertising an old version alongside the current skill — the same drift
+        # the skill pin above exists to prevent, one layer out. Every entry is reported, not just
+        # the first, so a release engineer never needs a second CI run to find the next stale file.
+        # `.agents/plugins/marketplace.json` is deliberately not checked: it carries no version
+        # field at all, so there is nothing there to drift.
+        run: |
+          set -euo pipefail
+          PKG_VERSION="$(node -p "require('./packages/cli/package.json').version")"
+          # An absent `version` key must fail like a wrong one, so the comparison is against the
+          # parsed value (undefined), never against a shell string that would read as empty.
+          node -e '
+            const expected = process.argv[1];
+            const problems = [];
+            const check = (label, actual) => {
+              if (actual !== expected) {
+                const found = actual === undefined ? "(no version field)" : JSON.stringify(actual);
+                problems.push(label + " says " + found + ", but packages/cli/package.json is " + expected);
+              }
+            };
+            check(".claude-plugin/plugin.json .version", require("./.claude-plugin/plugin.json").version);
+            check(".codex-plugin/plugin.json .version", require("./.codex-plugin/plugin.json").version);
+            const marketplace = require("./.claude-plugin/marketplace.json");
+            if (!Array.isArray(marketplace.plugins) || marketplace.plugins.length === 0) {
+              problems.push(".claude-plugin/marketplace.json has no .plugins entries to check");
+            } else {
+              // Every entry, not just [0] — a second plugin added later must not slip through.
+              marketplace.plugins.forEach((plugin, i) => {
+                check(".claude-plugin/marketplace.json .plugins[" + i + "] (" + (plugin.name ?? "unnamed") + ")", plugin.version);
+              });
+            }
+            if (problems.length > 0) {
+              for (const problem of problems) {
+                console.error("::error::" + problem);
+              }
+              process.exit(1);
+            }
+            console.log("all plugin manifests declare version " + expected);
+          ' "$PKG_VERSION"
       - name: Guard — packaged CHANGELOG.md matches the repository one
         # The tarball ships packages/cli/CHANGELOG.md so npm users can see changes while the
         # GitHub repo is private; this fails the release when a bump edits only the root copy.
