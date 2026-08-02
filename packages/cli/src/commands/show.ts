@@ -110,7 +110,7 @@ const registerShow = (program: RefsCommand, ctx: CliContext): void => {
       'Show a configured ref: entry, state, local path, package count; --packages/--tags add the package map and sample tags to --json.',
     )
     .argument('<ref>', 'full ref key or a unique suffix, e.g. zod')
-    .option('--packages', "include the ref's full package map (omitted by default)")
+    .option('--packages', "include the ref's full package map in --json output (off by default)")
     .option('--tags', 'include sample tags in --json output (human output always probes for them)')
     .action((ref, localOpts, command) => {
       const opts = cliOptsOf(command);

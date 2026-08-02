@@ -16,7 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   about 100. Human output is unchanged — it never showed package data.
 - **Breaking (`--json` only):** `refs show --json` no longer includes `sample_tags` unless
   `--tags` is passed, and skips the `git tag` subprocess entirely when it isn't. Human
-  output is unchanged: it always probes for tags and still prints the `tags:` line.
+  output is unchanged: it always probes for tags, and still prints the `tags:` line
+  whenever the probe found any.
 - The agent skill is now **explicitly invoked only** — it no longer activates on its own.
   Invoke it with `/refs` (Claude Code) or `$refs` (Codex). This is `disable-model-invocation`
   in the frontmatter plus `policy.allow_implicit_invocation: false` in the new

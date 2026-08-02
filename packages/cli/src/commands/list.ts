@@ -161,7 +161,7 @@ const registerList = (program: RefsCommand, ctx: CliContext): void => {
   program
     .command('list')
     .description('List configured refs with their staleness/missing checkout status.')
-    .option('--packages', "include each ref's package names (omitted by default)")
+    .option('--packages', "include each ref's package names in --json output (off by default)")
     .action((localOpts, command) => {
       const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {

@@ -72,8 +72,9 @@ refs init --json
 `data.config` is one of `"seeded"` (no config existed), `"migrated"` (an older schema was
 upgraded, with a `.bak` backup left alongside it), or `"noop"` (already current).
 
-Exit codes: `0` always (this command has no failure modes of its own beyond an unexpected
-error, `1`).
+Exit codes: `0`, `3` when an existing config can't be migrated (malformed TOML, a schema
+newer than this CLI supports, or a shape beyond automatic migration), or `1` for an
+unexpected error. There is no `4` here — an absent config is seeded, not an error.
 
 ---
 
@@ -287,7 +288,8 @@ refs list --json
 single-package ref. The names themselves are off by default; `--packages` adds a sorted
 `packages` array of package names to each item (human output is unaffected either way).
 
-Exit codes: `0`, or `1` for an unexpected error (no per-item failure state here — a
+Exit codes: `0`, `4` (no config yet — run `refs init`), `3` (malformed or unmigrated
+config), or `1` for an unexpected error (no per-item failure state here — a
 missing/unreadable config is a top-level error, not a per-ref one).
 
 ---
@@ -357,9 +359,10 @@ only thing that compares the two. Six outcomes:
 | The skill has no `cli_version` (installed before the gate) | `warn` | it predates the version gate — update the skill    |
 | Either version is not a plain `x.y.z` (a prerelease, say)  | `warn` | direction unknown — reinstall both                 |
 
-The comparison handles plain three-part numeric versions (`0.5.1`) only. Anything else — a
-prerelease, a build-metadata suffix — lands in the last row, where the check names neither
-side and asks you to reinstall both rather than guess an ordering.
+Ordering is only computed for plain three-part numeric versions (`0.6.0`). Anything else —
+a prerelease, a build-metadata suffix — lands in the last row, where the check names
+neither side and asks you to reinstall both rather than guess an ordering. Exact string
+equality is checked first, though, so two identical non-plain versions still report `ok`.
 
 Both installation locations are checked, `~/.claude/skills/refs/SKILL.md` and
 `~/.codex/skills/refs/SKILL.md`, and the `detail` names which one it is reporting on. A
@@ -400,7 +403,10 @@ refs migrate --json
 `data.result` is `"seeded"`, `"migrated"`, or `"noop"`; `data.backup` is the `.bak` path
 when `"migrated"`, else `null`.
 
-Exit codes: `0`, or `1` for an unexpected error.
+Exit codes: `0`, `3` when an existing config can't be migrated (malformed TOML, a schema
+newer than this CLI supports, or a shape beyond automatic migration — the `.bak` is
+preserved in that last case), or `1` for an unexpected error. There is no `4` here — an
+absent config is seeded, not an error.
 
 ---
 
@@ -514,7 +520,8 @@ refs show left-pad --json
 
 `data` is the ref's config entry minus `packages`, plus `key`, `local_path`,
 `packages_count`, and `state`. `--packages` adds the full `packages` map back; `--tags`
-adds `sample_tags`. Human output is unchanged and always shows sample tags.
+adds `sample_tags`. Human output is unchanged: it always probes for tags, and prints the
+`tags:` line only when the probe found any.
 
 `--tags` is also what makes the `git tag` subprocess run at all in `--json` mode — without
 it, `show --json` never touches the checkout. If the checkout exists but its tags can't be
