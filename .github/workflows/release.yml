@@ -42,6 +42,34 @@ jobs:
             exit 1
           fi
           echo "tag $TAG matches package version $PKG_VERSION"
+      - name: Guard — skill frontmatter pins this CLI version
+        # The skill ships from git (`npx skills add`) while the CLI ships from npm, so they can
+        # drift. `doctor`'s `skill` check compares them at runtime; this guard is what makes that
+        # comparison trustworthy — a release whose skill still pins the previous version would
+        # make every user's doctor report a false mismatch.
+        run: |
+          set -euo pipefail
+          PKG_VERSION="$(node -p "require('./packages/cli/package.json').version")"
+          # Bounded to the frontmatter (everything before the second `---` line) so a later
+          # mention of `cli_version` in the body can never be picked up, and rejecting a second
+          # match rather than silently taking the first. Strips single or double quotes.
+          FRONTMATTER="$(awk 'NR==1 && $0!="---" {exit 1} NR>1 && $0=="---" {exit} NR>1' skills/refs/SKILL.md)"
+          MATCHES="$(printf '%s\n' "$FRONTMATTER" | sed -n "s/^[[:space:]]*cli_version:[[:space:]]*['\"]\{0,1\}\([^'\"[:space:]]*\)['\"]\{0,1\}[[:space:]]*$/\1/p")"
+          COUNT="$(printf '%s\n' "$MATCHES" | grep -c . || true)"
+          if [ "$COUNT" -eq 0 ]; then
+            echo "::error::skills/refs/SKILL.md frontmatter has no metadata.cli_version" >&2
+            exit 1
+          fi
+          if [ "$COUNT" -gt 1 ]; then
+            echo "::error::skills/refs/SKILL.md frontmatter has $COUNT cli_version entries" >&2
+            exit 1
+          fi
+          SKILL_VERSION="$MATCHES"
+          if [ "$SKILL_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::skills/refs/SKILL.md pins CLI $SKILL_VERSION but package.json is $PKG_VERSION" >&2
+            exit 1
+          fi
+          echo "skill pins CLI $SKILL_VERSION, matching package version $PKG_VERSION"
       - name: Guard — packaged CHANGELOG.md matches the repository one
         # The tarball ships packages/cli/CHANGELOG.md so npm users can see changes while the
         # GitHub repo is private; this fails the release when a bump edits only the root copy.
