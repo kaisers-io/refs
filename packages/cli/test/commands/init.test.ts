@@ -9,6 +9,10 @@ import { tmpdir } from 'node:os';
 const NO_LINES = 0;
 const ONE_LINE = 1;
 const EXPECTED_SCHEMA_VERSION = 1;
+const HOME_LINE_INDEX = 0;
+const CONFIG_LINE_INDEX = 1;
+const BLANK_LINE_INDEX = 2;
+const SKILL_HINT_LINE_INDEX = 3;
 
 // `run`/`runProgram` set `process.exitCode` as a real side effect on the actual test-runner
 // Process — snapshot and restore it around every case, mirroring `main.test.ts`'s helper, so one
@@ -126,6 +130,36 @@ describe('refs init: human mode', () => {
         ctx.env['REFS_HOME'] = homeDir;
         await run(ctx, ['node', 'refs', 'init']);
         expect(stdout.some((line) => line.includes('npx skills add'))).toBe(true);
+      }),
+    );
+  });
+
+  it('prints home and config on their own key: value lines, then the skill hint', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, stdout } = testContext();
+        ctx.env['REFS_HOME'] = homeDir;
+        await run(ctx, ['node', 'refs', 'init']);
+        expect(stdout[HOME_LINE_INDEX]).toBe(`home: ${homeDir}`);
+        expect(stdout[CONFIG_LINE_INDEX]).toBe('config: seeded');
+        expect(stdout[BLANK_LINE_INDEX]).toBe('');
+        expect(stdout[SKILL_HINT_LINE_INDEX]).toContain('npx skills add');
+      }),
+    );
+  });
+
+  it('says unchanged rather than noop on a second run', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx } = testContext();
+        ctx.env['REFS_HOME'] = homeDir;
+        await run(ctx, ['node', 'refs', 'init']);
+        const second = testContext();
+        second.ctx.env['REFS_HOME'] = homeDir;
+        await run(second.ctx, ['node', 'refs', 'init']);
+        expect(second.stdout[CONFIG_LINE_INDEX]).toBe('config: unchanged');
       }),
     );
   });
