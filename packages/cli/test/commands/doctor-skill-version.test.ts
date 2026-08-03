@@ -1,56 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { mkdir, symlink, writeFile } from 'node:fs/promises';
-import type { CheckResult } from '../../src/commands/doctor-types.ts';
-import { checkSkill } from '../../src/commands/doctor-checks-basic.ts';
-import { join } from 'node:path';
-import { testContext } from '../helpers/context.ts';
+import { skillCheckOf, skillSource, writeSkillAt } from '../helpers/doctor-skill-support.ts';
 import { withTempHome } from '../helpers/add-support.ts';
 
 // `doctor`'s `skill` check compared against the CLI version the installed skill pins in its
-// frontmatter (`metadata.cli_version`). The skill ships from git (`npx skills add`) while the CLI
-// ships from npm (`npm i -g`), so the two can drift apart silently and this check is the only
-// thing that ever notices. Split out of `doctor.test.ts` (already ~283 lines) purely to keep both
-// files under the repo's 300-line oxlint cap — the same reason `show-payload.test.ts` exists — and
-// the `describe` blocks below are split by theme only to stay under `max-lines-per-function`.
+// frontmatter (`metadata.cli_version`). The skill ships from git (`skills add`) while the CLI ships
+// from npm (`npm i -g`), so the two can drift apart silently and this check is the only thing that
+// ever notices. Split out of `doctor.test.ts` (already ~283 lines) purely to keep both files under
+// the repo's 300-line oxlint cap — the same reason `show-payload.test.ts` exists — and the
+// `describe` blocks below are split by theme only to stay under `max-lines-per-function`.
 //
-// These drive `checkSkill(ctx)` directly rather than the full `refs doctor --json` pipeline: the
-// check reads nothing but `ctx.env['HOME']` and `ctx.cliVersion`, so a `refs init` home plus a
-// scripted `git --version` would add setup without adding coverage. `doctor.test.ts` still covers
-// the end-to-end wiring through `run`.
-
-const writeSkillAt = async (homeDir: string, agentDir: string, source: string): Promise<void> => {
-  const dir = join(homeDir, agentDir, 'skills', 'refs');
-  await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, 'SKILL.md'), source, 'utf8');
-};
+// WHICH locations are searched, and how duplicate copies of one skill collapse, is the sibling
+// `doctor-skill-locations.test.ts`; everything here writes its fixture into a single location and
+// varies only the file's contents.
 
 const writeSkill = (homeDir: string, frontmatter: string): Promise<void> =>
   writeSkillAt(homeDir, '.claude', frontmatter);
-
-// What `npx skills add` actually builds: one real copy under `~/.agents/skills/refs`, with each
-// agent's own directory symlinked at it. The symlink is created unconditionally rather than behind
-// a platform guard, matching `remove.test.ts`'s own directory symlink — the Windows leg of CI runs
-// elevated enough to create one, and a silent skip would hide a regression on the platform.
-const linkAgentDirToShared = async (homeDir: string, agentDir: string): Promise<void> => {
-  await mkdir(join(homeDir, agentDir, 'skills'), { recursive: true });
-  await symlink(
-    join(homeDir, '.agents', 'skills', 'refs'),
-    join(homeDir, agentDir, 'skills', 'refs'),
-  );
-};
-
-const skillSource = (cliVersion: string): string =>
-  `---\nname: refs\ndescription: x\nmetadata:\n  cli_version: "${cliVersion}"\n---\n\n# refs\n`;
-
-// `withTempHome` hands back a fresh `mkdtemp` directory (not the real `$HOME`), so pointing
-// `ctx.env['HOME']` at it is what makes the check read the fixture skill rather than whatever the
-// developer running the suite happens to have installed.
-const skillCheckOf = (homeDir: string, cliVersion: string): Promise<CheckResult> => {
-  const { ctx } = testContext();
-  ctx.env['HOME'] = homeDir;
-  ctx.cliVersion = cliVersion;
-  return checkSkill(ctx);
-};
 
 describe('doctor: skill check compares the pinned CLI version', () => {
   it('reports ok when the pinned version equals the running CLI', async () => {
@@ -92,15 +56,6 @@ describe('doctor: skill check without a usable pin', () => {
       const result = await skillCheckOf(homeDir, '0.5.1');
       expect(result.status).toBe('warn');
       expect(result.detail).toContain('predates');
-    });
-  });
-
-  it('still reports a missing skill as not installed', async () => {
-    expect.hasAssertions();
-    await withTempHome(async (homeDir) => {
-      const result = await skillCheckOf(homeDir, '0.5.1');
-      expect(result.status).toBe('warn');
-      expect(result.detail).toContain('refs skill not found');
     });
   });
 });
@@ -197,103 +152,6 @@ describe('doctor: skill check frontmatter shapes', () => {
       const result = await skillCheckOf(homeDir, '0.5.1');
       expect(result.status).toBe('warn');
       expect(result.detail).toContain('predates');
-    });
-  });
-});
-
-describe('doctor: skill check across both agent homes', () => {
-  it('lets a stale Claude Code copy win over a current Codex copy', async () => {
-    expect.hasAssertions();
-    await withTempHome(async (homeDir) => {
-      await writeSkillAt(homeDir, '.claude', skillSource('0.4.0'));
-      await writeSkillAt(homeDir, '.codex', skillSource('0.5.1'));
-
-      const result = await skillCheckOf(homeDir, '0.5.1');
-
-      expect(result.status).toBe('warn');
-      expect(result.detail).toContain('Claude Code');
-    });
-  });
-
-  // The direction that actually discriminates: `SKILL_LOCATIONS` lists Claude Code first, so an
-  // implementation that simply reported the first home it found would pass the case above
-  // unchanged and fail only here.
-  it('lets a stale Codex copy win over a current Claude Code copy', async () => {
-    expect.hasAssertions();
-    await withTempHome(async (homeDir) => {
-      await writeSkillAt(homeDir, '.claude', skillSource('0.5.1'));
-      await writeSkillAt(homeDir, '.codex', skillSource('0.4.0'));
-
-      const result = await skillCheckOf(homeDir, '0.5.1');
-
-      expect(result.status).toBe('warn');
-      expect(result.detail).toContain('Codex');
-    });
-  });
-});
-
-// `~/.agents/skills/refs` is where `npx skills add` puts the only real copy; the per-agent homes
-// are symlinks into it. Before v0.6.1 the check never looked there, so a Codex-only user — who has
-// no `.claude` symlink to rescue the lookup — was told a correctly installed skill was missing.
-describe('doctor: skill check in the shared ~/.agents home', () => {
-  it('reports ok for a skill installed only under .agents', async () => {
-    expect.hasAssertions();
-    await withTempHome(async (homeDir) => {
-      await writeSkillAt(homeDir, '.agents', skillSource('0.5.1'));
-
-      const result = await skillCheckOf(homeDir, '0.5.1');
-
-      // Neither `.claude` nor `.codex` exists here, so this also pins the rule that an absent
-      // location is silently skipped: `realpath` throwing ENOENT is the normal "not installed
-      // here" case, never a problem of its own, or this would report `warn`.
-      expect(result.status).toBe('ok');
-      expect(result.detail).toContain('shared ~/.agents');
-    });
-  });
-
-  it('reports a symlinked Claude Code home once, under the shared label', async () => {
-    expect.hasAssertions();
-    await withTempHome(async (homeDir) => {
-      await writeSkillAt(homeDir, '.agents', skillSource('0.5.1'));
-      await linkAgentDirToShared(homeDir, '.claude');
-
-      const result = await skillCheckOf(homeDir, '0.5.1');
-
-      expect(result.status).toBe('ok');
-      expect(result.detail).toContain('shared ~/.agents');
-      expect(result.detail).not.toContain('Claude Code');
-    });
-  });
-});
-
-// The shared home does not replace the per-agent ones: a manual `cp -r` into `~/.claude/skills` is
-// still a real, separate copy that can drift on its own, so both are read and the "a problem in
-// either wins" rule spans them. Both directions, because `.agents` is checked first and an
-// implementation that just reported the first hit would pass only one of them.
-describe('doctor: skill check across the shared home and an agent home', () => {
-  it('lets a stale .claude copy win over a current .agents copy', async () => {
-    expect.hasAssertions();
-    await withTempHome(async (homeDir) => {
-      await writeSkillAt(homeDir, '.agents', skillSource('0.5.1'));
-      await writeSkillAt(homeDir, '.claude', skillSource('0.4.0'));
-
-      const result = await skillCheckOf(homeDir, '0.5.1');
-
-      expect(result.status).toBe('warn');
-      expect(result.detail).toContain('Claude Code');
-    });
-  });
-
-  it('lets a stale .agents copy win over a current .claude copy', async () => {
-    expect.hasAssertions();
-    await withTempHome(async (homeDir) => {
-      await writeSkillAt(homeDir, '.agents', skillSource('0.4.0'));
-      await writeSkillAt(homeDir, '.claude', skillSource('0.5.1'));
-
-      const result = await skillCheckOf(homeDir, '0.5.1');
-
-      expect(result.status).toBe('warn');
-      expect(result.detail).toContain('shared ~/.agents');
     });
   });
 });

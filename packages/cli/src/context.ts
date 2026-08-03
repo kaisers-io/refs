@@ -13,6 +13,12 @@ type CliContext = {
   // the context like every other real global so `doctor`'s `skill` check can be exercised against
   // an arbitrary version instead of only ever observing the version under test.
   cliVersion: string;
+  // The directory the CLI was invoked from (`process.cwd()` in `realContext()`) — routed through
+  // the context like every other real global. Added for `doctor`'s `skill` check: `skills add`
+  // installs into the CURRENT PROJECT by default (`-g` is opt-in), so `<cwd>/.agents/skills/refs`
+  // is a real install location, and it has to be reachable without the check calling
+  // `process.cwd()` behind the seam's back.
+  cwd: string;
   env: NodeJS.ProcessEnv;
   errLine: (line: string) => void;
   fetcher: Fetcher;
@@ -40,6 +46,7 @@ const readRealStdin = async (): Promise<string> => {
 
 const realContext = (): CliContext => ({
   cliVersion: pkg.version,
+  cwd: process.cwd(),
   env: process.env,
   errLine: (line: string) => {
     process.stderr.write(`${line}\n`);

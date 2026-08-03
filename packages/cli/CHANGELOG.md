@@ -11,15 +11,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `refs doctor` no longer reports `refs skill not found` for a skill that is installed and
-  working. `npx skills add kaisers-io/refs` — the documented installer — keeps the one real
-  copy in the shared `~/.agents/skills/refs` directory and symlinks each agent's own
-  directory at it, but the check only ever looked in `~/.claude/skills/refs` and
-  `~/.codex/skills/refs`. Anyone without a `~/.claude` symlink standing in for the real
-  thing — a Codex-only user, most obviously — was told to install a skill they already had,
-  and never saw the version comparison that `0.6.0` added. `~/.agents/skills/refs/SKILL.md`
-  is now checked first, and the three locations are deduplicated by resolved real path, so
-  a symlinked install is reported once (as `shared ~/.agents`) rather than once per agent.
+- `refs doctor`'s `skill` check no longer reports a skill that is installed and working as
+  missing. It only ever looked in `~/.claude/skills/refs` and `~/.codex/skills/refs`, but
+  `npx skills add kaisers-io/refs` — the documented installer — writes neither: it keeps one
+  real copy in a shared `.agents/skills/refs` directory and symlinks each agent's own
+  directory at it. A Claude Code user was rescued by that symlink; anyone without one — a
+  Codex-only user, or anyone whose install went to the current project rather than `$HOME` —
+  was told to install a skill they already had, and never saw the version comparison that
+  `0.6.0` made the point of this check. Four locations are now checked, in this order:
+  `~/.agents/skills/refs/SKILL.md` (`shared ~/.agents`), `$CLAUDE_CONFIG_DIR` or `~/.claude`
+  (`Claude Code`), `$CODEX_HOME` or `~/.codex` (`Codex`), and `<cwd>/.agents/skills/refs`
+  (`project ./.agents`) — the last because `skills add` installs into the current project
+  unless `-g` is passed, and implies `-y` when it runs inside an agent, so an agent-driven
+  install never touches `$HOME` at all. They are deduplicated by resolved real path, so the
+  usual symlinked install is reported once rather than once per agent, while two genuinely
+  independent copies are both compared and a problem in either wins.
+- `refs doctor`'s "skill not found" message no longer claims the skill is not installed.
+  That list of locations is best-effort and cannot be otherwise: the paths are the `skills`
+  installer's implementation detail rather than a documented contract, the canonical
+  directory has moved before, and 74 agents carry a global skills directory of their own. A
+  skill installed for some other agent still works and is simply invisible here, so the
+  `detail` now names the locations it searched and keeps the install hint for the case where
+  the skill really is missing. It stays a `warn`, never a `fail` — the skill's own capability
+  gate compares `refs --version` against the pin in the file the agent already loaded and
+  depends on none of this.
 
 ## [0.6.0] - 2026-08-03
 
