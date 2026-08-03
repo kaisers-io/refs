@@ -13,6 +13,14 @@ const unstubbedFetcher = (): Promise<{ json: () => Promise<unknown>; status: num
 // How `ctx.fetcher` is overridden per-test.
 const stubbedReadStdin = (): Promise<string> => Promise.resolve('');
 
+/** Default `ctx.cwd`: an absolute path that does not exist, never the real `process.cwd()`.
+ * `doctor`'s `skill` check looks for a project-scoped install under `<cwd>/.agents/skills/refs`,
+ * and THIS repository's own checkout has exactly that (`.agents/skills/refs` -> `skills/refs`), so
+ * a real cwd would make the suite read the developer's working tree and quietly invert the "nothing
+ * installed" cases. Tests that exercise project scope assign `ctx.cwd` directly, mirroring how
+ * `ctx.env['HOME']` is pointed at a temp directory. */
+const ABSENT_CWD = '/refs-test-cwd-that-does-not-exist';
+
 const testContext = (): {
   ctx: CliContext;
   runner: FakeRunner;
@@ -27,6 +35,7 @@ const testContext = (): {
     // `doctor` tests that need a specific version override `ctx.cliVersion` directly, mirroring
     // how `ctx.nodeVersion`/`ctx.fetcher` are overridden per-test.
     cliVersion: '0.0.0-test',
+    cwd: ABSENT_CWD,
     env: {},
     errLine: (line: string) => {
       stderr.push(line);
