@@ -20,6 +20,15 @@ type InitData = {
   skill_hint: string;
 };
 
+// `noop` is implementation vocabulary and says nothing to a reader; the json envelope keeps it,
+// human output says `unchanged`. Decoupling the two is the premise of the key/value format —
+// human keys are not the json field names either (`path`, not `local_path`).
+const CONFIG_DISPLAY: Record<InitData['config'], string> = {
+  migrated: 'migrated',
+  noop: 'unchanged',
+  seeded: 'seeded',
+};
+
 // Every home subdirectory `init` guarantees exists on return. Init's contract is that all four
 // exist unconditionally when it resolves — including on a `'noop'` run that touches neither
 // `migrateConfig` nor `installHooksGuard` — so they are created up front here rather than relying
@@ -53,7 +62,12 @@ const registerInit = (program: RefsCommand, ctx: CliContext): void => {
       const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
         const data = await runInit(ctx);
-        emit(ctx, opts, [`refs home: ${data.home} (${data.config})`, SKILL_HINT], data);
+        emit(
+          ctx,
+          opts,
+          [`home: ${data.home}`, `config: ${CONFIG_DISPLAY[data.config]}`, '', SKILL_HINT],
+          data,
+        );
       })();
     });
 };
