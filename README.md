@@ -84,8 +84,11 @@ npx skills add kaisers-io/refs            # with repo access
 npx skills add <path-to-a-local-clone> --skill refs
 ```
 
-If `skills add` doesn't fit your setup, copy the skill directory directly — for Claude
-Code:
+`skills add` keeps the one real copy in the shared `~/.agents/skills/refs` and points each
+agent's own directory at it with a symlink, so every agent reads the same files.
+
+If `skills add` doesn't fit your setup, copy the skill directory into the agent's own
+directory instead — for Claude Code:
 
 ```bash
 cp -r <path-to-this-repo>/skills/refs ~/.claude/skills/refs
@@ -96,6 +99,9 @@ or for Codex:
 ```bash
 cp -r <path-to-this-repo>/skills/refs ~/.codex/skills/refs
 ```
+
+`refs doctor` looks in all three locations — `~/.agents`, `~/.claude` and `~/.codex` —
+so either install reports as found.
 
 ### Native plugin marketplaces (alternative)
 

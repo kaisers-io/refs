@@ -43,8 +43,9 @@ Runs environment/integrity checks and returns `{checks: [{name, status, detail}]
 `dirty-checkouts`, `orphans`, `skill`, and (when any ref uses ssh) `ssh-auth`. Report
 every non-`ok` check with its `detail` message, and explain what it means in plain terms.
 A `warn` on `skill` means one of three things: the skill wasn't found in
-`~/.claude/skills` or `~/.codex/skills` (the only two paths the check looks at — a
-project-level, plugin, or symlinked install reads the same way), the installed copy
+`~/.agents/skills`, `~/.claude/skills` or `~/.codex/skills` (the only three paths the
+check looks at — a project-level or plugin install reads the same way; a symlink between
+those three is followed and counted once), the installed copy
 predates the version gate, or the CLI version it pins in its frontmatter doesn't match the
 running CLI. Every `detail` carries the command that fixes it, but only a version mismatch
 it can order names which side is behind — an unorderable pair (a prerelease on either side)
