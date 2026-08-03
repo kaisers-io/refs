@@ -54,6 +54,23 @@ migrates the config to the current schema if it's older, installs the git hooks 
 and is safe to re-run — a repeat call is a no-op wherever nothing needed to change.
 
 ```bash
+refs init
+```
+
+```
+home: /Users/you/.kaisers-io/refs
+config: seeded
+
+Install the agent skill: npx skills add kaisers-io/refs   (private phase: …)
+```
+
+A blank line separates the `home:`/`config:` block from the skill-install hint. On a
+repeat call where nothing changed, human output prints `config: unchanged` — the `--json`
+envelope still reports `"noop"` for the same case (see below); the human word and the JSON
+value are deliberately not the same string, the same way `path:` in `show`/`resolve`
+corresponds to the JSON field `local_path`.
+
+```bash
 refs init --json
 ```
 
@@ -70,7 +87,8 @@ refs init --json
 ```
 
 `data.config` is one of `"seeded"` (no config existed), `"migrated"` (an older schema was
-upgraded, with a `.bak` backup left alongside it), or `"noop"` (already current).
+upgraded, with a `.bak` backup left alongside it), or `"noop"` (already current). Human
+output renders `"noop"` as `config: unchanged` — see the human example above.
 
 Exit codes: `0`, `3` when an existing config can't be migrated (malformed TOML, a schema
 newer than this CLI supports, or a shape beyond automatic migration), or `1` for an
@@ -264,6 +282,34 @@ Lists every configured ref with its resolved clone mode, staleness, and missing-
 status.
 
 ```bash
+refs list
+```
+
+```
+ref: github.com/colinhacks/zod
+description: TypeScript-first schema validation
+synced: 3 hours ago
+status: stale
+
+ref: github.com/vercel/next.js
+description: Next.js, the React framework by Vercel
+synced: 12 minutes ago
+```
+
+One blank line between entries, none after the last one. An empty config prints
+`no refs configured — run: refs add <source>` instead. `list` never shows `url:` or
+`path:` — that's what `show` is for.
+
+Each entry's state lines follow the same rule used by `show` and `resolve`, up to three
+lines, in this order, each shown only when it applies:
+
+| Line | When |
+| --- | --- |
+| `synced: <when>` | always — `never`, `just now`, or `N minutes/hours/days/years ago`, always rounded down |
+| `status: stale` | only past the ref's effective `sync_ttl`, and never together with `synced: never` |
+| `missing: checkout not found — run: refs sync` | only when the checkout directory has no `.git` |
+
+```bash
 refs list --json
 ```
 
@@ -277,6 +323,7 @@ refs list --json
       "clone_mode": "blobless",
       "missing": false,
       "stale": false,
+      "last_fetched_at": "2026-07-05T06:28:47.633Z",
       "packages_count": 1
     }
   ],
@@ -287,6 +334,8 @@ refs list --json
 `packages_count` is the number of registered packages — enough to tell a monorepo from a
 single-package ref. The names themselves are off by default; `--packages` adds a sorted
 `packages` array of package names to each item (human output is unaffected either way).
+`last_fetched_at` is the ISO 8601 timestamp `stale` is derived from; it's absent when the
+ref has never been fetched (human output renders that as `synced: never`).
 
 Exit codes: `0`, `4` (no config yet — run `refs init`), `3` (malformed or unmigrated
 config), or `1` for an unexpected error (no per-item failure state here — a
@@ -487,6 +536,25 @@ segment-prefix package match (so `react/jsx-runtime` resolves to package `react`
 unique ref-key suffix match (same rule `refs show`/`refs remove`/`refs tag` use).
 
 ```bash
+refs resolve zod/mini
+```
+
+```
+ref: github.com/colinhacks/zod
+path: /Users/you/.kaisers-io/refs/sources/github.com/colinhacks/zod
+synced: 3 hours ago
+status: stale
+package: zod
+package path: /Users/you/.kaisers-io/refs/sources/github.com/colinhacks/zod/packages/zod
+```
+
+The state lines (`synced:`, `status:`, `missing:`) follow the same rule as `refs list`
+(see above) and come right after `path:`. The `package:`/`package path:` pair only
+appears when the query resolved to a specific package, and always comes after the state
+lines; `package path:` is the package's own directory, as distinct from `path:` for the
+ref checkout as a whole.
+
+```bash
 refs resolve zod/mini --json
 refs resolve left-pad --json
 refs resolve https://github.com/stevemao/left-pad --json
@@ -500,6 +568,7 @@ refs resolve https://github.com/stevemao/left-pad --json
     "local_path": "/Users/you/.kaisers-io/refs/sources/github.com/stevemao/left-pad",
     "missing": false,
     "stale": false,
+    "last_fetched_at": "2026-07-05T06:28:47.633Z",
     "package": {
       "name": "left-pad",
       "path": ".",
@@ -511,7 +580,8 @@ refs resolve https://github.com/stevemao/left-pad --json
 ```
 
 `package` is `null` when the query resolved to a ref only (no specific package), e.g. a
-plain git-URL or suffix match with no package involved.
+plain git-URL or suffix match with no package involved. `last_fetched_at` is the same
+optional ISO 8601 field `refs list` carries, absent when the ref has never been fetched.
 
 Exit codes: `3` (`<query>` looks like a git URL but isn't a supported/canonicalizable
 form), `2` (matches more than one ref/package ambiguously), `4` (no match at all).
@@ -529,6 +599,24 @@ count, plus up to 5 recent tags (only when the checkout exists and is readable �
 human output, and in `--json` only under `--tags`).
 
 ```bash
+refs show zod
+```
+
+```
+ref: github.com/colinhacks/zod
+description: TypeScript-first schema validation
+url: https://github.com/colinhacks/zod
+path: /Users/you/.kaisers-io/refs/sources/github.com/colinhacks/zod
+synced: 3 hours ago
+status: stale
+tags: v4.1.5, v4.1.4
+```
+
+The state lines follow the same rule as `refs list` (see above), directly after `path:`.
+`tags:` stays last and only appears when the probe found any tags — unchanged from
+before.
+
+```bash
 refs show left-pad --json
 ```
 
@@ -543,6 +631,8 @@ refs show left-pad --json
     "tag_format": "v{version}",
     "packages_count": 1,
     "local_path": "/Users/you/.kaisers-io/refs/sources/github.com/stevemao/left-pad",
+    "missing": false,
+    "stale": false,
     "state": {
       "effective_clone_mode": "blobless",
       "head_sha": "2fca6157fcca165438e0f9495cf0e5a4e6f71349",
@@ -554,9 +644,13 @@ refs show left-pad --json
 ```
 
 `data` is the ref's config entry minus `packages`, plus `key`, `local_path`,
-`packages_count`, and `state`. `--packages` adds the full `packages` map back; `--tags`
-adds `sample_tags`. Human output is unchanged: it always probes for tags, and prints the
-`tags:` line only when the probe found any.
+`packages_count`, `missing`, `stale`, and `state`. `--packages` adds the full `packages`
+map back; `--tags` adds `sample_tags`. Human output is unchanged: it always probes for
+tags, and prints the `tags:` line only when the probe found any. `missing` and `stale` are
+the same booleans the human `missing:`/`status: stale` lines are derived from — `show`
+resolves the ref's effective `sync_ttl` itself (it can differ per ref), which is why they
+are carried as their own fields rather than left for a consumer to recompute from
+`state.last_fetched_at` alone.
 
 `--tags` is also what makes the `git tag` subprocess run at all in `--json` mode — without
 it, `show --json` never touches the checkout. If the checkout exists but its tags can't be

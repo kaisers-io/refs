@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-03
+
+### Changed
+
+- `refs list`, `show`, `resolve` and `init` print one `key: value` per line, with a blank line
+  between `list` entries. The `key  description` header line is gone, and `local_path:` is now
+  `path:` (`package path:` for the package inside a ref).
+- `[stale]`/`[missing]` markers are replaced by `synced: <when>`, plus `status: stale` and
+  `missing: …` lines when they apply. Human output only; `--json` keeps `stale` and `missing`.
+- `refs init` says `config: unchanged` where it used to print `(noop)`.
+- The npm-facing `packages/cli/README.md` now documents the skill-check search locations the
+  root README has described since 0.6.1.
+
+### Added
+
+- `last_fetched_at` on `refs list` items and `refs resolve` output, `missing` and `stale` on
+  `refs show` — all `--json`, all additive.
+- Source citations from the agent skill are now clickable markdown links.
+
 ## [0.6.1] - 2026-08-03
 
 ### Fixed
@@ -293,7 +312,8 @@ trusted-publishing pipeline end to end.
   installed git hooks.
 - Agent skill (`skills/refs/`) documenting the investigate/add/maintain workflows.
 
-[Unreleased]: https://github.com/kaisers-io/refs/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/kaisers-io/refs/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/kaisers-io/refs/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/kaisers-io/refs/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/kaisers-io/refs/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/kaisers-io/refs/compare/v0.5.0...v0.5.1

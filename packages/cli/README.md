@@ -82,6 +82,15 @@ does not activate on its own; invoke it with `/refs` in Claude Code or `$refs` i
 from the GitHub repository, which is private during the current development phase — it
 opens up when `refs` goes public.
 
+`refs doctor`'s `skill` check looks for the installed skill in `~/.agents`, `~/.claude`,
+`~/.codex` and the current project's `./.agents`/`./.claude`; a `warn` there means the
+check couldn't see your skill, not that it is missing.
+
+Source citations in the skill's final answer are markdown links (visible text relative,
+target an absolute checkout path): they open in the Zed terminal and the Codex app
+(verified 2026-08-03), but as of the same date the Claude app cannot open files outside
+its working directory.
+
 ## Changelog
 
 `CHANGELOG.md` ships inside this package (npm's "Code" tab shows it) — the GitHub

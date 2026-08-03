@@ -145,7 +145,10 @@ outside them:
 ### 4. Synthesize
 
 Combine the worker contracts into the final answer. Cite commit shas from the contracts
-directly — don't re-derive them. Turn each worker's `path:line` reference into a clickable
+directly — don't re-derive them. Keep the orchestrator's own context limited to these
+compact contracts; if you need more detail than a worker returned, ask that worker a
+follow-up (or dispatch a narrower one) rather than reading the raw source yourself into
+the main thread. Turn each worker's `path:line` reference into a clickable
 link, keeping the worker's relative path as the visible text and the absolute checkout path
 as the target:
 
@@ -174,10 +177,6 @@ Wrap the target in angle brackets when the path contains a space, or the markdow
 Clickability depends on where the answer is read: the Zed terminal and the Codex app open
 these links (verified 2026-08-03); as of the same date the Claude app cannot open files
 outside its working directory, whatever the link format.
-
-Keep the orchestrator's own context limited to these compact contracts; if you need more
-detail than a worker returned, ask that worker a follow-up (or dispatch a narrower one)
-rather than reading the raw source yourself into the main thread.
 
 ## Version questions ("what changed between vA and vB")
 
