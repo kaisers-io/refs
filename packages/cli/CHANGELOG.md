@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   skill while `@refs` is a plugin mention that, as of 2026-08-03 (codex-cli 0.146.0),
   gives the model no skill instructions at all — a Codex-side limitation, not a
   misconfiguration, tracked at
-  [openai/codex#19695](https://github.com/openai/codex/issues/19695).
+  [openai/codex#22078](https://github.com/openai/codex/issues/22078).
 
 ## [0.7.0] - 2026-08-03
 

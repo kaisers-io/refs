@@ -172,8 +172,12 @@ Five rules make a wrong link detectable instead of silent:
    citing it.
 4. **Never invent or repair.** A missing line number or an implausible path stays unlinked.
 5. **Make the visible text root-relative.** A worker's `## References` entries already come
-   this way; a path you picked up directly in the checkout during inline investigation is
-   absolute, so strip the checkout root from it yourself before citing.
+   this way. An inline path may already be root-relative — the search funnel above runs
+   inside the checkout, so `git grep`/`rg`/`git blame` output already is — or absolute
+   (echoed from `refs resolve`'s `local_path`, or a tool run with an absolute cwd). Validate
+   a root-relative path against the checkout root; strip the root from an absolute one.
+   Either way, the link target is that verified root-relative path joined onto the root
+   (rule 2).
 
 Wrap the target in angle brackets when the path contains a space, or the markdown breaks:
 
@@ -231,8 +235,8 @@ outside its working directory, whatever the link format.
    ```
 
    Scope to the package path (`-- packages/<name>`) in monorepos — most of a wide
-   range's noise is usually other packages. The worker still returns only the
+   range's noise is usually other packages. A worker still returns only the
    compact output contract from §3 above — commit list + `path:line` highlights,
-   never a pasted raw diff.
+   never a pasted raw diff; inline, hold yourself to the same discipline.
 
 4. Synthesize as in §3 step 4.
