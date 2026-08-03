@@ -17,7 +17,6 @@ import { testContext } from '../helpers/context.ts';
 const ALPHA_KEY = 'github.com/acme/alpha';
 const BETA_KEY = 'github.com/acme/beta';
 const FIRST_INDEX = 0;
-const ONE_LINE = 1;
 const FRESH_MINUTES_AGO = 1;
 const STALE_OFFSET_MINUTES = 40;
 const FRESH_OFFSET_MINUTES = 10;
@@ -72,10 +71,9 @@ describe('refs list: sorted data with resolved clone_mode/staleness/missing/pack
         const { ctx, stdout } = testContext();
         ctx.env['REFS_HOME'] = homeDir;
         const home = resolveHome(ctx.env);
+        const alphaLastFetchedAt = minutesAgoIso(FRESH_MINUTES_AGO);
         await seedConfig(home, { [BETA_KEY]: BETA_ENTRY, [ALPHA_KEY]: ALPHA_ENTRY });
-        await seedState(home, {
-          [ALPHA_KEY]: { last_fetched_at: minutesAgoIso(FRESH_MINUTES_AGO) },
-        });
+        await seedState(home, { [ALPHA_KEY]: { last_fetched_at: alphaLastFetchedAt } });
         await markCheckoutPresent(checkoutPath(home, zRefKey.parse(ALPHA_KEY)));
 
         await run(ctx, ['node', 'refs', 'list', '--json']);
@@ -85,6 +83,7 @@ describe('refs list: sorted data with resolved clone_mode/staleness/missing/pack
             clone_mode: 'full',
             description: 'Alpha lib',
             key: ALPHA_KEY,
+            last_fetched_at: alphaLastFetchedAt,
             missing: false,
             packages_count: 2,
             stale: false,
@@ -250,8 +249,8 @@ describe('refs list: staleness boundary uses strict > (not >=) against the ttl',
   });
 });
 
-describe('refs list: human mode suffixes', () => {
-  it('prints one line per ref with [stale]/[missing] suffixes', async () => {
+describe('refs list: human mode status/missing lines', () => {
+  it('appends status: stale and missing: lines for a stale, missing ref', async () => {
     expect.hasAssertions();
     await withResetExitCode(() =>
       withTempHome(async (homeDir) => {
@@ -262,15 +261,19 @@ describe('refs list: human mode suffixes', () => {
 
         await run(ctx, ['node', 'refs', 'list']);
 
-        expect(stdout).toHaveLength(ONE_LINE);
-        expect(stdout[FIRST_INDEX]).toBe(`${BETA_KEY}  Beta lib [stale] [missing]`);
+        expect(stdout).toStrictEqual([
+          `ref: ${BETA_KEY}`,
+          'description: Beta lib',
+          'synced: never',
+          'missing: checkout not found — run: refs sync',
+        ]);
       }),
     );
   });
 });
 
-describe('refs list: human mode with no suffixes', () => {
-  it('prints a plain line for a fresh, present ref', async () => {
+describe('refs list: human mode with no status/missing lines', () => {
+  it('prints just ref/description/synced for a fresh, present ref', async () => {
     expect.hasAssertions();
     await withResetExitCode(() =>
       withTempHome(async (homeDir) => {
@@ -285,7 +288,11 @@ describe('refs list: human mode with no suffixes', () => {
 
         await run(ctx, ['node', 'refs', 'list']);
 
-        expect(stdout[FIRST_INDEX]).toBe(`${ALPHA_KEY}  Alpha lib`);
+        expect(stdout).toStrictEqual([
+          `ref: ${ALPHA_KEY}`,
+          'description: Alpha lib',
+          'synced: 1 minute ago',
+        ]);
       }),
     );
   });

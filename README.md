@@ -139,7 +139,10 @@ refs add npm:zod --description "TypeScript-first schema validation" --json
 From here, invoke the skill (`/refs how does zod implement codecs` in Claude Code,
 `$refs ...` in Codex) and the agent drives the rest: it resolves the question to the right
 ref/package with `refs resolve --json`, reads the checkout directly, and uses `refs
-sync`/`refs doctor` to keep things fresh — see `skills/refs/SKILL.md`.
+sync`/`refs doctor` to keep things fresh — see `skills/refs/SKILL.md`. Source citations in
+its final answer are markdown links (visible text relative, target an absolute checkout
+path): they open in the Zed terminal and the Codex app (verified 2026-08-03), but as of
+the same date the Claude app cannot open files outside its working directory.
 
 Every command accepts `--json` for a stable, machine-readable envelope and `--verbose`
 for stack traces on error. Run `refs --help` or `refs <command> --help` — the CLI's own
