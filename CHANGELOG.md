@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-03
+
+### Fixed
+
+- `refs doctor`'s `skill` check no longer reports a skill that is installed and working as
+  missing. It only ever looked in `~/.claude/skills/refs` and `~/.codex/skills/refs`, but
+  `npx skills add kaisers-io/refs` — the documented installer — writes neither: it keeps one
+  real copy in a shared `.agents/skills/refs` directory and symlinks each agent's own
+  directory at it. A Claude Code user was rescued by that symlink; anyone without one — a
+  Codex-only user, or anyone whose install went to the current project rather than `$HOME` —
+  was told to install a skill they already had, and never saw the version comparison that
+  `0.6.0` made the point of this check. Five locations are now checked, in this order:
+  `~/.agents/skills/refs/SKILL.md` (`shared ~/.agents`), `$CLAUDE_CONFIG_DIR` or `~/.claude`
+  (`Claude Code`), `$CODEX_HOME` or `~/.codex` (`Codex`), `<cwd>/.agents/skills/refs`
+  (`project ./.agents`), and `<cwd>/.claude/skills/refs` (`project ./.claude`). The last two
+  are there because `skills add` installs into the current project unless `-g` is passed, and
+  implies `-y` when it runs inside an agent, so an agent-driven install never touches `$HOME`
+  at all — and because naming a single agent (`skills add … -a claude-code`) switches the
+  installer to copy mode, which skips the shared `.agents` directory entirely and writes only
+  that agent's own. Unlike its global counterpart, the project path takes no env override:
+  the installer hardcodes a relative `.claude/skills` there. Codex needs no counterpart at
+  all, being a universal agent whose project install lands in `./.agents` in every mode. The
+  locations are deduplicated by resolved real path, so the usual symlinked install is
+  reported once rather than once per agent, while two genuinely independent copies are both
+  compared and a problem in either wins.
+- `refs doctor`'s "skill not found" message no longer claims the skill is not installed, and
+  no longer names directories it did not search. That list of locations is best-effort and
+  cannot be otherwise: the paths are the `skills` installer's implementation detail rather
+  than a documented contract, the canonical directory has moved before, and 74 agents carry a
+  global skills directory of their own. A skill installed for some other agent still works
+  and is simply invisible here, so the `detail` now names the locations it searched and keeps
+  the install hint for the case where the skill really is missing. Those names are derived
+  from the paths actually resolved, so with `$CLAUDE_CONFIG_DIR` or `$CODEX_HOME` set the
+  message names the override rather than the `~/.claude`/`~/.codex` it replaced — an override
+  moves the search, it does not widen it, and pointing anyone at the directory the check just
+  skipped would be worse than saying nothing. It stays a `warn`, never a `fail` — the skill's
+  own capability gate compares `refs --version` against the pin in the file the agent already
+  loaded and depends on none of this.
+
 ## [0.6.0] - 2026-08-03
 
 ### Changed
@@ -254,7 +293,8 @@ trusted-publishing pipeline end to end.
   installed git hooks.
 - Agent skill (`skills/refs/`) documenting the investigate/add/maintain workflows.
 
-[Unreleased]: https://github.com/kaisers-io/refs/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/kaisers-io/refs/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/kaisers-io/refs/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/kaisers-io/refs/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/kaisers-io/refs/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/kaisers-io/refs/compare/v0.4.0...v0.5.0

@@ -84,8 +84,13 @@ npx skills add kaisers-io/refs            # with repo access
 npx skills add <path-to-a-local-clone> --skill refs
 ```
 
-If `skills add` doesn't fit your setup, copy the skill directory directly — for Claude
-Code:
+`skills add` keeps one real copy in a shared `.agents/skills/refs` directory and points
+each agent's own directory at it with a symlink, so every agent reads the same files. It
+installs into the **current project** by default; pass `-g` to install into `~/.agents`
+for every project.
+
+If `skills add` doesn't fit your setup, copy the skill directory into the agent's own
+directory instead — for Claude Code:
 
 ```bash
 cp -r <path-to-this-repo>/skills/refs ~/.claude/skills/refs
@@ -96,6 +101,12 @@ or for Codex:
 ```bash
 cp -r <path-to-this-repo>/skills/refs ~/.codex/skills/refs
 ```
+
+`refs doctor`'s `skill` check looks in `~/.agents`, `~/.claude`, `~/.codex` (the last two
+honouring `$CLAUDE_CONFIG_DIR`/`$CODEX_HOME`) and the current project's `./.agents` and
+`./.claude`, so either install above reports as found. That list is best-effort — the
+installer supports dozens of other agents — so a `warn` there means the check couldn't see
+your skill, not that it is missing. See [docs/commands.md](docs/commands.md#the-skill-check).
 
 ### Native plugin marketplaces (alternative)
 
