@@ -125,7 +125,7 @@ Output contract (return exactly this structure):
 (omit this section if no commit history is relevant)
 
 ## References
-- <path>:<line> — <one-line note on what's there and why it matters>
+- <path relative to <local_path>>:<line> — <one-line note on what's there and why it matters>
 
 If you can't answer confidently, say so in Summary and list what's missing or
 where you looked.
@@ -139,18 +139,23 @@ outside them:
 ## Summary   -> string, 2-6 sentences directly answering the question
 ## Commits   -> bullet list of { sha, subject, date, why }; omit the section entirely
                 when no commit history is relevant
-## References -> bullet list of { path, line, note } — path:line pointers into the checkout
+## References -> bullet list of { path, line, note } — path:line pointers into the checkout,
+                path relative to <local_path>
 ```
 
 ### 4. Synthesize
 
-Combine the worker contracts into the final answer. Cite commit shas from the contracts
-directly — don't re-derive them. Keep the orchestrator's own context limited to these
-compact contracts; if you need more detail than a worker returned, ask that worker a
-follow-up (or dispatch a narrower one) rather than reading the raw source yourself into
-the main thread. Turn each worker's `path:line` reference into a clickable
-link, keeping the worker's relative path as the visible text and the absolute checkout path
-as the target:
+Combine every finding into the final answer, whether it came back in a worker's contract
+or you noted it during inline investigation. Cite commit shas directly from wherever they
+surfaced — a worker's `## Commits` list, or your own `git log`/`git blame` output — don't
+re-derive them. Keep the orchestrator's own context limited to compact worker contracts and
+your own concise notes; if you need more detail than a worker returned, ask that worker a
+follow-up (or dispatch a narrower one) rather than reading the raw source yourself into the
+main thread.
+
+Turn every `path:line` reference in the final answer into a clickable link — a worker's or
+one from your own inline investigation alike — with the checkout-root-relative path as the
+visible text and the absolute checkout path as the target:
 
 ```md
 [packages/zod/src/v4/core/schemas.ts:218](/abs/checkout/packages/zod/src/v4/core/schemas.ts:218)
@@ -158,15 +163,17 @@ as the target:
 
 Five rules make a wrong link detectable instead of silent:
 
-1. **Use the root you gave that worker.** Keep the worker → checkout-root mapping from
-   dispatch, and build each reference against the root of the worker that reported it. Two
-   refs can contain the same relative path.
+1. **Know the checkout root behind every reference.** For a worker's finding, that's the
+   root you gave that worker — keep the worker → checkout-root mapping from dispatch, since
+   two refs can contain the same relative path. For a finding from your own inline
+   investigation, it's the checkout root you worked in directly.
 2. **Join and normalize** — never assemble a path from memory.
 3. **Drop anything that escapes the root** (`..`). Report it as a bad reference instead of
    citing it.
 4. **Never invent or repair.** A missing line number or an implausible path stays unlinked.
-5. **Keep the relative path as the visible text**, so the claimed and the linked location
-   sit side by side.
+5. **Make the visible text root-relative.** A worker's `## References` entries already come
+   this way; a path you picked up directly in the checkout during inline investigation is
+   absolute, so strip the checkout root from it yourself before citing.
 
 Wrap the target in angle brackets when the path contains a space, or the markdown breaks:
 
