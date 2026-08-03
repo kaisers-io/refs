@@ -103,10 +103,10 @@ cp -r <path-to-this-repo>/skills/refs ~/.codex/skills/refs
 ```
 
 `refs doctor`'s `skill` check looks in `~/.agents`, `~/.claude`, `~/.codex` (the last two
-honouring `$CLAUDE_CONFIG_DIR`/`$CODEX_HOME`) and the current project's `./.agents`, so
-either install above reports as found. That list is best-effort — the installer supports
-dozens of other agents — so a `warn` there means the check couldn't see your skill, not
-that it is missing. See [docs/commands.md](docs/commands.md#the-skill-check).
+honouring `$CLAUDE_CONFIG_DIR`/`$CODEX_HOME`) and the current project's `./.agents` and
+`./.claude`, so either install above reports as found. That list is best-effort — the
+installer supports dozens of other agents — so a `warn` there means the check couldn't see
+your skill, not that it is missing. See [docs/commands.md](docs/commands.md#the-skill-check).
 
 ### Native plugin marketplaces (alternative)
 

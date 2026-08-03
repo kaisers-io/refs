@@ -16,7 +16,7 @@ import { withTempHome } from '../helpers/add-support.ts';
 // The list under test is best-effort by construction (see `doctor-checks-skill.ts`): `skills add`
 // installs into the CURRENT PROJECT unless `-g` is passed, the per-agent directories move with
 // `$CLAUDE_CONFIG_DIR`/`$CODEX_HOME`, and 74 agents have a global directory each. These cases pin
-// the four this check does know about, plus the wording it uses when it finds nothing.
+// the five this check does know about, plus the wording it uses when it finds nothing.
 
 const CURRENT = '0.5.1';
 const STALE = '0.4.0';
@@ -72,6 +72,25 @@ describe('doctor: skill check in a project .agents directory', () => {
       const result = await skillCheckOf(homeDir, CURRENT, { cwd: projectDir });
       expect(result.status).toBe('warn');
       expect(result.detail).toContain('project ./.agents');
+    });
+  });
+
+  // The one install the four-location list still missed. `skills add … -a claude-code` names a
+  // single target directory, which silently switches the installer to copy mode, and copy mode
+  // skips the canonical `.agents` directory entirely — so at project scope (the default) the only
+  // thing on disk is `<cwd>/.claude/skills/refs`. Note the absent `-g`: no env override applies
+  // here, because the installer's project path is a literal relative `.claude/skills`.
+  it('reports ok for a single-agent project install under <cwd>/.claude', async () => {
+    expect.hasAssertions();
+    await withTempHome(async (homeDir) => {
+      const projectDir = join(homeDir, 'project');
+      await writeSkillAt(projectDir, '.claude', skillSource(CURRENT));
+      const result = await skillCheckOf(homeDir, CURRENT, {
+        cwd: projectDir,
+        env: { CLAUDE_CONFIG_DIR: join(homeDir, 'xdg', 'claude') },
+      });
+      expect(result.status).toBe('ok');
+      expect(result.detail).toContain('project ./.claude');
     });
   });
 });
@@ -170,8 +189,27 @@ describe('doctor: skill check when nothing is found', () => {
       const result = await skillCheckOf(homeDir, CURRENT);
       expect(result.status).toBe('warn');
       expect(result.detail).toContain('not found in the locations this check knows about');
-      expect(result.detail).toContain('~/.agents, ~/.claude, ~/.codex, ./.agents');
+      expect(result.detail).toContain('~/.agents, ~/.claude, ~/.codex, ./.agents, ./.claude');
       expect(result.detail).toContain('npx skills add kaisers-io/refs');
+    });
+  });
+
+  // The message is derived from the candidates rather than written out, so that it stays true when
+  // an override MOVES the search: naming `~/.claude` here would send its reader — quite possibly an
+  // agent acting on the `detail` — to inspect the one directory the check just skipped.
+  it('names the override it searched, not the default the override replaced', async () => {
+    expect.hasAssertions();
+    await withTempHome(async (homeDir) => {
+      const claudeDir = join(homeDir, 'xdg', 'claude');
+      const result = await skillCheckOf(homeDir, CURRENT, {
+        env: { CLAUDE_CONFIG_DIR: claudeDir },
+      });
+      expect(result.status).toBe('warn');
+      expect(result.detail).toContain(claudeDir);
+      expect(result.detail).not.toContain('~/.claude');
+      // The untouched neighbours still appear under their tilde form, so this pins that the
+      // override replaced one entry rather than reformatting the whole list.
+      expect(result.detail).toContain('~/.codex');
     });
   });
 });
