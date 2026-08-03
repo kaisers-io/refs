@@ -147,6 +147,7 @@ refs list [--packages]
     "clone_mode": "blobless",
     "description": "…",
     "key": "github.com/colinhacks/zod",
+    "last_fetched_at": "2026-07-05T06:28:47.633Z",
     "missing": false,
     "packages_count": 4,
     "stale": false
@@ -154,7 +155,8 @@ refs list [--packages]
 ]
 ```
 
-`--packages` adds a sorted `packages: string[]` to each item. It is off by default because
+`last_fetched_at` is absent for a ref that has never been synced. `--packages` adds a
+sorted `packages: string[]` to each item. It is off by default because
 a monorepo ref can carry 140 names; you almost never need them here. Reach for
 `refs resolve <query> --json` instead — it does the package matching for you and returns
 the single hit.
@@ -232,6 +234,7 @@ a unique ref-key suffix, tried in that order.
 ```json
 {
   "key": "github.com/colinhacks/zod",
+  "last_fetched_at": "2026-07-05T06:28:47.633Z",
   "local_path": "/Users/you/.kaisers-io/refs/sources/github.com/colinhacks/zod",
   "missing": false,
   "package": {
@@ -243,8 +246,8 @@ a unique ref-key suffix, tried in that order.
 }
 ```
 
-`package` is `null` when the query resolved to the ref itself rather than one of its
-packages.
+`last_fetched_at` is absent for a ref that has never been synced. `package` is `null` when
+the query resolved to the ref itself rather than one of its packages.
 
 Exit codes: `2` (matches more than one ref/package), `3` (looks like a git url but is not
 a supported form), `4` (no match — the ref isn't tracked; see `ADD.md`).
@@ -255,8 +258,8 @@ a supported form), `4` (no match — the ref isn't tracked; see `ADD.md`).
 refs show <ref> [--packages] [--tags]
 ```
 
-`data` is the ref's config entry **minus** `packages`, plus `key`, `local_path`,
-`packages_count`, and `state`.
+`data` is the ref's config entry **minus** `packages`, plus `key`, `local_path`, `missing`,
+`packages_count`, `stale`, and `state`.
 
 - `--packages` adds the full `packages` map (`path`, `description`, optional `tag_format`
   per package). This is the only way to discover package names for
@@ -271,7 +274,9 @@ refs show <ref> [--packages] [--tags]
   "description": "…",
   "key": "github.com/colinhacks/zod",
   "local_path": "/Users/you/.kaisers-io/refs/sources/github.com/colinhacks/zod",
+  "missing": false,
   "packages_count": 4,
+  "stale": false,
   "state": {
     "effective_clone_mode": "blobless",
     "head_sha": "2fca6157fcca165438e0f9495cf0e5a4e6f71349",

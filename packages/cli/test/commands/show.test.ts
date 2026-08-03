@@ -270,7 +270,7 @@ describe('refs show: no match', () => {
 });
 
 describe('refs show: human mode', () => {
-  it('prints key, description, url, and local_path', async () => {
+  it('prints ref, description, url, and path', async () => {
     expect.hasAssertions();
     await withResetExitCode(() =>
       withTempHome(async (homeDir) => {
@@ -281,9 +281,10 @@ describe('refs show: human mode', () => {
 
         await run(ctx, ['node', 'refs', 'show', 'next.js']);
 
-        expect(stdout[FIRST_INDEX]).toBe(`${NEXTJS_KEY}  The React Framework`);
+        expect(stdout[FIRST_INDEX]).toBe(`ref: ${NEXTJS_KEY}`);
+        expect(stdout).toContain('description: The React Framework');
         expect(stdout).toContain('url: https://github.com/vercel/next.js');
-        expect(stdout).toContain(`local_path: ${checkoutPath(home, zRefKey.parse(NEXTJS_KEY))}`);
+        expect(stdout).toContain(`path: ${checkoutPath(home, zRefKey.parse(NEXTJS_KEY))}`);
       }),
     );
   });

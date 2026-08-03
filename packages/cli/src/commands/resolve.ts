@@ -15,10 +15,10 @@ import {
   zRefKey,
 } from '@kaisers-io/refs-core';
 import { cliOptsOf, emit, wrapAction } from '../output.ts';
+import { isStale, statusLines } from './ref-status.ts';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
 import { allowFileUrlsFrom } from './add-source.ts';
-import { isStale } from './ref-status.ts';
 import { join } from 'node:path';
 import { matchRefKey } from './list.ts';
 import { requireEntry } from './ref-context.ts';
@@ -37,6 +37,7 @@ type ResolvePackage = {
 
 type ResolveData = {
   key: string;
+  last_fetched_at?: string;
   local_path: string;
   missing: boolean;
   package: ResolvePackage | null;
@@ -222,7 +223,7 @@ const packageDataFor = (match: RouteMatch, dest: string): ResolvePackage | null 
   return { local_path: join(dest, entry.path), name, path: entry.path };
 };
 
-const runResolve = async (ctx: CliContext, query: string): Promise<ResolveData> => {
+const runResolve = async (ctx: CliContext, query: string, now: number): Promise<ResolveData> => {
   const home = resolveHome(ctx.env);
   const config = await readConfig(home);
   const match = routeQuery(config, query, { allowFileUrls: allowFileUrlsFrom(ctx.env) });
@@ -230,20 +231,33 @@ const runResolve = async (ctx: CliContext, query: string): Promise<ResolveData> 
   const state: State = await readState(home);
   const dest = checkoutPath(home, match.key);
   const ttlMs = durationToMs(resolveSetting('sync_ttl', entry, config.settings));
+  const lastFetchedAt = state.refs[match.key]?.last_fetched_at;
   return {
     key: match.key,
+    ...(lastFetchedAt === undefined ? {} : { last_fetched_at: lastFetchedAt }),
     local_path: dest,
     missing: !isGitCheckout(dest),
     package: packageDataFor(match, dest),
-    stale: isStale(state.refs[match.key]?.last_fetched_at, ttlMs, Date.now()),
+    stale: isStale(lastFetchedAt, ttlMs, now),
   };
 };
 
-// Labeled-field convention mirroring show.ts's showHuman ('local_path: ...').
-const resolveHuman = (data: ResolveData): string[] => {
-  const lines = [data.key, `local_path: ${data.local_path}`];
+// Key/value lines mirroring show.ts's showHuman. The two paths get distinct keys — `path` for
+// the ref checkout, `package path` for the package inside it — so neither depends on position to
+// be understood; the ordering only helps the eye.
+const resolveHuman = (data: ResolveData, now: number): string[] => {
+  const lines = [
+    `ref: ${data.key}`,
+    `path: ${data.local_path}`,
+    ...statusLines({
+      lastFetchedAt: data.last_fetched_at,
+      missing: data.missing,
+      now,
+      stale: data.stale,
+    }),
+  ];
   if (data.package !== null) {
-    lines.push(`package: ${data.package.name}`, `local_path: ${data.package.local_path}`);
+    lines.push(`package: ${data.package.name}`, `package path: ${data.package.local_path}`);
   }
   return lines;
 };
@@ -258,10 +272,11 @@ const registerResolve = (program: RefsCommand, ctx: CliContext): void => {
     .action((query, _localOpts, command) => {
       const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
-        const data = await runResolve(ctx, query);
-        emit(ctx, opts, resolveHuman(data), data);
+        const now = Date.now();
+        const data = await runResolve(ctx, query, now);
+        emit(ctx, opts, resolveHuman(data, now), data);
       })();
     });
 };
 
-export { registerResolve };
+export { registerResolve, resolveHuman };

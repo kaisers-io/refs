@@ -4,7 +4,7 @@ description: Answer questions about a dependency's real source, history, and rel
 argument-hint: 'What to look up in a tracked repo — or a refs task like add, sync, or doctor'
 disable-model-invocation: true
 metadata:
-  cli_version: '0.6.1'
+  cli_version: '0.7.0'
 ---
 
 # refs

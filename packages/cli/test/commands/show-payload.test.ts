@@ -1,6 +1,11 @@
 import { checkoutPath, resolveHome, zRefKey } from '@kaisers-io/refs-core';
 import { describe, expect, it } from 'vitest';
-import { markCheckoutPresent, seedConfig } from '../helpers/ref-fixtures.ts';
+import {
+  markCheckoutPresent,
+  minutesAgoIso,
+  seedConfig,
+  seedState,
+} from '../helpers/ref-fixtures.ts';
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { RefsHome } from '@kaisers-io/refs-core';
@@ -18,6 +23,9 @@ const HUMAN_TAGS = ['v3.1.0', 'v3.0.0'];
 const NO_CALLS = 0;
 const ONE_CALL = 1;
 const ONE_LINE = 1;
+const SHORT_TTL = '30m';
+const STALE_MINUTES_AGO = 45;
+const FRESH_MINUTES_AGO = 5;
 
 const MONO_ENTRY = {
   default_branch: 'main',
@@ -151,6 +159,87 @@ describe('refs show: --tags', () => {
         expect(runner.calls).toHaveLength(ONE_CALL);
         const envelope = parseSoleEnvelope(stdout) as { data: { sample_tags: string[] } };
         expect(envelope.data.sample_tags).toStrictEqual(['v2.0.0', 'v1.0.0']);
+      }),
+    );
+  });
+});
+
+/** Seeds the monorepo fixture with a short `sync_ttl` (no checkout, no state) — the common base for
+ * the `missing`/`stale` derivation tests below, split out purely to keep each under the repo's
+ * `max-statements` cap. */
+const seedMonoWithShortTtl = async (home: RefsHome): Promise<void> => {
+  await seedConfig(home, { [PKG_KEY]: { ...MONO_ENTRY, sync_ttl: SHORT_TTL } });
+};
+
+type MissingStaleEnvelope = { data: { missing: boolean; stale: boolean } };
+
+// `missing` (via `isGitCheckout`) and `stale` (via `resolveSetting('sync_ttl', …)` + `isStale`) are
+// the one genuinely new derivation `runShow` does — nothing else in this file or in `show.test.ts`
+// calls `runShow` and inspects either field. Split into three describes (one ref state each) purely
+// to keep each under the repo's `max-lines-per-function` cap.
+describe('refs show: an unfetched, uncloned ref is both missing and stale', () => {
+  it('reports missing: true and stale: true', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, stdout } = testContext();
+        ctx.env['REFS_HOME'] = homeDir;
+        const home = resolveHome(ctx.env);
+        await seedMonoWithShortTtl(home);
+
+        await run(ctx, ['node', 'refs', 'show', 'mono', '--json']);
+
+        const envelope = parseSoleEnvelope(stdout) as MissingStaleEnvelope;
+        expect(envelope.data.missing).toBe(true);
+        expect(envelope.data.stale).toBe(true);
+      }),
+    );
+  });
+});
+
+describe('refs show: a present checkout fetched within its ttl is neither missing nor stale', () => {
+  it('reports missing: false and stale: false', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, stdout } = testContext();
+        ctx.env['REFS_HOME'] = homeDir;
+        const home = resolveHome(ctx.env);
+        await seedMonoWithShortTtl(home);
+        await markCheckoutPresent(checkoutPath(home, zRefKey.parse(PKG_KEY)));
+        await seedState(home, {
+          [PKG_KEY]: { last_fetched_at: minutesAgoIso(FRESH_MINUTES_AGO) },
+        });
+
+        await run(ctx, ['node', 'refs', 'show', 'mono', '--json']);
+
+        const envelope = parseSoleEnvelope(stdout) as MissingStaleEnvelope;
+        expect(envelope.data.missing).toBe(false);
+        expect(envelope.data.stale).toBe(false);
+      }),
+    );
+  });
+});
+
+describe('refs show: a present checkout fetched past its ttl is stale but not missing', () => {
+  it('reports missing: false and stale: true', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, stdout } = testContext();
+        ctx.env['REFS_HOME'] = homeDir;
+        const home = resolveHome(ctx.env);
+        await seedMonoWithShortTtl(home);
+        await markCheckoutPresent(checkoutPath(home, zRefKey.parse(PKG_KEY)));
+        await seedState(home, {
+          [PKG_KEY]: { last_fetched_at: minutesAgoIso(STALE_MINUTES_AGO) },
+        });
+
+        await run(ctx, ['node', 'refs', 'show', 'mono', '--json']);
+
+        const envelope = parseSoleEnvelope(stdout) as MissingStaleEnvelope;
+        expect(envelope.data.missing).toBe(false);
+        expect(envelope.data.stale).toBe(true);
       }),
     );
   });
