@@ -46,8 +46,10 @@ A `warn` on `skill` means one of three things: the skill wasn't found where the 
 looked, the installed copy predates the version gate, or the CLI version it pins in its
 frontmatter doesn't match the running CLI. The locations it looks in are `~/.agents/skills`,
 `$CLAUDE_CONFIG_DIR` (else `~/.claude`) `/skills`, `$CODEX_HOME` (else `~/.codex`)
-`/skills`, and `<cwd>/.agents/skills` — symlinks between them are followed and counted
-once. **That list is best-effort, not exhaustive**: the installer defaults to project scope
+`/skills`, `<cwd>/.agents/skills`, and `<cwd>/.claude/skills` — symlinks between them are
+followed and counted once, and the "not found" `detail` names the paths actually searched,
+so it names an override rather than the default it replaced.
+**That list is best-effort, not exhaustive**: the installer defaults to project scope
 and dozens of other agents have directories of their own, so a "not found" only means this
 check couldn't see it — never tell the user their skill isn't installed on that basis, and
 never treat it as blocking. You are reading this file, so the skill is installed; your own

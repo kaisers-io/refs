@@ -331,7 +331,7 @@ refs doctor --json
       {
         "name": "skill",
         "status": "warn",
-        "detail": "refs skill not found in the locations this check knows about (~/.agents, ~/.claude, ~/.codex, ./.agents) — an install anywhere else is invisible here and still works; if it really is missing: npx skills add kaisers-io/refs"
+        "detail": "refs skill not found in the locations this check knows about (~/.agents, ~/.claude, ~/.codex, ./.agents, ./.claude) — an install anywhere else is invisible here and still works; if it really is missing: npx skills add kaisers-io/refs"
       }
     ]
   },
@@ -364,7 +364,7 @@ a prerelease, a build-metadata suffix — lands in the last row, where the check
 neither side and asks you to reinstall both rather than guess an ordering. Exact string
 equality is checked first, though, so two identical non-plain versions still report `ok`.
 
-Four installation locations are checked, in this order:
+Five installation locations are checked, in this order:
 
 | Location                                                   | `detail` label      | What puts it there                                  |
 | ---------------------------------------------------------- | ------------------- | --------------------------------------------------- |
@@ -372,6 +372,7 @@ Four installation locations are checked, in this order:
 | `~/.claude/skills/refs/SKILL.md` (or `$CLAUDE_CONFIG_DIR`) | `Claude Code`       | a symlink into `~/.agents`, or a real copy          |
 | `~/.codex/skills/refs/SKILL.md` (or `$CODEX_HOME`)         | `Codex`             | same; also where older `skills` versions installed  |
 | `<cwd>/.agents/skills/refs/SKILL.md`                       | `project ./.agents` | `skills add` without `-g` — the installer's default |
+| `<cwd>/.claude/skills/refs/SKILL.md`                       | `project ./.claude` | `skills add -a claude-code` without `-g` — a single-agent project install |
 
 The `detail` names the one it is reporting on. A location that does not exist is skipped
 silently, and the locations are deduplicated by resolved real path — `skills add -g` keeps
@@ -379,10 +380,17 @@ one real copy in `~/.agents` and symlinks each agent's directory at it, so the u
 install is reported once, under the shared label, not once per agent.
 
 They can still be independent copies rather than symlinks: a single-target install
-(`skills add … -a claude-code -g`) writes a real copy, and so does a symlink failure on a
-filesystem without symlink support. A problem in any of the surviving copies wins over an
-`ok` in the others: `doctor` cannot know which agent is about to read the skill, so a stale
-copy in `~/.claude` is never hidden by a current shared one.
+(`skills add … -a claude-code`, with or without `-g`) writes a real copy, and so does a
+symlink failure on a filesystem without symlink support. At project scope that copy is the
+*only* thing written — copy mode skips the canonical `.agents` directory entirely, which is
+what the last row above covers. Note that the last row takes no env override: unlike the
+global directory, the installer's project path is a literal relative `.claude/skills`, so
+`$CLAUDE_CONFIG_DIR` does not move it. Codex needs no counterpart row — it is a universal
+agent, so its project install lands in `./.agents/skills` in every mode.
+
+A problem in any of the surviving copies wins over an `ok` in the others: `doctor` cannot
+know which agent is about to read the skill, so a stale copy in `~/.claude` is never hidden
+by a current shared one.
 
 **This list is best-effort, not exhaustive.** None of those paths is a documented, stable
 contract — they are the `skills` installer's implementation detail, the canonical directory
@@ -391,7 +399,11 @@ installed for some other agent, or into a project directory you are not currentl
 works fine and this check simply will not see it; that is why "not found" says which places
 it looked rather than claiming the skill is absent, and why the result is a `warn` and never
 a `fail`. Nothing depends on it: the skill's own capability gate runs `refs --version` and
-compares it against the pin in the file the agent already loaded.
+compares it against the pin in the file the agent already loaded. That "not found" list is
+built from the paths actually searched, so it names `$CLAUDE_CONFIG_DIR`/`$CODEX_HOME` when
+either is set rather than the `~/.claude`/`~/.codex` the override replaced. One known gap:
+the three global locations are resolved from `$HOME`, so on native Windows — where `HOME` is
+typically unset — they drop out of the list and only the project ones are searched.
 
 Exit codes: `0` (all checks `ok`/`warn`), `1` (any check `fail`, or an unexpected error).
 

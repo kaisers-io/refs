@@ -11,13 +11,26 @@ import { join } from 'node:path';
 
 const AGENTS_SKILL_SEGMENTS = ['.agents', 'skills', 'refs', 'SKILL.md'] as const;
 const AGENT_HOME_SKILL_SEGMENTS = ['skills', 'refs', 'SKILL.md'] as const;
+const PROJECT_CLAUDE_SKILL_SEGMENTS = ['.claude', 'skills', 'refs', 'SKILL.md'] as const;
 const SKILL_INSTALL_HINT = 'npx skills add kaisers-io/refs';
 const CLI_UPDATE_HINT = 'npm i -g @kaisers-io/refs@latest';
 
 type SkillCandidate = {
+  display: string;
   label: string;
   path: string;
 };
+
+/** A location's base directory paired with the short form the "not found" message names it by. The
+ * two always travel together because an env override moves both at once: `$CLAUDE_CONFIG_DIR` does
+ * not just change where the check looks, it changes which directory it is honest to name. */
+type SkillRoot = {
+  display: string;
+  path: string;
+};
+
+const rootOf = (path: string | undefined, display: string): SkillRoot | undefined =>
+  path === undefined ? undefined : { display, path };
 
 /** One agent's own configuration directory, honouring the installer's env override
  * (`$CLAUDE_CONFIG_DIR`, `$CODEX_HOME`) exactly as `vercel-labs/skills`' `src/agents.ts` resolves
@@ -32,13 +45,13 @@ type AgentHomeArgs = {
   overrideName: string;
 };
 
-const agentHomeOf = (args: AgentHomeArgs): string | undefined => {
+const agentHomeOf = (args: AgentHomeArgs): SkillRoot | undefined => {
   const { dirName, env, home, overrideName } = args;
   const override = env[overrideName]?.trim();
   if (override !== undefined && override.length > 0) {
-    return override;
+    return { display: override, path: override };
   }
-  return home === undefined ? undefined : join(home, dirName);
+  return rootOf(home === undefined ? undefined : join(home, dirName), `~/${dirName}`);
 };
 
 /** The locations an installed skill is looked for — best-effort, and deliberately short.
@@ -47,14 +60,25 @@ const agentHomeOf = (args: AgentHomeArgs): string | undefined => {
  * the canonical directory has moved before, the README table documenting it is generated from the
  * installer's own source (and is already wrong for Codex), and 74 agents carry a global directory
  * each. Enumerating them is not a strategy, so this covers the installer's canonical location plus
- * the two agents `refs` ships plugin manifests for. Two consequences worth knowing:
+ * the two agents `refs` ships plugin manifests for. Three consequences worth knowing:
  *
  * - Project scope is the installer's DEFAULT (`-g` is opt-in), and `skills add` implies `-y` when
  *   it detects it is running inside an agent — so an agent-driven install lands in
- *   `<cwd>/.agents/skills/refs` and never touches `$HOME`. That is why the last entry exists.
- * - A single-target install (`skills add … -a claude-code -g`) silently switches to copy mode, as
- *   does a symlink failure on a filesystem without symlink support, so the per-agent directories
- *   can hold real, independent copies that drift from the shared one — not just symlinks into it.
+ *   `<cwd>/.agents/skills/refs` and never touches `$HOME`. That is why the project entries exist.
+ * - A single-target install (`skills add … -a claude-code`, with or without `-g`) silently switches
+ *   to copy mode, as does a symlink failure on a filesystem without symlink support, so the
+ *   per-agent directories can hold real, independent copies that drift from the shared one — not
+ *   just symlinks into it.
+ * - Copy mode skips the canonical directory outright, so `-a claude-code` at project scope — the
+ *   installer's default scope — writes ONLY `<cwd>/.claude/skills/refs`, and nothing under
+ *   `.agents` at all. That is the last entry, and note it takes NO env override: unlike the global
+ *   directory, the installer's project path is a literal relative `.claude/skills`, so
+ *   `$CLAUDE_CONFIG_DIR` does not move it. Codex needs no counterpart: it is a universal agent, so
+ *   its project install resolves to `./.agents/skills` in every mode, copy included.
+ *
+ * Known gap: the three global entries read `$HOME`, where the installer reads `os.homedir()`. On
+ * native Windows `HOME` is typically unset, and they silently vanish; routing `homedir()` through
+ * `CliContext` alongside `cwd` is the fix, and is deliberately left to a follow-up.
  *
  * A miss here is a `warn`, never a `fail`, and that is not a hedge: the skill's own capability gate
  * (`SKILL.md` §1) depends on none of this. It runs `refs --version` and compares the result against
@@ -63,31 +87,43 @@ const agentHomeOf = (args: AgentHomeArgs): string | undefined => {
  *
  * Order: the canonical global first, so a symlinked install is named by the directory holding the
  * real copy rather than by whichever agent links at it (`uniqueByRealPath` keeps the first entry);
- * then the two per-agent globals; then project scope last — the narrowest reach, and the only entry
- * whose meaning depends on where `refs doctor` happened to be run. */
+ * then the two per-agent globals; then project scope last — the narrowest reach, and the only pair
+ * whose meaning depends on where `refs doctor` happened to be run, canonical before per-agent there
+ * too, for the same reason. */
 const skillCandidatesOf = (ctx: CliContext): SkillCandidate[] => {
   const home = ctx.env['HOME'];
   const locations = [
-    { base: home, label: 'shared ~/.agents', segments: AGENTS_SKILL_SEGMENTS },
+    { label: 'shared ~/.agents', root: rootOf(home, '~/.agents'), segments: AGENTS_SKILL_SEGMENTS },
     {
-      base: agentHomeOf({
+      label: 'Claude Code',
+      root: agentHomeOf({
         dirName: '.claude',
         env: ctx.env,
         home,
         overrideName: 'CLAUDE_CONFIG_DIR',
       }),
-      label: 'Claude Code',
       segments: AGENT_HOME_SKILL_SEGMENTS,
     },
     {
-      base: agentHomeOf({ dirName: '.codex', env: ctx.env, home, overrideName: 'CODEX_HOME' }),
       label: 'Codex',
+      root: agentHomeOf({ dirName: '.codex', env: ctx.env, home, overrideName: 'CODEX_HOME' }),
       segments: AGENT_HOME_SKILL_SEGMENTS,
     },
-    { base: ctx.cwd, label: 'project ./.agents', segments: AGENTS_SKILL_SEGMENTS },
+    {
+      label: 'project ./.agents',
+      root: rootOf(ctx.cwd, './.agents'),
+      segments: AGENTS_SKILL_SEGMENTS,
+    },
+    {
+      label: 'project ./.claude',
+      root: rootOf(ctx.cwd, './.claude'),
+      segments: PROJECT_CLAUDE_SKILL_SEGMENTS,
+    },
   ];
-  return locations.flatMap(({ base, label, segments }) =>
-    base === undefined ? [] : [{ label, path: join(base, ...segments) }],
+  return locations.flatMap(({ label, root, segments }) =>
+    root === undefined
+      ? []
+      : [{ display: root.display, label, path: join(root.path, ...segments) }],
   );
 };
 
@@ -99,8 +135,8 @@ type FoundSkill = {
 
 /** `realpath` before `readFile` so a symlinked install can be recognised as one copy rather than
  * several. A throw is never a problem to report: an absent path (the usual case — nobody has all
- * four) and an unreadable one both mean "nothing to compare here", and an install that exists
- * nowhere falls through to `NOT_FOUND` below. Read-only throughout: `refs` writes nothing outside
+ * five) and an unreadable one both mean "nothing to compare here", and an install that exists
+ * nowhere falls through to `notFoundOf` below. Read-only throughout: `refs` writes nothing outside
  * `REFS_HOME`, and this check touches no path with anything but `realpath`/`readFile`. */
 const readSkillAt = async (path: string, label: string): Promise<FoundSkill | undefined> => {
   try {
@@ -211,12 +247,17 @@ const buildSkillVersionCheck = (args: SkillVersionArgs): CheckResult => {
  * scope as the installer's default, and 70-odd agent directories this deliberately does not look
  * at, "it is not installed" is not a claim this check can make. So it says what it actually knows —
  * which places it looked — and keeps the install hint for the case where the skill really is
- * missing. One line, because both a human and an agent read it. */
-const NOT_FOUND: CheckResult = {
-  detail: `refs skill not found in the locations this check knows about (~/.agents, ~/.claude, ~/.codex, ./.agents) — an install anywhere else is invisible here and still works; if it really is missing: ${SKILL_INSTALL_HINT}`,
+ * missing. One line, because both a human and an agent read it.
+ *
+ * Derived from the candidates rather than written out, so the list is true in every configuration.
+ * A hardcoded `~/.claude` would be a lie under `$CLAUDE_CONFIG_DIR`, which MOVES the search rather
+ * than widening it: the message would send its reader — quite possibly an agent acting on it — to
+ * inspect the one directory this check has just finished arguing nothing reads. */
+const notFoundOf = (candidates: readonly SkillCandidate[]): CheckResult => ({
+  detail: `refs skill not found in the locations this check knows about (${candidates.map((candidate) => candidate.display).join(', ')}) — an install anywhere else is invisible here and still works; if it really is missing: ${SKILL_INSTALL_HINT}`,
   name: 'skill',
   status: 'warn',
-};
+});
 
 /** Reports the skill as installed AND in step with this CLI. The skill and the CLI ship through
  * different channels (`skills add` from git, `npm i -g` from the registry), so they can drift
@@ -228,8 +269,9 @@ const NOT_FOUND: CheckResult = {
  * not be hidden by a current shared one. The `detail` names the location so the fix is
  * unambiguous. */
 const checkSkill = async (ctx: CliContext): Promise<CheckResult> => {
+  const candidates = skillCandidatesOf(ctx);
   const found = await Promise.all(
-    skillCandidatesOf(ctx).map((candidate) => readSkillAt(candidate.path, candidate.label)),
+    candidates.map((candidate) => readSkillAt(candidate.path, candidate.label)),
   );
   const checks = uniqueByRealPath(found.filter((entry) => entry !== undefined)).map((entry) =>
     buildSkillVersionCheck({
@@ -238,7 +280,7 @@ const checkSkill = async (ctx: CliContext): Promise<CheckResult> => {
       skillVersion: skillCliVersionOf(entry.source),
     }),
   );
-  return checks.find((check) => check.status !== 'ok') ?? checks[0] ?? NOT_FOUND;
+  return checks.find((check) => check.status !== 'ok') ?? checks[0] ?? notFoundOf(candidates);
 };
 
 export { checkSkill };
