@@ -74,7 +74,11 @@ type ShowResult = {
 // `query` is the argument this command exists to resolve; `now` is the single instant threaded
 // through both `stale` and the renderer's `synced:` line (see list.ts's `runList` for the same
 // pattern). Folding `options`/`now` into one object would only obscure the fixed 4-arg call shape.
-// eslint-disable-next-line max-params -- (ctx, query, options, now) is that fixed call shape.
+// `refState` (`state.refs[key] ?? EMPTY_STATE`) is bound to a local and reused for both `stale`
+// and `state` below, rather than looked up twice — a duplicated lookup risked `stale` and `state`
+// diverging if a future change to how ref state is resolved were applied to only one call site.
+// That local pushes this function to 11 statements against oxlint's `max-statements` cap of 10.
+// eslint-disable-next-line max-params, max-statements -- (ctx, query, options, now) is the fixed call shape noted above; the 11th statement is the `refState` local noted above, kept to avoid a duplicated lookup that could silently diverge.
 const runShow = async (
   ctx: CliContext,
   query: string,
@@ -89,9 +93,7 @@ const runShow = async (
   const dest = checkoutPath(home, key);
   const { packages, ...entryWithoutPackages } = entry;
   const sampled = options.tags ? await sampleTagsFor(ctx, dest) : undefined;
-  // `refState` is looked up twice (below) rather than bound to a local: a local plus the
-  // pre-existing `ttlMs` local would push this function to 12 statements against oxlint's
-  // `max-statements` cap of 10 that it already sat at before `missing`/`stale` were added.
+  const refState = state.refs[key] ?? EMPTY_STATE;
   const data: ShowData = {
     ...entryWithoutPackages,
     key,
@@ -101,11 +103,11 @@ const runShow = async (
     packages_count: Object.keys(packages ?? {}).length,
     ...(sampled === undefined ? {} : { sample_tags: sampled.tags }),
     stale: isStale(
-      (state.refs[key] ?? EMPTY_STATE).last_fetched_at,
+      refState.last_fetched_at,
       durationToMs(resolveSetting('sync_ttl', entry, config.settings)),
       now,
     ),
-    state: state.refs[key] ?? EMPTY_STATE,
+    state: refState,
   };
   return { data, warnings: warningsFor(sampled?.warning) };
 };
