@@ -1,13 +1,16 @@
 import type { RefEntry, RefKey, RefState } from '@kaisers-io/refs-core';
 import {
   checkoutPath,
+  durationToMs,
   isGitCheckout,
   listTags,
   readConfig,
   readState,
   resolveHome,
+  resolveSetting,
 } from '@kaisers-io/refs-core';
 import { cliOptsOf, emit, errorMessageOf, warningsFor, wrapAction } from '../output.ts';
+import { isStale, statusLines } from './ref-status.ts';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
 import { matchRefKey } from './list.ts';
@@ -29,9 +32,11 @@ const EMPTY_STATE: RefState = {};
 type ShowData = Omit<RefEntry, 'packages'> & {
   key: RefKey;
   local_path: string;
+  missing: boolean;
   packages?: RefEntry['packages'];
   packages_count: number;
   sample_tags?: string[];
+  stale: boolean;
   state: RefState;
 };
 
@@ -66,10 +71,15 @@ type ShowResult = {
   warnings: string[];
 };
 
+// `query` is the argument this command exists to resolve; `now` is the single instant threaded
+// through both `stale` and the renderer's `synced:` line (see list.ts's `runList` for the same
+// pattern). Folding `options`/`now` into one object would only obscure the fixed 4-arg call shape.
+// eslint-disable-next-line max-params -- (ctx, query, options, now) is that fixed call shape.
 const runShow = async (
   ctx: CliContext,
   query: string,
   options: ShowOptions,
+  now: number,
 ): Promise<ShowResult> => {
   const home = resolveHome(ctx.env);
   const config = await readConfig(home);
@@ -79,23 +89,39 @@ const runShow = async (
   const dest = checkoutPath(home, key);
   const { packages, ...entryWithoutPackages } = entry;
   const sampled = options.tags ? await sampleTagsFor(ctx, dest) : undefined;
+  // `refState` is looked up twice (below) rather than bound to a local: a local plus the
+  // pre-existing `ttlMs` local would push this function to 12 statements against oxlint's
+  // `max-statements` cap of 10 that it already sat at before `missing`/`stale` were added.
   const data: ShowData = {
     ...entryWithoutPackages,
     key,
     local_path: dest,
+    missing: !isGitCheckout(dest),
     ...(options.packages ? { packages: packages ?? {} } : {}),
     packages_count: Object.keys(packages ?? {}).length,
     ...(sampled === undefined ? {} : { sample_tags: sampled.tags }),
+    stale: isStale(
+      (state.refs[key] ?? EMPTY_STATE).last_fetched_at,
+      durationToMs(resolveSetting('sync_ttl', entry, config.settings)),
+      now,
+    ),
     state: state.refs[key] ?? EMPTY_STATE,
   };
   return { data, warnings: warningsFor(sampled?.warning) };
 };
 
-const showHuman = (data: ShowData): string[] => {
+const showHuman = (data: ShowData, now: number): string[] => {
   const lines = [
-    `${data.key}  ${data.description}`,
+    `ref: ${data.key}`,
+    `description: ${data.description}`,
     `url: ${data.url}`,
-    `local_path: ${data.local_path}`,
+    `path: ${data.local_path}`,
+    ...statusLines({
+      lastFetchedAt: data.state.last_fetched_at,
+      missing: data.missing,
+      now,
+      stale: data.stale,
+    }),
   ];
   if (data.sample_tags !== undefined && data.sample_tags.length > 0) {
     lines.push(`tags: ${data.sample_tags.join(', ')}`);
@@ -121,11 +147,12 @@ const registerShow = (program: RefsCommand, ctx: CliContext): void => {
           // `--json` mode makes it opt-in — that is where the wasted subprocess showed up.
           tags: !opts.json || localOpts.tags === true,
         };
-        const { data, warnings } = await runShow(ctx, ref, showOptions);
-        emit(ctx, opts, showHuman(data), data, warnings);
+        const now = Date.now();
+        const { data, warnings } = await runShow(ctx, ref, showOptions, now);
+        emit(ctx, opts, showHuman(data, now), data, warnings);
       })();
     });
 };
 
-export { registerShow };
+export { registerShow, showHuman };
 export type { ShowData };
