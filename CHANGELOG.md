@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-03
+
+### Fixed
+
+- `refs doctor` no longer reports `refs skill not found` for a skill that is installed and
+  working. `npx skills add kaisers-io/refs` — the documented installer — keeps the one real
+  copy in the shared `~/.agents/skills/refs` directory and symlinks each agent's own
+  directory at it, but the check only ever looked in `~/.claude/skills/refs` and
+  `~/.codex/skills/refs`. Anyone without a `~/.claude` symlink standing in for the real
+  thing — a Codex-only user, most obviously — was told to install a skill they already had,
+  and never saw the version comparison that `0.6.0` added. `~/.agents/skills/refs/SKILL.md`
+  is now checked first, and the three locations are deduplicated by resolved real path, so
+  a symlinked install is reported once (as `shared ~/.agents`) rather than once per agent.
+
 ## [0.6.0] - 2026-08-03
 
 ### Changed
@@ -254,7 +268,8 @@ trusted-publishing pipeline end to end.
   installed git hooks.
 - Agent skill (`skills/refs/`) documenting the investigate/add/maintain workflows.
 
-[Unreleased]: https://github.com/kaisers-io/refs/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/kaisers-io/refs/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/kaisers-io/refs/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/kaisers-io/refs/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/kaisers-io/refs/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/kaisers-io/refs/compare/v0.4.0...v0.5.0
