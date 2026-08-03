@@ -100,9 +100,9 @@ describe('statusLines: the synced/status/missing summary lines', () => {
   it('prints only synced for a fresh, present checkout', () => {
     expect.hasAssertions();
     const lastFetchedAt = ago(TWELVE_MINUTES * MINUTE);
-    expect(
-      statusLines({ lastFetchedAt, missing: false, now: NOW, stale: false }),
-    ).toStrictEqual(['synced: 12 minutes ago']);
+    expect(statusLines({ lastFetchedAt, missing: false, now: NOW, stale: false })).toStrictEqual([
+      'synced: 12 minutes ago',
+    ]);
   });
 
   it('adds a status line when the ref is past its ttl', () => {
