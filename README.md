@@ -78,10 +78,11 @@ up (e.g. `/refs how does zod implement codecs`).
 In Codex, `$refs` and `@refs` are not variants of the same thing: `$refs` invokes the
 skill, while `@refs` is a plugin mention. As of 2026-08-03 (codex-cli 0.146.0), `@refs`
 gives the model no skill instructions at all — the skill behaves as if it weren't
-installed, because Codex only surfaces skill content on a plugin mention when the plugin
-ships an MCP server, app, or similar, and refs ships none. That's a Codex-side limitation,
+installed. A plugin mention injects at most a short capability note naming any MCP
+servers or apps the plugin ships (refs ships neither); it never surfaces skill
+instructions, regardless of what the plugin bundles. That's a Codex-side limitation,
 not a misconfiguration; `refs doctor` correctly reports `ok` either way. See
-[openai/codex#19695](https://github.com/openai/codex/issues/19695).
+[openai/codex#22078](https://github.com/openai/codex/issues/22078).
 
 Install the agent-facing skill with `skills add` — note the GitHub repository is
 currently private, so this needs repo access (or a local clone) until `refs` goes
