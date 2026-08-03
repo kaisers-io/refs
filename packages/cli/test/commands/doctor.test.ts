@@ -98,6 +98,13 @@ describe('refs doctor: (e) skill not installed', () => {
   });
 });
 
+// The skill's frontmatter must pin `metadata.cli_version` to `testContext()`'s own default
+// `ctx.cliVersion` ('0.0.0-test'): since the version comparison landed, an unpinned or mismatched
+// SKILL.md reports `warn`, not `ok`. The comparison's own cases live in
+// `doctor-skill-version.test.ts`; this one only proves the check is wired into `refs doctor --json`.
+const MATCHING_SKILL_SOURCE =
+  '---\nname: refs\nmetadata:\n  cli_version: "0.0.0-test"\n---\n\n# refs skill\n';
+
 describe('refs doctor: skill installed', () => {
   it('reports the skill check as ok when SKILL.md exists under $HOME/.claude/skills/refs', async () => {
     expect.hasAssertions();
@@ -106,7 +113,7 @@ describe('refs doctor: skill installed', () => {
         const fakeHome = join(homeDir, 'agent-home');
         const skillDir = join(fakeHome, '.claude', 'skills', 'refs');
         await mkdir(skillDir, { recursive: true });
-        await writeFile(join(skillDir, 'SKILL.md'), '# refs skill\n');
+        await writeFile(join(skillDir, 'SKILL.md'), MATCHING_SKILL_SOURCE);
         const { ctx, stdout } = realContextFor(join(homeDir, 'refs-home'));
         ctx.env['HOME'] = fakeHome;
         await initHome(ctx);

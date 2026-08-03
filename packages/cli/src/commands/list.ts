@@ -35,33 +35,42 @@ type ListItem = {
   description: string;
   key: string;
   missing: boolean;
-  packages: string[];
+  packages?: string[];
+  packages_count: number;
   stale: boolean;
 };
 
 type ListArgs = {
   config: Config;
   home: RefsHome;
+  includePackages: boolean;
   now: number;
   state: State;
 };
 
 type ItemArgs = {
   home: RefsHome;
+  includePackages: boolean;
   now: number;
   settings: Settings;
   state: State;
 };
 
+// `packages` is omitted unless `--packages` was passed: a monorepo ref can carry 140 package
+// names, and no consumer in this repo reads them off `list` output — `resolve` does package
+// matching internally against the config, and `listHuman` never touched the field. The count
+// stays so a caller can still tell "monorepo" from "single package" for free.
 const buildListItem = (args: ItemArgs, key: string, ref: RefEntry): ListItem => {
   const refState = args.state.refs[key];
   const ttlMs = durationToMs(resolveSetting('sync_ttl', ref, args.settings));
+  const packageNames = Object.keys(ref.packages ?? {}).toSorted();
   return {
     clone_mode: resolveSetting('clone_mode', ref, args.settings),
     description: ref.description,
     key,
     missing: !isGitCheckout(checkoutPath(args.home, zRefKey.parse(key))),
-    packages: Object.keys(ref.packages ?? {}).toSorted(),
+    ...(args.includePackages ? { packages: packageNames } : {}),
+    packages_count: packageNames.length,
     stale: isStale(refState?.last_fetched_at, ttlMs, args.now),
   };
 };
@@ -69,6 +78,7 @@ const buildListItem = (args: ItemArgs, key: string, ref: RefEntry): ListItem => 
 const listItems = (args: ListArgs): ListItem[] => {
   const itemArgs: ItemArgs = {
     home: args.home,
+    includePackages: args.includePackages,
     now: args.now,
     settings: args.config.settings,
     state: args.state,
@@ -79,11 +89,11 @@ const listItems = (args: ListArgs): ListItem[] => {
   return items.toSorted((left, right) => left.key.localeCompare(right.key));
 };
 
-const runList = async (ctx: CliContext): Promise<ListItem[]> => {
+const runList = async (ctx: CliContext, includePackages: boolean): Promise<ListItem[]> => {
   const home = resolveHome(ctx.env);
   const config = await readConfig(home);
   const state = await readState(home);
-  return listItems({ config, home, now: Date.now(), state });
+  return listItems({ config, home, includePackages, now: Date.now(), state });
 };
 
 const suffixesFor = (item: ListItem): string => {
@@ -151,10 +161,11 @@ const registerList = (program: RefsCommand, ctx: CliContext): void => {
   program
     .command('list')
     .description('List configured refs with their staleness/missing checkout status.')
-    .action((_localOpts, command) => {
+    .option('--packages', "include each ref's package names in --json output (off by default)")
+    .action((localOpts, command) => {
       const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
-        const items = await runList(ctx);
+        const items = await runList(ctx, localOpts.packages === true);
         emit(ctx, opts, listHuman(items), items);
       })();
     });

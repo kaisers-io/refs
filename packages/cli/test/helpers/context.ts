@@ -23,6 +23,10 @@ const testContext = (): {
   const stderr: string[] = [];
   const runner = new FakeRunner();
   const ctx: CliContext = {
+    // Defaults to a fixed version so every non-`skill`-check test keeps working unmodified;
+    // `doctor` tests that need a specific version override `ctx.cliVersion` directly, mirroring
+    // how `ctx.nodeVersion`/`ctx.fetcher` are overridden per-test.
+    cliVersion: '0.0.0-test',
     env: {},
     errLine: (line: string) => {
       stderr.push(line);

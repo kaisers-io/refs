@@ -83,9 +83,10 @@ sync_ttl = "1h"
 
 `refs add` is what actually populates `[refs]` (see [`docs/commands.md`](commands.md)'s
 two-phase add contract) — you rarely hand-write a `[refs."..."]` table yourself, but the
-shape is worth knowing since `refs edit` and `refs show --json` operate on it directly. A
-fully-populated ref entry, including a registered package and a per-ref settings
-override, looks like this:
+shape is worth knowing since `refs edit` and `refs show --json` operate on it directly —
+though `refs show --json` reports only `packages_count` by default and returns the full
+`[refs."...".packages]` map under `--packages`. A fully-populated ref entry, including a
+registered package and a per-ref settings override, looks like this:
 
 ```toml
 [refs."github.com/colinhacks/zod"]

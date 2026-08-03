@@ -14,6 +14,7 @@
     "test:coverage": "vitest run --coverage",
     "build": "pnpm -r run build",
     "check": "pnpm lint && pnpm fmt:check && pnpm typecheck && pnpm test",
+    "versions": "node scripts/versions.mjs",
     "refs": "pnpm --filter @kaisers-io/refs build && node packages/cli/bin/refs.mjs"
   },
   "devDependencies": {

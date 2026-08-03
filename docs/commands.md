@@ -72,8 +72,9 @@ refs init --json
 `data.config` is one of `"seeded"` (no config existed), `"migrated"` (an older schema was
 upgraded, with a `.bak` backup left alongside it), or `"noop"` (already current).
 
-Exit codes: `0` always (this command has no failure modes of its own beyond an unexpected
-error, `1`).
+Exit codes: `0`, `3` when an existing config can't be migrated (malformed TOML, a schema
+newer than this CLI supports, or a shape beyond automatic migration), or `1` for an
+unexpected error. There is no `4` here — an absent config is seeded, not an error.
 
 ---
 
@@ -256,7 +257,7 @@ not found).
 ## `refs list`
 
 ```
-refs list
+refs list [--packages]
 ```
 
 Lists every configured ref with its resolved clone mode, staleness, and missing-checkout
@@ -276,14 +277,19 @@ refs list --json
       "clone_mode": "blobless",
       "missing": false,
       "stale": false,
-      "packages": ["zod"]
+      "packages_count": 1
     }
   ],
   "warnings": []
 }
 ```
 
-Exit codes: `0`, or `1` for an unexpected error (no per-item failure state here — a
+`packages_count` is the number of registered packages — enough to tell a monorepo from a
+single-package ref. The names themselves are off by default; `--packages` adds a sorted
+`packages` array of package names to each item (human output is unaffected either way).
+
+Exit codes: `0`, `4` (no config yet — run `refs init`), `3` (malformed or unmigrated
+config), or `1` for an unexpected error (no per-item failure state here — a
 missing/unreadable config is a top-level error, not a per-ref one).
 
 ---
@@ -337,6 +343,33 @@ Each check's `status` is `ok`, `warn`, or `fail`. As with `sync` (see [Exit code
 (#exit-codes) above), the envelope is `{"ok":true,...}` even when a check reports `fail`
 — but the process exits `1` in that case.
 
+### The `skill` check
+
+The agent skill and the CLI ship through different channels (`npx skills add` from git,
+`npm i -g` from npm), so they can drift apart silently. The skill pins the CLI version it
+was written against in its frontmatter (`metadata.cli_version`), and this check is the
+only thing that compares the two. Six outcomes:
+
+| Situation                                                  | Status | `detail` says                                      |
+| ---------------------------------------------------------- | ------ | -------------------------------------------------- |
+| No `SKILL.md` in either agent home                         | `warn` | install it: `npx skills add kaisers-io/refs`       |
+| The pinned version equals the running CLI                  | `ok`   | the skill matches this CLI                         |
+| The skill targets a **newer** CLI                          | `warn` | update the CLI: `npm i -g @kaisers-io/refs@latest` |
+| The skill targets an **older** CLI                         | `warn` | update the skill: `npx skills add kaisers-io/refs` |
+| The skill has no `cli_version` (installed before the gate) | `warn` | it predates the version gate — update the skill    |
+| Either version is not a plain `x.y.z` (a prerelease, say)  | `warn` | direction unknown — reinstall both                 |
+
+Ordering is only computed for plain three-part numeric versions (`0.6.0`). Anything else —
+a prerelease, a build-metadata suffix — lands in the last row, where the check names
+neither side and asks you to reinstall both rather than guess an ordering. Exact string
+equality is checked first, though, so two identical non-plain versions still report `ok`.
+
+Both installation locations are checked, `~/.claude/skills/refs/SKILL.md` and
+`~/.codex/skills/refs/SKILL.md`, and the `detail` names which one it is reporting on. A
+problem in either wins over an `ok` in the other: `doctor` cannot know which agent is
+about to read the skill, so a stale Claude Code copy is never hidden by a current Codex
+one.
+
 Exit codes: `0` (all checks `ok`/`warn`), `1` (any check `fail`, or an unexpected error).
 
 ---
@@ -370,7 +403,10 @@ refs migrate --json
 `data.result` is `"seeded"`, `"migrated"`, or `"noop"`; `data.backup` is the `.bak` path
 when `"migrated"`, else `null`.
 
-Exit codes: `0`, or `1` for an unexpected error.
+Exit codes: `0`, `3` when an existing config can't be migrated (malformed TOML, a schema
+newer than this CLI supports, or a shape beyond automatic migration — the `.bak` is
+preserved in that last case), or `1` for an unexpected error. There is no `4` here — an
+absent config is seeded, not an error.
 
 ---
 
@@ -450,11 +486,12 @@ form), `2` (matches more than one ref/package ambiguously), `4` (no match at all
 ## `refs show`
 
 ```
-refs show <ref>
+refs show <ref> [--packages] [--tags]
 ```
 
-Shows a configured ref's full entry, current state, resolved local checkout path, and up
-to 5 recent tags (only when the checkout exists and is readable).
+Shows a configured ref's entry, current state, resolved local checkout path, and package
+count, plus up to 5 recent tags (only when the checkout exists and is readable — always in
+human output, and in `--json` only under `--tags`).
 
 ```bash
 refs show left-pad --json
@@ -469,9 +506,8 @@ refs show left-pad --json
     "url": "ssh://git@github.com/stevemao/left-pad.git",
     "default_branch": "master",
     "tag_format": "v{version}",
-    "packages": { "left-pad": { "description": "Left-pad a string.", "path": "." } },
+    "packages_count": 1,
     "local_path": "/Users/you/.kaisers-io/refs/sources/github.com/stevemao/left-pad",
-    "sample_tags": ["v1.3.0", "v1.2.0", "v1.1.3", "v1.1.2", "v1.1.1"],
     "state": {
       "effective_clone_mode": "blobless",
       "head_sha": "2fca6157fcca165438e0f9495cf0e5a4e6f71349",
@@ -482,10 +518,18 @@ refs show left-pad --json
 }
 ```
 
-`data` is the ref's full config entry, plus `key`, `local_path`, `sample_tags`, and
-`state` layered on top. If the checkout exists but its tags can't be listed (a corrupt
-`.git`, detached remote, etc.), `sample_tags` degrades to `[]` and a warning is added
-instead of failing the whole command.
+`data` is the ref's config entry minus `packages`, plus `key`, `local_path`,
+`packages_count`, and `state`. `--packages` adds the full `packages` map back; `--tags`
+adds `sample_tags`. Human output is unchanged: it always probes for tags, and prints the
+`tags:` line only when the probe found any.
+
+`--tags` is also what makes the `git tag` subprocess run at all in `--json` mode — without
+it, `show --json` never touches the checkout. If the checkout exists but its tags can't be
+listed (a corrupt `.git`, detached remote, etc.), `sample_tags` degrades to `[]` and a
+warning is added instead of failing the whole command.
+
+`--packages` is the discovery path for `refs edit <ref> <field> --package <name>`: it is
+how you find the package names that command expects.
 
 Exit codes: `4` (no ref matches), `2` (ambiguous suffix).
 
