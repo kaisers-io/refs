@@ -20,9 +20,9 @@ import {
   zRefKey,
 } from '@kaisers-io/refs-core';
 import { cliOptsOf, emit, wrapAction } from '../output.ts';
+import { isStale, statusLines } from './ref-status.ts';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
-import { isStale } from './ref-status.ts';
 
 // `refs list` prints one row per configured ref with resolved staleness/missing status. This file
 // also exports `matchRefKey`, the suffix-matching resolver `show`/`sync`/`edit`/`remove`/`tag`/
@@ -34,6 +34,7 @@ type ListItem = {
   clone_mode: CloneMode;
   description: string;
   key: string;
+  last_fetched_at?: string;
   missing: boolean;
   packages?: string[];
   packages_count: number;
@@ -68,6 +69,9 @@ const buildListItem = (args: ItemArgs, key: string, ref: RefEntry): ListItem => 
     clone_mode: resolveSetting('clone_mode', ref, args.settings),
     description: ref.description,
     key,
+    ...(refState?.last_fetched_at === undefined
+      ? {}
+      : { last_fetched_at: refState.last_fetched_at }),
     missing: !isGitCheckout(checkoutPath(args.home, zRefKey.parse(key))),
     ...(args.includePackages ? { packages: packageNames } : {}),
     packages_count: packageNames.length,
@@ -89,34 +93,44 @@ const listItems = (args: ListArgs): ListItem[] => {
   return items.toSorted((left, right) => left.key.localeCompare(right.key));
 };
 
-const runList = async (ctx: CliContext, includePackages: boolean): Promise<ListItem[]> => {
+const runList = async (
+  ctx: CliContext,
+  includePackages: boolean,
+  now: number,
+): Promise<ListItem[]> => {
   const home = resolveHome(ctx.env);
   const config = await readConfig(home);
   const state = await readState(home);
-  return listItems({ config, home, includePackages, now: Date.now(), state });
-};
-
-const suffixesFor = (item: ListItem): string => {
-  const suffixes: string[] = [];
-  if (item.stale) {
-    suffixes.push('[stale]');
-  }
-  if (item.missing) {
-    suffixes.push('[missing]');
-  }
-  if (suffixes.length === 0) {
-    return '';
-  }
-  return ` ${suffixes.join(' ')}`;
+  return listItems({ config, home, includePackages, now, state });
 };
 
 const NO_REFS_LINE = 'no refs configured — run: refs add <source>';
 
-const listHuman = (items: readonly ListItem[]): string[] => {
+const linesFor = (item: ListItem, now: number): string[] => [
+  `ref: ${item.key}`,
+  `description: ${item.description}`,
+  ...statusLines({
+    lastFetchedAt: item.last_fetched_at,
+    missing: item.missing,
+    now,
+    stale: item.stale,
+  }),
+];
+
+// The blank line between entries is produced here rather than in `emit`: `list` is the only
+// command in the key/value format that renders more than one entry (`sync` and `doctor` keep
+// their own layouts), so a generic grouping API on `emit` would have exactly one caller.
+const listHuman = (items: readonly ListItem[], now: number): string[] => {
   if (items.length === 0) {
     return [NO_REFS_LINE];
   }
-  return items.map((item) => `${item.key}  ${item.description}${suffixesFor(item)}`);
+  return items.reduce<string[]>((lines, item, index) => {
+    if (index > 0) {
+      lines.push('');
+    }
+    lines.push(...linesFor(item, now));
+    return lines;
+  }, []);
 };
 
 // Suffix matching, shared by show/resolve/sync/edit/remove/tag ------------
@@ -165,10 +179,12 @@ const registerList = (program: RefsCommand, ctx: CliContext): void => {
     .action((localOpts, command) => {
       const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
-        const items = await runList(ctx, localOpts.packages === true);
-        emit(ctx, opts, listHuman(items), items);
+        const now = Date.now();
+        const items = await runList(ctx, localOpts.packages === true, now);
+        emit(ctx, opts, listHuman(items, now), items);
       })();
     });
 };
 
-export { matchRefKey, registerList };
+export { listHuman, matchRefKey, registerList };
+export type { ListItem };
