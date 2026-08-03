@@ -15,7 +15,7 @@ missing (ask before installing; verify with `refs --version` afterwards).
 refs doctor --json
 ```
 
-Report every non-`ok` check in plain terms (`references/maintain.md` explains each
+Report every non-`ok` check in plain terms (`MAINTAIN.md` explains each
 check) and offer to fix what can be fixed. A failing `config` check on a fresh machine
 is expected — that's what the next step is for.
 
@@ -66,5 +66,5 @@ the project leans on where source-level answers matter. If nothing usable turns 
 propose zod as the example candidate (its docs live in the repo under `packages/docs`,
 and its release tags work well for version questions).
 
-Once the user picks one, run the add flow from `references/add.md` (dry-run →
+Once the user picks one, run the add flow from `ADD.md` (dry-run →
 descriptions → mandatory approval → finalize) — don't duplicate it here.

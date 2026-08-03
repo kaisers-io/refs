@@ -22,6 +22,20 @@ jobs:
       # keeping the gate off Windows means a justified platform skip can never flake the ratchet.
       - run: pnpm test:coverage
         if: matrix.os == 'ubuntu-latest'
+  # Five files carry the released version (see scripts/versions.mjs). Every one of them is
+  # knowable on a PR, so the disagreement is caught here rather than by the release workflow after
+  # the bump commit is already on main. No pnpm install and no matrix: plain Node, one platform.
+  versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version-file: .node-version }
+      - run: node scripts/versions.mjs --check
+      # The check above only ever sees a tree whose versions agree, so it proves nothing about the
+      # failure paths. These do: node's built-in runner (not vitest — that would need an install,
+      # and it only collects packages/*) over throwaway fixture trees, never the real five files.
+      - run: node --test scripts/versions.test.mjs
   bundle-determinism:
     runs-on: ubuntu-latest
     steps:

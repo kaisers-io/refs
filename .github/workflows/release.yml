@@ -46,6 +46,22 @@ jobs:
         # The tarball ships packages/cli/CHANGELOG.md so npm users can see changes while the
         # GitHub repo is private; this fails the release when a bump edits only the root copy.
         run: cmp CHANGELOG.md packages/cli/CHANGELOG.md
+      - name: Guard — CHANGELOG.md has a heading for the released version
+        # `cmp` above proves the two copies match, not that either describes this release. Since the
+        # version bump moved into the feature branch (87c10d0), the entry can still sit under
+        # `## [Unreleased]` at tag time — and that publishes cleanly, leaving a 0.6.0 tarball whose
+        # packaged changelog (the only one npm users can see while the repo is private) shows 0.5.1
+        # as the newest release. Checked on the root copy alone because `cmp` already tied them.
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          if ! grep -qF "## [$VERSION] - " CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## [$VERSION] - <date>' heading — the entry for this release is probably still under '## [Unreleased]'" >&2
+            exit 1
+          fi
+          echo "CHANGELOG.md has a heading for $VERSION"
       - name: Guard — tagged commit is reachable from origin/main
         # A tag pushed from a random branch/fork must not be able to publish. `GITHUB_SHA` is
         # the runner-assigned commit SHA (not attacker-suppliable text like ref_name), so it's
@@ -59,6 +75,14 @@ jobs:
             echo "::error::tagged commit $GITHUB_SHA is not reachable from origin/main — refusing to publish from a stray branch" >&2
             exit 1
           fi
+      - name: Guard — every version site declares this CLI version
+        # Which five files carry the version, why they must agree, and why one run reports every
+        # disagreement: see the header of scripts/versions.mjs, which replaced the two inline guards
+        # that used to live here. `--check` also runs on every PR (ci.yml), so by tag time this is a
+        # re-assertion rather than a first look. Placed after the origin/main containment guard and
+        # before `pnpm install`: it needs no dependencies, and running repo-controlled code only
+        # once the commit is known to be reachable from main keeps that exposure as late as it can be.
+        run: node scripts/versions.mjs --check
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm check
       - run: pnpm build

@@ -15,16 +15,29 @@ import { requireEntry } from './ref-context.ts';
 
 // `refs show <ref>` — resolves `<ref>` (a full key or unique suffix, via `matchRefKey` in
 // `list.ts`) to its full entry, current state, resolved local checkout path, and up to
-// `SAMPLE_TAG_LIMIT` recent tags (only when the checkout actually exists).
+// `SAMPLE_TAG_LIMIT` recent tags (only when the checkout actually exists). In `--json` mode the
+// package map and the tag probe are both opt-in, behind `--packages`/`--tags`; human mode is
+// unchanged and always probes.
 
 const SAMPLE_TAG_LIMIT = 5;
 const EMPTY_STATE: RefState = {};
 
-type ShowData = RefEntry & {
+// `packages` is lifted out of the `RefEntry` spread and re-added only under `--packages`: a
+// monorepo entry is up to 90% package descriptions, and every in-repo consumer of `show` reads
+// only `local_path`. `sample_tags` is likewise opt-in in json mode — its sole consumer is
+// `showHuman`, and producing it costs a `git tag` subprocess.
+type ShowData = Omit<RefEntry, 'packages'> & {
   key: RefKey;
   local_path: string;
-  sample_tags: string[];
+  packages?: RefEntry['packages'];
+  packages_count: number;
+  sample_tags?: string[];
   state: RefState;
+};
+
+type ShowOptions = {
+  packages: boolean;
+  tags: boolean;
 };
 
 type SampleTagsResult = {
@@ -53,22 +66,29 @@ type ShowResult = {
   warnings: string[];
 };
 
-const runShow = async (ctx: CliContext, query: string): Promise<ShowResult> => {
+const runShow = async (
+  ctx: CliContext,
+  query: string,
+  options: ShowOptions,
+): Promise<ShowResult> => {
   const home = resolveHome(ctx.env);
   const config = await readConfig(home);
   const key = matchRefKey(config, query);
   const entry = requireEntry(config, key);
   const state = await readState(home);
   const dest = checkoutPath(home, key);
-  const { tags: sampleTags, warning } = await sampleTagsFor(ctx, dest);
+  const { packages, ...entryWithoutPackages } = entry;
+  const sampled = options.tags ? await sampleTagsFor(ctx, dest) : undefined;
   const data: ShowData = {
-    ...entry,
+    ...entryWithoutPackages,
     key,
     local_path: dest,
-    sample_tags: sampleTags,
+    ...(options.packages ? { packages: packages ?? {} } : {}),
+    packages_count: Object.keys(packages ?? {}).length,
+    ...(sampled === undefined ? {} : { sample_tags: sampled.tags }),
     state: state.refs[key] ?? EMPTY_STATE,
   };
-  return { data, warnings: warningsFor(warning) };
+  return { data, warnings: warningsFor(sampled?.warning) };
 };
 
 const showHuman = (data: ShowData): string[] => {
@@ -77,7 +97,7 @@ const showHuman = (data: ShowData): string[] => {
     `url: ${data.url}`,
     `local_path: ${data.local_path}`,
   ];
-  if (data.sample_tags.length > 0) {
+  if (data.sample_tags !== undefined && data.sample_tags.length > 0) {
     lines.push(`tags: ${data.sample_tags.join(', ')}`);
   }
   return lines;
@@ -86,12 +106,22 @@ const showHuman = (data: ShowData): string[] => {
 const registerShow = (program: RefsCommand, ctx: CliContext): void => {
   program
     .command('show')
-    .description('Show a configured ref: full entry, state, local path, and sample tags.')
+    .description(
+      'Show a configured ref: entry, state, local path, package count; --packages/--tags add the package map and sample tags to --json.',
+    )
     .argument('<ref>', 'full ref key or a unique suffix, e.g. zod')
-    .action((ref, _localOpts, command) => {
+    .option('--packages', "include the ref's full package map in --json output (off by default)")
+    .option('--tags', 'include sample tags in --json output (human output always probes for them)')
+    .action((ref, localOpts, command) => {
       const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
-        const { data, warnings } = await runShow(ctx, ref);
+        const showOptions: ShowOptions = {
+          packages: localOpts.packages === true,
+          // Human output always prints the `tags:` line, so it always needs the probe. Only
+          // `--json` mode makes it opt-in — that is where the wasted subprocess showed up.
+          tags: !opts.json || localOpts.tags === true,
+        };
+        const { data, warnings } = await runShow(ctx, ref, showOptions);
         emit(ctx, opts, showHuman(data), data, warnings);
       })();
     });

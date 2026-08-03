@@ -34,7 +34,10 @@ coding agents (Claude Opus 4.8 and GPT-5.6), **with** refs providing the source 
 **without** it. With refs, answer correctness roughly doubled — **37% → 87%** — and refs
 won every decisive paired item. A control question answerable from general knowledge
 showed *no* difference between the two, confirming the gain is a real source effect rather
-than a scoring artifact. This is a directional pilot, not a citable effect size — the full
+than a scoring artifact. The **with refs** arm measures runs in which the agent had the
+checkout in front of it and read it; in everyday use that path is reached by invoking the
+skill, which is explicitly invoked and never activates on its own (see
+[Agent skill](#agent-skill)). This is a directional pilot, not a citable effect size — the full
 method and honest caveats are in
 [`bench/source-access/FINDINGS.md`](bench/source-access/FINDINGS.md).
 
@@ -66,6 +69,11 @@ $env:REFS_HOME = "D:\refs"
 ```
 
 ### Agent skill
+
+**The skill is user-invoked.** It does not activate on its own — an agent will not reach
+for it just because a question sounds like it needs source. Invoke it explicitly with
+`/refs` in Claude Code or `$refs` in Codex, optionally followed by what you want looked
+up (e.g. `/refs how does zod implement codecs`).
 
 Install the agent-facing skill with `skills add` — note the GitHub repository is
 currently private, so this needs repo access (or a local clone) until `refs` goes
@@ -117,10 +125,10 @@ refs add npm:zod --dry-run
 refs add npm:zod --description "TypeScript-first schema validation" --json
 ```
 
-From here, an agent with the `refs` skill installed drives the rest: it resolves
-questions ("how does zod implement codecs") to the right ref/package with `refs
-resolve --json`, reads the checkout directly, and uses `refs sync`/`refs doctor` to keep
-things fresh — see `skills/refs/SKILL.md`.
+From here, invoke the skill (`/refs how does zod implement codecs` in Claude Code,
+`$refs ...` in Codex) and the agent drives the rest: it resolves the question to the right
+ref/package with `refs resolve --json`, reads the checkout directly, and uses `refs
+sync`/`refs doctor` to keep things fresh — see `skills/refs/SKILL.md`.
 
 Every command accepts `--json` for a stable, machine-readable envelope and `--verbose`
 for stack traces on error. Run `refs --help` or `refs <command> --help` — the CLI's own
