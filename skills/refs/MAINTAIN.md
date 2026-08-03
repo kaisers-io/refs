@@ -42,13 +42,22 @@ Runs environment/integrity checks and returns `{checks: [{name, status, detail}]
 `status` one of `ok`, `warn`, `fail`: `git`, `node`, `config`, `hooks-guard`,
 `dirty-checkouts`, `orphans`, `skill`, and (when any ref uses ssh) `ssh-auth`. Report
 every non-`ok` check with its `detail` message, and explain what it means in plain terms.
-A `warn` on `skill` means one of three things: the skill wasn't found in
-`~/.claude/skills` or `~/.codex/skills` (the only two paths the check looks at — a
-project-level, plugin, or symlinked install reads the same way), the installed copy
-predates the version gate, or the CLI version it pins in its frontmatter doesn't match the
-running CLI. Every `detail` carries the command that fixes it, but only a version mismatch
-it can order names which side is behind — an unorderable pair (a prerelease on either side)
-says to reinstall both. Relay it verbatim rather than guessing. A `fail`
+A `warn` on `skill` means one of three things: the skill wasn't found where the check
+looked, the installed copy predates the version gate, or the CLI version it pins in its
+frontmatter doesn't match the running CLI. The locations it looks in are `~/.agents/skills`,
+`$CLAUDE_CONFIG_DIR` (else `~/.claude`) `/skills`, `$CODEX_HOME` (else `~/.codex`)
+`/skills`, `<cwd>/.agents/skills`, and `<cwd>/.claude/skills` — symlinks between them are
+followed and counted once, and the "not found" `detail` names the paths actually searched,
+so it names an override rather than the default it replaced.
+**That list is best-effort, not exhaustive**: the installer defaults to project scope
+and dozens of other agents have directories of their own, so a "not found" only means this
+check couldn't see it — never tell the user their skill isn't installed on that basis, and
+never treat it as blocking. You are reading this file, so the skill is installed; your own
+capability gate (`SKILL.md` §1) compares `refs --version` against the pin above and is the
+only thing that matters. Every `detail` carries the command that fixes it, but only a
+version mismatch it can order names which side is behind — an unorderable pair (a
+prerelease on either side) says to reinstall both. Relay it verbatim rather than
+guessing. A `fail`
 on `dirty-checkouts` means a managed checkout picked up local changes outside of
 `refs sync`'s own self-heal, which is worth investigating rather than ignoring. Like
 `sync` above, the exit code goes non-zero on any `fail` even though the envelope is
