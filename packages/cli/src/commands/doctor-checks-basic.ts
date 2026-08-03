@@ -1,15 +1,15 @@
 import type { Config, RefsHome } from '@kaisers-io/refs-core';
 import { SCHEMA_VERSION, readConfig, zConfig } from '@kaisers-io/refs-core';
+import { readFile, realpath } from 'node:fs/promises';
 import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
 import { errorMessageOf } from '../output.ts';
 import { join } from 'node:path';
-import { readFile } from 'node:fs/promises';
 
 // The four checks that need neither a per-checkout `Runner` loop nor the `sources/` directory
 // walk: `git`/`node` are environment probes, `config` wraps `readConfig`'s own typed errors, and
-// `skill` — the largest of the four — reads the installed skill's YAML frontmatter out of each
-// agent home and compares the `metadata.cli_version` it pins against the running CLI version.
+// `skill` — the largest of the four — reads the installed skill's YAML frontmatter out of every
+// install location and compares the `metadata.cli_version` it pins against the running CLI version.
 // Sibling modules own the rest: doctor-checks-checkouts.ts (per-checkout git iteration),
 // doctor-checks-orphans.ts (sources/ directory walk), doctor-checks-ssh.ts (ssh auth probing);
 // doctor.ts only orders and collects them.
@@ -114,26 +114,60 @@ const buildConfigCheck = (errorMessage: string | undefined): CheckResult => {
   return { detail: errorMessage, name: 'config', status: 'fail' };
 };
 
+const AGENTS_SKILL_SEGMENTS = ['.agents', 'skills', 'refs', 'SKILL.md'] as const;
 const CLAUDE_SKILL_SEGMENTS = ['.claude', 'skills', 'refs', 'SKILL.md'] as const;
 const CODEX_SKILL_SEGMENTS = ['.codex', 'skills', 'refs', 'SKILL.md'] as const;
 const SKILL_INSTALL_HINT = 'npx skills add kaisers-io/refs';
 const CLI_UPDATE_HINT = 'npm i -g @kaisers-io/refs@latest';
 
-/** The agent homes a skill can be installed into, each resolved below against `ctx.env['HOME']` —
+/** The locations a skill can be installed into, each resolved below against `ctx.env['HOME']` —
  * never the real process env directly (per `context.ts`'s injected-seam invariant). An unset
  * `HOME` (e.g. a test's bare `testContext()`) means no candidates at all, which reports as "not
- * found" rather than throwing on a `join()` with `undefined`. */
+ * found" rather than throwing on a `join()` with `undefined`.
+ *
+ * `~/.agents` comes first because it is where `npx skills add` — the documented installer — puts
+ * the only real copy, symlinking each agent's own directory at it; the per-agent paths after it
+ * are what a manual `cp -r` produces. First place wins the dedupe below, so the survivor of a
+ * symlinked install is named by the shared directory it actually lives in rather than by whichever
+ * agent happens to link to it. Its label says "shared" because every agent reads that one copy. */
 const SKILL_LOCATIONS = [
+  { label: 'shared ~/.agents', segments: AGENTS_SKILL_SEGMENTS },
   { label: 'Claude Code', segments: CLAUDE_SKILL_SEGMENTS },
   { label: 'Codex', segments: CODEX_SKILL_SEGMENTS },
 ] as const;
 
-const readIfPresent = async (path: string): Promise<string | undefined> => {
+type FoundSkill = {
+  label: string;
+  realPath: string;
+  source: string;
+};
+
+/** `realpath` before `readFile` so the symlinked install can be recognised as one copy rather than
+ * three. A throw is never a problem to report: an absent path (the usual case — nobody has all
+ * three) and an unreadable one both mean "nothing to compare here", and an install that exists
+ * nowhere falls through to `NOT_INSTALLED` below. Read-only throughout: `refs` writes nothing
+ * outside `REFS_HOME`, and this check touches no path with anything but `realpath`/`readFile`. */
+const readSkillAt = async (path: string, label: string): Promise<FoundSkill | undefined> => {
   try {
-    return await readFile(path, 'utf8');
+    const resolved = await realpath(path);
+    return { label, realPath: resolved, source: await readFile(resolved, 'utf8') };
   } catch {
     return undefined;
   }
+};
+
+/** Keeps the first entry per resolved path. `npx skills add` leaves `~/.claude/skills/refs` (and
+ * others) pointing at `~/.agents/skills/refs`, so without this the one installed copy would be
+ * read two or three times and reported as if separate installs agreed — or, once a location list
+ * grows, disagreed. `Map` iteration is insertion-ordered, so the earliest location wins. */
+const uniqueByRealPath = (entries: readonly FoundSkill[]): FoundSkill[] => {
+  const byRealPath = new Map<string, FoundSkill>();
+  for (const entry of entries) {
+    if (!byRealPath.has(entry.realPath)) {
+      byRealPath.set(entry.realPath, entry);
+    }
+  }
+  return [...byRealPath.values()];
 };
 
 // Pulls `metadata.cli_version` out of the skill's YAML frontmatter without a YAML dependency —
@@ -228,27 +262,27 @@ const NOT_INSTALLED: CheckResult = {
  * silently; the skill pins the CLI version it was written against in its frontmatter, and this
  * check is the only thing that ever compares the two.
  *
- * Both agent homes are checked, and a problem in EITHER wins over an `ok` in the other: `doctor`
- * cannot know which agent is about to read the skill, so a stale Claude Code copy must not be
- * hidden by a current Codex one. The `detail` names the platform so the fix is unambiguous. */
+ * Every distinct copy is checked, and a problem in ANY of them wins over an `ok` in the others:
+ * `doctor` cannot know which agent is about to read the skill, so a stale Claude Code copy must
+ * not be hidden by a current shared one. The `detail` names the location so the fix is
+ * unambiguous. */
 const checkSkill = async (ctx: CliContext): Promise<CheckResult> => {
   const home = ctx.env['HOME'];
+  if (home === undefined) {
+    return NOT_INSTALLED;
+  }
   const found = await Promise.all(
-    SKILL_LOCATIONS.map(async (location) => ({
-      label: location.label,
-      source:
-        home === undefined ? undefined : await readIfPresent(join(home, ...location.segments)),
-    })),
+    SKILL_LOCATIONS.map((location) =>
+      readSkillAt(join(home, ...location.segments), location.label),
+    ),
   );
-  const checks = found
-    .filter((entry) => entry.source !== undefined)
-    .map((entry) =>
-      buildSkillVersionCheck({
-        cliVersion: ctx.cliVersion,
-        label: entry.label,
-        skillVersion: skillCliVersionOf(entry.source ?? ''),
-      }),
-    );
+  const checks = uniqueByRealPath(found.filter((entry) => entry !== undefined)).map((entry) =>
+    buildSkillVersionCheck({
+      cliVersion: ctx.cliVersion,
+      label: entry.label,
+      skillVersion: skillCliVersionOf(entry.source),
+    }),
+  );
   return checks.find((check) => check.status !== 'ok') ?? checks[0] ?? NOT_INSTALLED;
 };
 

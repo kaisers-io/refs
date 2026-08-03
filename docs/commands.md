@@ -352,7 +352,7 @@ only thing that compares the two. Six outcomes:
 
 | Situation                                                  | Status | `detail` says                                      |
 | ---------------------------------------------------------- | ------ | -------------------------------------------------- |
-| No `SKILL.md` in either agent home                         | `warn` | install it: `npx skills add kaisers-io/refs`       |
+| No `SKILL.md` in any checked location                      | `warn` | install it: `npx skills add kaisers-io/refs`       |
 | The pinned version equals the running CLI                  | `ok`   | the skill matches this CLI                         |
 | The skill targets a **newer** CLI                          | `warn` | update the CLI: `npm i -g @kaisers-io/refs@latest` |
 | The skill targets an **older** CLI                         | `warn` | update the skill: `npx skills add kaisers-io/refs` |
@@ -364,11 +364,18 @@ a prerelease, a build-metadata suffix — lands in the last row, where the check
 neither side and asks you to reinstall both rather than guess an ordering. Exact string
 equality is checked first, though, so two identical non-plain versions still report `ok`.
 
-Both installation locations are checked, `~/.claude/skills/refs/SKILL.md` and
-`~/.codex/skills/refs/SKILL.md`, and the `detail` names which one it is reporting on. A
-problem in either wins over an `ok` in the other: `doctor` cannot know which agent is
-about to read the skill, so a stale Claude Code copy is never hidden by a current Codex
-one.
+Three installation locations are checked, in this order:
+`~/.agents/skills/refs/SKILL.md` (labelled `shared ~/.agents`),
+`~/.claude/skills/refs/SKILL.md` (`Claude Code`) and `~/.codex/skills/refs/SKILL.md`
+(`Codex`); the `detail` names the one it is reporting on. `npx skills add` installs the
+only real copy into the shared `~/.agents` directory and symlinks the per-agent ones at
+it, so the locations are deduplicated by resolved real path — a symlinked install is
+reported once, under the shared label, not once per agent. A location that does not
+exist is skipped silently.
+
+A problem in any of the surviving copies wins over an `ok` in the others: `doctor` cannot
+know which agent is about to read the skill, so a stale copy that a manual `cp -r` left
+in `~/.claude` is never hidden by a current shared one.
 
 Exit codes: `0` (all checks `ok`/`warn`), `1` (any check `fail`, or an unexpected error).
 
