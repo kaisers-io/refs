@@ -55,6 +55,7 @@ const parseSoleEnvelope = (stdout: readonly string[]): JsonEnvelope => {
 
 type ResolveDataShape = {
   key: string;
+  last_fetched_at?: string;
   local_path: string;
   missing: boolean;
   package: { local_path: string; name: string; path: string } | null;
@@ -62,14 +63,18 @@ type ResolveDataShape = {
 };
 
 /** Seeds the shared next.js monorepo fixture (two packages, fresh state, a present checkout) and
- * returns its resolved checkout path — the common starting point for steps 1-4's happy paths. */
-const seedNextFixture = async (env: CliContext['env']): Promise<{ dest: string }> => {
+ * returns its resolved checkout path and `last_fetched_at` — the common starting point for steps
+ * 1-4's happy paths. */
+const seedNextFixture = async (
+  env: CliContext['env'],
+): Promise<{ dest: string; lastFetchedAt: string }> => {
   const home = resolveHome(env);
+  const lastFetchedAt = minutesAgoIso(FRESH_MINUTES_AGO);
   await seedConfig(home, { [NEXT_KEY]: NEXT_ENTRY });
-  await seedState(home, { [NEXT_KEY]: { last_fetched_at: minutesAgoIso(FRESH_MINUTES_AGO) } });
+  await seedState(home, { [NEXT_KEY]: { last_fetched_at: lastFetchedAt } });
   const dest = checkoutPath(home, zRefKey.parse(NEXT_KEY));
   await markCheckoutPresent(dest);
-  return { dest };
+  return { dest, lastFetchedAt };
 };
 
 describe('refs resolve: exact npm package name (step 2)', () => {
@@ -79,7 +84,7 @@ describe('refs resolve: exact npm package name (step 2)', () => {
       withTempHome(async (homeDir) => {
         const { ctx, stdout } = testContext();
         ctx.env['REFS_HOME'] = homeDir;
-        const { dest } = await seedNextFixture(ctx.env);
+        const { dest, lastFetchedAt } = await seedNextFixture(ctx.env);
 
         await run(ctx, ['node', 'refs', 'resolve', 'next', '--json']);
 
@@ -87,6 +92,7 @@ describe('refs resolve: exact npm package name (step 2)', () => {
         expect(envelope.ok).toBe(true);
         expect(envelope.data).toStrictEqual({
           key: NEXT_KEY,
+          last_fetched_at: lastFetchedAt,
           local_path: dest,
           missing: false,
           package: {
@@ -252,9 +258,9 @@ describe('refs resolve: ambiguous suffix passes matchRefKey usageError through u
 });
 
 describe('refs resolve: human mode', () => {
-  // Labeled-field convention mirroring `show.ts`'s `showHuman` (`local_path: ...`), rather than the
-  // terser "key + bare path on one line" pairing this command used before.
-  it('prints labeled key/local_path/package lines', async () => {
+  // Key/value convention mirroring `show.ts`'s `showHuman` (`ref:`/`path:`/`synced:`), rather
+  // than the bare-key + `local_path:` pairing this command used before.
+  it('prints ref/path/synced/package/package path lines', async () => {
     expect.hasAssertions();
     await withResetExitCode(() =>
       withTempHome(async (homeDir) => {
@@ -265,10 +271,11 @@ describe('refs resolve: human mode', () => {
         await run(ctx, ['node', 'refs', 'resolve', 'next']);
 
         expect(stdout).toStrictEqual([
-          NEXT_KEY,
-          `local_path: ${dest}`,
+          `ref: ${NEXT_KEY}`,
+          `path: ${dest}`,
+          'synced: 1 minute ago',
           'package: next',
-          `local_path: ${join(dest, 'packages', 'next')}`,
+          `package path: ${join(dest, 'packages', 'next')}`,
         ]);
       }),
     );
