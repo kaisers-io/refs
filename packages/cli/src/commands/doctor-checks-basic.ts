@@ -25,16 +25,17 @@ const checkGit = async (ctx: CliContext): Promise<CheckResult> => {
 
 const NODE_VERSION_PATTERN = /^v(?<major>\d+)\.(?<minor>\d+)/u;
 const MIN_SUPPORTED_MAJOR = 24;
-const MIN_SUPPORTED_MINOR = 12;
+const MIN_SUPPORTED_MINOR = 2;
 
 type ParsedNodeVersion = {
   major: number;
   minor: number;
 };
 
-// Parses only the major/minor out of `process.version` (e.g. `v24.12.0`) — deliberately without a
-// `semver` dependency: the supported range (`>=24.12`, open-ended) only ever needs major/minor
-// comparison, never patch or prerelease handling.
+// Parses only the major/minor out of `process.version` (e.g. `v24.2.0`) — deliberately without a
+// `semver` dependency: the supported range (`>=24.2`, open-ended — see the rationale comment in
+// packages/cli/bin/refs.mjs) only ever needs major/minor comparison, never patch or prerelease
+// handling.
 const parseNodeVersion = (version: string): ParsedNodeVersion | undefined => {
   const match = NODE_VERSION_PATTERN.exec(version);
   const majorText = match?.groups?.['major'];
@@ -45,7 +46,7 @@ const parseNodeVersion = (version: string): ParsedNodeVersion | undefined => {
   return { major: Number(majorText), minor: Number(minorText) };
 };
 
-// `>=24.12` is open-ended: any major above 24 is accepted outright, major 24 needs minor >= 12,
+// `>=24.2` is open-ended: any major above 24 is accepted outright, major 24 needs minor >= 2,
 // and anything below that (older 24.x minors, or any earlier major) is rejected.
 const satisfiesSupportedRange = (parsed: ParsedNodeVersion | undefined): boolean => {
   if (parsed === undefined) {
@@ -67,7 +68,7 @@ const checkNode = (ctx: CliContext): CheckResult => {
     return { detail: version, name: 'node', status: 'ok' };
   }
   return {
-    detail: `${version} does not satisfy the required range >=24.12`,
+    detail: `${version} does not satisfy the required range >=24.2`,
     name: 'node',
     status: 'fail',
   };

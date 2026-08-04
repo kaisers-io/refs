@@ -22,7 +22,7 @@ through anyway — but this is discipline enforced by convention and tooling, no
 
 ## Install
 
-Requirements: Node.js `>=24.12` and git. macOS, Linux, and Windows are fully supported —
+Requirements: Node.js `>=24.2` and git. macOS, Linux, and Windows are fully supported —
 every command, locking, sync, and the read-only guards behave the same on all three (on
 Windows, use [Git for Windows](https://gitforwindows.org/)).
 

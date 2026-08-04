@@ -22,6 +22,21 @@ jobs:
       # keeping the gate off Windows means a justified platform skip can never flake the ratchet.
       - run: pnpm test:coverage
         if: matrix.os == 'ubuntu-latest'
+  # Proves the supported floor (package.json engines.node, see the rationale comment in
+  # packages/cli/bin/refs.mjs) actually runs, not just that the number was typed somewhere.
+  # Fixed node-version (not node-version-file, which would pin this to the dev version in
+  # .node-version) — Linux only, no matrix: one interpreter is enough to catch drift.
+  check-node-floor:
+    name: check (node floor)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with: { node-version: 24.2.0, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm exec vitest run --config bench/vitest.config.mjs
   # Two files carry the released version (see scripts/versions.mjs). Both are
   # knowable on a PR, so the disagreement is caught here rather than by the release workflow after
   # the bump commit is already on main. No pnpm install and no matrix: plain Node, one platform.

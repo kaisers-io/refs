@@ -7,8 +7,12 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+// The floor is `import.meta.main`, which Node added in 24.2.0. `src/index.ts` uses it as its
+// entry-point check; on an older Node the expression is `undefined` (falsy), so the CLI never
+// runs and the process exits 0 with no output at all — silently, not with an error. That silent
+// no-op is exactly what this check exists to turn into an actionable message.
 const REQUIRED_NODE_MAJOR = 24;
-const REQUIRED_NODE_MINOR_MIN = 12;
+const REQUIRED_NODE_MINOR_MIN = 2;
 const EXIT_FAILURE = 1;
 const FALLBACK_VERSION_PART = 0;
 
@@ -29,9 +33,7 @@ if (
   major < REQUIRED_NODE_MAJOR ||
   (major === REQUIRED_NODE_MAJOR && minor < REQUIRED_NODE_MINOR_MIN)
 ) {
-  console.error(
-    `refs requires Node.js >=24.12 — you are running Node.js ${process.versions.node}.`,
-  );
+  console.error(`refs requires Node.js >=24.2 — you are running Node.js ${process.versions.node}.`);
   console.error('Install a matching version, e.g.: nvm install 24');
   process.exit(EXIT_FAILURE);
 }

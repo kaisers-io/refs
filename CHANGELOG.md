@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Lowered the supported Node.js floor from `>=24.12` to `>=24.2`. The real requirement was
+  always `import.meta.main` (used by the CLI's entry-point check), which Node added in 24.2.0 —
+  the higher number had no other reason behind it. Users on Node 24.2 through 24.11 were
+  previously blocked for no reason and can now run `refs` as-is.
+
 ### Fixed
 
 - The agent skill's citation contract now binds every source reference, not only
