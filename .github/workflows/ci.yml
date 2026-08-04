@@ -23,9 +23,20 @@ jobs:
       - run: pnpm test:coverage
         if: matrix.os == 'ubuntu-latest'
   # Proves the supported floor (package.json engines.node, see the rationale comment in
-  # packages/cli/bin/refs.mjs) actually runs, not just that the number was typed somewhere.
-  # Fixed node-version (not node-version-file, which would pin this to the dev version in
-  # .node-version) — Linux only, no matrix: one interpreter is enough to catch drift.
+  # packages/cli/bin/refs.mjs) actually runs the SHIPPED bundle, not just that the number was
+  # typed somewhere and the source tests happen to pass on it.
+  #
+  # Two `setup-node` calls, on purpose (the second's node-version wins for every step after it):
+  # tsdown (the bundler `pnpm build` invokes) declares `engines.node: "^22.18.0 || >=24.11.0"` —
+  # newer than our 24.2 floor — so it cannot itself run on the floor interpreter. That is not a
+  # gap in the floor: the floor is a claim about the RUNTIME of the published bundle, and users
+  # install that prebuilt bundle from npm — they never run tsdown. So this job installs and
+  # builds on the development pin (node-version-file: .node-version, where tsdown is supported),
+  # then switches to the floor interpreter to run `pnpm check`, the bench suite, and — the part
+  # source-only testing can't cover — a smoke test of the built packages/cli/dist/refs.mjs,
+  # which also carries bundled/minified zod, commander and smol-toml. Do not collapse this back
+  # into one setup-node step; that would silently drop the guarantee that the shipped artifact,
+  # not just the source, runs on the floor.
   check-node-floor:
     name: check (node floor)
     runs-on: ubuntu-latest
@@ -33,10 +44,38 @@ jobs:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
-        with: { node-version: 24.2.0, cache: pnpm }
+        with: { node-version-file: .node-version, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - uses: actions/setup-node@v7
+        with: { node-version: 24.2.0, cache: pnpm }
       - run: pnpm check
       - run: pnpm exec vitest run --config bench/vitest.config.mjs
+      - name: smoke test the built dist/refs.mjs on the floor interpreter
+        run: |
+          set -euo pipefail
+          node --version
+          BUNDLE="packages/cli/dist/refs.mjs"
+          EXPECTED="$(node -p "require('./packages/cli/package.json').version")"
+          export REFS_HOME="$(mktemp -d)"
+          VERSION="$(node "$BUNDLE" --version)"
+          [ "$VERSION" = "$EXPECTED" ] || {
+            echo "refs --version printed '$VERSION', expected '$EXPECTED'"; exit 1;
+          }
+          node "$BUNDLE" init --json >/dev/null
+          node "$BUNDLE" doctor --json | node -e '
+            let raw = "";
+            process.stdin.on("data", (chunk) => { raw += chunk; });
+            process.stdin.on("end", () => {
+              const { data } = JSON.parse(raw);
+              const node = data.checks.find((check) => check.name === "node");
+              if (node === undefined || node.status !== "ok") {
+                console.error("doctor node check did not report ok:", node);
+                process.exit(1);
+              }
+              console.log("doctor node check ok:", node.detail);
+            });
+          '
   # Two files carry the released version (see scripts/versions.mjs). Both are
   # knowable on a PR, so the disagreement is caught here rather than by the release workflow after
   # the bump commit is already on main. No pnpm install and no matrix: plain Node, one platform.
