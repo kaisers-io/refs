@@ -17,16 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - The Claude Code and Codex plugin packaging (`.claude-plugin/`, `.codex-plugin/`, and the
-  `.agents/plugins/marketplace.json` mirror). Both manifests wrapped no payload beyond the
-  `refs` skill, so installing one created a second, independently-drifting copy of the skill
-  `npx skills add` already installs in one command across dozens of agents — real drift was
-  observed: two `refs` entries in the Codex skill picker, and an icon that reached only one
-  of the copies. If you installed the plugin, uninstall it (Claude Code: `/plugin`; Codex
-  CLI: `/plugins`) and install the skill instead: `npx skills add kaisers-io/refs`. `refs`
-  now ships exactly two ways: the CLI via npm (`@kaisers-io/refs`) and the skill via `npx
-skills add`. The `@refs` plugin-mention gap in Codex (codex-cli 0.146.0, see
-  [openai/codex#22078](https://github.com/openai/codex/issues/22078)) no longer applies —
-  there is no plugin to mention. Use `$refs` to invoke the skill.
+  `.agents/plugins/marketplace.json` mirror). Neither manifest carried a payload beyond the
+  `refs` skill, so installing one produced a second copy that could drift from the one
+  `skills add` installs — observed in practice: two `refs` entries in the Codex skill picker,
+  and an icon that reached only one of them. `refs` now ships exactly two ways: the CLI from
+  npm (`@kaisers-io/refs`) and the skill from git (`skills add`).
+
+  If you installed the plugin, uninstall it (Claude Code: `/plugin`; Codex CLI: `/plugins`)
+  and install the skill instead — see the install section in the README, which covers the
+  repository still being private. The `@refs` plugin-mention gap in Codex (codex-cli 0.146.0,
+  [openai/codex#22078](https://github.com/openai/codex/issues/22078)) no longer applies: there
+  is no plugin to mention. Invoke the skill with `/refs` in Claude Code or `$refs` in Codex.
 
 ## [0.7.0] - 2026-08-03
 
