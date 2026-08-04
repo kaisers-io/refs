@@ -30,9 +30,9 @@
     "capabilities": ["Interactive", "Read", "Write"],
     "websiteURL": "https://github.com/kaisers-io/refs",
     "defaultPrompt": [
-      "Add vercel/next.js as a ref and describe its packages.",
-      "How does zod implement refinements? Read the real source from my refs.",
-      "Sync my refs and tell me what changed since yesterday."
+      "$refs Add vercel/next.js as a ref and describe its packages.",
+      "$refs How does zod implement refinements? Read the real source from my refs.",
+      "$refs Sync my refs and tell me what changed since yesterday."
     ],
     "brandColor": "#07D256",
     "composerIcon": "./assets/logo-monogram.svg",

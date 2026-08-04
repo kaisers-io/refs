@@ -82,6 +82,11 @@ does not activate on its own; invoke it with `/refs` in Claude Code or `$refs` i
 from the GitHub repository, which is private during the current development phase — it
 opens up when `refs` goes public.
 
+In Codex, `@refs` is a plugin mention, not a skill invocation, and as of 2026-08-03
+(codex-cli 0.146.0) it gives the model no skill instructions — a Codex-side limitation,
+not a misconfiguration (`refs doctor` still reports `ok`). Use `$refs`. See
+[openai/codex#22078](https://github.com/openai/codex/issues/22078).
+
 `refs doctor`'s `skill` check looks for the installed skill in `~/.agents`, `~/.claude`,
 `~/.codex` and the current project's `./.agents`/`./.claude`; a `warn` there means the
 check couldn't see your skill, not that it is missing.
