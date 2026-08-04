@@ -1,6 +1,6 @@
 {
   "name": "@kaisers-io/refs",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Managed read-only git checkouts of reference repositories for coding agents.",
   "keywords": [
     "ai",
