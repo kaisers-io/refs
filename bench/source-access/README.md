@@ -32,7 +32,7 @@ difference between arms is **cwd + preamble** (`conditions/*.md`).
 ## Run
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v26.4.0/bin:$PATH"   # needs Node >=24.12 for refs
+export PATH="$HOME/.nvm/versions/node/v26.4.0/bin:$PATH"   # needs Node >=24.2 for refs
 
 # Full pilot (~9 items x 2 arms x 2 models x 3 repeats ~= 108 gen cells + judging):
 node bench/source-access/run.mjs
