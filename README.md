@@ -75,6 +75,15 @@ for it just because a question sounds like it needs source. Invoke it explicitly
 `/refs` in Claude Code or `$refs` in Codex, optionally followed by what you want looked
 up (e.g. `/refs how does zod implement codecs`).
 
+In Codex, `$refs` and `@refs` are not variants of the same thing: `$refs` invokes the
+skill, while `@refs` is a plugin mention. As of 2026-08-03 (codex-cli 0.146.0), `@refs`
+gives the model no skill instructions at all — the skill behaves as if it weren't
+installed. A plugin mention injects at most a short capability note naming any MCP
+servers or apps the plugin ships (refs ships neither); it never surfaces skill
+instructions, regardless of what the plugin bundles. That's a Codex-side limitation,
+not a misconfiguration; `refs doctor` correctly reports `ok` either way. See
+[openai/codex#22078](https://github.com/openai/codex/issues/22078).
+
 Install the agent-facing skill with `skills add` — note the GitHub repository is
 currently private, so this needs repo access (or a local clone) until `refs` goes
 public:
