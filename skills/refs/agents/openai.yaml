@@ -1,8 +1,7 @@
 interface:
   display_name: 'Refs'
   short_description: 'Answer from real dependency source'
-  icon_small: './assets/logo-monogram.svg'
-  icon_large: './assets/logo-monogram.png'
-  brand_color: '#07D256'
+  icon_small: './assets/icon.png'
+  icon_large: './assets/icon.png'
 policy:
   allow_implicit_invocation: false
