@@ -43,7 +43,7 @@ method and honest caveats are in
 
 ## Install
 
-Requirements: Node.js `>=24.12` and git. macOS, Linux, and Windows are fully
+Requirements: Node.js `>=24.2` and git. macOS, Linux, and Windows are fully
 supported — every command, locking, sync, and the read-only guards behave the same on
 all three, and the full test suite plus a smoke test run in CI on each of them.
 

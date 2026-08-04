@@ -21,7 +21,7 @@ from an older manual install. Ignore it; the files beside this one are authorita
 Run `refs --version`.
 
 - **`refs: command not found`** → the CLI isn't installed. Check `node --version` first;
-  refs needs Node.js `>=24.12`, and on a mismatched runtime that is the real problem
+  refs needs Node.js `>=24.2`, and on a mismatched runtime that is the real problem
   (suggest `nvm install 24`) rather than a failed install. Otherwise tell the user the
   CLI is on npm as `@kaisers-io/refs`, ask permission to install it globally, and on yes
   run `npm i -g @kaisers-io/refs`, then re-run `refs --version` and take the branch below.
