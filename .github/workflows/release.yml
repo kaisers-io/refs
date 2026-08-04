@@ -76,7 +76,7 @@ jobs:
             exit 1
           fi
       - name: Guard — every version site declares this CLI version
-        # Which five files carry the version, why they must agree, and why one run reports every
+        # Which two files carry the version, why they must agree, and why one run reports every
         # disagreement: see the header of scripts/versions.mjs, which replaced the two inline guards
         # that used to live here. `--check` also runs on every PR (ci.yml), so by tag time this is a
         # re-assertion rather than a first look. Placed after the origin/main containment guard and
