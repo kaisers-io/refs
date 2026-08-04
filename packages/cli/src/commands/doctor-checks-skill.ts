@@ -60,7 +60,8 @@ const agentHomeOf = (args: AgentHomeArgs): SkillRoot | undefined => {
  * the canonical directory has moved before, the README table documenting it is generated from the
  * installer's own source (and is already wrong for Codex), and 74 agents carry a global directory
  * each. Enumerating them is not a strategy, so this covers the installer's canonical location plus
- * the two agents `refs` ships plugin manifests for. Three consequences worth knowing:
+ * the two agents `refs` documents an invocation for, Claude Code and Codex. Three consequences
+ * worth knowing:
  *
  * - Project scope is the installer's DEFAULT (`-g` is opt-in), and `skills add` implies `-y` when
  *   it detects it is running inside an agent — so an agent-driven install lands in
