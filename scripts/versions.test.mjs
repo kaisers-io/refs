@@ -189,23 +189,27 @@ test('--set refuses the whole bump when one site is unrewritable, and writes not
 
 /** Once writing has begun the script must never claim nothing was written — it must name the damage. */
 const assertHalfBumped = (err) => {
-  match(err, /skills\/refs\/SKILL\.md could not be written/u);
+  match(err, /packages\/cli\/package\.json could not be written/u);
   match(err, /the tree is half-bumped/u);
   ok(!err.includes('nothing was written'), `the operator was told a falsehood: ${err}`);
   const line = err.split('\n').find((text) => text.includes('half-bumped'));
-  ok(line.includes(SOURCE), line);
+  ok(line.includes('nothing already at'), line);
 };
 
-test('--set names the half-bumped tree when a write fails mid-flight', { skip: AS_ROOT }, async () => {
+// packages/cli/package.json is written first (readSites returns the JSON site before the skill
+// site), so locking it is what recreates the case writeEdits's stop-on-first-failure `return`
+// exists for: skills/refs/SKILL.md is next in the sequence and must be left untouched. If that
+// `return` ever regressed into a `continue`, writeEdits would carry on and bump it anyway.
+test('--set names the half-bumped tree, and leaves the site after it untouched, when the first write fails', { skip: AS_ROOT }, async () => {
   const root = await makeTree();
-  const locked = join(root, SKILL);
+  const locked = join(root, SOURCE);
   await chmod(locked, READ_ONLY);
   const { code, err } = run(root, '--set', NEXT);
   await chmod(locked, READ_WRITE);
   strictEqual(code, EXIT_PROBLEMS);
   assertHalfBumped(err);
-  strictEqual(await readFile(join(root, SKILL), 'utf8'), skillDoc(AT), 'the locked site was written despite the failure');
-  strictEqual(await readFile(join(root, SOURCE), 'utf8'), pkg(NEXT), 'an earlier site was not written');
+  strictEqual(await readFile(join(root, SOURCE), 'utf8'), pkg(AT), 'the locked site was written despite the failure');
+  strictEqual(await readFile(join(root, SKILL), 'utf8'), skillDoc(AT), 'a later site was written despite the earlier failure');
 });
 
 test('an unrecognised invocation is a usage error', async () => {
