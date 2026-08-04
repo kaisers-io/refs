@@ -8,7 +8,7 @@
 //
 // The script resolves its root from `import.meta.url` and takes no root argument, so rather than
 // widen its interface each test copies it into a throwaway tree's `scripts/` directory and runs
-// the copy. The real five files are never read, never written, and never even on the path.
+// the copy. The real two files are never read, never written, and never even on the path.
 
 import { after, test } from 'node:test';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -20,8 +20,6 @@ import { tmpdir } from 'node:os';
 
 const SCRIPT = fileURLToPath(new URL('versions.mjs', import.meta.url));
 const SOURCE = 'packages/cli/package.json';
-const MARKETPLACE = '.claude-plugin/marketplace.json';
-const CODEX = '.codex-plugin/plugin.json';
 const SKILL = 'skills/refs/SKILL.md';
 
 const EXIT_OK = 0;
@@ -40,18 +38,11 @@ const WRONG = '9.9.9';
 // Fixture renderers, one per site, shaped like the real files: `"version"` always starts its own
 // line, because that is what the script's surgical rewrite anchors to.
 const pkg = (version) => `{\n  "name": "@kaisers-io/refs",\n  "version": "${version}",\n  "type": "module"\n}\n`;
-const plugin = (version) =>
-  `{\n  "name": "refs",\n  "description": "no version key here",\n  "version": "${version}"\n}\n`;
-const marketplace = (version) =>
-  `{\n  "name": "kaisers-io",\n  "plugins": [\n    {\n      "name": "refs",\n      "version": "${version}"\n    }\n  ]\n}\n`;
 const skillDoc = (version) =>
   `---\nname: refs\nmetadata:\n  cli_version: '${version}'\n---\n\n# refs\n\nProse about version pins.\n`;
 
 const FILES = {
   [SOURCE]: pkg,
-  '.claude-plugin/plugin.json': plugin,
-  [MARKETPLACE]: marketplace,
-  [CODEX]: plugin,
   [SKILL]: skillDoc,
 };
 
@@ -92,11 +83,11 @@ const readTree = (root) =>
 test('--check passes on a consistent tree', async () => {
   const { code, out } = run(await makeTree(), '--check');
   strictEqual(code, EXIT_OK);
-  match(out, /version 1\.2\.3 is consistent across all five sites/u);
+  match(out, /version 1\.2\.3 is consistent across both sites/u);
 });
 
-// The load-bearing case: a wrong value at any one of the five sites must be caught and named. A
-// wrong source of truth is the mirror image — the other four are what get reported as disagreeing.
+// The load-bearing case: a wrong value at either site must be caught and named. A wrong source of
+// truth is the mirror image — the skill is what gets reported as disagreeing.
 for (const [file, render] of Object.entries(FILES)) {
   test(`--check fails, naming the site, when ${file} alone says ${WRONG}`, async () => {
     const { code, err, errors } = run(await makeTree({ [file]: render(WRONG) }), '--check');
@@ -112,17 +103,10 @@ for (const [file, render] of Object.entries(FILES)) {
   });
 }
 
-test('--check fails on a plugins[] entry with no version at all', async () => {
-  const entry = '{\n  "plugins": [\n    {\n      "name": "refs"\n    }\n  ]\n}\n';
-  const { code, errors } = run(await makeTree({ [MARKETPLACE]: entry }), '--check');
-  strictEqual(code, EXIT_PROBLEMS);
-  match(errors.join('\n'), /marketplace\.json \.plugins\[0\] \(refs\) says \(no version field\)/u);
-});
-
 test('--check fails on malformed JSON without throwing a stack trace', async () => {
-  const { code, err, errors } = run(await makeTree({ [CODEX]: '{ "version": ' }), '--check');
+  const { code, err, errors } = run(await makeTree({ [SOURCE]: '{ "version": ' }), '--check');
   strictEqual(code, EXIT_PROBLEMS);
-  match(errors.join('\n'), /\.codex-plugin\/plugin\.json is not valid JSON/u);
+  match(errors.join('\n'), /packages\/cli\/package\.json is not valid JSON/u);
   ok(!err.includes('at Object.'), `stack trace leaked: ${err}`);
 });
 
@@ -132,12 +116,6 @@ test('--check fails on a missing file', async () => {
   match(errors.join('\n'), /skills\/refs\/SKILL\.md could not be read/u);
 });
 
-test('--check fails on plugins: [null]', async () => {
-  const { code, errors } = run(await makeTree({ [MARKETPLACE]: '{\n  "plugins": [null]\n}\n' }), '--check');
-  strictEqual(code, EXIT_PROBLEMS);
-  match(errors.join('\n'), /marketplace\.json \.plugins\[0\] is not a JSON object/u);
-});
-
 test('--check fails when the source of truth has no usable version', async () => {
   const { code, errors } = run(await makeTree({ [SOURCE]: '{\n  "name": "@kaisers-io/refs"\n}\n' }), '--check');
   strictEqual(code, EXIT_PROBLEMS);
@@ -145,14 +123,16 @@ test('--check fails when the source of truth has no usable version', async () =>
 });
 
 // One run, every problem: at release time nobody should need a second CI run to find the next one.
+// The source of truth and the skill fail independently here, proving a broken source doesn't
+// suppress the (unrelated) problem in the skill file.
 test('--check reports every problem in a single run', async () => {
-  const overrides = { '.claude-plugin/plugin.json': plugin(WRONG), [CODEX]: 'not json at all', [SKILL]: skillDoc(WRONG) };
+  const overrides = { [SOURCE]: 'not json at all', [SKILL]: 'no frontmatter here at all\n' };
   const { code, err, errors } = run(await makeTree(overrides), '--check');
   strictEqual(code, EXIT_PROBLEMS);
   strictEqual(errors.length, THREE, `expected three problems, got: ${err}`);
-  ok(errors.some((line) => line.includes('.claude-plugin/plugin.json')), err);
-  ok(errors.some((line) => line.includes('.codex-plugin/plugin.json is not valid JSON')), err);
-  ok(errors.some((line) => line.includes('SKILL.md metadata.cli_version')), err);
+  ok(errors.some((line) => line.includes(`${SOURCE} is not valid JSON`)), err);
+  ok(errors.some((line) => line.includes(`${SKILL} has no YAML frontmatter block`)), err);
+  ok(errors.some((line) => line.includes(`${SOURCE} has no usable .version`)), err);
 });
 
 test('--set round-trips: --check passes afterwards, and only version lines moved', async () => {
@@ -160,7 +140,7 @@ test('--set round-trips: --check passes afterwards, and only version lines moved
   const before = new Map(await readTree(root));
   const bump = run(root, '--set', NEXT);
   strictEqual(bump.code, EXIT_OK);
-  match(bump.out, /all five version sites now declare 2\.0\.0/u);
+  match(bump.out, /both version sites now declare 2\.0\.0/u);
   strictEqual(run(root, '--check').code, EXIT_OK);
   for (const [file, current] of await readTree(root)) {
     notStrictEqual(current, before.get(file), `${file} was not bumped`);
@@ -192,8 +172,11 @@ for (const good of ['0.6.0', '1.2.3', '1.2.3-rc.1', '1.2.3+build.5', '0.0.0']) {
 }
 
 // A site that reads fine but cannot be rewritten must stop the bump before any byte is written.
+// Two "version"-shaped lines in the source of truth (one nested) trip the surgical rewrite's line
+// count check, which expects exactly one.
 test('--set refuses the whole bump when one site is unrewritable, and writes nothing', async () => {
-  const root = await makeTree({ '.claude-plugin/plugin.json': '{ "name": "refs", "version": "1.2.3" }\n' });
+  const nested = '{\n  "name": "@kaisers-io/refs",\n  "version": "1.2.3",\n  "extra": {\n    "version": "1.2.3"\n  }\n}\n';
+  const root = await makeTree({ [SOURCE]: nested });
   const before = new Map(await readTree(root));
   const { code, err } = run(root, '--set', NEXT);
   strictEqual(code, EXIT_PROBLEMS);
@@ -206,23 +189,22 @@ test('--set refuses the whole bump when one site is unrewritable, and writes not
 
 /** Once writing has begun the script must never claim nothing was written — it must name the damage. */
 const assertHalfBumped = (err) => {
-  match(err, /\.codex-plugin\/plugin\.json could not be written/u);
+  match(err, /skills\/refs\/SKILL\.md could not be written/u);
   match(err, /the tree is half-bumped/u);
   ok(!err.includes('nothing was written'), `the operator was told a falsehood: ${err}`);
   const line = err.split('\n').find((text) => text.includes('half-bumped'));
-  ok(line.includes(SOURCE) && line.includes(MARKETPLACE), line);
-  ok(!line.includes(SKILL), `${SKILL} was never written but is listed as bumped: ${line}`);
+  ok(line.includes(SOURCE), line);
 };
 
 test('--set names the half-bumped tree when a write fails mid-flight', { skip: AS_ROOT }, async () => {
   const root = await makeTree();
-  const locked = join(root, CODEX);
+  const locked = join(root, SKILL);
   await chmod(locked, READ_ONLY);
   const { code, err } = run(root, '--set', NEXT);
   await chmod(locked, READ_WRITE);
   strictEqual(code, EXIT_PROBLEMS);
   assertHalfBumped(err);
-  strictEqual(await readFile(join(root, SKILL), 'utf8'), skillDoc(AT), 'a later site was written anyway');
+  strictEqual(await readFile(join(root, SKILL), 'utf8'), skillDoc(AT), 'the locked site was written despite the failure');
   strictEqual(await readFile(join(root, SOURCE), 'utf8'), pkg(NEXT), 'an earlier site was not written');
 });
 

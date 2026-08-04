@@ -13,17 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   worker-relayed ones. An inline investigation (no worker dispatched, per the step 3
   dosing rule) previously fell outside the contract and could emit bare absolute paths
   instead of clickable relative-text links.
-- `.codex-plugin/plugin.json`'s starter prompts now begin with `$refs`, so clicking one
-  actually invokes the skill instead of silently landing in the `@refs` gap described
-  below.
 
-### Changed
+### Removed
 
-- README.md and packages/cli/README.md now note that in Codex, `$refs` invokes the
-  skill while `@refs` is a plugin mention that, as of 2026-08-03 (codex-cli 0.146.0),
-  gives the model no skill instructions at all — a Codex-side limitation, not a
-  misconfiguration, tracked at
-  [openai/codex#22078](https://github.com/openai/codex/issues/22078).
+- The Claude Code and Codex plugin packaging (`.claude-plugin/`, `.codex-plugin/`, and the
+  `.agents/plugins/marketplace.json` mirror). Both manifests wrapped no payload beyond the
+  `refs` skill, so installing one created a second, independently-drifting copy of the skill
+  `npx skills add` already installs in one command across dozens of agents — real drift was
+  observed: two `refs` entries in the Codex skill picker, and an icon that reached only one
+  of the copies. If you installed the plugin, uninstall it (Claude Code: `/plugin`; Codex
+  CLI: `/plugins`) and install the skill instead: `npx skills add kaisers-io/refs`. `refs`
+  now ships exactly two ways: the CLI via npm (`@kaisers-io/refs`) and the skill via `npx
+skills add`. The `@refs` plugin-mention gap in Codex (codex-cli 0.146.0, see
+  [openai/codex#22078](https://github.com/openai/codex/issues/22078)) no longer applies —
+  there is no plugin to mention. Use `$refs` to invoke the skill.
 
 ## [0.7.0] - 2026-08-03
 
