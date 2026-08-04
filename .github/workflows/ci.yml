@@ -22,7 +22,7 @@ jobs:
       # keeping the gate off Windows means a justified platform skip can never flake the ratchet.
       - run: pnpm test:coverage
         if: matrix.os == 'ubuntu-latest'
-  # Five files carry the released version (see scripts/versions.mjs). Every one of them is
+  # Two files carry the released version (see scripts/versions.mjs). Both are
   # knowable on a PR, so the disagreement is caught here rather than by the release workflow after
   # the bump commit is already on main. No pnpm install and no matrix: plain Node, one platform.
   versions:

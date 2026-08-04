@@ -75,15 +75,6 @@ for it just because a question sounds like it needs source. Invoke it explicitly
 `/refs` in Claude Code or `$refs` in Codex, optionally followed by what you want looked
 up (e.g. `/refs how does zod implement codecs`).
 
-In Codex, `$refs` and `@refs` are not variants of the same thing: `$refs` invokes the
-skill, while `@refs` is a plugin mention. As of 2026-08-03 (codex-cli 0.146.0), `@refs`
-gives the model no skill instructions at all — the skill behaves as if it weren't
-installed. A plugin mention injects at most a short capability note naming any MCP
-servers or apps the plugin ships (refs ships neither); it never surfaces skill
-instructions, regardless of what the plugin bundles. That's a Codex-side limitation,
-not a misconfiguration; `refs doctor` correctly reports `ok` either way. See
-[openai/codex#22078](https://github.com/openai/codex/issues/22078).
-
 Install the agent-facing skill with `skills add` — note the GitHub repository is
 currently private, so this needs repo access (or a local clone) until `refs` goes
 public:
@@ -116,16 +107,6 @@ honouring `$CLAUDE_CONFIG_DIR`/`$CODEX_HOME`) and the current project's `./.agen
 `./.claude`, so either install above reports as found. That list is best-effort — the
 installer supports dozens of other agents — so a `warn` there means the check couldn't see
 your skill, not that it is missing. See [docs/commands.md](docs/commands.md#the-skill-check).
-
-### Native plugin marketplaces (alternative)
-
-Each agent's own plugin marketplace also works, and pulls in the bundled logo/branding:
-
-- **Claude Code:** `/plugin marketplace add kaisers-io/refs` → `/plugin install refs@refs`
-- **Codex CLI:** `codex plugin marketplace add git@github.com:kaisers-io/refs.git` → install via `/plugins`
-
-The repo is currently private, so both commands only work for accounts with repo access
-(as with the skill install above) — this opens up once `refs` goes public.
 
 When launched **inside** this repo, Codex auto-discovers the skill via the
 `.agents/skills/` symlink — no install step needed.
