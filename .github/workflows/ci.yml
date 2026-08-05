@@ -151,4 +151,3 @@ jobs:
           refs sync --json
           $key = refs list --json | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.parse(d).data[0].key))"
           refs remove $key --json
-# NOTE: no publish job — private phase (spec §8). Added only at go-public.

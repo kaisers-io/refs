@@ -66,7 +66,7 @@ describe('syncRef() set-head refresh failure', () => {
   });
 });
 
-// Task 10 gap: `resolveSyncBranch` re-detects the default branch every sync (`origin/HEAD` refresh
+// Coverage gap: `resolveSyncBranch` re-detects the default branch every sync (`origin/HEAD` refresh
 // + `symbolic-ref`) and reports a rename via `branchRenamedTo` when it no longer matches the
 // PREVIOUSLY-configured `opts.defaultBranch` — the real-git integration suite never forces a
 // rename (its fixture repo's default branch never moves mid-test), so this scripts one instead: a
@@ -106,7 +106,7 @@ const scriptDirtyCleanup = (runner: FakeRunner): void => {
   runner.expect('git clean -fd', {});
 };
 
-// Task 10 gap: `buildSyncResult` merges a restore warning (dirty checkout) with a set-head-refresh
+// Coverage gap: `buildSyncResult` merges a restore warning (dirty checkout) with a set-head-refresh
 // warning (`setHeadWarning`) rather than one replacing the other — the real-git suite and the
 // set-head-only unit test above each force only ONE of the two conditions, so neither exercises the
 // branch where both fire in the SAME sync.

@@ -159,7 +159,7 @@ describe('refs add: checkout identity — credentialed expected url is redacted'
         withTempHome(async (homeDir) => {
           const { ctx, home, proposal, stdout } = await setupDryRunFixture(homeDir);
           // Only a non-empty string is required by `zFinalProposal`, so a credentialed url
-          // reaches `ensureCheckoutOrigin` as `expectedUrl` verbatim (review round 2, Task 30).
+          // reaches `ensureCheckoutOrigin` as `expectedUrl` verbatim.
           const completed = {
             ...proposal,
             description: 'A fixture repo.',

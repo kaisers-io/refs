@@ -43,14 +43,14 @@ jobs:
           fi
           echo "tag $TAG matches package version $PKG_VERSION"
       - name: Guard — packaged CHANGELOG.md matches the repository one
-        # The tarball ships packages/cli/CHANGELOG.md so npm users can see changes while the
-        # GitHub repo is private; this fails the release when a bump edits only the root copy.
+        # The tarball ships packages/cli/CHANGELOG.md so npm users can see changes without
+        # leaving the package page; this fails the release when a bump edits only the root copy.
         run: cmp CHANGELOG.md packages/cli/CHANGELOG.md
       - name: Guard — CHANGELOG.md has a heading for the released version
         # `cmp` above proves the two copies match, not that either describes this release. Since the
         # version bump moved into the feature branch (87c10d0), the entry can still sit under
         # `## [Unreleased]` at tag time — and that publishes cleanly, leaving a 0.6.0 tarball whose
-        # packaged changelog (the only one npm users can see while the repo is private) shows 0.5.1
+        # packaged changelog (the one npm shows on the package page) shows 0.5.1
         # as the newest release. Checked on the root copy alone because `cmp` already tied them.
         env:
           TAG: ${{ github.ref_name }}

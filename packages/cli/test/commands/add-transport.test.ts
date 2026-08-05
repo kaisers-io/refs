@@ -4,7 +4,7 @@ import type { CliContext } from '../../src/context.ts';
 import { testContext } from '../helpers/context.ts';
 import { zSettings } from '@kaisers-io/refs-core';
 
-// Unit suite for the spec §3 transport rule as consumed by `refs add`: only `npm:`-resolved
+// Unit suite for the transport rule as consumed by `refs add`: only `npm:`-resolved
 // sources are rewritten to the configured `git_transport`; an explicitly-typed url is used
 // verbatim. Exercised at the `resolveAddSource` → `applyConfiguredTransport` seam — the exact
 // pair `runDryRunCore` calls before cloning and before capturing the url into the proposal —

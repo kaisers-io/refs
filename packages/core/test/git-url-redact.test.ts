@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { redactUrl } from '../src/git-url-redact.ts';
 
-// Direct unit suite for `redactUrl` — review round 2 (Task 30) proved the first implementation's
-// non-global, start-anchored patterns let secrets through on inputs that aren't a single
-// well-formed url (exactly what this helper exists for: `git remote get-url` output and other
-// arbitrary strings). Every case here is a PROVEN leak vector from that review; redaction is
+// Direct unit suite for `redactUrl` — the first implementation's non-global, start-anchored
+// Patterns let secrets through on inputs that aren't a single well-formed url (exactly what this
+// Helper exists for: `git remote get-url` output and other arbitrary strings). Every case here is
+// A PROVEN leak vector against that implementation; redaction is
 // allowed to be lossy on garbage input, so these assert only that the secret is gone and that a
 // `<redacted>` marker appears — never an exact output shape.
 

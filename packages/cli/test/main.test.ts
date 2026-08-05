@@ -39,11 +39,11 @@ type UsageEnvelope = {
 // stay under the repo's max-statements/max-expects caps.
 const parseUsageEnvelope = (line: string): UsageEnvelope => JSON.parse(line) as UsageEnvelope;
 
-// Envelope-contract tests (spec §4 HIGH-fix): every Commander parsing failure class must still
+// Envelope-contract tests: every Commander parsing failure class must still
 // Come out through `emitError`'s single-line json envelope when `--json` was requested, even
-// Though parsing failed before the program's own action code ever ran. Registry is empty in this
-// Scaffold (no commands registered yet — Task 15+), so these only exercise Commander's own
-// help/version/unknown-option/missing-argument failure classes, never a thrown domain error.
+// Though parsing failed before the program's own action code ever ran. These exercise Commander's
+// Own help/version/unknown-option/missing-argument failure classes only, never a thrown domain
+// Error — that path is covered separately below.
 describe('cli envelope contract: help and version', () => {
   it('--help exits 0 and writes usage text to stdout', async () => {
     expect.hasAssertions();
@@ -109,7 +109,7 @@ describe('cli envelope contract: parsing failures', () => {
   });
 });
 
-// Finding 1 (review round 1): a bare positional at the root — e.g. `refs status` — with the
+// A bare positional at the root — e.g. `refs status` — with the
 // Registry still empty must not be silently accepted; it has to raise `commander.excessArguments`
 // And flow through the same usage-error envelope as every other Commander parsing failure class
 // Above, in both json and human mode.
@@ -140,7 +140,7 @@ describe('cli envelope contract: stray positionals at the root (finding 1)', () 
   });
 });
 
-// Finding 2 (review round 1): `isJsonMode` must stop scanning at the `--` terminator — a `--json`
+// `isJsonMode` must stop scanning at the `--` terminator — a `--json`
 // Token that only appears as a literal operand after `--` must not flip the renderer into json
 // Mode, and vice versa a `--json` token before the terminator still must.
 describe('cli envelope contract: -- terminator (finding 2)', () => {
@@ -170,12 +170,12 @@ describe('cli envelope contract: -- terminator (finding 2)', () => {
   });
 });
 
-// Finding 3 (review round 1): an unexpected (non-Commander) error escaping `parseAsync` must
-// Still honor `--verbose` — currently `handleUnexpectedError` hardcodes `verbose: false`, so the
-// Global option's documented promise ("stack traces on error") silently never applies to this
-// Path. Drives a throwaway action-throwing probe command, mirroring the missing-argument
-// Probe-seam pattern above, since the empty registry has no reachable real command yet.
-describe('cli envelope contract: --verbose on unexpected errors (finding 3)', () => {
+// An unexpected (non-Commander) error escaping `parseAsync` must still honor `--verbose` —
+// Currently `handleUnexpectedError` hardcodes `verbose: false`, so the global option's documented
+// Promise ("stack traces on error") silently never applies to this path. Drives a throwaway
+// Action-throwing probe command, mirroring the missing-argument probe-seam pattern above, because
+// No real command throws an unexpected error on purpose.
+describe('cli envelope contract: --verbose on unexpected errors', () => {
   it('an unexpected thrown error with --verbose renders a stack trace', async () => {
     expect.hasAssertions();
     await withResetExitCode(async () => {
@@ -192,11 +192,11 @@ describe('cli envelope contract: --verbose on unexpected errors (finding 3)', ()
   });
 });
 
-// Task 14 gap: `--json` and `--verbose` combined on a Commander parsing failure (never a thrown
+// `--json` and `--verbose` combined on a Commander parsing failure (never a thrown
 // `RefsError`) must still produce exactly one envelope, with the appended stack safely
 // `JSON.stringify`d (its embedded newlines escaped to the two-character `\n` sequence) rather than
 // breaking the single-line-on-stdout contract.
-describe('cli envelope contract: --json + --verbose combined on a parse failure (Task 14 gap)', () => {
+describe('cli envelope contract: --json + --verbose combined on a parse failure', () => {
   it('unknown option embeds a JSON-escaped stack inside one envelope', async () => {
     expect.hasAssertions();
     await withResetExitCode(async () => {

@@ -61,12 +61,11 @@ for it just because a question sounds like it needs source. Invoke it explicitly
 `/refs` in Claude Code or `$refs` in Codex, optionally followed by what you want looked
 up (e.g. `/refs how does zod implement codecs`).
 
-Install the agent-facing skill with `skills add` — note the GitHub repository is
-currently private, so this needs repo access (or a local clone) until `refs` goes
-public:
+Install the agent-facing skill with `skills add` — either straight from the repository
+or from a local clone:
 
 ```bash
-npx skills add kaisers-io/refs            # with repo access
+npx skills add kaisers-io/refs
 npx skills add <path-to-a-local-clone> --skill refs
 ```
 

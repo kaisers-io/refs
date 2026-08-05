@@ -17,7 +17,8 @@ import { tmpdir } from 'node:os';
 
 // Real git integration suite: exercises SpawnRunner against actual git repos ('file://' fixtures),
 // Never a mock — this is the one place we prove the exact command sequences in git/repo.ts behave
-// The way the design doc (spec §4) says a managed checkout must.
+// The way a managed checkout must: clone blobless, survive a force-pushed upstream, restore a
+// Dirty tree back to the tracked state, and refuse to touch a checkout that is not managed.
 
 const TEST_TIMEOUT_MS = 30_000;
 const SUCCESS_EXIT_CODE = 0;

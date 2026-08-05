@@ -103,7 +103,7 @@ const finalizeViaProposalFile = async (
 };
 
 /** Stubs `ctx.readStdin` to resolve with `completed` (a filled-in proposal, JSON-stringified) and
- * runs `refs add --proposal - --json` against it — the `readStdin '-'` branch (Task 16 gap)
+ * runs `refs add --proposal - --json` against it — the `readStdin '-'` branch
  * mirrors `finalizeViaProposalFile` above but through the stdin seam instead of a real file. */
 const finalizeViaStdinProposal = async (ctx: CliContext, completed: unknown): Promise<void> => {
   ctx.readStdin = () => Promise.resolve(JSON.stringify(completed));
@@ -185,7 +185,7 @@ const expectPackagesWithDescriptions = async (
 
 // `effective_clone_mode` must be `'full'` here even though the default config `clone_mode` setting
 // is `'blobless'`: a plain `file://` fixture remote never honours `--filter=blob:none` (see
-// `git/repo.ts#cloneRepo`'s documented fallback, established in Task 10), so this also proves the
+// `git/repo.ts#cloneRepo`'s documented fallback), so this also proves the
 // real clone result — not just the global setting — reaches state at finalize time.
 const expectFinalizedState = async (home: RefsHome, key: string): Promise<void> => {
   const state = await readState(home);
