@@ -184,7 +184,7 @@ describe('canonicalizeGitUrl file url opt-in', () => {
 // [input, transport, expected output] — every transformed case must also be key-invariant,
 // asserted separately below via canonicalizeGitUrl round-trips.
 const TRANSPORT_CASES: readonly [string, 'https' | 'ssh', string][] = [
-  // Rewriting https → ssh yields the scp form with a .git suffix (spec §3 amended transport rule).
+  // Rewriting https → ssh yields the scp form with a .git suffix.
   ['https://github.com/example/demo.git', 'ssh', 'git@github.com:example/demo.git'],
   ['https://github.com/vercel/next.js', 'ssh', 'git@github.com:vercel/next.js.git'],
   // Host is lowercased in the rewrite target; path case is preserved verbatim (mirrors the base

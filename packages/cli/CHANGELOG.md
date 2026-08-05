@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `refs init`'s skill-install hint now presents the second form as installing from a local
+  clone, rather than as a workaround for the repository's development phase. Both commands
+  are unchanged; only the wording differs.
+
 ## [0.8.0] - 2026-08-04
 
 ### Changed

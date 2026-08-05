@@ -39,7 +39,7 @@ type UsageEnvelope = {
 // stay under the repo's max-statements/max-expects caps.
 const parseUsageEnvelope = (line: string): UsageEnvelope => JSON.parse(line) as UsageEnvelope;
 
-// Envelope-contract tests (spec §4 HIGH-fix): every Commander parsing failure class must still
+// Envelope-contract tests: every Commander parsing failure class must still
 // Come out through `emitError`'s single-line json envelope when `--json` was requested, even
 // Though parsing failed before the program's own action code ever ran. Registry is empty in this
 // Scaffold (no commands registered yet — Task 15+), so these only exercise Commander's own

@@ -79,8 +79,8 @@ questions ("how does zod implement codecs") to the right checkout via `refs reso
 --json` and keeps things fresh with `refs sync`/`refs doctor`. It is user-invoked — it
 does not activate on its own; invoke it with `/refs` in Claude Code or `$refs` in Codex.
 `refs init` prints the exact install command for your setup. The skill is distributed
-from the GitHub repository, which is private during the current development phase — it
-opens up when `refs` goes public.
+from the GitHub repository rather than from npm, so it is installed with `skills add`
+rather than with this package.
 
 `refs doctor`'s `skill` check looks for the installed skill in `~/.agents`, `~/.claude`,
 `~/.codex` and the current project's `./.agents`/`./.claude`; a `warn` there means the
@@ -93,8 +93,8 @@ its working directory.
 
 ## Changelog
 
-`CHANGELOG.md` ships inside this package (npm's "Code" tab shows it) — the GitHub
-repository is private during the current development phase.
+`CHANGELOG.md` ships inside this package, so npm's "Code" tab shows it without leaving
+the package page.
 
 ## License
 

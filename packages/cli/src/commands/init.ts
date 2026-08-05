@@ -12,7 +12,7 @@ import pkg from '../../package.json' with { type: 'json' };
 // so the actual `npx skills add` install step is left for the human/agent to run.
 const SKILL_HINT =
   'Install the agent skill: npx skills add kaisers-io/refs   ' +
-  '(private phase: npx skills add <path-to-this-repo> --skill refs)';
+  '(from a local clone: npx skills add <path-to-this-repo> --skill refs)';
 
 type InitData = {
   config: 'seeded' | 'migrated' | 'noop';
