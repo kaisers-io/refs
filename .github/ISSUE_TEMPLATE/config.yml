@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/kaisers-io/refs/security/advisories/new
+    about: Report privately instead of opening a public issue.
+  - name: Command reference
+    url: https://github.com/kaisers-io/refs/blob/main/docs/commands.md
+    about: Every command, its flags, and its exact output — including the --json envelope.
+  - name: Configuration reference
+    url: https://github.com/kaisers-io/refs/blob/main/docs/configuration.md
+    about: refs home layout, config file format, and environment variables.

@@ -1,0 +1,103 @@
+name: Bug report
+description: Something in refs does not behave as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. The `refs doctor --json` output below answers most of the questions
+        a maintainer would otherwise have to ask, so please include it — it is worth more than a
+        long description.
+
+        **Do not report security issues here.** Use
+        [private vulnerability reporting](https://github.com/kaisers-io/refs/security/advisories/new)
+        instead.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you run, and what did refs do?
+      placeholder: |
+        I ran `refs add npm:zod` and it exited 1 with "..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`refs doctor --json` output"
+      description: |
+        Run `refs doctor --json` and paste the output. It reports your git and Node versions,
+        whether the config and the git hooks guard are in place, and the state of your checkouts.
+
+        refs redacts credentials from URLs, but the output does name your configured refs. Have a
+        look before pasting if any of them are private.
+      render: json
+    validations:
+      required: true
+
+  - type: input
+    id: cli-version
+    attributes:
+      label: refs version
+      description: "Output of `refs --version` (also in the doctor output, but handy at a glance)."
+      placeholder: "0.8.0"
+    validations:
+      required: true
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js version
+      description: "Output of `node --version`. The supported floor is 24.2."
+      placeholder: "v24.12.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install refs?
+      options:
+        - "npm i -g @kaisers-io/refs"
+        - Another package manager
+        - From a clone of this repository
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: |
+        The exact commands, from a fresh `REFS_HOME` if possible:
+        `export REFS_HOME="$(mktemp -d)"` isolates the run from your real setup.
+      render: shell
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: |
+        If the command failed, `--verbose` adds a stack trace. Paste it here if you have it.

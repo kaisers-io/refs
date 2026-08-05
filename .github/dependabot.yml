@@ -1,0 +1,32 @@
+version: 2
+updates:
+  # The published CLI is a single bundle with zod, commander and smol-toml baked in, so a
+  # dependency update ships straight to users rather than being resolved at install time.
+  # That makes staying current here more load-bearing than in a normal package.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for the toolchain — these move together and are covered by `pnpm check`.
+      dev-tooling:
+        dependency-type: development
+        patterns:
+          - "*"
+    commit-message:
+      prefix: build
+      prefix-development: chore
+      include: scope
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: ci
+      include: scope
