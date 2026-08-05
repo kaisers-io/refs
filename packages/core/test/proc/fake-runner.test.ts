@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FakeRunner } from '../../src/proc/fake-runner.ts';
 
-// Task 24 gap: `FakeRunner.expect()` queues scripted responses FIFO — consumed in the order they
+// Coverage gap: `FakeRunner.expect()` queues scripted responses FIFO — consumed in the order they
 // were queued, not matched by content — so this proves that ordering holds across MULTIPLE (≥3)
 // queued calls rather than relying on every other suite's incidental single/double-call coverage.
 

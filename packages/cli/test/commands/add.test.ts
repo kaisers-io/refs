@@ -116,7 +116,7 @@ describe('refs add --proposal', () => {
   );
 
   it(
-    '(b2) finalizes a completed proposal read from stdin (`--proposal -`, Task 16 gap)',
+    '(b2) finalizes a completed proposal read from stdin (`--proposal -`)',
     async () => {
       expect.hasAssertions();
       await withResetExitCode(() =>

@@ -26,8 +26,8 @@ import { run } from '../../src/main.ts';
 import { testContext } from '../helpers/context.ts';
 import { writePendingProposal } from '../../src/commands/add-dry-run.ts';
 
-// Review-round regression suite for `refs add`'s two-phase flow, covering the guards added on top
-// of Task 16's original implementation: atomic/checked finalize (rev-parse under the ref lock,
+// Regression suite for `refs add`'s two-phase flow, covering the guards added on top
+// of its original implementation: atomic/checked finalize (rev-parse under the ref lock,
 // never nested with the home lock), checkout-identity verification (reused checkouts and
 // finalize targets must still point at the expected origin), the dry-run/finalize race guard, and
 // a permanent repeated-`--dry-run` regression test. Kept out of `add.test.ts` (cases (a)-(e))
@@ -38,7 +38,7 @@ import { writePendingProposal } from '../../src/commands/add-dry-run.ts';
 const TEST_TIMEOUT_MS = 30_000;
 const BOGUS_ORIGIN = 'https://example.com/someone/else.git';
 // A `git remote get-url origin` value carrying an embedded credential — the secret-echo case
-// (Task 30) for the origin-mismatch conflict message below.
+// For the origin-mismatch conflict message below.
 const CREDENTIALED_BOGUS_ORIGIN = 'https://token:sekrit@example.com/someone/else.git';
 // A named `CloneMode | undefined` value rather than a literal `undefined` at the call site below
 // (the race-guard test calls `writePendingProposal` directly, whose third parameter is required
@@ -128,7 +128,7 @@ describe('refs add: checkout identity verification', () => {
   );
 });
 
-// Secret-echo regression (Task 30): kept in its own `describe` (rather than folded into "checkout
+// Secret-echo regression: kept in its own `describe` (rather than folded into "checkout
 // identity verification" above) purely to keep that block's function under the repo's
 // 50-line-per-function oxlint cap.
 describe('refs add: origin-mismatch message redacts embedded credentials', () => {

@@ -75,7 +75,7 @@ const FILE_URL_CASES: readonly [string, string][] = [
   ['file:///C:/repos/team/project', 'local/team/project'],
 ];
 
-// Secret-echo regression (Task 30): `assertNoBackslash`/`assertNoPercentEncodingUnlessFile`/
+// Secret-echo regression: `assertNoBackslash`/`assertNoPercentEncodingUnlessFile`/
 // `parseUrl` all run BEFORE `assertNoCredentials` ever gets a chance to reject an embedded
 // password, so a url combining one of those guard triggers WITH embedded credentials must still
 // never echo the password into the thrown message.
@@ -91,7 +91,7 @@ const CREDENTIALED_LEAK_CASES: readonly [string, string][] = [
   ['ht!tp://user:sekrit@host/a/b', 'an unparseable url still echoes raw input by default'],
   [
     'ssh:/user:sekrit@host/owner/repo',
-    'authority-less ssh url (review round 2) — WHATWG parses the credentials into pathname ' +
+    'authority-less ssh url — WHATWG parses the credentials into pathname ' +
       '(username/password stay empty, so assertNoCredentials never fires) and parseAsRefKey ' +
       'used to echo the derived key verbatim',
   ],
@@ -138,7 +138,7 @@ describe('canonicalizeGitUrl never echoes embedded credentials', () => {
     expect(message).not.toContain('sekrit');
   });
 
-  // The parseAsRefKey echo is also reachable through the buildFileKey caller (review round 2) —
+  // The parseAsRefKey echo is also reachable through the buildFileKey caller —
   // a file url whose decoded path fails zRefKey used to land verbatim in the derived-key message.
   it('rejects a credentialed-looking file url path without leaking it (allowFileUrls)', () => {
     expect.hasAssertions();
@@ -254,7 +254,7 @@ describe('applyGitTransport url rewriting', () => {
 
   // A password-less ssh USERNAME legally survives canonicalization (only passwords are
   // rejected), so applyGitTransport's own error messages are a reachable echo path for a
-  // token-shaped username (review round 3) — e.g. a registry-resolved ssh url with a
+  // token-shaped username — e.g. a registry-resolved ssh url with a
   // non-default port under git_transport=https.
   it('never echoes userinfo in the non-default-port rejection', () => {
     expect.hasAssertions();

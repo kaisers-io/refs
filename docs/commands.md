@@ -61,7 +61,7 @@ refs init
 home: /Users/you/.kaisers-io/refs
 config: seeded
 
-Install the agent skill: npx skills add kaisers-io/refs   (from a local clone: …)
+Install the agent skill: npx skills add kaisers-io/refs   (from a local clone: npx skills add <path-to-this-repo> --skill refs)
 ```
 
 A blank line separates the `home:`/`config:` block from the skill-install hint. On a
