@@ -27,20 +27,6 @@ sandbox.
 does everything deterministic (cloning, syncing, config, path/tag resolution), the skill
 only orchestrates the agent work (routing questions, dispatching subagents) on top of it.
 
-## Does it measurably help?
-
-A screening-grade pilot put source-requiring questions about a real dependency (`zod`) to
-coding agents (Claude Opus 4.8 and GPT-5.6), **with** refs providing the source vs.
-**without** it. With refs, answer correctness roughly doubled — **37% → 87%** — and refs
-won every decisive paired item. A control question answerable from general knowledge
-showed *no* difference between the two, confirming the gain is a real source effect rather
-than a scoring artifact. The **with refs** arm measures runs in which the agent had the
-checkout in front of it and read it; in everyday use that path is reached by invoking the
-skill, which is explicitly invoked and never activates on its own (see
-[Agent skill](#agent-skill)). This is a directional pilot, not a citable effect size — the full
-method and honest caveats are in
-[`bench/source-access/FINDINGS.md`](bench/source-access/FINDINGS.md).
-
 ## Install
 
 Requirements: Node.js `>=24.2` and git. macOS, Linux, and Windows are fully
