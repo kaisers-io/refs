@@ -1,0 +1,45 @@
+name: Feature request
+description: Suggest something refs should do
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        `refs` has a deliberately narrow scope: it manages read-only source checkouts so that a
+        coding agent can read real source. Two commands were once removed because a benchmark
+        showed agents never used them and native `git grep` / `git log` / `git diff` did the job
+        better — so "the agent can already do this with git" is a real reason to say no.
+
+        The most convincing feature requests describe a concrete situation where that fell short.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you hitting?
+      description: Describe the situation, not the solution you have in mind.
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What do you do today instead?
+      description: |
+        Including "nothing, I gave up". If plain git or an existing `refs` command nearly works,
+        say where it falls short.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like refs to do?
+      description: If you have a command shape in mind, sketch it.
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This is about managing source checkouts, not about analysing their contents.
+        - label: I have checked that no existing command covers it (`refs --help`, `docs/commands.md`).
