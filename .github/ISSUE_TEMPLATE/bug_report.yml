@@ -48,7 +48,7 @@ body:
     id: cli-version
     attributes:
       label: refs version
-      description: "Output of `refs --version` (also in the doctor output, but handy at a glance)."
+      description: "Output of `refs --version`. The doctor output above does not include it."
       placeholder: "0.8.0"
     validations:
       required: true

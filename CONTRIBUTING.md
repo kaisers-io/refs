@@ -26,8 +26,9 @@ Run the full check. It must pass:
 pnpm check                 # lint + format check + typecheck + tests
 ```
 
-That is exactly what CI runs, plus a coverage gate, a bundle-determinism check, and smoke tests on
-Linux, macOS, and Windows.
+That is exactly what CI runs — on Linux, macOS and Windows, and once more on the Node 24.2 floor.
+CI adds a coverage gate, a version-consistency check, a bundle-determinism check, and a smoke test
+of the packaged CLI on Linux and Windows.
 
 For a faster inner loop, run `pnpm dev` inside `packages/cli` and call
 `node packages/cli/bin/refs.mjs <args>` directly.
@@ -55,9 +56,11 @@ Please do not add AI-assistant attribution trailers.
 ## Adding a command
 
 Every command module exports a `registerX(program, ctx)` function and gets one entry in
-`packages/cli/src/commands/registry.ts`. Commands take their filesystem and process access from
-`CliContext` rather than reaching for globals — that is what makes them testable without touching
-the real home directory.
+`packages/cli/src/commands/registry.ts`. Commands take their process environment (`cwd`, `env`),
+their output (`out`, `errLine`), their stdin, and their outbound calls (`runner`, `fetcher`) from
+`CliContext` rather than reaching for the globals directly — that is what makes them testable
+without spawning real git or reading the real environment. Filesystem access is not injected;
+modules import `node:fs/promises` directly and tests isolate them with a throwaway `REFS_HOME`.
 
 Every command supports `--json`, which must emit exactly one line: a stable envelope with `ok`,
 `data`, and `warnings`, or `ok: false` with an `error` object. Human output and JSON output are

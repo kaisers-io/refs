@@ -26,8 +26,9 @@ there are no long-term support branches.
   tests.
 - Path traversal out of `REFS_HOME` when resolving refs, packages, or checkout paths.
 - Anything that causes `refs` to execute code from a checked-out reference repository. `refs` runs
-  git commands against checkouts; it must never run *their* code, including git hooks that came
-  from the remote.
+  git commands against checkouts; it must never run *their* code. Each checkout's `core.hooksPath`
+  points at the refs-owned hooks directory, so hooks living inside a checkout never run — a way to
+  defeat that is in scope.
 - Supply-chain problems in the published `@kaisers-io/refs` package — an unexpected bundled
   dependency, a lifecycle script, or a mismatch between the published artifact and this
   repository.

@@ -10,10 +10,21 @@ updates:
     open-pull-requests-limit: 5
     groups:
       # One PR for the toolchain — these move together and are covered by `pnpm check`.
+      #
+      # The bundled runtime libraries are excluded on purpose. `packages/cli` declares them as
+      # devDependencies (correctly: the published bundle inlines them, so the package has no
+      # runtime dependencies), which means Dependabot classifies them as `development` and would
+      # otherwise sweep them into this group. They ship to users, so they get their own pull
+      # requests and their own review.
       dev-tooling:
         dependency-type: development
         patterns:
           - "*"
+        exclude-patterns:
+          - zod
+          - commander
+          - "@commander-js/*"
+          - smol-toml
     commit-message:
       prefix: build
       prefix-development: chore
