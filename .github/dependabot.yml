@@ -8,6 +8,21 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # `@types/node` tracks the Node major it describes, so it is pinned to the runtime we
+      # actually support (`engines.node: ">=24.2"`, set there because `import.meta.main` landed in
+      # 24.2.0), not to the newest release. Taking the major bump would type-check this code
+      # against APIs that do not exist on the supported floor — the typecheck would pass and users
+      # on 24.x would hit a runtime error. Minor and patch updates within the 24 line still come
+      # through.
+      #
+      # Raising it is a floor change, not a dependency bump: the floor also lives in both
+      # `engines.node` fields, the guard in `packages/cli/bin/refs.mjs`, the
+      # `MIN_SUPPORTED_MAJOR`/`MIN_SUPPORTED_MINOR` constants in
+      # `packages/cli/src/commands/doctor-checks-basic.ts`, and the `check-node-floor` CI job.
+      # They move together or not at all.
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
     groups:
       # One PR for the toolchain — these move together and are covered by `pnpm check`.
       #
