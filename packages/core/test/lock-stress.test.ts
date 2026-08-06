@@ -11,16 +11,21 @@ const STRESS_HOLD_MS = 10;
 // The safety invariant under test: never more than a single concurrent lock holder.
 const SINGLE_HOLDER = 1;
 
-// Windows gets three times the allowance, and the reason is structural rather than "CI is slow".
-// The steal pipeline treats a sharing violation on the tombstone rename — or on re-creating a
-// directory Windows still holds delete-pending — as a lost race and retries, and every retry costs
-// a full `RETRY_INTERVAL_MS`. With this many waiters all stealing and releasing, those retries
-// compound: measured at ~1.2s on macOS against timeouts past 10s on Windows CI runners.
+// Windows gets three times the allowance — as a cushion, not as the fix. The defect this suite
+// actually exposed was an unbounded spin in the steal path, and that is fixed in `lock.ts`; what
+// remains is that Windows is genuinely slower at the handoff itself.
+//
+// The cost sits in the release-to-reacquire step, not in the steal: releasing leaves the directory
+// delete-pending, so the next waiter's `mkdir` fails with a sharing violation and is classified as
+// a lost race, `isLockStale` then sees a fresh meta-less directory and reports "not stale", and the
+// waiter sleeps a full `RETRY_INTERVAL_MS`. Several such cycles across eleven handoffs is what
+// pushed a ~1.2s suite past 10s on CI runners.
 //
 // This buys patience, not leniency. The property under test (`maxConcurrent === 1`) is untouched
 // and a genuine hang still fails, only later. The two values move together on purpose — the
 // acquire budget stays at half the test timeout, so a waiter that truly cannot acquire surfaces as
-// a conflictError instead of an uninformative vitest timeout.
+// a conflictError instead of an uninformative vitest timeout. That guarantee only holds because of
+// the `lock.ts` fix: before it, the stale branch never consulted the deadline at all.
 const WINDOWS_TIMEOUT_FACTOR = 3;
 const POSIX_TIMEOUT_FACTOR = 1;
 const TIMEOUT_FACTOR = process.platform === 'win32' ? WINDOWS_TIMEOUT_FACTOR : POSIX_TIMEOUT_FACTOR;

@@ -1,6 +1,6 @@
 import { DEAD_PID, makeHome, writeLockDir } from './helpers/lock-fixture.ts';
 import { describe, expect, it } from 'vitest';
-import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { EXIT } from '../src/errors.ts';
 import { setTimeout as delay } from 'node:timers/promises';
 import { join } from 'node:path';
@@ -134,6 +134,32 @@ describe('withLock timeout', () => {
       // eslint-disable-next-line node/no-sync -- test cleanup, sync is fine
       rmSync(lockPath, { force: true, recursive: true });
     }
+  });
+
+  // Regression: `stealOrWait` used to return from the stale branch without consulting the
+  // deadline, so a lock that diagnosed stale but could not actually be stolen spun without bound
+  // and the documented `timeoutMs` never applied. Seeded here by holding the steal claim: every
+  // attempt sees a stealable lock, none of them may remove it.
+  it('times out with a conflictError when a stale lock cannot be stolen', async () => {
+    expect.hasAssertions();
+    const home = makeHome();
+    // Stale by the dead-pid rule, so each attempt diagnoses it as stealable.
+    writeLockDir(home.locksDir, 'home', {
+      acquired_at: new Date().toISOString(),
+      pid: DEAD_PID,
+    });
+    // A fresh steal claim nobody releases. The timeout below stays under the implementation's
+    // 2s claim-staleness window, so the claim never becomes reclaimable during the attempt —
+    // without the deadline check this call would spin until the claim aged out and then succeed,
+    // which is exactly the bug.
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    mkdirSync(join(home.locksDir, 'home.steal-claim'), { recursive: true });
+
+    const attempt = withLock(home, 'home', () => Promise.resolve('unreachable'), {
+      timeoutMs: 300,
+    });
+
+    await expect(attempt).rejects.toMatchObject({ code: 'conflict', exitCode: EXIT.CONFLICT });
   });
 });
 

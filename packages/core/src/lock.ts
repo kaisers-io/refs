@@ -151,34 +151,38 @@ const acquireStealClaim = async (claimPath: string): Promise<boolean> => {
 // Atomically removes `ctx.lockPath` (rename-to-tombstone then `rm`, so a reader never observes a
 // half-deleted dir), or does nothing (`undefined`) if the rename race was lost — already gone, or
 // currently un-renamable on Windows (see `lock-fs.ts`) — between the caller's re-diagnosis and
-// this rename. Either way the acquire loop's retry recovers.
+// this rename. Either way the acquire loop's retry recovers: `undefined` propagates out as a
+// falsy steal result, so the caller backs off and re-checks the deadline instead of spinning.
 const renameToTombstoneOrNoop = async (ctx: LockCtx): Promise<string | undefined> => {
   const tombstonePath = tombstonePathFor(ctx);
   const renamed = await renameOrLostRace(ctx.lockPath, tombstonePath);
   return renamed ? tombstonePath : undefined;
 };
 
-const removeIfStillStale = async (ctx: LockCtx): Promise<void> => {
+// Resolves `true` only when the abandoned lock is actually gone, so the caller can tell a
+// productive steal from one that changed nothing and must therefore back off.
+const removeIfStillStale = async (ctx: LockCtx): Promise<boolean> => {
   if (!(await isLockStale(ctx.lockPath))) {
-    return;
+    return false;
   }
   const tombstonePath = await renameToTombstoneOrNoop(ctx);
   if (tombstonePath === undefined) {
-    return;
+    return false;
   }
   await rm(tombstonePath, { force: true, recursive: true });
+  return true;
 };
 
 // Claim-gated steal: only the exclusive claim holder re-diagnoses and removes `ctx.lockPath`, in
 // place (no move first) — see the module header for the full argument. If the re-diagnosis says
 // "not stale", nothing is touched.
-const stealStaleLock = async (ctx: LockCtx): Promise<void> => {
+const stealStaleLock = async (ctx: LockCtx): Promise<boolean> => {
   const claimPath = claimPathFor(ctx);
   if (!(await acquireStealClaim(claimPath))) {
-    return;
+    return false;
   }
   try {
-    await removeIfStillStale(ctx);
+    return await removeIfStillStale(ctx);
   } finally {
     // Best-effort: if this fails or we crash here, the claim marker is a stale-reclaimable
     // leftover (see `acquireStealClaim`) — bounded, harmless garbage, same as a leaked tombstone.
@@ -186,11 +190,18 @@ const stealStaleLock = async (ctx: LockCtx): Promise<void> => {
   }
 };
 
-// One "the lock is currently held" step: steal it if abandoned (retry immediately afterwards),
-// otherwise give up at the deadline or back off for one retry interval.
+// One "the lock is currently held" step: a steal that actually cleared the abandoned lock earns an
+// immediate retry, because the way is now open and backing off would only hand the slot to someone
+// else. Everything else — the lock is genuinely held, we lost the steal claim to another waiter, or
+// the removal did not take — is "try again later" and must honour the deadline.
+//
+// That last part is load-bearing. The stale branch used to return unconditionally, checking neither
+// the deadline nor backing off, so a lock that stayed stale-but-unstealable spun hot forever and
+// `withLock`'s documented `timeoutMs` was unenforceable. On Windows it also fed the problem it was
+// stuck on: each spin re-reads `meta.json` inside the lock directory, and an open handle in there
+// is exactly what makes the tombstone rename fail with a sharing violation.
 const stealOrWait = async (ctx: LockCtx, deadline: number): Promise<void> => {
-  if (await isLockStale(ctx.lockPath)) {
-    await stealStaleLock(ctx);
+  if ((await isLockStale(ctx.lockPath)) && (await stealStaleLock(ctx))) {
     return;
   }
   if (Date.now() >= deadline) {
