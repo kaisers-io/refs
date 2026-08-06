@@ -159,8 +159,8 @@ const acquireStealClaim = async (claimPath: string): Promise<boolean> => {
 // Atomically removes `ctx.lockPath` (rename-to-tombstone then `rm`, so a reader never observes a
 // half-deleted dir), or does nothing (`undefined`) if the rename race was lost — already gone, or
 // currently un-renamable on Windows (see `lock-fs.ts`) — between the caller's re-diagnosis and
-// this rename. Either way the acquire loop's retry recovers: `undefined` propagates out as a
-// falsy steal result, so the caller backs off and re-checks the deadline instead of spinning.
+// this rename. Either way the acquire loop's retry recovers: `undefined` propagates out as a falsy
+// steal result, so the caller checks the deadline and then backs off, instead of spinning.
 const renameToTombstoneOrNoop = async (ctx: LockCtx): Promise<string | undefined> => {
   const tombstonePath = tombstonePathFor(ctx);
   const renamed = await renameOrLostRace(ctx.lockPath, tombstonePath);

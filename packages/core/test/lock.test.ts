@@ -1,6 +1,14 @@
 import { DEAD_PID, makeHome, writeLockDir } from './helpers/lock-fixture.ts';
 import { describe, expect, it } from 'vitest';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { EXIT } from '../src/errors.ts';
 import { setTimeout as delay } from 'node:timers/promises';
 import { join } from 'node:path';
@@ -9,6 +17,10 @@ import { withLock } from '../src/lock.ts';
 const HOLD_MS = 50;
 // Comfortably past the implementation's 10-minute stale threshold.
 const STALE_AGE_MS = 660_000;
+// Far enough ahead that `isClaimStale`'s `Date.now() - mtime` can never reach its window.
+const CLAIM_FUTURE_MTIME_MS = 3_600_000;
+// Short on purpose: with the claim unreclaimable, the deadline is the only way out.
+const STALE_UNSTEALABLE_TIMEOUT_MS = 200;
 
 // Recursive, sorted snapshot of everything under `root` — used to prove a rejected `withLock`
 // Call never touched the filesystem.
@@ -135,11 +147,14 @@ describe('withLock timeout', () => {
       rmSync(lockPath, { force: true, recursive: true });
     }
   });
+});
 
-  // Regression: `stealOrWait` used to return from the stale branch without consulting the
-  // deadline, so a lock that diagnosed stale but could not actually be stolen spun without bound
-  // and the documented `timeoutMs` never applied. Seeded here by holding the steal claim: every
-  // attempt sees a stealable lock, none of them may remove it.
+// Regression: `stealOrWait` used to return from the stale branch without consulting the deadline,
+// so a lock that diagnosed stale but could not actually be stolen spun without bound and the
+// documented `timeoutMs` never applied. Seeded here by holding the steal claim: every attempt sees
+// a stealable lock, none of them may remove it. Against the pre-fix code this test does not fail
+// on an assertion — it hangs.
+describe('withLock timeout on an unstealable stale lock', () => {
   it('times out with a conflictError when a stale lock cannot be stolen', async () => {
     expect.hasAssertions();
     const home = makeHome();
@@ -148,17 +163,23 @@ describe('withLock timeout', () => {
       acquired_at: new Date().toISOString(),
       pid: DEAD_PID,
     });
-    // A fresh steal claim nobody releases. The budget below stays well under the implementation's
-    // 2s claim-staleness window, so the claim cannot become reclaimable during the attempt —
-    // without the deadline check this call spins until the claim ages out and then succeeds, which
-    // is exactly the bug. The ~1.8s of margin is wall-clock, so a runner suspended for longer than
-    // that between these two statements would reclaim the claim and see the callback run; at that
-    // point every timing-sensitive suite in the repo is already unreliable.
+    // A steal claim nobody releases, so no attempt ever gets to remove the lock. Its mtime is
+    // dated into the future rather than left at "now": `isClaimStale` asks whether
+    // `Date.now() - mtime` exceeds its 2s window, so a future mtime can never satisfy it. Relying
+    // on the claim merely being *recent* would make this test wall-clock dependent — the steal
+    // attempt runs before the deadline check, so a single late-firing retry timer on a stalled
+    // runner would land on a claim that had aged out, reclaim it, and see the callback run. That
+    // is the exact failure this test exists to detect, and this repo's own CI has stretched a 1.2s
+    // suite past 10s. Future-dating removes the dependency instead of betting against it.
+    const claimPath = join(home.locksDir, 'home.steal-claim');
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
-    mkdirSync(join(home.locksDir, 'home.steal-claim'), { recursive: true });
+    mkdirSync(claimPath, { recursive: true });
+    const farFuture = new Date(Date.now() + CLAIM_FUTURE_MTIME_MS);
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    utimesSync(claimPath, farFuture, farFuture);
 
     const attempt = withLock(home, 'home', () => Promise.resolve('unreachable'), {
-      timeoutMs: 200,
+      timeoutMs: STALE_UNSTEALABLE_TIMEOUT_MS,
     });
 
     await expect(attempt).rejects.toMatchObject({ code: 'conflict', exitCode: EXIT.CONFLICT });

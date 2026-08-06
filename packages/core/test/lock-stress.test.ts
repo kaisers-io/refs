@@ -15,11 +15,12 @@ const SINGLE_HOLDER = 1;
 // actually exposed was an unbounded spin in the steal path, and that is fixed in `lock.ts`; what
 // remains is that Windows is genuinely slower at the handoff itself.
 //
-// The cost sits in the release-to-reacquire step, not in the steal: releasing leaves the directory
-// delete-pending, so the next waiter's `mkdir` fails with a sharing violation and is classified as
-// a lost race, `isLockStale` then sees a fresh meta-less directory and reports "not stale", and the
-// waiter sleeps a full `RETRY_INTERVAL_MS`. Several such cycles across eleven handoffs is what
-// pushed a ~1.2s suite past 10s on CI runners.
+// The cost sits in the release-to-reacquire step, not in the steal: Windows removes directories
+// asynchronously, so a released lock stays delete-pending and the next waiter's `mkdir` fails with
+// EPERM/EACCES/EBUSY, which `lock-fs.ts` classifies as a lost race. `isLockStale` then finds either
+// a vanished directory or a fresh meta-less one, reports "not stale" either way, and the waiter
+// sleeps a full `RETRY_INTERVAL_MS`. Several such cycles across eleven handoffs would explain a
+// ~1.2s suite stretching past 10s on CI runners — nobody has instrumented one to confirm it.
 //
 // This buys patience, not leniency. The property under test (`maxConcurrent === 1`) is untouched
 // and a genuine hang still fails, only later. The two values move together on purpose — the
