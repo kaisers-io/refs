@@ -27,11 +27,16 @@ export default defineConfig({
   dts: false,
   entry: { refs: 'src/index.ts' },
   format: 'esm',
-  // The GitHub repo is private but the npm package is public: an unminified bundle would ship
-  // every source comment (including design/security rationale) to anyone who runs `npm view` or
-  // unpacks the tarball. `true` is tsdown 0.22's default full minification (mangle + compress +
-  // strip comments, per its `MinifyOptions`); revert to `false` once the repo goes public and
-  // shipping readable source is no longer a concern.
+  // Size is the whole argument: 199 KB minified against 452 KB without, for a package users
+  // install globally. `true` is tsdown 0.22's full minification (mangle + compress + strip
+  // comments, per its `MinifyOptions`).
+  //
+  // This setting used to carry a different reason — that an unminified bundle would ship every
+  // source comment, including design and security rationale, to anyone unpacking the tarball —
+  // and an instruction to revert it once the repository went public. That reason was wrong.
+  // Building both ways shows rolldown drops source comments either way: what survives is
+  // `//#region` markers and `@__NO_SIDE_EFFECTS__` annotations, and not one line of prose. So
+  // there is nothing to revisit here on going public; only the size trade-off applies.
   minify: true,
   onSuccess: async () => {
     await chmod(BUNDLE_PATH, EXECUTABLE_MODE);
