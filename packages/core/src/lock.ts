@@ -110,14 +110,22 @@ const writeMetaOrRetrySignal = async (
 // True → we own the lock (dir created and meta.json written); returns this acquisition's fresh
 // ownership token. `undefined` → held by someone else (lost the mkdir race — see `lock-fs.ts`
 // for the Windows-aware code classification).
-const tryAcquire = async (lockPath: string): Promise<string | undefined> => {
+const tryAcquire = async (lockPath: string, deadline: number): Promise<string | undefined> => {
   const created = await tryExclusiveMkdir(lockPath);
   if (!created) {
     return undefined;
   }
   const written = await writeMetaOrRetrySignal(lockPath, randomUUID());
   if (written === 'retry') {
-    return tryAcquire(lockPath);
+    // The dir we just created vanished under us — the release read-then-delete race in the module
+    // header, or outside cleanup. Retrying at once is right, but it must still be bounded: without
+    // the deadline, repeated interference spins here exactly as the steal path used to. Reporting
+    // "not acquired" hands control back to the caller, whose own deadline check then raises the
+    // conflictError.
+    if (Date.now() >= deadline) {
+      return undefined;
+    }
+    return tryAcquire(lockPath, deadline);
   }
   return written;
 };
@@ -214,7 +222,7 @@ const stealOrWait = async (ctx: LockCtx, deadline: number): Promise<void> => {
 // serial; async recursion does not grow the stack). Resolves with this acquisition's ownership
 // token once the lock is held.
 const acquireWithRetry = async (ctx: LockCtx, deadline: number): Promise<string> => {
-  const token = await tryAcquire(ctx.lockPath);
+  const token = await tryAcquire(ctx.lockPath, deadline);
   if (token !== undefined) {
     return token;
   }

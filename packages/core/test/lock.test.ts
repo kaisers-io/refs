@@ -148,15 +148,17 @@ describe('withLock timeout', () => {
       acquired_at: new Date().toISOString(),
       pid: DEAD_PID,
     });
-    // A fresh steal claim nobody releases. The timeout below stays under the implementation's
-    // 2s claim-staleness window, so the claim never becomes reclaimable during the attempt —
-    // without the deadline check this call would spin until the claim aged out and then succeed,
-    // which is exactly the bug.
+    // A fresh steal claim nobody releases. The budget below stays well under the implementation's
+    // 2s claim-staleness window, so the claim cannot become reclaimable during the attempt —
+    // without the deadline check this call spins until the claim ages out and then succeeds, which
+    // is exactly the bug. The ~1.8s of margin is wall-clock, so a runner suspended for longer than
+    // that between these two statements would reclaim the claim and see the callback run; at that
+    // point every timing-sensitive suite in the repo is already unreliable.
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     mkdirSync(join(home.locksDir, 'home.steal-claim'), { recursive: true });
 
     const attempt = withLock(home, 'home', () => Promise.resolve('unreachable'), {
-      timeoutMs: 300,
+      timeoutMs: 200,
     });
 
     await expect(attempt).rejects.toMatchObject({ code: 'conflict', exitCode: EXIT.CONFLICT });
