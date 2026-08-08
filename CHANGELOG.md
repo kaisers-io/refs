@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Locked commands could hang instead of timing out. If a lock looked abandoned but could not
+  actually be reclaimed — another process holding the steal claim, or Windows refusing to remove
+  the directory while a handle was still open inside it — the acquire loop retried without ever
+  consulting its deadline, so the ten-second acquisition budget never applied and the command spun
+  until interrupted. Both unbounded paths now honour the deadline and fail with the conflict error
+  (exit code 5) as documented.
+
 ### Changed
 
 - `refs init`'s skill-install hint now presents the second form as installing from a local
