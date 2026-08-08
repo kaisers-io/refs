@@ -3,7 +3,7 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "packageManager": "pnpm@11.9.0",
+  "packageManager": "pnpm@11.20.0",
   "engines": { "node": ">=24.2", "pnpm": ">=11" },
   "scripts": {
     "lint": "oxlint",
@@ -26,7 +26,7 @@
     "oxlint": "1.77.0",
     "tsdown": "0.22.14",
     "typescript": "7.0.2",
-    "vite": "8.2.0",
+    "vite": "8.2.1",
     "vitest": "4.1.10"
   }
 }
