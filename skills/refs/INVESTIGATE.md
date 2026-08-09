@@ -40,6 +40,31 @@ suffix (`zod`). This returns `{key, local_path, package, stale, missing}`;
 `package` is `null` when the query resolves to the ref itself rather than one of
 its packages.
 
+**Check `package.status` before reading anything.** The configured path is only a
+locator, and upstream repos move things; `resolve` verifies it against the manifest
+actually sitting there. All six statuses exit `0`, so the status — not the exit code —
+is what tells you whether the path is trustworthy:
+
+- **`verified`** — proceed.
+- **`relocated`** — proceed with the returned `local_path`; it is the verified current
+  location, and `configured_path` names the stale one. Mention the move **after**
+  answering the question, and offer to persist it with
+  `refs edit <ref> --package <name> path <new-path>`.
+- **`unmaterialized`** — the checkout is not there. Sync (step 2), then resolve again.
+- **`unverifiable`** — the path returned is the _configured_ one and may be stale: an
+  unreadable manifest can sit on top of the wrong package. Do not treat it as confirmed.
+  `reason` names the actual failure — a malformed manifest, a permissions error, a
+  symlink out of the checkout, an unavailable lock. None of those is fixed by syncing, so
+  do not reflexively `refs sync`. Either say plainly in your answer that the location is
+  unverified and why, or ask the user before relying on package-specific findings.
+- **`ambiguous`** — the name exists at several paths (`candidates`). Do **not** pick one
+  yourself. Ask the user, or establish which is current from the repo's own history,
+  before reading anything.
+- **`missing`** — the package is not in this checkout under that name, and `local_path`
+  is `null`. Do not guess a path. Report it, and offer to investigate what happened
+  upstream — `git log --diff-filter=D -- <configured-path>` usually names the commit that
+  removed or renamed it.
+
 **`refs list --json` is the fallback, not the first step.** Reach for it only
 when the question is too fuzzy for `resolve` to match (e.g. "the caching library
 we use") — then match against the `description` fields. If nothing matches

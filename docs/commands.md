@@ -554,6 +554,12 @@ appears when the query resolved to a specific package, and always comes after th
 lines; `package path:` is the package's own directory, as distinct from `path:` for the
 ref checkout as a whole.
 
+A verified package adds nothing further — the output above is the ordinary case. When the
+package's location could **not** simply be confirmed, extra lines follow it
+(`package status:`, and where applicable `configured path:`, `candidates:`, `reason:`),
+because each of those changes what `package path:` means. See
+[Package location verification](#package-location-verification) below.
+
 ```bash
 refs resolve zod/mini --json
 refs resolve left-pad --json
@@ -572,7 +578,8 @@ refs resolve https://github.com/stevemao/left-pad --json
     "package": {
       "name": "left-pad",
       "path": ".",
-      "local_path": "/Users/you/.kaisers-io/refs/sources/github.com/stevemao/left-pad"
+      "local_path": "/Users/you/.kaisers-io/refs/sources/github.com/stevemao/left-pad",
+      "status": "verified"
     }
   },
   "warnings": []
@@ -583,8 +590,37 @@ refs resolve https://github.com/stevemao/left-pad --json
 plain git-URL or suffix match with no package involved. `last_fetched_at` is the same
 optional ISO 8601 field `refs list` carries, absent when the ref has never been fetched.
 
+### Package location verification
+
+A configured `path` is only a **locator**; the package **name** is its identity. Upstream
+repos restructure on their own schedule, so `resolve` does not trust the stored path blindly:
+it reads the manifest sitting there and compares its `name` against the configured package
+name. Without that check, a package that moved — or a different package that took over its
+directory — would be handed back silently, and an agent would read the wrong source while
+answering confidently. `package.status` reports what was established:
+
+| `status` | Meaning | `local_path` |
+| --- | --- | --- |
+| `verified` | the manifest at the configured path declares this package | the configured path |
+| `relocated` | the package moved; found at exactly one new path | the **new** path; `configured_path` names the old one |
+| `unmaterialized` | the checkout is not present (`missing: true`) — nothing was verified | the configured path |
+| `unverifiable` | verification could not complete (unreadable manifest, incomplete workspace detection, ref lock unavailable) — `reason` says why | the configured path |
+| `ambiguous` | the name exists at several paths; `candidates` lists them | `null` |
+| `missing` | the name is nowhere in a complete scan of the checkout | `null` |
+
+**All six exit `0`.** `resolve` is a routing command: the ref resolved, and only the
+package's location inside it is in question. A caller that needs the path must therefore
+check `status` (or test `local_path` for `null`) rather than treating a zero exit as "here is
+a usable directory" — before this existed, `local_path` was always a string.
+
+`relocated` corrects the answer for **this call only** and never writes to `config.toml`. To
+persist it: `refs edit <ref> --package <name> path <new-path>`. Automatic reconciliation is
+not implemented yet.
+
 Exit codes: `3` (`<query>` looks like a git URL but isn't a supported/canonicalizable
-form), `2` (matches more than one ref/package ambiguously), `4` (no match at all).
+form), `2` (matches more than one ref/package ambiguously), `4` (no match at all — the
+query matched no ref, which is distinct from a package whose location could not be
+established).
 
 ---
 
