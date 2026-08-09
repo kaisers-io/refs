@@ -9,6 +9,7 @@ export * from './git-url.ts';
 export * from './home.ts';
 export * from './lock.ts';
 export * from './npm-resolver.ts';
+export * from './package-identity.ts';
 export * from './proc/fake-runner.ts';
 export * from './proc/runner.ts';
 export * from './schemas/config.ts';
