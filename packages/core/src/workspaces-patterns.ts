@@ -25,6 +25,39 @@ type WorkspacePatternPlan =
   | { dir: string; kind: 'probe-dir' }
   | { kind: 'ignore' };
 
+// Why a scan carries diagnostics at all: detection collapses every failure — an unreadable
+// workspace declaration, an unreadable manifest, a containment rejection, an unsupported
+// pattern — into the same empty result. That is right for `add`, which is best-effort and has
+// an agent to fill the gaps, but a consumer that DIFFS a scan against config cannot then tell a
+// transient read error from "every package was removed". These diagnostics are that missing
+// distinction.
+type WorkspaceDiagnostic =
+  // A candidate directory declared no usable `name`. Not a read failure: the manifest was read
+  // fine, it just is not a package. Distinct from `manifest_unreadable` so nobody is told
+  // something failed when nothing did.
+  | { kind: 'manifest_missing_name'; path: string }
+  | { kind: 'manifest_unreadable'; path: string }
+  | { kind: 'no_workspace_declaration' }
+  | { kind: 'unsupported_pattern'; pattern: string }
+  | { kind: 'workspace_dir_unreadable'; path: string }
+  | { kind: 'workspace_file_unreadable'; file: string };
+
+type WorkspaceScan = {
+  diagnostics: WorkspaceDiagnostic[];
+  packages: WorkspacePackage[];
+};
+
+// `no_workspace_declaration` is deliberately absent: a repo with no workspaces is an ordinary
+// single-package repo, and its empty scan is a correct, trustworthy answer. Every OTHER
+// diagnostic means the scan may be incomplete, so a name's absence from it proves nothing.
+const UNRELIABLE_DIAGNOSTIC_KINDS: ReadonlySet<WorkspaceDiagnostic['kind']> = new Set([
+  'manifest_missing_name',
+  'manifest_unreadable',
+  'unsupported_pattern',
+  'workspace_dir_unreadable',
+  'workspace_file_unreadable',
+]);
+
 const GLOB_SUFFIX = '/*';
 const BARE_GLOB = '*';
 const CURRENT_DIR_SEGMENT = '.';
@@ -123,13 +156,67 @@ const deduplicateAndSort = (packages: WorkspacePackage[]): WorkspacePackage[] =>
   return deduped;
 };
 
+/** Whether a scan's package list may be treated as complete. An unreliable scan must never be
+ * used to conclude that a configured package is gone. */
+const scanIsReliable = (scan: WorkspaceScan): boolean =>
+  !scan.diagnostics.some((diagnostic) => UNRELIABLE_DIAGNOSTIC_KINDS.has(diagnostic.kind));
+
+// Codepoint comparison, NOT `localeCompare`. Without an explicit locale `localeCompare` uses
+// the host's collation, which the spec leaves implementation-defined — and it genuinely
+// reorders exactly the characters that occur in package names and paths. Measured on Node 24
+// (ICU 77.1, en-US), `['pkgb','pkg_b','pkg-b','Pkg']` sorts to `['Pkg','pkg-b','pkg_b','pkgb']`
+// by codepoint but `['pkg-b','Pkg','pkg_b','pkgb']` by collation. CI runs macOS, Linux and
+// Windows, and diagnostics are compared as exact arrays, so the order must not depend on the
+// host.
+const SORT_LEFT_FIRST = -1;
+const SORT_RIGHT_FIRST = 1;
+const SORT_EQUAL = 0;
+
+const compareCodepoint = (left: string, right: string): number => {
+  if (left < right) {
+    return SORT_LEFT_FIRST;
+  }
+  return left > right ? SORT_RIGHT_FIRST : SORT_EQUAL;
+};
+
+// Stable identity per diagnostic: kind first (groups related failures), then whichever field
+// names the thing that failed.
+const diagnosticSortKey = (diagnostic: WorkspaceDiagnostic): string => {
+  if ('path' in diagnostic) {
+    return `${diagnostic.kind} ${diagnostic.path}`;
+  }
+  if ('file' in diagnostic) {
+    return `${diagnostic.kind} ${diagnostic.file}`;
+  }
+  if ('pattern' in diagnostic) {
+    return `${diagnostic.kind} ${diagnostic.pattern}`;
+  }
+  return diagnostic.kind;
+};
+
+/** Deterministic diagnostic order. Candidate diagnostics otherwise inherit `readdir` order,
+ * which is not a portable contract — the same repo could report a different order per platform. */
+const sortDiagnostics = (diagnostics: readonly WorkspaceDiagnostic[]): WorkspaceDiagnostic[] =>
+  diagnostics.toSorted((left, right) =>
+    compareCodepoint(diagnosticSortKey(left), diagnosticSortKey(right)),
+  );
+
 export {
   CURRENT_DIR_SEGMENT,
   classifyWorkspacePattern,
+  compareCodepoint,
   deduplicateAndSort,
   isRelPathContained,
   isSafeWorkspacePattern,
+  scanIsReliable,
   selectPackageDirs,
+  sortDiagnostics,
   toWorkspacePackage,
 };
-export type { PackageManifestInfo, WorkspacePackage, WorkspacePatternPlan };
+export type {
+  PackageManifestInfo,
+  WorkspaceDiagnostic,
+  WorkspacePackage,
+  WorkspacePatternPlan,
+  WorkspaceScan,
+};
