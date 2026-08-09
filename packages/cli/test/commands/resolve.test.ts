@@ -1,15 +1,10 @@
-import { EXIT, checkoutPath, resolveHome, zRefKey } from '@kaisers-io/refs-core';
+import { EXIT, resolveHome } from '@kaisers-io/refs-core';
+import { NEXT_KEY, seedNextFixture } from '../helpers/next-fixture.ts';
 import { describe, expect, it } from 'vitest';
-import {
-  markCheckoutPresent,
-  minutesAgoIso,
-  seedConfig,
-  seedState,
-} from '../helpers/ref-fixtures.ts';
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
-import type { CliContext } from '../../src/context.ts';
 import { join } from 'node:path';
 import { run } from '../../src/main.ts';
+import { seedConfig } from '../helpers/ref-fixtures.ts';
 import { testContext } from '../helpers/context.ts';
 
 // Unit + CLI-wiring tests for `refs resolve` — the deterministic agent-routing command. Config is
@@ -17,20 +12,6 @@ import { testContext } from '../helpers/context.ts';
 // through a real `refs add`, per the task brief. No git needed: `resolve` is pure config/state/path
 // logic, with missing/stale flags driven purely by written state and (absent) checkout dirs — see
 // `resolve-status.test.ts` for that part specifically.
-
-const NEXT_KEY = 'github.com/vercel/next.js';
-const FRESH_MINUTES_AGO = 1;
-
-const NEXT_ENTRY = {
-  default_branch: 'canary',
-  description: 'Next.js monorepo',
-  packages: {
-    '@next/env': { description: 'env loader', path: 'packages/next-env' },
-    next: { description: 'the framework', path: 'packages/next' },
-  },
-  tag_format: 'v{version}',
-  url: 'https://github.com/vercel/next.js',
-};
 
 const WIDGET_ENTRY = {
   default_branch: 'main',
@@ -62,21 +43,6 @@ type ResolveDataShape = {
   stale: boolean;
 };
 
-/** Seeds the shared next.js monorepo fixture (two packages, fresh state, a present checkout) and
- * returns its resolved checkout path and `last_fetched_at` — the common starting point for steps
- * 1-4's happy paths. */
-const seedNextFixture = async (
-  env: CliContext['env'],
-): Promise<{ dest: string; lastFetchedAt: string }> => {
-  const home = resolveHome(env);
-  const lastFetchedAt = minutesAgoIso(FRESH_MINUTES_AGO);
-  await seedConfig(home, { [NEXT_KEY]: NEXT_ENTRY });
-  await seedState(home, { [NEXT_KEY]: { last_fetched_at: lastFetchedAt } });
-  const dest = checkoutPath(home, zRefKey.parse(NEXT_KEY));
-  await markCheckoutPresent(dest);
-  return { dest, lastFetchedAt };
-};
-
 describe('refs resolve: exact npm package name (step 2)', () => {
   it('resolves "next" to the next package with a joined local_path', async () => {
     expect.hasAssertions();
@@ -100,6 +66,10 @@ describe('refs resolve: exact npm package name (step 2)', () => {
             local_path: join(dest, 'packages', 'next'),
             name: 'next',
             path: 'packages/next',
+            // The manifest at the configured path declares `next`, so the location is confirmed
+            // rather than assumed. Kept as an exact shape on purpose: the exactness is what makes
+            // this test worth having.
+            status: 'verified',
           },
           stale: false,
         });

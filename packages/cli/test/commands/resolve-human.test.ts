@@ -52,6 +52,7 @@ describe('refs resolve: resolveHuman gives the package path its own key, after t
             local_path: '/home/refs/sources/github.com/colinhacks/zod/packages/zod',
             name: 'zod',
             path: 'packages/zod',
+            status: 'verified',
           },
           stale: false,
         },
