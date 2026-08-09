@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `refs resolve` now verifies that the package it routes to is actually where the config says
+  it is. A configured `path` is only a locator; the package name is its identity, and upstream
+  repos restructure on their own schedule. Previously a package that had moved — or a different
+  package that had taken over its directory — was handed back regardless, so an agent read the
+  wrong source and answered confidently. That failure produced no error and no warning.
+
+  `package.status` now reports what was established: `verified`, `relocated` (found at exactly
+  one new path, which is returned in place of the stale one), `unmaterialized` (no checkout yet),
+  `unverifiable` (verification could not complete — `reason` says why), `ambiguous` (the name
+  exists at several paths, listed in `candidates`), or `missing`. All six exit `0`; see
+  `docs/commands.md` for the full contract.
+
+  `relocated` corrects the answer for that call only and never writes to `config.toml`. Persist
+  it with `refs edit <ref> --package <name> path <new-path>`.
+
+### Changed
+
+- **`resolve`'s `package.local_path` can now be `null`.** It is `null` for `missing` and
+  `ambiguous`, where no safe location is known. A caller that treated a zero exit as "here is a
+  usable path" must check `package.status` first; previously the field was always a string.
+
+- Workspace detection now reports why it found nothing. Every failure — an unreadable or
+  malformed workspace declaration, an unreadable manifest, a candidate resolving outside the
+  repo, an unsupported pattern — used to collapse into the same empty result, leaving a
+  transient read error indistinguishable from "every package was removed". `refs add` is
+  unaffected: it consumes the same best-effort list it always has.
+
+- `refs init`'s skill-install hint now presents the second form as installing from a local
+  clone, rather than as a workaround for the repository's development phase. Both commands
+  are unchanged; only the wording differs.
+
 ### Fixed
 
 - Locked commands could hang instead of timing out. If a lock looked abandoned but could not
@@ -16,11 +49,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   until interrupted. Both unbounded paths now honour the deadline and fail with the conflict error
   (exit code 5) as documented.
 
-### Changed
-
-- `refs init`'s skill-install hint now presents the second form as installing from a local
-  clone, rather than as a workaround for the repository's development phase. Both commands
-  are unchanged; only the wording differs.
 
 ## [0.8.0] - 2026-08-04
 
