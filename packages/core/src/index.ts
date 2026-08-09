@@ -1,6 +1,7 @@
 export * from './config-io.ts';
 export * from './errors.ts';
 export * from './fs-atomic.ts';
+export * from './fs-containment.ts';
 export * from './git/repo.ts';
 export * from './git/tags.ts';
 export * from './git-url-redact.ts';

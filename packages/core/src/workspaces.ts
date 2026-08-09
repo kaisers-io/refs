@@ -7,17 +7,28 @@ import {
   deduplicateAndSort,
   isRelPathContained,
   selectPackageDirs,
-  toWorkspacePackage,
+  sortDiagnostics,
 } from './workspaces-patterns.ts';
-import type { PackageManifestInfo, WorkspacePackage } from './workspaces-patterns.ts';
-import {
-  collectPnpmPatterns,
-  extractPackageDescription,
-  extractPackageName,
-  parseNpmWorkspaces,
-} from './workspaces-parse.ts';
-import { join, relative } from 'node:path';
+import type {
+  WorkspaceDiagnostic,
+  WorkspacePackage,
+  WorkspaceScan,
+} from './workspaces-patterns.ts';
+import { join, posix, relative } from 'node:path';
+import { partitionProbes, probePackageDir } from './workspaces-probe.ts';
 import { readFile, readdir, realpath } from 'node:fs/promises';
+import type { Dirent } from 'node:fs';
+import { readDeclarations } from './workspaces-declarations.ts';
+import { resolveInside } from './fs-containment.ts';
+
+// One pattern's expansion: the candidate dirs it produced and any reason it produced fewer.
+type ExpandResult = {
+  diagnostics: WorkspaceDiagnostic[];
+  dirs: string[];
+};
+
+// A base directory the pattern names but that is not there is normal, not a failure.
+const MISSING_DIR_CODES: ReadonlySet<string> = new Set(['ENOENT', 'ENOTDIR']);
 
 // Check if target is contained within repoDir: gates a directory read before it happens
 // (a textually-safe path component can still be a symlink pointing outside the repo) and,
@@ -41,49 +52,116 @@ const isContainedInRepo = async (
 
 // Check if package.json exists in directory. Guards the manifest FILE itself: a
 // textually-safe, already-contained directory can still hold a symlinked package.json.
-const hasPackageJson = async (repoDir: string, dirPath: string): Promise<boolean> => {
-  try {
-    const pkgJsonPath = join(dirPath, 'package.json');
-    if (!(await isContainedInRepo(repoDir, pkgJsonPath))) {
-      return false;
-    }
+const hasPackageJson = async (repoDir: string, dirPath: string): Promise<boolean> =>
+  (await probeCandidateDir(repoDir, dirPath)) === 'manifest';
 
-    await readFile(pkgJsonPath, 'utf8');
-    return true;
+// Three outcomes for one candidate directory, because the caller has to tell them apart:
+//   'manifest'  — a readable package.json is there; this is a package candidate
+//   'none'      — no manifest here; not a package, and nothing worth reporting
+//   'rejected'  — the manifest resolves outside the repo, or could not be read at all
+// The old boolean collapsed the last two, which is why a symlinked-out candidate used to vanish
+// silently instead of marking the scan incomplete.
+const probeCandidateDir = async (
+  repoDir: string,
+  dirPath: string,
+): Promise<'manifest' | 'none' | 'rejected'> => {
+  const located = await resolveInside(repoDir, join(dirPath, 'package.json'));
+  if (located.kind === 'missing') {
+    return 'none';
+  }
+  if (located.kind !== 'inside') {
+    return 'rejected';
+  }
+  try {
+    await readFile(located.real, 'utf8');
+    return 'manifest';
   } catch {
-    return false;
+    return 'rejected';
   }
 };
 
-// Handle one-level glob pattern expansion
-const expandGlobSingleLevel = async (repoDir: string, baseDir: string): Promise<string[]> => {
+// `readdir` as a result rather than an exception, so the caller can classify the failure code
+// instead of catching blind.
+const tryReaddir = async (path: string): Promise<{ code: string } | { entries: Dirent[] }> => {
   try {
-    const fullPath = join(repoDir, baseDir);
-    // Guard the directory read itself: `baseDir` can be a symlink outside the repo.
-    // `allowSelf` covers bare `*` (`baseDir === '.'`), where `fullPath` is repoDir itself.
-    const isRepoRoot = baseDir === CURRENT_DIR_SEGMENT;
-    if (!(await isContainedInRepo(repoDir, fullPath, isRepoRoot))) {
-      return [];
-    }
+    return { entries: await readdir(path, { withFileTypes: true }) };
+  } catch (error) {
+    return { code: (error as NodeJS.ErrnoException).code ?? '' };
+  }
+};
 
-    const entries = await readdir(fullPath, { withFileTypes: true });
-    const dirs = entries.filter((entry) => entry.isDirectory());
-    const hasPackageFlags = await Promise.all(
-      dirs.map((entry) => hasPackageJson(repoDir, join(fullPath, entry.name))),
-    );
-    return selectPackageDirs(
+// Probe every child directory of an expanded glob base and split the outcome. A candidate
+// rejected for containment IS reported — it is a directory the pattern selected that we refused
+// to look inside, so the scan may be missing a package. A candidate that simply holds no
+// manifest is not a package at all and reports nothing.
+const probeChildren = async (opts: {
+  baseDir: string;
+  dirs: readonly Dirent[];
+  fullPath: string;
+  repoDir: string;
+}): Promise<ExpandResult> => {
+  const { baseDir, dirs, fullPath, repoDir } = opts;
+  const probes = await Promise.all(
+    dirs.map((entry) => probeCandidateDir(repoDir, join(fullPath, entry.name))),
+  );
+  const diagnostics = dirs
+    .map((entry, index) => ({ name: entry.name, probe: probes[index] }))
+    .filter((item) => item.probe === 'rejected')
+    .map((item): WorkspaceDiagnostic => ({
+      kind: 'manifest_unreadable',
+      path: posix.join(baseDir === CURRENT_DIR_SEGMENT ? '' : baseDir, item.name),
+    }));
+  return {
+    diagnostics,
+    dirs: selectPackageDirs(
       baseDir,
       dirs.map((entry) => entry.name),
-      hasPackageFlags,
-    );
-  } catch {
-    return [];
-  }
+      probes.map((probe) => probe === 'manifest'),
+    ),
+  };
 };
 
-// Expand glob pattern (one level only). Which form the pattern takes is decided purely in
-// `classifyWorkspacePattern`; only the plan's filesystem side runs here.
-const expandGlobPattern = async (repoDir: string, pattern: string): Promise<string[]> => {
+// One-level glob expansion. Reports the two ways it can come up empty for a reason — a base
+// directory that resolves outside the repo, and one that exists but cannot be read — instead of
+// letting both look like "no packages here". A base directory the pattern merely names but that
+// does not exist is normal (`packages/*` before `packages/` is created) and reports nothing.
+const expandGlobSingleLevel = async (repoDir: string, baseDir: string): Promise<ExpandResult> => {
+  const fullPath = join(repoDir, baseDir);
+  // `resolveInside`, not `isContainedInRepo`: the boolean helper returns false for a base
+  // directory that merely does not exist yet, which would report `packages/*` in a repo without
+  // a `packages/` directory as a failure — the single most common workspace layout in a young
+  // repo. Only `outside` and `unreadable` are real problems here.
+  const located = await resolveInside(repoDir, fullPath);
+  if (located.kind === 'missing') {
+    return { diagnostics: [], dirs: [] };
+  }
+  if (located.kind !== 'inside') {
+    return { diagnostics: [{ kind: 'workspace_dir_unreadable', path: baseDir }], dirs: [] };
+  }
+  // The bare `*` pattern resolves to the repo root itself, which `isInside` accepts; every other
+  // base dir is genuinely below it. No separate allowSelf handling is needed.
+
+  const listed = await tryReaddir(fullPath);
+  if ('code' in listed) {
+    // The rejection already carries `code` — no extra `stat` needed, and an extra stat would
+    // only add a race. A base directory that is not there is normal; anything else is not.
+    return MISSING_DIR_CODES.has(listed.code)
+      ? { diagnostics: [], dirs: [] }
+      : { diagnostics: [{ kind: 'workspace_dir_unreadable', path: baseDir }], dirs: [] };
+  }
+
+  return probeChildren({
+    baseDir,
+    dirs: listed.entries.filter((entry) => entry.isDirectory()),
+    fullPath,
+    repoDir,
+  });
+};
+
+// Expand one glob pattern. Which form the pattern takes is decided purely in
+// `classifyWorkspacePattern`; only the plan's filesystem side runs here. An ignored pattern is
+// reported: a package could be hiding behind it, so the scan is not complete.
+const expandGlobPattern = async (repoDir: string, pattern: string): Promise<ExpandResult> => {
   const plan = classifyWorkspacePattern(pattern);
   if (plan.kind === 'expand-children') {
     return expandGlobSingleLevel(repoDir, plan.baseDir);
@@ -93,135 +171,62 @@ const expandGlobPattern = async (repoDir: string, pattern: string): Promise<stri
     const dirPath = join(repoDir, plan.dir);
     // Guard the file read itself: `pattern` can be a symlink resolving outside the repo.
     if ((await isContainedInRepo(repoDir, dirPath)) && (await hasPackageJson(repoDir, dirPath))) {
-      return [plan.dir];
+      return { diagnostics: [], dirs: [plan.dir] };
     }
+    return { diagnostics: [], dirs: [] };
   }
 
-  return [];
+  return { diagnostics: [{ kind: 'unsupported_pattern', pattern }], dirs: [] };
 };
 
-// Read package.json and extract name/description; guards the manifest FILE (see `hasPackageJson`).
-const readPackageInfo = async (
-  repoDir: string,
-  packageDir: string,
-): Promise<PackageManifestInfo | undefined> => {
-  try {
-    const pkgJsonPath = join(packageDir, 'package.json');
-    if (!(await isContainedInRepo(repoDir, pkgJsonPath))) {
-      return undefined;
-    }
-
-    const content = await readFile(pkgJsonPath, 'utf8');
-    const data = JSON.parse(content) as Record<string, unknown>;
-
-    return {
-      description: extractPackageDescription(data),
-      name: extractPackageName(data),
-    };
-  } catch {
-    return undefined;
-  }
-};
-
-// Collect npm workspace patterns; guards the manifest FILE itself (see `hasPackageJson`)
-// since the root `package.json` path, built from `repoDir`, can still be a symlink escape.
-const collectNpmPatterns = async (
-  repoDir: string,
-  packageJsonPath: string,
-): Promise<Set<string>> => {
-  const patterns = new Set<string>();
-  try {
-    if (!(await isContainedInRepo(repoDir, packageJsonPath))) {
-      return patterns;
-    }
-
-    const npmContent = await readFile(packageJsonPath, 'utf8');
-    const npmData = JSON.parse(npmContent) as Record<string, unknown>;
-    parseNpmWorkspaces(npmData['workspaces']).forEach((pattern) => patterns.add(pattern));
-  } catch {
-    // Continue if npm workspaces not found
-  }
-
-  return patterns;
-};
-
-// Collect pnpm workspace patterns; guards the manifest FILE itself since the root
-// `pnpm-workspace.yaml` path, built from `repoDir`, can still be a symlink escape.
-const collectPnpmPatternsFromFile = async (
-  repoDir: string,
-  pnpmWorkspacePath: string,
-): Promise<Set<string>> => {
-  const patterns = new Set<string>();
-  try {
-    if (!(await isContainedInRepo(repoDir, pnpmWorkspacePath))) {
-      return patterns;
-    }
-
-    const pnpmContent = await readFile(pnpmWorkspacePath, 'utf8');
-    collectPnpmPatterns(pnpmContent.split('\n')).forEach((pattern) => patterns.add(pattern));
-  } catch {
-    // Continue if pnpm workspaces not found
-  }
-
-  return patterns;
-};
-
-// Expand patterns to get package directories
-const expandPatterns = async (repoDir: string, patterns: Set<string>): Promise<Set<string>> => {
-  const packageDirs = new Set<string>();
-  const expandPromises = [...patterns].map((pattern) => expandGlobPattern(repoDir, pattern));
-  const expandedResults = await Promise.all(expandPromises);
-  expandedResults.forEach((expanded) => {
-    expanded.forEach((dir) => packageDirs.add(dir));
-  });
-
-  return packageDirs;
-};
-
-// Process single package directory
-const processSinglePackageDir = async (
-  repoDir: string,
-  packageDir: string,
-): Promise<WorkspacePackage | undefined> => {
-  const fullPath = join(repoDir, packageDir);
-  if (!(await isContainedInRepo(repoDir, fullPath))) {
-    return undefined;
-  }
-
-  return toWorkspacePackage(packageDir, await readPackageInfo(repoDir, fullPath));
-};
-
-// Process all package directories
-const processAllPackageDirs = async (
-  repoDir: string,
-  packageDirs: Set<string>,
-): Promise<WorkspacePackage[]> => {
-  const processPromises = [...packageDirs].map((packageDir) =>
-    processSinglePackageDir(repoDir, packageDir),
+// Expand every pattern, merging dirs (deduplicated) and concatenating diagnostics.
+const expandPatterns = async (repoDir: string, patterns: Set<string>): Promise<ExpandResult> => {
+  const expanded = await Promise.all(
+    [...patterns].map((pattern) => expandGlobPattern(repoDir, pattern)),
   );
-  const results = await Promise.all(processPromises);
-
-  return results.filter((pkg): pkg is WorkspacePackage => pkg !== undefined);
+  const dirs = new Set<string>();
+  const diagnostics: WorkspaceDiagnostic[] = [];
+  for (const result of expanded) {
+    result.dirs.forEach((dir) => dirs.add(dir));
+    diagnostics.push(...result.diagnostics);
+  }
+  return { diagnostics, dirs: [...dirs] };
 };
 
-const detectWorkspacePackages = async (repoDir: string): Promise<WorkspacePackage[]> => {
-  const packageJsonPath = join(repoDir, 'package.json');
-  const pnpmWorkspacePath = join(repoDir, 'pnpm-workspace.yaml');
-
-  const npmPatterns = await collectNpmPatterns(repoDir, packageJsonPath);
-  const pnpmPatternsSet = await collectPnpmPatternsFromFile(repoDir, pnpmWorkspacePath);
-
-  const patterns = new Set<string>([...npmPatterns, ...pnpmPatternsSet]);
-
-  if (patterns.size === 0) {
-    return [];
+const detectWorkspacePackagesDetailed = async (repoDir: string): Promise<WorkspaceScan> => {
+  const declared = await readDeclarations(repoDir);
+  if (declared.patterns.size === 0) {
+    return {
+      diagnostics: sortDiagnostics([...declared.diagnostics, { kind: 'no_workspace_declaration' }]),
+      packages: [],
+    };
   }
 
-  const packageDirs = await expandPatterns(repoDir, patterns);
-  const packages = await processAllPackageDirs(repoDir, packageDirs);
+  const expansion = await expandPatterns(repoDir, declared.patterns);
+  const probed = await Promise.all(expansion.dirs.map((dir) => probePackageDir(repoDir, dir)));
+  const partitioned = partitionProbes(probed);
 
-  return deduplicateAndSort(packages);
+  return {
+    diagnostics: sortDiagnostics([
+      ...declared.diagnostics,
+      ...expansion.diagnostics,
+      ...partitioned.diagnostics,
+    ]),
+    packages: deduplicateAndSort(partitioned.packages),
+  };
 };
 
-export { detectWorkspacePackages };
-export type { WorkspacePackage } from './workspaces-patterns.ts';
+/** Best-effort detection, unchanged: the exact shape `refs add` has always consumed.
+ * Diagnostics are deliberately dropped here — `add` is best-effort by design and has an agent to
+ * fill any gaps. */
+const detectWorkspacePackages = async (repoDir: string): Promise<WorkspacePackage[]> => {
+  const scan = await detectWorkspacePackagesDetailed(repoDir);
+  return scan.packages;
+};
+
+export { detectWorkspacePackages, detectWorkspacePackagesDetailed };
+export type {
+  WorkspaceDiagnostic,
+  WorkspacePackage,
+  WorkspaceScan,
+} from './workspaces-patterns.ts';
