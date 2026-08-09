@@ -3,6 +3,8 @@
 // FACT (the manifest still declares the same name) rather than a guess.
 import { isAbsolute, join } from 'node:path';
 import type { ContainmentResult } from './fs-containment.ts';
+import type { WorkspacePackage } from './workspaces-patterns.ts';
+import { compareCodepoint } from './workspaces-patterns.ts';
 import { extractPackageName } from './workspaces-parse.ts';
 import { readFile } from 'node:fs/promises';
 import { resolveInside } from './fs-containment.ts';
@@ -116,5 +118,33 @@ const readManifestName = async (
   }
 };
 
-export { probePackageIdentity };
-export type { ManifestProbe };
+type IdentityLookup =
+  | { kind: 'absent' }
+  | { kind: 'ambiguous'; paths: string[] }
+  | { kind: 'found'; path: string };
+
+const SINGLE_MATCH = 1;
+const NO_MATCHES = 0;
+
+/** Where does the package named `name` live, according to this scan?
+ *
+ * Returns `ambiguous` — never a pick — when the name occurs more than once. Detection
+ * deduplicates by path, so duplicate names legitimately survive: an upstream migration with the
+ * old and new location both present is the ordinary case. Choosing between them is a judgement
+ * no deterministic rule can make correctly, and a wrong pick would silently route an agent to
+ * the wrong source. */
+const lookupPackagePath = (packages: readonly WorkspacePackage[], name: string): IdentityLookup => {
+  const paths = packages.filter((pkg) => pkg.name === name).map((pkg) => pkg.path);
+  if (paths.length === NO_MATCHES) {
+    return { kind: 'absent' };
+  }
+  if (paths.length === SINGLE_MATCH) {
+    return { kind: 'found', path: paths[0] as string };
+  }
+  // Codepoint order, not `localeCompare` — the candidate list is asserted exactly in tests that
+  // run on macOS, Linux and Windows. See `compareCodepoint` in `workspaces-patterns.ts`.
+  return { kind: 'ambiguous', paths: paths.toSorted(compareCodepoint) };
+};
+
+export { lookupPackagePath, probePackageIdentity };
+export type { IdentityLookup, ManifestProbe };

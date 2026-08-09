@@ -1,8 +1,8 @@
 import { addPackage, freshRepo, writeJson } from './helpers/workspace-fixture.ts';
 import { describe, expect, it } from 'vitest';
+import { lookupPackagePath, probePackageIdentity } from '../src/package-identity.ts';
 import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { probePackageIdentity } from '../src/package-identity.ts';
 
 // A configured `path` is only a LOCATOR — the package NAME is the identity. These tests pin the
 // four outcomes, and above all that a failed READ is never reported as an absent package: the
@@ -145,6 +145,61 @@ describe('a path that cannot be checked', () => {
     await expect(probePackageIdentity(repo, 'linked', 'zod')).resolves.toStrictEqual({
       kind: 'unreadable',
       reason: 'path escapes the checkout',
+    });
+  });
+});
+
+// A scan entry, shaped as detection produces it.
+const pkg = (name: string, path: string) => ({ description: undefined, name, path });
+
+describe('finding a package by name', () => {
+  it('finds a unique name', () => {
+    expect.hasAssertions();
+    expect(lookupPackagePath([pkg('zod', 'src/zod')], 'zod')).toStrictEqual({
+      kind: 'found',
+      path: 'src/zod',
+    });
+  });
+
+  it('reports absent for a name nowhere in the scan', () => {
+    expect.hasAssertions();
+    expect(lookupPackagePath([pkg('zod', 'src/zod')], 'zod-core')).toStrictEqual({
+      kind: 'absent',
+    });
+  });
+
+  it('reports absent for an empty scan', () => {
+    expect.hasAssertions();
+    expect(lookupPackagePath([], 'zod')).toStrictEqual({ kind: 'absent' });
+  });
+});
+
+describe('a name that is not unique', () => {
+  it('reports ambiguous with every path when a name appears twice', () => {
+    expect.hasAssertions();
+    // Detection deduplicates by PATH, not by name, so two directories declaring the same name
+    // both survive — exactly what an in-progress upstream migration looks like. Picking one
+    // would be a guess, and a guess here silently points an agent at the wrong source.
+    expect(
+      lookupPackagePath([pkg('zod', 'src/zod'), pkg('zod', 'packages/zod')], 'zod'),
+    ).toStrictEqual({
+      kind: 'ambiguous',
+      paths: ['packages/zod', 'src/zod'],
+    });
+  });
+
+  it('sorts ambiguous paths by codepoint, not host collation', () => {
+    expect.hasAssertions();
+    // `localeCompare` orders these differently (it downweights `-` and `_`) and its ordering is
+    // host-dependent; CI runs three platforms and this array is asserted exactly.
+    expect(
+      lookupPackagePath(
+        [pkg('a', 'pkg_b'), pkg('a', 'pkg-b'), pkg('a', 'pkgb'), pkg('a', 'Pkg')],
+        'a',
+      ),
+    ).toStrictEqual({
+      kind: 'ambiguous',
+      paths: ['Pkg', 'pkg-b', 'pkg_b', 'pkgb'],
     });
   });
 });
