@@ -1,4 +1,5 @@
 import type { GitTransport, RefKey } from './schemas/primitives.ts';
+import { stripGitSuffix, trimPathSlashes } from './git-url-path.ts';
 import { redactUrl } from './git-url-redact.ts';
 import { validationError } from './errors.ts';
 import { zRefKey } from './schemas/primitives.ts';
@@ -20,8 +21,6 @@ type BuildKeyInput = {
   port: string;
   protocol: string;
 };
-
-const stripGitSuffix = (path: string): string => path.replace(/\.git$/u, '');
 
 // The WHATWG URL parser silently resolves `..`/`.` path segments before we ever see
 // `url.pathname`, so traversal attempts must be caught on the raw input first.
@@ -60,7 +59,7 @@ const hostSegmentFor = ({ host, port, protocol }: BuildKeyInput): string => {
 };
 
 const buildKey = (input: BuildKeyInput): RefKey => {
-  const cleanPath = stripGitSuffix(input.path.replace(/^\/+/u, '').replace(/\/+$/u, ''));
+  const cleanPath = stripGitSuffix(trimPathSlashes(input.path));
   return parseAsRefKey(`${hostSegmentFor(input)}/${cleanPath}`);
 };
 
@@ -186,7 +185,6 @@ const canonicalizeGitUrl = (
 // --- git_transport transform: rewriting npm:-resolved clone urls to the configured transport ---
 const FILE_PROTOCOL_PREFIX = 'file:';
 const GIT_SUFFIX = '.git';
-const trimPathSlashes = (path: string): string => path.replace(/^\/+/u, '').replace(/\/+$/u, '');
 const ensureGitSuffix = (path: string): string => {
   if (path.endsWith(GIT_SUFFIX)) {
     return path;

@@ -213,3 +213,35 @@ describe('doctor: skill check when nothing is found', () => {
     });
   });
 });
+
+// The three global locations hang off `ctx.homedir` (`os.homedir()`), not off `$HOME`. The two
+// agree on macOS and Linux, so only Windows ever saw the difference: `HOME` is typically unset
+// there while `os.homedir()` answers from `USERPROFILE`, which used to drop all three entries and
+// report a correctly installed skill as missing. Both directions are pinned here, because a
+// regression to `ctx.env['HOME']` would still pass every other case in this file.
+describe('doctor: skill check resolves globals from the home directory', () => {
+  it('finds a global install with no HOME in the environment at all', async () => {
+    expect.hasAssertions();
+    await withTempHome(async (homeDir) => {
+      await writeSkillAt(homeDir, '.agents', skillSource(CURRENT));
+      // `skillCheckOf` sets `ctx.homedir` and leaves `ctx.env` empty — the native Windows shape.
+      const result = await skillCheckOf(homeDir, CURRENT);
+      expect(result.status).toBe('ok');
+      expect(result.detail).toContain('shared ~/.agents');
+    });
+  });
+
+  it('ignores a HOME pointing at a different directory', async () => {
+    expect.hasAssertions();
+    await withTempHome(async (homeDir) => {
+      await withTempHome(async (decoyDir) => {
+        // The only install lives under the decoy that `$HOME` names. Reading the variable would
+        // find it and report `ok`; reading `ctx.homedir` looks at an empty home and reports `warn`.
+        await writeSkillAt(decoyDir, '.agents', skillSource(CURRENT));
+        const result = await skillCheckOf(homeDir, CURRENT, { env: { HOME: decoyDir } });
+        expect(result.status).toBe('warn');
+        expect(result.detail).not.toContain(decoyDir);
+      });
+    });
+  });
+});

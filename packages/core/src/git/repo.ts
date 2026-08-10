@@ -82,7 +82,12 @@ const cloneRepo = async (runner: Runner, opts: CloneOpts): Promise<CloneResult> 
   if (opts.mode === 'blobless') {
     args.push('--filter=blob:none');
   }
-  args.push(opts.cloneUrl, opts.dest);
+  // `--` ends option parsing, so a url shaped like a flag can only be read as the repository to
+  // clone. git would otherwise honour `--upload-pack=<cmd>` and run it. `canonicalizeGitUrl`
+  // already refuses such urls, but only where a url is first accepted: `sync` re-reads it from
+  // config, which validates it as a non-empty string and nothing more. This makes the property
+  // hold at the call itself rather than resting on something having been checked earlier.
+  args.push('--', opts.cloneUrl, opts.dest);
   const cloneResult = await runOrThrow(runner, gitSpec('git clone', args));
   await runOrThrow(
     runner,

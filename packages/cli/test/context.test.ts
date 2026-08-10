@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Readable } from 'node:stream';
 import { SpawnRunner } from '@kaisers-io/refs-core';
+import { homedir } from 'node:os';
 import { realContext } from '../src/context.ts';
 
 // `realContext()` is the one place in the CLI allowed to touch real globals — these tests pin its
@@ -49,11 +50,14 @@ const UMLAUT_FIRST_BYTE = 195;
 const UMLAUT_SECOND_BYTE = 188;
 
 describe('real context wiring', () => {
-  it('wires env, nodeVersion, and runner to the real process globals', () => {
+  it('wires env, nodeVersion, homedir, and runner to the real process globals', () => {
     expect.hasAssertions();
     const ctx = realContext();
     expect(ctx.env).toBe(process.env);
     expect(ctx.nodeVersion).toBe(process.version);
+    // `os.homedir()` and not `$HOME`: the two differ on native Windows, and `doctor`'s `skill`
+    // check reads this to find the same global directories the installer writes to.
+    expect(ctx.homedir).toBe(homedir());
     expect(ctx.runner).toBeInstanceOf(SpawnRunner);
   });
 

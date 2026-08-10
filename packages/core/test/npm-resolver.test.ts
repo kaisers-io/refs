@@ -207,3 +207,20 @@ describe('packument shape validation', () => {
     );
   });
 });
+
+// The registry request encodes a scoped name's single slash (`@scope/pkg` → `@scope%2Fpkg`). What
+// makes that encoding complete is `validatePackageName` running first — its pattern admits at most
+// that one slash. These cases pin the property that is observable from outside, namely that no
+// multi-slash value ever reaches the network, rather than the internal call order that currently
+// produces it. Encoding stays correct on its own too (`replaceAll`), so the two are independent.
+describe('package names carrying more than one slash', () => {
+  it.each(['@scope/pkg/extra', 'pkg/extra', '@scope//pkg', '@scope/pkg/../other'])(
+    'rejects %s without reaching the registry',
+    async (name) => {
+      expect.hasAssertions();
+      const { fetcher, isFetched } = unfetchedFetcher();
+      await expect(resolveNpmPackage(fetcher, name)).rejects.toThrow(/npm naming rules/u);
+      expect(isFetched()).toBe(false);
+    },
+  );
+});

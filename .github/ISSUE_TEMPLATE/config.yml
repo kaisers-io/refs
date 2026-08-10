@@ -1,8 +1,11 @@
 blank_issues_enabled: true
 contact_links:
-  - name: Report a security vulnerability
+  # GitHub adds its own "Report a security vulnerability" entry to this chooser whenever
+  # SECURITY.md exists, and points it at the policy page. This one is deliberately named
+  # differently: it skips the policy and opens the advisory form itself.
+  - name: Open a private security advisory
     url: https://github.com/kaisers-io/refs/security/advisories/new
-    about: Report privately instead of opening a public issue.
+    about: Goes straight to the report form. Never open a public issue for a vulnerability.
   - name: Command reference
     url: https://github.com/kaisers-io/refs/blob/main/docs/commands.md
     about: Every command, its flags, and its exact output — including the --json envelope.

@@ -1,6 +1,12 @@
 import { applyGitTransport, canonicalizeGitUrl } from '../src/git-url.ts';
 import { describe, expect, it } from 'vitest';
 
+// Long enough that the quadratic form is unmistakable (it needed 14 s here) while the linear one
+// stays in microseconds, and the budget sits between the two by three orders of magnitude — see
+// the `js/polynomial-redos` case at the bottom of this file.
+const SLASH_RUN_LENGTH = 100_000;
+const SLASH_RUN_BUDGET_MS = 1000;
+
 const ACCEPTED_CASES: readonly [string, string, string][] = [
   [
     'https://github.com/vercel/next.js',
@@ -263,5 +269,26 @@ describe('applyGitTransport url rewriting', () => {
     );
     expect(message).toMatch(/port/u);
     expect(message).not.toContain('sekrit');
+  });
+});
+
+// `js/polynomial-redos`. The slash trim used to end in `/\/+$/u`, which retries the run of slashes
+// from every position and backtracks through it each time. The shape that bites puts the run in the
+// MIDDLE: a run at the end matches in a single pass, and leading slashes are removed by an anchored
+// pattern before the trailing one is reached. Paths arrive here from a remote packument's
+// `repository.url`, so the string is a stranger's to choose.
+//
+// The url is refused either way — `parseAsRefKey` rejects the empty segments — but refusal happens
+// AFTER the trim, so the old expression paid the full quadratic cost before deciding. Measured on
+// the old form: 6 ms at n=2000, 90 ms at n=8000, 1480 ms at n=32000. Index scanning held 0.004 ms
+// across all three. A one-second bound sits nowhere near either, so this catches a regression
+// without being a timing-flaky test.
+describe('canonicalizeGitUrl: pathological slash runs', () => {
+  it('refuses a huge run of slashes quickly instead of grinding through it', () => {
+    expect.hasAssertions();
+    const url = `https://github.com/vercel${'/'.repeat(SLASH_RUN_LENGTH)}next.js`;
+    const startedAt = performance.now();
+    expect(() => canonicalizeGitUrl(url)).toThrow(/is invalid/u);
+    expect(performance.now() - startedAt).toBeLessThan(SLASH_RUN_BUDGET_MS);
   });
 });

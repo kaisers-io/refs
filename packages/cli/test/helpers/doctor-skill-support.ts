@@ -40,20 +40,23 @@ type SkillCheckOverrides = {
 };
 
 /** Drives `checkSkill(ctx)` directly rather than the full `refs doctor --json` pipeline: the check
- * reads nothing but `ctx.cliVersion`, `ctx.cwd` and three `ctx.env` keys, so a `refs init` home
- * plus a scripted `git --version` would add setup without adding coverage. `doctor.test.ts` still
- * covers the end-to-end wiring through `run`.
+ * reads nothing but `ctx.cliVersion`, `ctx.cwd`, `ctx.homedir` and two `ctx.env` keys, so a
+ * `refs init` home plus a scripted `git --version` would add setup without adding coverage.
+ * `doctor.test.ts` still covers the end-to-end wiring through `run`.
  *
- * `homeDir` is a `withTempHome` `mkdtemp` directory, never the real `$HOME`, and `ctx.cwd` keeps
- * `testContext()`'s deliberately non-existent default unless a test overrides it — so the check
- * only ever sees fixtures the test wrote. */
+ * `homeDir` lands on `ctx.homedir`, not on `$HOME` — the check resolves global install locations
+ * from `os.homedir()` by way of the context, and passing it through the env var would test a path
+ * production no longer takes. It is a `withTempHome` `mkdtemp` directory, never a real home, and
+ * `ctx.cwd` keeps `testContext()`'s deliberately non-existent default unless a test overrides it,
+ * so the check only ever sees fixtures the test wrote. */
 const skillCheckOf = (
   homeDir: string,
   cliVersion: string,
   overrides: SkillCheckOverrides = {},
 ): Promise<CheckResult> => {
   const { ctx } = testContext();
-  Object.assign(ctx.env, { HOME: homeDir, ...overrides.env });
+  ctx.homedir = homeDir;
+  Object.assign(ctx.env, overrides.env);
   ctx.cliVersion = cliVersion;
   ctx.cwd = overrides.cwd ?? ctx.cwd;
   return checkSkill(ctx);

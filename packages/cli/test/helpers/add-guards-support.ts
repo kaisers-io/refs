@@ -116,7 +116,7 @@ const corruptCheckoutHead = (dest: string): Promise<void> =>
 const createBogusCheckout = async (dest: string, originUrl: string): Promise<void> => {
   await mkdir(dest, { recursive: true });
   await gitFor(dest, ['init', '-q', '-b', 'main']);
-  await gitFor(dest, ['remote', 'add', 'origin', originUrl]);
+  await gitFor(dest, ['remote', 'add', '--', 'origin', originUrl]);
 };
 
 /** A REAL `git clone` of `sourceUrl` into `dest` — same origin `refs add` would derive, but never
@@ -124,7 +124,7 @@ const createBogusCheckout = async (dest: string, originUrl: string): Promise<voi
  * a user's own manual clone of the same repo landing at the exact path `refs` would derive for the
  * reuse-path managed-checkout guard: origin matches, but it never went through `refs add`. */
 const createManualCheckout = async (sourceUrl: string, dest: string): Promise<void> => {
-  const result = await setupRunner.run('git', ['clone', '-q', sourceUrl, dest]);
+  const result = await setupRunner.run('git', ['clone', '-q', '--', sourceUrl, dest]);
   if (result.exitCode !== GIT_SUCCESS_EXIT_CODE) {
     throw new Error(`test setup: git clone failed: ${result.stderr}`);
   }
@@ -133,7 +133,7 @@ const createManualCheckout = async (sourceUrl: string, dest: string): Promise<vo
 /** Repoints an existing (real, refs-managed) checkout's `origin` remote — simulates the checkout
  * having drifted from what a proposal/config expects between `--dry-run` and finalize. */
 const setCheckoutOrigin = (dest: string, originUrl: string): Promise<void> =>
-  gitFor(dest, ['remote', 'set-url', 'origin', originUrl]);
+  gitFor(dest, ['remote', 'set-url', '--', 'origin', originUrl]);
 
 /** Drops an inert marker file directly into `dest` — its continued presence after a second
  * `--dry-run`/finalize proves the checkout was reused rather than wiped and re-cloned. */

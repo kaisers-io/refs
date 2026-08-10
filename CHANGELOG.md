@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.9.0] - 2026-08-09
+## [0.9.0] - 2026-08-10
 
 ### Added
 
@@ -45,9 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are common enough (zod's own repository root has none) that treating them as failures would
   permanently suppress detection for those repos.
 
-- `refs init`'s skill-install hint now presents the second form as installing from a local
-  clone, rather than as a workaround for the repository's development phase. Both commands
-  are unchanged; only the wording differs.
+## [0.8.1] - 2026-08-10
 
 ### Fixed
 
@@ -58,6 +56,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   until interrupted. Both unbounded paths now honour the deadline and fail with the conflict error
   (exit code 5) as documented.
 
+- `refs doctor` reported a correctly installed skill as missing on native Windows. Its three
+  global search locations were derived from `$HOME`, which Windows typically leaves unset, while
+  the installer resolves `os.homedir()` — so all three silently dropped out of the search and the
+  check reported `warn`, "not found in the locations this check knows about". It now reads the
+  same home directory the installer writes to. macOS and Linux were unaffected, the two agreeing
+  there.
+
+### Security
+
+- Canonicalizing a git url no longer takes quadratic time. Trailing slashes were trimmed with a
+  pattern anchored at the end of the string, which backtracks through a run of slashes from every
+  position; a url carrying a long run in the middle of its path took 14 seconds to be rejected.
+  Such a url is reachable — `refs add npm:<package>` reads `repository.url` straight out of the
+  registry's packument, and nothing bounds its length — so a published package could stall the
+  command that adds it. Trimming is now linear.
+
+- Every git invocation that receives a url now ends option parsing with `--` first. Without it,
+  git honours a url shaped like `--upload-pack=<command>` and executes it. Urls accepted through
+  `refs add` were already refused by canonicalization, but `refs sync` re-reads them from the
+  config file, where they are only checked for being non-empty — the guarantee therefore held one
+  step away from the call that depended on it. It now holds at the call.
+
+### Changed
+
+- Published packages carry a [provenance attestation](https://docs.npmjs.com/generating-provenance-statements).
+  npm produces these automatically for public repositories, and `0.8.0` shipped without one
+  because the repository was private at the time and the check for that fails silently. The
+  release workflow now states `--provenance` and refuses to publish if the repository is not
+  public.
+
+- `refs init`'s skill-install hint now presents the second form as installing from a local
+  clone, rather than as a workaround for the repository's development phase. Both commands
+  are unchanged; only the wording differs.
 
 ## [0.8.0] - 2026-08-04
 
@@ -396,7 +427,8 @@ trusted-publishing pipeline end to end.
 - Agent skill (`skills/refs/`) documenting the investigate/add/maintain workflows.
 
 [Unreleased]: https://github.com/kaisers-io/refs/compare/v0.9.0...HEAD
-[0.9.0]: https://github.com/kaisers-io/refs/compare/v0.8.0...v0.9.0
+[0.9.0]: https://github.com/kaisers-io/refs/compare/v0.8.1...v0.9.0
+[0.8.1]: https://github.com/kaisers-io/refs/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/kaisers-io/refs/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/kaisers-io/refs/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/kaisers-io/refs/compare/v0.6.0...v0.6.1

@@ -63,7 +63,7 @@ const parseSoleEnvelope = (stdout: readonly string[]): TagEnvelope => {
  * a real, unmanaged checkout with real tags, standing in for a `refs add`ed checkout without the
  * overhead of running the full add pipeline. */
 const cloneFixtureInto = async (fixtureDir: string, dest: string): Promise<void> => {
-  const result = await setupRunner.run('git', ['clone', '-q', fixtureDir, dest]);
+  const result = await setupRunner.run('git', ['clone', '-q', '--', fixtureDir, dest]);
   if (result.exitCode !== CLONE_SUCCESS_EXIT_CODE) {
     throw new Error(`test setup: git clone failed: ${result.stderr}`);
   }

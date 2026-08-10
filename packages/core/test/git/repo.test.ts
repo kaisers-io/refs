@@ -36,7 +36,7 @@ const makeHome = async (): Promise<ReturnType<typeof resolveHome>> => {
 };
 
 const plainClone = async (url: string, dest: string): Promise<void> => {
-  const result = await runner.run('git', ['clone', '-q', url, dest]);
+  const result = await runner.run('git', ['clone', '-q', '--', url, dest]);
   if (result.exitCode === SUCCESS_EXIT_CODE) {
     return;
   }
