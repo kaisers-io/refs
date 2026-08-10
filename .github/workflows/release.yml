@@ -136,6 +136,25 @@ jobs:
       id-token: write
       contents: read
     steps:
+      - name: Guard — a provenance attestation needs a public repository
+        # The `--provenance` flag below hard-fails on the prerequisites npm checks (`id-token`,
+        # the CI provider, npm package visibility) but never on repository visibility: npm looks
+        # at that only on its automatic path, which stating the flag bypasses. Were this repo
+        # private again, the publish would still sign — attesting to a URL nobody can resolve
+        # and writing the private repository's name into the public transparency log. Refuse
+        # here instead, while nothing has left the runner.
+        #
+        # Written fail-closed on purpose. An `if:` condition on the payload value would skip
+        # this step silently if the field were ever absent, which is the failure mode it exists
+        # to prevent — so an empty value is an error too, and only a literal `false` passes.
+        env:
+          REPO_PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          set -euo pipefail
+          if [ "${REPO_PRIVATE:-}" != "false" ]; then
+            echo "::error::Repository visibility reads '${REPO_PRIVATE:-<absent>}', expected 'false'. A provenance attestation would name a repository nobody can resolve. Refusing to publish."
+            exit 1
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -166,6 +185,11 @@ jobs:
         # done, this step fails with an auth error — that failure is expected and safe (there is
         # no fallback long-lived token to leak).
         # `--ignore-scripts`: no lifecycle scripts run at publish time.
-        # No `--provenance`: while the GitHub repo is private, a provenance attestation would
-        # link to a 404 repository URL. Add `--provenance` once the repo goes public.
-        run: npm publish --ignore-scripts
+        # `--provenance`: trusted publishing attaches an attestation on its own, but its check
+        # for a public repository sits behind `config.isDefault('provenance')` and fails in
+        # silence — which is how 0.8.0 shipped without one while this repo was private. Stating
+        # the flag skips that automatic path and hard-fails instead on the prerequisites this
+        # job does control: `id-token: write`, a supported CI provider, a public npm package.
+        # It does not re-check repository visibility, so read it as an assertion about this
+        # job, not as a guard against the repository going private again.
+        run: npm publish --ignore-scripts --provenance
