@@ -51,8 +51,9 @@ const probePackageDir = async (repoDir: string, packageDir: string): Promise<Pro
 
   const pkg = toWorkspacePackage(packageDir, info);
   if (pkg === undefined) {
-    // The manifest read fine; it just declares no usable `name`. Not a failure to read, so it
-    // gets its own kind — but still unreliable, since a real package could be hiding here.
+    // The manifest read fine; it just declares no usable `name`. Its own kind, and deliberately
+    // NOT one that makes a scan unreliable: identity here is the package name, so a manifest
+    // without one cannot be the package anyone asked for. Nothing is hidden by it.
     return { diagnostic: { kind: 'manifest_missing_name', path: packageDir } };
   }
   return { pkg };

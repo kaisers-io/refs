@@ -4,7 +4,6 @@ import { resolveHome, withLock, zRefKey } from '@kaisers-io/refs-core';
 import type { VerifyOutcome } from '../../src/commands/resolve-verify.ts';
 import { join } from 'node:path';
 import { refLockName } from '../../src/commands/add-source.ts';
-import { setTimeout as sleep } from 'node:timers/promises';
 import { verifyPackageLocation } from '../../src/commands/resolve-verify.ts';
 import { withTempHome } from '../helpers/add-support.ts';
 import { writeFileSync } from 'node:fs';
@@ -44,14 +43,6 @@ const holdRefLock = async (
   return { held, release: gate.resolve };
 };
 
-// Long enough for the lock-free probe's filesystem calls to complete before the test changes
-// the tree under it. If this ever races, the test fails loudly (it reports the fast path's
-// answer) rather than passing for the wrong reason.
-const PROBE_SETTLE_MS = 25;
-const settle = async (): Promise<void> => {
-  await sleep(PROBE_SETTLE_MS);
-};
-
 /** Starts verification for `packages/zod` while the ref lock is held, runs `duringLock` once the
  * lock-free probe has settled against the tree as it then was, and releases. Whatever
  * `duringLock` changes is visible ONLY to the locked re-probe — which is what makes these tests
@@ -63,14 +54,20 @@ const verifyAcrossLock = async (
 ): Promise<VerifyOutcome> => {
   const home = resolveHome({ REFS_HOME: homeDir });
   const lock = await holdRefLock(home);
+  const probed = deferred();
   const inFlight = verifyPackageLocation({
     checkoutDir: repo,
     configuredPath: 'packages/zod',
     home,
     key: KEY,
+    onProbed: probed.resolve,
     packageName: 'zod',
   });
-  await settle();
+  // Wait for the OBSERVED completion of the lock-free probe, not for elapsed time. Sleeping
+  // instead would make these tests pass for the wrong reason: a probe still running when the
+  // package is restored would see it itself and return the expected answer through the fast
+  // path, so the locked re-probe could be deleted without either test noticing.
+  await probed.promise;
   duringLock();
   lock.release();
   await lock.held;

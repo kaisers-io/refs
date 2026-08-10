@@ -44,6 +44,11 @@ type WorkspaceDiagnostic =
   | { kind: 'manifest_missing_name'; path: string }
   | { kind: 'manifest_unreadable'; path: string }
   | { kind: 'no_workspace_declaration' }
+  // The declaration file is there and names workspaces, but nothing usable came out of it. The
+  // pnpm reader is a line parser, not a YAML parser, so valid flow style (`packages: ["a/*"]`)
+  // yields zero patterns. Without this the repo would be indistinguishable from one that
+  // declares no workspaces at all — and would then look like a complete, trustworthy scan.
+  | { kind: 'workspace_declaration_unparsed'; file: string }
   | { kind: 'unsupported_pattern'; pattern: string }
   | { kind: 'workspace_dir_unreadable'; path: string }
   | { kind: 'workspace_file_unreadable'; file: string };
@@ -72,6 +77,7 @@ const UNRELIABLE_DIAGNOSTIC_KINDS: ReadonlySet<WorkspaceDiagnostic['kind']> = ne
   'candidate_not_inspected',
   'manifest_unreadable',
   'unsupported_pattern',
+  'workspace_declaration_unparsed',
   'workspace_dir_unreadable',
   'workspace_file_unreadable',
 ]);
@@ -174,10 +180,24 @@ const deduplicateAndSort = (packages: WorkspacePackage[]): WorkspacePackage[] =>
   return deduped;
 };
 
-/** Whether a scan's package list may be treated as complete. An unreliable scan must never be
- * used to conclude that a configured package is gone. */
+/** Whether a scan's package list may be treated as complete FOR WHAT IT SEARCHED. An unreliable
+ * scan must never be used to conclude that a configured package is gone.
+ *
+ * Note the qualifier: this says the declared workspaces were fully expanded, not that the whole
+ * checkout was examined. `scanSearchedSomewhere` is the other half. */
 const scanIsReliable = (scan: WorkspaceScan): boolean =>
   !scan.diagnostics.some((diagnostic) => UNRELIABLE_DIAGNOSTIC_KINDS.has(diagnostic.kind));
+
+/** Whether the scan had anywhere to look at all.
+ *
+ * A repo with no workspace declaration produces an empty, *reliable* scan — correct as a
+ * statement about workspaces, and worthless as evidence about a package. `refs add`'s npm
+ * fallback registers packages in exactly such repos (`path: "."`, or the packument's
+ * `directory`), and workspace detection can never see them. Concluding "gone" from a scan that
+ * enumerated nothing would be a definite answer drawn from zero inspection — the failure this
+ * whole mechanism exists to prevent. */
+const scanSearchedSomewhere = (scan: WorkspaceScan): boolean =>
+  !scan.diagnostics.some((diagnostic) => diagnostic.kind === 'no_workspace_declaration');
 
 // Codepoint comparison, NOT `localeCompare`. Without an explicit locale `localeCompare` uses
 // the host's collation, which the spec leaves implementation-defined — and it genuinely
@@ -227,6 +247,7 @@ export {
   isRelPathContained,
   isSafeWorkspacePattern,
   scanIsReliable,
+  scanSearchedSomewhere,
   selectPackageDirs,
   sortDiagnostics,
   toWorkspacePackage,

@@ -1,4 +1,4 @@
-import type { RefKey, RefsHome } from '@kaisers-io/refs-core';
+import type { RefKey, RefsHome, WorkspaceScan } from '@kaisers-io/refs-core';
 import {
   RefsError,
   detectWorkspacePackagesDetailed,
@@ -6,6 +6,7 @@ import {
   lookupPackagePath,
   probePackageIdentity,
   scanIsReliable,
+  scanSearchedSomewhere,
   withLock,
 } from '@kaisers-io/refs-core';
 // `refLockName` lives in the CLI, not core — the same import `sync-checkout.ts` uses, so both
@@ -50,6 +51,12 @@ type VerifyOpts = {
   // Test seam only: production leaves this undefined so `withLock` keeps its own default.
   // Without it the lock-contention test would block for the full default timeout.
   lockTimeoutMs?: number;
+  // Test seam only: fires once the lock-free probe has finished, before the lock is requested.
+  // The race tests need to change the checkout in the window BETWEEN those two, and the only
+  // alternative — sleeping and hoping the probe finished — makes them pass when they should
+  // fail: if the probe were still running, it would observe the restored package itself and
+  // return the expected answer through the fast path, with the locked re-probe never involved.
+  onProbed?: () => void;
   packageName: string;
 };
 
@@ -112,8 +119,20 @@ const searchScan = async (opts: VerifyOpts): Promise<VerifyOutcome> => {
 
   return lookup.kind === 'found'
     ? { configuredPath: opts.configuredPath, path: lookup.path, status: 'relocated' }
-    : { configuredPath: opts.configuredPath, path: NO_PATH, status: 'missing' };
+    : absenceOutcome(opts, scan);
 };
+
+/** `missing` is the one answer a complete-but-EMPTY scan cannot support. A repo with no workspace
+ * declaration yields exactly that: reliable, and derived from inspecting nothing. `add`'s npm
+ * fallback registers packages in precisely those repos (`path: "."`, or the packument's
+ * `directory`), so this is not a corner case — it is the ordinary shape of a single-package
+ * upstream, and the one where a moved package would otherwise be declared gone on no evidence.
+ *
+ * `relocated` needs no such guard: a positive sighting stands on its own. */
+const absenceOutcome = (opts: VerifyOpts, scan: WorkspaceScan): VerifyOutcome =>
+  scanSearchedSomewhere(scan)
+    ? { configuredPath: opts.configuredPath, path: NO_PATH, status: 'missing' }
+    : incomplete(opts, 'this repo declares no workspaces, so there was nowhere to search');
 
 /** Wraps `rescanLocked` in the per-ref lock `sync` mutates behind. `withLock` REJECTS with a
  * conflict error when the lock cannot be acquired in time, so the failure has to be caught: an
@@ -149,8 +168,11 @@ const verifyPackageLocation = async (opts: VerifyOpts): Promise<VerifyOutcome> =
     return { path: opts.configuredPath, status: 'unmaterialized' };
   }
 
-  // No lock for this read: it is on the hot path of every agent question, and a torn read can
-  // only route into the rescan branch below — never into a wrong answer.
+  // No lock for this read: it is on the hot path of every agent question. A read racing a
+  // concurrent `sync` can return a STALE answer — `verified` for a path being replaced, say —
+  // but never an unfounded one, and no lock could fix that anyway: the checkout can change the
+  // instant after any lock is released. What the lock does protect is the NEGATIVE conclusions,
+  // which is why the rescan below takes it and re-probes.
   const probe = await probePackageIdentity(opts.checkoutDir, opts.configuredPath, opts.packageName);
   if (probe.kind === 'match') {
     return { path: opts.configuredPath, status: 'verified' };
@@ -158,6 +180,7 @@ const verifyPackageLocation = async (opts: VerifyOpts): Promise<VerifyOutcome> =
   if (probe.kind === 'unreadable') {
     return { path: opts.configuredPath, reason: probe.reason, status: 'unverifiable' };
   }
+  opts.onProbed?.();
   return rescanFor(opts);
 };
 

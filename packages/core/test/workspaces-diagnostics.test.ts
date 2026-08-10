@@ -83,7 +83,66 @@ describe('unreadable workspace declarations', () => {
   });
 });
 
+describe('a declaration this reader cannot parse', () => {
+  it('reports workspace_declaration_unparsed for YAML flow style', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    writeJson(join(repo, 'package.json'), { name: 'mono' });
+    addPackage(repo, 'pkg-a', { name: '@m/a' });
+    // Valid YAML that the line parser cannot see. Without a diagnostic this repo would be
+    // indistinguishable from one declaring no workspaces at all — and would then look like a
+    // complete, trustworthy scan while silently omitting every package it declares.
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    writeFileSync(join(repo, 'pnpm-workspace.yaml'), 'packages: ["pkg-a"]\n');
+    const scan = await detectWorkspacePackagesDetailed(repo);
+    expect(scan.diagnostics).toContainEqual({
+      file: 'pnpm-workspace.yaml',
+      kind: 'workspace_declaration_unparsed',
+    });
+    expect(scanIsReliable(scan)).toBe(false);
+  });
+
+  it('stays silent for a catalog-only pnpm-workspace.yaml with no packages key', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    writeJson(join(repo, 'package.json'), { name: 'solo' });
+    // pnpm 9 catalogs legitimately declare no `packages`. Keying the diagnostic on the FILE
+    // rather than the key would report every one of them.
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    writeFileSync(join(repo, 'pnpm-workspace.yaml'), 'catalog:\n  react: ^19\n');
+    const scan = await detectWorkspacePackagesDetailed(repo);
+    expect(scan.diagnostics).toStrictEqual([{ kind: 'no_workspace_declaration' }]);
+    expect(scanIsReliable(scan)).toBe(true);
+  });
+});
+
 describe('incomplete expansion', () => {
+  it('reports a literal pattern whose manifest is unreadable', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // A wildcard-free pattern names exactly one directory. Its failure used to be invisible:
+    // the branch collapsed "no package here" and "refused to look" into the same empty result,
+    // so an unreadable literal directory left the scan looking complete and `missing` could be
+    // concluded from it.
+    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['docs/site'] });
+    addPackage(repo, 'docs/site', { name: '@mono/site' });
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    writeFileSync(join(repo, 'docs', 'site', 'package.json'), '{ broken');
+    const scan = await detectWorkspacePackagesDetailed(repo);
+    expect(scan.diagnostics).toStrictEqual([{ kind: 'manifest_unreadable', path: 'docs/site' }]);
+    expect(scanIsReliable(scan)).toBe(false);
+  });
+
+  it('stays silent for a literal pattern naming a directory that is simply not there', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // Absence is not failure: a declared directory that has not been created is ordinary.
+    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['docs/site'] });
+    const scan = await detectWorkspacePackagesDetailed(repo);
+    expect(scan.diagnostics).toStrictEqual([]);
+    expect(scanIsReliable(scan)).toBe(true);
+  });
+
   it('reports unsupported_pattern for a pattern the classifier ignores', async () => {
     expect.hasAssertions();
     const repo = freshRepo();

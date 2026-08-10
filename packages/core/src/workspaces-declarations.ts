@@ -13,6 +13,9 @@ import { resolveInside } from './fs-containment.ts';
 type CheckedPatterns = {
   ok: boolean;
   patterns: Set<string>;
+  // The declaration named workspaces in a shape this reader cannot parse. Distinct from `!ok`
+  // (could not read it at all) and from an absent declaration (normal).
+  unparsed?: boolean;
 };
 
 // Shared read path for both workspace declarations. Returns `ok: false` only when the file
@@ -71,6 +74,12 @@ const parseNpmDeclaration = (content: string): CheckedPatterns => {
 // `ok: false` here means the file could not be READ, never "the YAML is invalid" — plenty of
 // malformed YAML parses as empty or partial with nothing to report. Diagnosing that would mean
 // adding a real YAML parser.
+// A `packages` key at column 0, whatever follows it. `collectPnpmPatterns` only recognises the
+// block form (`packages:` alone on its line, then `- item` lines), so this is how we notice that
+// a file DOES declare workspaces in a form we cannot read — most commonly YAML flow style,
+// `packages: ["a/*"]`, which is perfectly valid.
+const PNPM_PACKAGES_KEY = /^packages:/mu;
+
 const collectPnpmPatternsChecked = async (
   repoDir: string,
   pnpmWorkspacePath: string,
@@ -80,10 +89,18 @@ const collectPnpmPatternsChecked = async (
   if (!read.ok) {
     return { ok: false, patterns };
   }
-  if (read.content !== undefined) {
-    collectPnpmPatterns(read.content.split('\n')).forEach((pattern) => patterns.add(pattern));
+  if (read.content === undefined) {
+    return { ok: true, patterns };
   }
-  return { ok: true, patterns };
+
+  collectPnpmPatterns(read.content.split('\n')).forEach((pattern) => patterns.add(pattern));
+  // Keyed on the KEY, not the file: a pnpm 9 catalog-only `pnpm-workspace.yaml` legitimately
+  // declares no `packages` at all, and must not be reported as unparsed.
+  return {
+    ok: true,
+    patterns,
+    unparsed: patterns.size === 0 && PNPM_PACKAGES_KEY.test(read.content),
+  };
 };
 
 // Both workspace declarations, merged. Each contributes a diagnostic only when it EXISTS and is
@@ -101,6 +118,9 @@ const readDeclarations = async (
   }
   if (!pnpmRead.ok) {
     diagnostics.push({ file: 'pnpm-workspace.yaml', kind: 'workspace_file_unreadable' });
+  }
+  if (pnpmRead.unparsed === true) {
+    diagnostics.push({ file: 'pnpm-workspace.yaml', kind: 'workspace_declaration_unparsed' });
   }
   return { diagnostics, patterns: new Set<string>([...npmRead.patterns, ...pnpmRead.patterns]) };
 };

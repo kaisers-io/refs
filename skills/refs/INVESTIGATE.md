@@ -56,6 +56,8 @@ is what tells you whether the path is trustworthy:
   answering the question, and offer to persist it with
   `refs edit <ref> --package <name> path <new-path>`.
 - **`unmaterialized`** — the checkout is not there. Sync (step 2), then resolve again.
+  The same applies whenever you sync at all: verification described the checkout as it was
+  BEFORE the sync, so re-run `resolve` afterwards rather than reusing the earlier path.
 - **`unverifiable`** — the path returned is the _configured_ one and may be stale: an
   unreadable manifest can sit on top of the wrong package. Do not treat it as confirmed.
   `reason` names the actual failure — a malformed manifest, a permissions error, a

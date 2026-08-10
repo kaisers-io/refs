@@ -10,7 +10,7 @@
 // rejected without its contents ever being touched — the same discipline `workspaces.ts` follows
 // and `workspaces-containment.test.ts` pins.
 import { isAbsolute, relative, sep } from 'node:path';
-import { realpath } from 'node:fs/promises';
+import { lstat, realpath } from 'node:fs/promises';
 
 const PARENT_DIR_SEGMENT = '..';
 
@@ -27,6 +27,17 @@ type ContainmentResult =
 
 const errorCode = (error: unknown): string =>
   (error as NodeJS.ErrnoException).code ?? String(error);
+
+// Does a directory entry exist at this exact path, without following it? True for a dangling
+// symlink, false when nothing is there at all.
+const lstatExists = async (path: string): Promise<boolean> => {
+  try {
+    await lstat(path);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 const isInside = (realRoot: string, realTarget: string): boolean => {
   const rel = relative(realRoot, realTarget);
@@ -66,9 +77,17 @@ const resolveInside = async (root: string, target: string): Promise<ContainmentR
 
   const resolvedTarget = await tryRealpath(target);
   if ('code' in resolvedTarget) {
-    return MISSING_PATH_CODES.has(resolvedTarget.code)
-      ? { kind: 'missing' }
-      : { code: resolvedTarget.code, kind: 'unreadable' };
+    if (!MISSING_PATH_CODES.has(resolvedTarget.code)) {
+      return { code: resolvedTarget.code, kind: 'unreadable' };
+    }
+    // ENOENT from `realpath` covers two different things: nothing is there, and something IS
+    // there but its target does not resolve — a dangling symlink. `lstat` separates them
+    // without following the link. A dangling link is a failure to resolve, not an absence, and
+    // the difference matters: absence is evidence a caller acts on ("the package is gone"),
+    // while a broken link is only evidence that we could not tell.
+    return (await lstatExists(target))
+      ? { code: resolvedTarget.code, kind: 'unreadable' }
+      : { kind: 'missing' };
   }
 
   return isInside(resolvedRoot.real, resolvedTarget.real)

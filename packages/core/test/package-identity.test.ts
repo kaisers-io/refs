@@ -87,21 +87,21 @@ describe('nothing at the configured path', () => {
       kind: 'absent',
     });
   });
-
-  it('reports absent for a package dir that is a broken symlink', async () => {
-    expect.hasAssertions();
-    const repo = freshRepo();
-    // `realpath` on a symlink whose target is gone rejects with ENOENT, so this lands in
-    // `absent` — the right answer: there is no package there.
-    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
-    symlinkSync(join(repo, 'nowhere'), join(repo, 'packages-link'));
-    await expect(probePackageIdentity(repo, 'packages-link', 'zod')).resolves.toStrictEqual({
-      kind: 'absent',
-    });
-  });
 });
 
 describe('a path that cannot be checked', () => {
+  it('reports unreadable — not absent — for a package dir that is a broken symlink', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // A link IS present at the configured path; only its target is gone. Reporting `absent`
+    // would send this into the rescan and, in a repo whose scan finds nothing, out the other
+    // side as a confident `missing` — concluded from a path we could not read.
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    symlinkSync(join(repo, 'nowhere'), join(repo, 'packages-link'));
+    const probe = await probePackageIdentity(repo, 'packages-link', 'zod');
+    expect(probe.kind).toBe('unreadable');
+  });
+
   it('reports unreadable — not absent — for a malformed manifest', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
@@ -122,7 +122,9 @@ describe('a path that cannot be checked', () => {
     const probe = await probePackageIdentity(repo, 'packages/zod', 'zod');
     expect(probe.kind).toBe('unreadable');
   });
+});
 
+describe('paths that escape the checkout', () => {
   it('reports unreadable for a lexically escaping path, before touching the filesystem', async () => {
     expect.hasAssertions();
     const repo = freshRepo();

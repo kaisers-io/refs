@@ -61,13 +61,17 @@ describe('paths that are simply not there', () => {
     });
   });
 
-  it('reports a broken symlink as missing', async () => {
+  it('reports a broken symlink as unreadable, not missing', async () => {
     expect.hasAssertions();
     const root = freshDir();
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     symlinkSync(join(root, 'gone'), join(root, 'link'));
+    // Something IS at this path — a link whose target does not resolve. `realpath` reports the
+    // same ENOENT as for nothing-at-all, but the two are different facts: absence is evidence a
+    // caller acts on ("the package is gone"), a dangling link only says we could not tell.
     await expect(resolveInside(root, join(root, 'link'))).resolves.toStrictEqual({
-      kind: 'missing',
+      code: 'ENOENT',
+      kind: 'unreadable',
     });
   });
 });

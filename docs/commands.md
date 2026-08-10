@@ -616,9 +616,16 @@ answering confidently. `package.status` reports what was established:
 
 The last row's qualifier is load-bearing, and so is `relocated`'s. Neither absence nor
 uniqueness can be concluded from a scan that skipped something — an unreadable manifest, an
-unsupported workspace pattern, a package directory reachable only through a symlink. Any of
-those turns both answers into `unverifiable` instead, because a second package of the same name
-could be sitting in the part that was not inspected.
+unsupported workspace pattern, a package directory reachable only through a symlink, a
+declaration in a YAML form the reader cannot parse. Any of those turns both answers into
+`unverifiable` instead, because a second package of the same name could be sitting in the part
+that was not inspected.
+
+The scan also only covers what the repo's **workspace declaration** points at. A package
+registered by `refs add`'s npm fallback — at `path: "."`, or at the packument's `directory` —
+is outside that coverage: workspace detection can never see it. If such a package moves,
+`resolve` reports `unverifiable`, not `missing`, because a scan with nowhere to look is no
+evidence of absence.
 
 **All six exit `0`.** `resolve` is a routing command: the ref resolved, and only the
 package's location inside it is in question. A caller that needs the path must therefore

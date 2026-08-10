@@ -216,6 +216,29 @@ describe('an incomplete scan proves nothing either way', () => {
       expect(outcome.path).toBe('packages/zod');
     });
   });
+});
+
+describe('a repo with nowhere to search', () => {
+  it('refuses to report missing when the repo declares no workspaces at all', async () => {
+    expect.hasAssertions();
+    await withTempHome(async (homeDir) => {
+      const repo = asCheckout(freshRepo());
+      // The shape `add`'s npm fallback produces: a package registered by packument `directory`
+      // in a repo with no workspace declaration. The scan has nowhere to look, so its empty
+      // result is reliable AND worthless as evidence — and the package really is still here,
+      // one directory over. Reporting `missing` would be a definite answer from zero inspection.
+      writeJson(join(repo, 'package.json'), { name: 'the-repo' });
+      addPackage(repo, 'src/thing', { name: 'thing' });
+      const outcome = await verifyIn({
+        checkoutDir: repo,
+        configuredPath: 'lib/thing',
+        homeDir,
+        packageName: 'thing',
+      });
+      expect(outcome.status).toBe('unverifiable');
+      expect(outcome.path).toBe('lib/thing');
+    });
+  });
 
   it('keeps the configured path when the manifest is unreadable', async () => {
     expect.hasAssertions();

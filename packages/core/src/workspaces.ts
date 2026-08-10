@@ -240,7 +240,7 @@ export { detectWorkspacePackages, detectWorkspacePackagesDetailed };
 // Re-exported here rather than from `workspaces-patterns.ts` directly: a consumer that gets a
 // scan from this module needs the predicate that says whether it may be trusted, and the two
 // belong together in the public surface.
-export { scanIsReliable } from './workspaces-patterns.ts';
+export { scanIsReliable, scanSearchedSomewhere } from './workspaces-patterns.ts';
 export type {
   WorkspaceDiagnostic,
   WorkspacePackage,
