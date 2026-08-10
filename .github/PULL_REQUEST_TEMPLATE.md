@@ -10,8 +10,8 @@ have to verify by hand; ticking it honestly is the fastest path to a merge.
 ## Why
 
 <!--
-If this fixes an issue, link it. If the reason is not obvious from the diff — a race
-condition, a platform difference, a behavior that only shows up under load — explain it
+If this fixes an issue, link it. If the reason is not obvious from the diff, say a race
+condition or a platform difference or something that only shows up under load, explain it
 here rather than in a code comment.
 -->
 

@@ -4,12 +4,14 @@
 synopsis — this document mirrors them and adds the `--json` data shapes and exit codes
 that `--help` doesn't show.
 
-Every command accepts two global options, in addition to its own:
+Every command accepts these global options, in addition to its own:
 
 | Option      | Meaning                                                                |
 | ----------- | ---------------------------------------------------------------------- |
 | `--json`    | Emit a machine-readable JSON envelope on stdout instead of human text. |
 | `--verbose` | Include stack traces in error output.                                  |
+| `-V`, `--version` | Print the CLI version and exit — what the skill's capability gate reads. |
+| `-h`, `--help`    | Print usage for the CLI or for one command.                              |
 
 ## The JSON envelope
 
@@ -49,7 +51,8 @@ whole invocation as failed.
 refs init
 ```
 
-Seeds the refs home directory (config, state, `sources/`, `locks/`, `hooks/`) if absent,
+Seeds the refs home directory (config, `sources/`, `locks/`, `hooks/`) if absent —
+`state.json` is written later, by the first `add`/`sync` —
 migrates the config to the current schema if it's older, installs the git hooks guard,
 and is safe to re-run — a repeat call is a no-op wherever nothing needed to change.
 
@@ -158,11 +161,11 @@ refs add https://github.com/stevemao/left-pad --description "Left-pad a string."
   "ok": true,
   "data": {
     "key": "github.com/stevemao/left-pad",
-    "url": "ssh://git@github.com/stevemao/left-pad.git",
+    "url": "https://github.com/stevemao/left-pad",
     "default_branch": "master",
     "tag_format_candidate": "v{version}",
     "description": "",
-    "packages": { "left-pad": { "path": "." } }
+    "packages": {}
   },
   "warnings": []
 }
@@ -182,10 +185,10 @@ this; a `null` candidate makes `--description` fail too, with a validation error
     "key": "github.com/stevemao/left-pad",
     "entry": {
       "description": "Left-pad a string.",
-      "url": "ssh://git@github.com/stevemao/left-pad.git",
+      "url": "https://github.com/stevemao/left-pad",
       "default_branch": "master",
       "tag_format": "v{version}",
-      "packages": { "left-pad": { "description": "Left-pad a string.", "path": "." } }
+      "packages": {}
     }
   },
   "warnings": []
@@ -388,8 +391,9 @@ refs doctor --json
 }
 ```
 
-Each check's `status` is `ok`, `warn`, or `fail`. As with `sync` (see [Exit codes]
-(#exit-codes) above), the envelope is `{"ok":true,...}` even when a check reports `fail`
+Each check's `status` is `ok`, `warn`, or `fail`. As with `sync` (see
+[Exit codes](#exit-codes) above), the envelope is `{"ok":true,...}` even when a check
+reports `fail`
 — but the process exits `1` in that case.
 
 ### The `skill` check
@@ -450,9 +454,11 @@ it looked rather than claiming the skill is absent, and why the result is a `war
 a `fail`. Nothing depends on it: the skill's own capability gate runs `refs --version` and
 compares it against the pin in the file the agent already loaded. That "not found" list is
 built from the paths actually searched, so it names `$CLAUDE_CONFIG_DIR`/`$CODEX_HOME` when
-either is set rather than the `~/.claude`/`~/.codex` the override replaced. One known gap:
-the three global locations are resolved from `$HOME`, so on native Windows — where `HOME` is
-typically unset — they drop out of the list and only the project ones are searched.
+either is set rather than the `~/.claude`/`~/.codex` the override replaced. The three global
+locations resolve from `os.homedir()` — the same call the installer makes, deliberately not
+`$HOME`, which native Windows typically leaves unset. Until 0.8.1 the variable was read
+instead, so on Windows all three dropped out and a correctly installed skill was reported
+as missing.
 
 Exit codes: `0` (all checks `ok`/`warn`), `1` (any check `fail`, or an unexpected error).
 
@@ -668,10 +674,10 @@ refs show left-pad --json
   "data": {
     "key": "github.com/stevemao/left-pad",
     "description": "Left-pad a string.",
-    "url": "ssh://git@github.com/stevemao/left-pad.git",
+    "url": "https://github.com/stevemao/left-pad",
     "default_branch": "master",
     "tag_format": "v{version}",
-    "packages_count": 1,
+    "packages_count": 0,
     "local_path": "/Users/you/.kaisers-io/refs/sources/github.com/stevemao/left-pad",
     "missing": false,
     "stale": false,

@@ -36,9 +36,14 @@ refs resolve <query> --json
 
 `<query>` can be an npm package name, an import path (`react/jsx-runtime`,
 `@scope/pkg/sub/path` — longest matching prefix wins), a git URL, or a ref-key
-suffix (`zod`). This returns `{key, local_path, package, stale, missing}`;
-`package` is `null` when the query resolves to the ref itself rather than one of
-its packages.
+suffix (`zod`). This returns `{key, local_path, package, stale, missing}`, plus
+`last_fetched_at` once the ref has been fetched; `package` is `null` when the query
+resolves to the ref itself rather than one of its packages.
+
+When it is not null, `package` is `{name, path, local_path}` and carries its **own**
+absolute `local_path` — the package directory, not the ref's. Rule 1 of the citation
+contract below wants the checkout root, so read the top-level `local_path` for that, and
+treat the package's only as a starting directory for the search.
 
 **Check `package.status` before reading anything.** The configured path is only a
 locator, and upstream repos move things; `resolve` verifies it against the manifest
@@ -209,12 +214,14 @@ Five rules make a wrong link detectable instead of silent:
    citing it.
 4. **Never invent or repair.** A missing line number or an implausible path stays unlinked.
 5. **Make the visible text root-relative.** A worker's `## References` entries already come
-   this way. An inline path may already be root-relative — the search funnel above runs
-   inside the checkout, so `git grep`/`rg`/`git blame` output already is — or absolute
-   (echoed from `refs resolve`'s `local_path`, or a tool run with an absolute cwd). Validate
-   a root-relative path against the checkout root; strip the root from an absolute one.
-   Either way, the link target is that verified root-relative path joined onto the root
-   (rule 2).
+   this way. An inline path arrives in one of three shapes, and only the first is ready to
+   use: root-relative, **cwd-relative** (`git grep` and `rg` print paths relative to the
+   directory they ran in — and the funnel above tells you to narrow to a subdirectory first,
+   so this is the common case, not the exception), or absolute (echoed from `refs resolve`'s
+   `local_path`, or a tool run with an absolute cwd). Rebase a cwd-relative path onto the
+   root before anything else; strip the root from an absolute one; validate a root-relative
+   one against the root. Either way, the link target is that verified root-relative path
+   joined onto the root (rule 2).
 
 Wrap the target in angle brackets when the path contains a space, or the markdown breaks:
 

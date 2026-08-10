@@ -57,11 +57,12 @@ capability gate (`SKILL.md` §1) compares `refs --version` against the pin above
 only thing that matters. Every `detail` carries the command that fixes it, but only a
 version mismatch it can order names which side is behind — an unorderable pair (a
 prerelease on either side) says to reinstall both. Relay it verbatim rather than
-guessing. A `fail`
-on `dirty-checkouts` means a managed checkout picked up local changes outside of
-`refs sync`'s own self-heal, which is worth investigating rather than ignoring. Like
-`sync` above, the exit code goes non-zero on any `fail` even though the envelope is
-`ok: true`.
+guessing. On `dirty-checkouts` the two statuses mean different things: a **`warn`** is a
+managed checkout carrying local changes, which the next `refs sync` will discard — say so
+before syncing, because the changes are gone afterwards. A **`fail`** is `git status`
+itself failing on that checkout, which points at a broken or unreadable `.git` rather than
+at edited files. Like `sync` above, the exit code goes non-zero on any `fail` even though
+the envelope is `ok: true`; a `warn` alone leaves it at zero.
 
 ## Remove ("remove ref X", "stop tracking X")
 
