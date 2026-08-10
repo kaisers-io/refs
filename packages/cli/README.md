@@ -71,19 +71,19 @@ Every command takes `--json` for a stable machine-readable envelope, and `--verb
 stack traces. Both are global flags, so they are listed under `refs --help` rather than
 under each command's own help.
 
-| Command        | What it does                                                                            |
-| -------------- | ----------------------------------------------------------------------------------------- |
-| `refs init`    | Seed or migrate the refs home directory, its config and the git hooks guard.             |
-| `refs add`     | Add a git reference: propose with `--dry-run`, then finalize with `--proposal`.          |
-| `refs list`    | List configured refs with their staleness and missing-checkout status.                   |
-| `refs show`    | Show one ref: entry, state, local path, package count.                                   |
-| `refs sync`    | Fetch configured refs, or re-clone the ones whose checkout went missing.                 |
-| `refs resolve` | Resolve a git url, npm package name, import path or key suffix to its ref or package.    |
-| `refs tag`     | Resolve a version to its git tag through the ref's `tag_format`, or a package's.         |
-| `refs edit`    | Edit one field of a global setting, a ref or a package.                                  |
-| `refs remove`  | Remove a ref: its config and state entry, and its checkout directory.                    |
-| `refs doctor`  | Check the environment and the integrity of what refs manages.                            |
-| `refs migrate` | Migrate the config to the current schema, seeding it if absent.                          |
+| Command        | What it does                                                                          |
+| -------------- | ------------------------------------------------------------------------------------- |
+| `refs init`    | Seed or migrate the refs home directory, its config and the git hooks guard.          |
+| `refs add`     | Add a git reference: propose with `--dry-run`, then finalize with `--proposal`.       |
+| `refs list`    | List configured refs with their staleness and missing-checkout status.                |
+| `refs show`    | Show one ref: entry, state, local path, package count.                                |
+| `refs sync`    | Fetch configured refs, or re-clone the ones whose checkout went missing.              |
+| `refs resolve` | Resolve a git url, npm package name, import path or key suffix to its ref or package. |
+| `refs tag`     | Resolve a version to its git tag through the ref's `tag_format`, or a package's.      |
+| `refs edit`    | Edit one field of a global setting, a ref or a package.                               |
+| `refs remove`  | Remove a ref: its config and state entry, and its checkout directory.                 |
+| `refs doctor`  | Check the environment and the integrity of what refs manages.                         |
+| `refs migrate` | Migrate the config to the current schema, seeding it if absent.                       |
 
 Full reference, including exit codes and `--json` shapes:
 [`docs/commands.md`](https://github.com/kaisers-io/refs/blob/main/docs/commands.md).
