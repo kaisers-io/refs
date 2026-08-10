@@ -21,6 +21,12 @@ const stubbedReadStdin = (): Promise<string> => Promise.resolve('');
  * `ctx.env['HOME']` is pointed at a temp directory. */
 const ABSENT_CWD = '/refs-test-cwd-that-does-not-exist';
 
+/** Default `ctx.homedir`: an absolute path that does not exist, never the real `os.homedir()`, for
+ * the same reason as `ABSENT_CWD` — the developer running the suite has a real `~/.claude` or
+ * `~/.agents`, and reading it would invert every "nothing installed" case. Tests that exercise a
+ * global install assign `ctx.homedir` a temp directory. */
+const ABSENT_HOME = '/refs-test-home-that-does-not-exist';
+
 const testContext = (): {
   ctx: CliContext;
   runner: FakeRunner;
@@ -41,6 +47,7 @@ const testContext = (): {
       stderr.push(line);
     },
     fetcher: unstubbedFetcher,
+    homedir: ABSENT_HOME,
     // Defaults to the real interpreter's version so every non-`node`-check test keeps working
     // unmodified; `doctor` tests that need a specific version override `ctx.nodeVersion` directly,
     // mirroring how `ctx.fetcher`/`ctx.readStdin` are overridden per-test above.

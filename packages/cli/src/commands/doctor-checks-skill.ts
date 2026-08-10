@@ -77,9 +77,10 @@ const agentHomeOf = (args: AgentHomeArgs): SkillRoot | undefined => {
  *   `$CLAUDE_CONFIG_DIR` does not move it. Codex needs no counterpart: it is a universal agent, so
  *   its project install resolves to `./.agents/skills` in every mode, copy included.
  *
- * Known gap: the three global entries read `$HOME`, where the installer reads `os.homedir()`. On
- * native Windows `HOME` is typically unset, and they silently vanish; routing `homedir()` through
- * `CliContext` alongside `cwd` is the fix, and is deliberately left to a follow-up.
+ * The three global entries resolve their base from `ctx.homedir`, which `realContext()` fills from
+ * `os.homedir()` — the same call the installer makes. Reading `$HOME` instead used to agree with it
+ * everywhere except native Windows, where the variable is typically unset: all three entries
+ * vanished there and a correctly installed skill reported as missing.
  *
  * A miss here is a `warn`, never a `fail`, and that is not a hedge: the skill's own capability gate
  * (`SKILL.md` §1) depends on none of this. It runs `refs --version` and compares the result against
@@ -92,7 +93,10 @@ const agentHomeOf = (args: AgentHomeArgs): SkillRoot | undefined => {
  * whose meaning depends on where `refs doctor` happened to be run, canonical before per-agent there
  * too, for the same reason. */
 const skillCandidatesOf = (ctx: CliContext): SkillCandidate[] => {
-  const home = ctx.env['HOME'];
+  // An empty `homedir` is treated as no home at all: `os.homedir()` returns a string on every
+  // platform, but a blank one would turn `join(home, '.agents')` into a path relative to the
+  // process's cwd — a lookup somewhere nobody installs to, reported as if it were `~`.
+  const home = ctx.homedir.length > 0 ? ctx.homedir : undefined;
   const locations = [
     { label: 'shared ~/.agents', root: rootOf(home, '~/.agents'), segments: AGENTS_SKILL_SEGMENTS },
     {

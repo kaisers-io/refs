@@ -1,5 +1,6 @@
 import type { Fetcher, Runner } from '@kaisers-io/refs-core';
 import { SpawnRunner } from '@kaisers-io/refs-core';
+import { homedir } from 'node:os';
 // eslint-disable-next-line import/no-relative-parent-imports -- package.json lives at the package root, one level above src/
 import pkg from '../package.json' with { type: 'json' };
 
@@ -22,6 +23,13 @@ type CliContext = {
   env: NodeJS.ProcessEnv;
   errLine: (line: string) => void;
   fetcher: Fetcher;
+  // The invoking user's home directory (`os.homedir()` in `realContext()`) — routed through the
+  // context for the same reason as `cwd`. `doctor`'s `skill` check used to read `$HOME` directly,
+  // which agrees with `os.homedir()` on macOS and Linux but not on native Windows, where `HOME` is
+  // typically unset while `os.homedir()` falls back to `USERPROFILE`. There, every global install
+  // location silently dropped out and a correctly installed skill reported as missing. The
+  // installer resolves `os.homedir()`, so reading the same thing is what keeps the two agreeing.
+  homedir: string;
   // The running Node version (`process.version` in `realContext()`) — routed through the context,
   // like every other real global, so `doctor`'s `node` check can be exercised with an arbitrary
   // version string instead of only ever observing whatever interpreter the test happens to run
@@ -52,6 +60,7 @@ const realContext = (): CliContext => ({
     process.stderr.write(`${line}\n`);
   },
   fetcher: (url: string) => fetch(url),
+  homedir: homedir(),
   nodeVersion: process.version,
   out: (line: string) => {
     process.stdout.write(`${line}\n`);
