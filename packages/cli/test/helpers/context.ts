@@ -18,7 +18,7 @@ const stubbedReadStdin = (): Promise<string> => Promise.resolve('');
  * and THIS repository's own checkout has exactly that (`.agents/skills/refs` -> `skills/refs`), so
  * a real cwd would make the suite read the developer's working tree and quietly invert the "nothing
  * installed" cases. Tests that exercise project scope assign `ctx.cwd` directly, mirroring how
- * `ctx.env['HOME']` is pointed at a temp directory. */
+ * `ctx.homedir` is pointed at a temp directory. */
 const ABSENT_CWD = '/refs-test-cwd-that-does-not-exist';
 
 /** Default `ctx.homedir`: an absolute path that does not exist, never the real `os.homedir()`, for

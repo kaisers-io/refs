@@ -36,8 +36,9 @@ const rootOf = (path: string | undefined, display: string): SkillRoot | undefine
  * (`$CLAUDE_CONFIG_DIR`, `$CODEX_HOME`) exactly as `vercel-labs/skills`' `src/agents.ts` resolves
  * it: a set, non-blank override wins over `<home>/<dirName>` outright — a user who sets either has
  * no `~/.claude`/`~/.codex` at all. Read through `ctx.env`, never `process.env`, like every other
- * environment read in this package. An unset `HOME` with no override yields no candidate rather
- * than a `join()` on `undefined`. */
+ * environment read in this package — the overrides still come from the environment, only the home
+ * directory behind them does not. An absent home with no override yields no candidate rather than
+ * a `join()` on `undefined`. */
 type AgentHomeArgs = {
   dirName: string;
   env: NodeJS.ProcessEnv;
