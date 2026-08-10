@@ -11,8 +11,9 @@ refs add <git-url|npm:pkg> --dry-run --json
 ```
 
 This resolves the source, clones it into its final location, detects metadata, and
-prints a **proposal** on stdout — nothing is written to config yet. The proposal's
-`data` shape:
+prints a **proposal** on stdout — nothing is written to `config.toml` yet. (The checkout
+is real, and `state.json` records that a proposal is pending; only the config entry
+waits for finalize.) The proposal's `data` shape:
 
 ```
 { key, url, default_branch, tag_format_candidate, description, packages }

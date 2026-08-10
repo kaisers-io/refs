@@ -21,15 +21,15 @@ there are no long-term support branches.
 ## What is in scope
 
 - Command injection or argument injection through ref names, URLs, tags, or configuration values.
-- Leaking credentials embedded in git URLs — into error messages, logs, `--json` output, or the
+- Leaking credentials embedded in git URLs into error messages, logs, `--json` output or the
   config file. This has been a real bug class here before and is covered by dedicated regression
   tests.
 - Path traversal out of `REFS_HOME` when resolving refs, packages, or checkout paths.
 - Anything that causes `refs` to execute code from a checked-out reference repository. `refs` runs
   git commands against checkouts; it must never run *their* code. Each checkout's `core.hooksPath`
-  points at the refs-owned hooks directory, so hooks living inside a checkout never run — a way to
+  points at the refs-owned hooks directory, so hooks living inside a checkout never run. A way to
   defeat that is in scope.
-- Supply-chain problems in the published `@kaisers-io/refs` package — an unexpected bundled
+- Supply-chain problems in the published `@kaisers-io/refs` package: an unexpected bundled
   dependency, a lifecycle script, or a mismatch between the published artifact and this
   repository.
 
@@ -39,8 +39,8 @@ there are no long-term support branches.
 matters for triage: every checkout under `sources/` is a managed reference that agents are
 instructed not to modify, and `refs` installs git hooks that reject commits and pushes inside one.
 Those hooks are a backstop against mistakes, not a sandbox. Reports that a sufficiently determined
-local process can still write into a checkout — by removing the hooks, using `--no-verify`, or
-editing files directly — describe documented behavior rather than a vulnerability.
+local process can still write into a checkout, by removing the hooks, using `--no-verify` or
+editing files directly, describe documented behavior rather than a vulnerability.
 
 Similarly out of scope:
 

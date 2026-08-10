@@ -103,7 +103,8 @@ when none was detected; finalizing then requires you to supply one.
 ```
 
 Exit codes: `2` (no mode flag, more than one, or missing `<source>`), `3` (bad proposal
-shape, missing `tag_format`, or `--description` with an undescribed package), `4`
+shape, missing or invalid `tag_format_candidate`, or `--description` with an undescribed
+package), `4`
 (finalizing with no checkout on disk), `5` (ref already configured).
 
 ## `refs edit`
@@ -262,8 +263,9 @@ refs show <ref> [--packages] [--tags]
 `packages_count`, `stale`, and `state`.
 
 - `--packages` adds the full `packages` map (`path`, `description`, optional `tag_format`
-  per package). This is the only way to discover package names for
-  `refs edit <ref> <field> --package <name>`.
+  per package), which is one way to discover package names for
+  `refs edit <ref> <field> --package <name>` — `refs list --packages --json` gives the same
+  names for every ref at once, and `refs resolve <pkg> --json` returns just the matching one.
 - `--tags` adds `sample_tags` (up to five recent tags) in `--json` mode. Off by default
   because producing it costs a `git tag` subprocess. Human output always probes for them,
   but only prints a `tags:` line when the probe found any.
@@ -289,8 +291,10 @@ refs show <ref> [--packages] [--tags]
 
 Every `state` field is optional (`{}` for a never-synced ref); it can also carry
 `last_error` and `pending_proposal_at`. A ref may additionally carry `clone_mode`,
-`git_transport`, or `sync_ttl` overrides. If tags were requested but unlistable,
-`sample_tags` degrades to `[]` plus a warning.
+`git_transport`, or `sync_ttl` overrides — though a per-ref `git_transport` is inert, since
+only `refs add` reads it and that runs before the ref exists. If tags were requested but the
+checkout is missing, `sample_tags` is `[]` with no warning; the warning appears only when
+`git tag` itself fails.
 
 Exit codes: `2` (ambiguous suffix), `4` (no ref matches).
 
