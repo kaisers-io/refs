@@ -20,9 +20,10 @@ your git already has, since refs refuses to take any in the URL.
 
 ## Install
 
-You need Node.js 24.2 or newer, and git. On Windows, use
-[Git for Windows](https://gitforwindows.org/). The CLI behaves the same on macOS, Linux and
-Windows, and its full test suite runs on all three.
+You need Node.js 24.2 or newer, and git. On Windows use
+[Git for Windows](https://gitforwindows.org/), because the read-only guards are `sh` scripts
+and need the shell it ships with. The CLI behaves the same on all three platforms, and its
+full test suite runs on each of them.
 
 ```bash
 npm i -g @kaisers-io/refs
