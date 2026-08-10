@@ -166,6 +166,11 @@ jobs:
         # done, this step fails with an auth error — that failure is expected and safe (there is
         # no fallback long-lived token to leak).
         # `--ignore-scripts`: no lifecycle scripts run at publish time.
-        # No `--provenance`: while the GitHub repo is private, a provenance attestation would
-        # link to a 404 repository URL. Add `--provenance` once the repo goes public.
-        run: npm publish --ignore-scripts
+        # `--provenance`: trusted publishing attaches an attestation on its own, but its check
+        # for a public repository sits behind `config.isDefault('provenance')` and fails in
+        # silence — which is how 0.8.0 shipped without one while this repo was private. Stating
+        # the flag skips that automatic path and hard-fails instead on the prerequisites this
+        # job does control: `id-token: write`, a supported CI provider, a public npm package.
+        # It does not re-check repository visibility, so read it as an assertion about this
+        # job, not as a guard against the repository going private again.
+        run: npm publish --ignore-scripts --provenance
