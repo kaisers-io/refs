@@ -116,7 +116,7 @@ const corruptCheckoutHead = (dest: string): Promise<void> =>
 const createBogusCheckout = async (dest: string, originUrl: string): Promise<void> => {
   await mkdir(dest, { recursive: true });
   await gitFor(dest, ['init', '-q', '-b', 'main']);
-  await gitFor(dest, ['remote', 'add', 'origin', originUrl]);
+  await gitFor(dest, ['remote', 'add', '--', 'origin', originUrl]);
 };
 
 /** A REAL `git clone` of `sourceUrl` into `dest` — same origin `refs add` would derive, but never
@@ -133,7 +133,7 @@ const createManualCheckout = async (sourceUrl: string, dest: string): Promise<vo
 /** Repoints an existing (real, refs-managed) checkout's `origin` remote — simulates the checkout
  * having drifted from what a proposal/config expects between `--dry-run` and finalize. */
 const setCheckoutOrigin = (dest: string, originUrl: string): Promise<void> =>
-  gitFor(dest, ['remote', 'set-url', 'origin', originUrl]);
+  gitFor(dest, ['remote', 'set-url', '--', 'origin', originUrl]);
 
 /** Drops an inert marker file directly into `dest` — its continued presence after a second
  * `--dry-run`/finalize proves the checkout was reused rather than wiped and re-cloned. */
