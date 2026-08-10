@@ -80,8 +80,11 @@ const rewriteRemoteIfCheckedOut = async (
     return;
   }
   // `--` for the same reason as in `cloneRepo`: end option parsing so a flag-shaped url can only
-  // be read as a url. This one arrives canonicalized already, so the separator changes nothing
-  // today — it keeps the property from depending on that staying true.
+  // be read as a url. The failure here is quieter than a clone's. `git remote set-url origin
+  // --push <url>` reads `--push` as an option and writes the PUSH url, leaving the fetch url
+  // stale and the command exiting 0 — the checkout would keep fetching from the old remote with
+  // nothing to show for it. This url arrives canonicalized, so that cannot happen today; the
+  // separator is what keeps it from depending on that.
   const result = await ctx.runner.run('git', ['remote', 'set-url', '--', 'origin', opts.cloneUrl], {
     cwd: opts.dest,
   });
