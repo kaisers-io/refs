@@ -58,9 +58,11 @@ const validatePackageName = (pkgName: string): void => {
   }
 };
 
-// Scoped names encode only the inner slash (`@scope/pkg` → `@scope%2Fpkg`).
-// Validation guarantees at most one slash, so replacing the first occurrence is exact.
-const encodePackageName = (pkgName: string): string => pkgName.replace('/', '%2F');
+// Scoped names encode only the inner slash (`@scope/pkg` → `@scope%2Fpkg`). `validatePackageName`
+// runs before every call and admits at most that one slash, so `replaceAll` and `replace` cannot
+// differ here. It is `replaceAll` anyway: the version that stays correct if a second caller ever
+// appears is worth more than the one that needs the caller checked to be read as correct.
+const encodePackageName = (pkgName: string): string => pkgName.replaceAll('/', '%2F');
 
 const extractRepositoryUrl = (repository: NpmRepository): string | undefined => {
   if (typeof repository === 'string') {

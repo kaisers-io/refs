@@ -124,7 +124,7 @@ const createBogusCheckout = async (dest: string, originUrl: string): Promise<voi
  * a user's own manual clone of the same repo landing at the exact path `refs` would derive for the
  * reuse-path managed-checkout guard: origin matches, but it never went through `refs add`. */
 const createManualCheckout = async (sourceUrl: string, dest: string): Promise<void> => {
-  const result = await setupRunner.run('git', ['clone', '-q', sourceUrl, dest]);
+  const result = await setupRunner.run('git', ['clone', '-q', '--', sourceUrl, dest]);
   if (result.exitCode !== GIT_SUCCESS_EXIT_CODE) {
     throw new Error(`test setup: git clone failed: ${result.stderr}`);
   }

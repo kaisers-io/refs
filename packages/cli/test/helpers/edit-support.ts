@@ -87,7 +87,7 @@ const setupEditFixtureWithCheckout = async (homeDir: string): Promise<EditFixtur
   const home = resolveHome(ctx.env);
   const fixture = await createFixtureRepo();
   const dest = checkoutPath(home, zRefKey.parse(REF_KEY));
-  const result = await ctx.runner.run('git', ['clone', '-q', fixture.dir, dest]);
+  const result = await ctx.runner.run('git', ['clone', '-q', '--', fixture.dir, dest]);
   if (result.exitCode !== CLONE_SUCCESS_EXIT_CODE) {
     throw new Error(`test setup: git clone failed: ${result.stderr}`);
   }

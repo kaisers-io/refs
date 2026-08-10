@@ -79,7 +79,10 @@ const rewriteRemoteIfCheckedOut = async (
   if (!isGitCheckout(opts.dest)) {
     return;
   }
-  const result = await ctx.runner.run('git', ['remote', 'set-url', 'origin', opts.cloneUrl], {
+  // `--` for the same reason as in `cloneRepo`: end option parsing so a flag-shaped url can only
+  // be read as a url. This one arrives canonicalized already, so the separator changes nothing
+  // today — it keeps the property from depending on that staying true.
+  const result = await ctx.runner.run('git', ['remote', 'set-url', '--', 'origin', opts.cloneUrl], {
     cwd: opts.dest,
   });
   if (result.exitCode !== SUCCESS_EXIT_CODE) {
