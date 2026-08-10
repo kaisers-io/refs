@@ -11,7 +11,7 @@
 
 Ask a coding agent how a library works and it answers from training data that is months
 old. Tell it to go look, and the best it finds is a minified bundle in `node_modules`.
-Your company's internal repository is worse. The model has never seen that code at all.
+Private repositories are worse still. The model has never seen that code at all.
 
 `refs` hands it the source. It keeps read-only git checkouts of the repositories you care
 about, so your agent reads the code that actually ships.
@@ -25,9 +25,9 @@ After that the agent has zod's own files on disk. "How does zod implement codecs
 answered by reading them. For "what changed between v4.0.1 and v4.1.0", the agent resolves
 both versions to their tags and diffs them in the same clone.
 
-`https` and `ssh` URLs both work, including the `git@host:path` form, so a self-hosted
-GitLab or a private company repository is no different. A private one needs credentials
-your git already has, since refs refuses to take them in the URL. npm is just a convenient
+`https` and `ssh` URLs both work, including the `git@host:path` form, so a private repo or
+a self-hosted forge is no different from a public one. Private ones use the credentials
+your git already has, since refs refuses to take any in the URL. npm is just a convenient
 way to name a repository you would otherwise paste a URL for.
 
 ## The CLI and the skill
@@ -38,9 +38,9 @@ The CLI does the deterministic work of cloning, syncing, and resolving a questio
 right path or tag. The skill teaches your agent when to reach for the CLI and how to use
 what comes back.
 
-In Claude Code the skill sets `disable-model-invocation: true`, so it stays out of the
-context window until you invoke it. Codex has its own opt-out in the skill's
-`agents/openai.yaml`. Either way, questions that need no source code cost you nothing.
+The skill runs only when you ask for it, in both agents. In Claude Code that also keeps
+its description out of the context window until then, so the questions that need no source
+code cost you nothing.
 
 ## Using it
 
@@ -57,9 +57,8 @@ is filled in from the real repository rather than guessed. From then on it finds
 checkout, reads the source, and runs `refs sync` when one has gone stale.
 
 Its answers name the file and line they came from, so you can check a claim instead of
-trusting it. Whether those references are clickable depends on where you read the answer:
-the Zed terminal and the Codex app open them, while the Claude app cannot reach files
-outside its working directory (checked 2026-08-03).
+trusting it. Where your terminal or app opens file links, they are clickable; where it
+restricts access to the working directory, they stay plain text.
 
 The agent route comes first because the agent can search the source, follow what it finds,
 and talk with you about it. Driving the CLI by hand is still worth knowing, for scripting

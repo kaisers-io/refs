@@ -3,9 +3,8 @@
 **Real source code for coding agents.**
 
 Ask a coding agent how a library works and it answers from training data that is months
-old. Ask it to look, and it finds a minified bundle in `node_modules`. Point it at your
-company's internal repository and it has nothing at all, because it has never seen that
-code.
+old. Tell it to go look, and the best it finds is a minified bundle in `node_modules`.
+Private repositories are worse still. The model has never seen that code at all.
 
 `refs` hands it the source. It keeps read-only git checkouts of the repositories you care
 about, so your agent reads the code that actually ships.
@@ -15,9 +14,9 @@ it, and works out how the project tags its releases. After that the agent answer
 does zod implement codecs" by reading zod's own files, and "what changed between v4.0.1
 and v4.1.0" by diffing those two tags in the same clone.
 
-`https` and `ssh` URLs both work, including the `git@host:path` form, so a self-hosted
-GitLab or a private company repository is no different. A private one needs credentials
-your git already has, since refs refuses to take them in the URL.
+`https` and `ssh` URLs both work, including the `git@host:path` form, so a private repo or
+a self-hosted forge is no different from a public one. Private ones use the credentials
+your git already has, since refs refuses to take any in the URL.
 
 ## Install
 
@@ -40,14 +39,14 @@ This package is the CLI. The skill that drives it lives in the
 npx skills add kaisers-io/refs
 ```
 
-Invoke it with `/refs` in Claude Code or `$refs` in Codex. It never activates on its own:
-in Claude Code that is `disable-model-invocation: true`, which also keeps it out of the
-context window until you ask for it, and Codex has its own opt-out in the skill's
-`agents/openai.yaml`.
+Invoke it with `/refs` in Claude Code or `$refs` in Codex. It never activates on its own.
+In Claude Code its description also stays out of the context window until you ask for it,
+so questions that need no source code cost you nothing.
 
 The agent route is the one to reach for first. It can search the source, follow what it
 finds, and talk with you about it. Its answers name the file and line they came from, so
-you can check a claim instead of trusting it.
+you can check a claim instead of trusting it, and they are clickable wherever your
+terminal or app opens file links.
 
 ## Driving the CLI yourself
 
