@@ -32,7 +32,8 @@ way to name a repository you would otherwise paste a URL for.
 
 ## The CLI and the skill
 
-`refs` is two pieces: a command-line tool, and an agent skill for Claude Code and Codex.
+`refs` is two pieces: a command-line tool, and a skill for your agent. It is written for
+Claude Code and Codex, and `skills add` installs it into other agents' directories too.
 
 The CLI does the deterministic work of cloning, syncing, and resolving a question to the
 right path or tag. The skill teaches your agent when to reach for the CLI and how to use
