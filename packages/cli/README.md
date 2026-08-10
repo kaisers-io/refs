@@ -2,102 +2,105 @@
 
 **Real source code for coding agents.**
 
-`refs` manages arbitrary git repositories (GitHub, GitLab, self-hosted) as local, managed
-read-only source-code references, so that coding agents answer questions about
-dependencies and reference projects against **real source code** — never against a
-minified `node_modules` bundle, never against stale training knowledge.
+Ask a coding agent how a library works and it answers from training data that is months
+old. Ask it to look, and it finds a minified bundle in `node_modules`. Point it at your
+company's internal repository and it has nothing at all, because it has never seen that
+code.
 
-When your project depends on `zod`, you say "add zod as a ref"; `refs` resolves the npm
-package to its git repository, clones it, detects its release-tag convention and monorepo
-packages, and from then on any agent can answer "what changed between v4.0.0 and v4.1.0"
-or "how does zod implement codecs" by reading the actual checkout.
+`refs` hands it the source. It keeps read-only git checkouts of the repositories you care
+about, so your agent reads the code that actually ships.
 
-npm is only a convenience resolver (`npm:zod`). Arbitrary git URLs work directly.
+You say "add zod as a ref". `refs` resolves the npm package to its git repository, clones
+it, and works out how the project tags its releases. After that the agent answers "how
+does zod implement codecs" by reading zod's own files, and "what changed between v4.0.1
+and v4.1.0" by diffing those two tags in the same clone.
 
-**Read-only is a workflow promise, not a security boundary.** Every checkout under
-`sources/` is a managed reference, not a working copy: agents are instructed never to
-edit, commit, or push inside one. `refs` installs git hooks that reject commits/pushes in
-a checkout as a backstop, and `refs sync` self-heals a dirty checkout if something slips
-through anyway — but this is discipline enforced by convention and tooling, not a sandbox.
+`https` and `ssh` URLs both work, including the `git@host:path` form, so a self-hosted
+GitLab or a private company repository is no different. A private one needs credentials
+your git already has, since refs refuses to take them in the URL.
 
 ## Install
 
-Requirements: Node.js `>=24.2` and git. macOS, Linux, and Windows are fully supported —
-every command, locking, sync, and the read-only guards behave the same on all three (on
-Windows, use [Git for Windows](https://gitforwindows.org/)).
+You need Node.js 24.2 or newer, and git. On Windows, use
+[Git for Windows](https://gitforwindows.org/). The CLI behaves the same on macOS, Linux and
+Windows, and its full test suite runs on all three.
 
 ```bash
 npm i -g @kaisers-io/refs
+refs init       # seeds the refs home directory and the git hooks guard
+refs doctor     # confirms git, node and the setup are in order
 ```
 
-Then verify the setup:
+## The agent skill
+
+This package is the CLI. The skill that drives it lives in the
+[GitHub repository](https://github.com/kaisers-io/refs) and installs separately:
 
 ```bash
-refs --version
-refs doctor
+npx skills add kaisers-io/refs
 ```
 
-## Quickstart
+Invoke it with `/refs` in Claude Code or `$refs` in Codex. It never activates on its own:
+in Claude Code that is `disable-model-invocation: true`, which also keeps it out of the
+context window until you ask for it, and Codex has its own opt-out in the skill's
+`agents/openai.yaml`.
+
+The agent route is the one to reach for first. It can search the source, follow what it
+finds, and talk with you about it. Its answers name the file and line they came from, so
+you can check a claim instead of trusting it.
+
+## Driving the CLI yourself
+
+Useful for scripting, or for checking what the agent did.
 
 ```bash
-# 1. Seed the refs home directory, config, and git hooks guard.
-refs init
+refs add npm:zod --dry-run --json > proposal.json   # clones and proposes, no config entry yet
+# open proposal.json and fill in every empty description, including each package's
+refs add --proposal proposal.json --json            # finalize
+```
 
-# 2. Propose adding a ref — resolves npm:zod to its git repo, clones it, and writes the
-#    proposal to stdout. Nothing is added to config yet, so keep the file.
-refs add npm:zod --dry-run --json > proposal.json
+Finalize rejects a proposal that still has an empty description, which is what keeps refs
+from inventing one for you.
 
-# 3. Fill in the descriptions the proposal left empty — zod is a monorepo, and refs will
-#    not invent a description for a workspace package that has none — then finalize:
-refs add --proposal proposal.json --json
+You can skip the file when every package already carries a description in its own manifest:
 
-# A single-package repository needs no proposal file:
+```bash
 refs add https://github.com/stevemao/left-pad --description "Left-pad a string." --json
 ```
 
-Every command accepts `--json` for a stable, machine-readable envelope and `--verbose`
-for stack traces on error. Run `refs --help` or `refs <command> --help` — the CLI's own
-help is the authoritative, always-current reference.
+Every command takes `--json` for a stable machine-readable envelope, and `--verbose` for
+stack traces. Both are global flags, so they are listed under `refs --help` rather than
+under each command's own help.
 
-## Commands
+| Command        | What it does                                                                            |
+| -------------- | ----------------------------------------------------------------------------------------- |
+| `refs init`    | Seed or migrate the refs home directory, its config and the git hooks guard.             |
+| `refs add`     | Add a git reference: propose with `--dry-run`, then finalize with `--proposal`.          |
+| `refs list`    | List configured refs with their staleness and missing-checkout status.                   |
+| `refs show`    | Show one ref: entry, state, local path, package count.                                   |
+| `refs sync`    | Fetch configured refs, or re-clone the ones whose checkout went missing.                 |
+| `refs resolve` | Resolve a git url, npm package name, import path or key suffix to its ref or package.    |
+| `refs tag`     | Resolve a version to its git tag through the ref's `tag_format`, or a package's.         |
+| `refs edit`    | Edit one field of a global setting, a ref or a package.                                  |
+| `refs remove`  | Remove a ref: its config and state entry, and its checkout directory.                    |
+| `refs doctor`  | Check the environment and the integrity of what refs manages.                            |
+| `refs migrate` | Migrate the config to the current schema, seeding it if absent.                          |
 
-| Command        | What it does                                                                                                                            |
-| -------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `refs init`    | Seed or migrate the refs home directory, its config, and the git hooks guard.                                                           |
-| `refs add`     | Add a git reference in two phases: propose (`--dry-run`), then finalize (`--proposal`).                                                 |
-| `refs list`    | List configured refs with their staleness/missing checkout status.                                                                      |
-| `refs show`    | Show a configured ref: entry, state, local path, package count (`--packages`/`--tags` add the package map and sample tags to `--json`). |
-| `refs sync`    | Fetch (or re-clone, if the checkout is missing) configured refs — all by default.                                                       |
-| `refs resolve` | Resolve a git url, npm package name, import path, or ref-key suffix to its ref/package.                                                 |
-| `refs tag`     | Resolve a version to its git tag, via the ref's (or a package's) `tag_format`.                                                          |
-| `refs edit`    | Edit one field of a global setting, a ref, or a package.                                                                                |
-| `refs remove`  | Remove a configured ref: its config/state entry AND its checkout directory.                                                             |
-| `refs doctor`  | Run environment/integrity checks (git, node, config, hooks, checkouts, ssh).                                                            |
-| `refs migrate` | Migrate the refs config to the current schema, seeding it if absent.                                                                    |
+Full reference, including exit codes and `--json` shapes:
+[`docs/commands.md`](https://github.com/kaisers-io/refs/blob/main/docs/commands.md).
 
-## Agent skill
+## Read-only is a promise, not a sandbox
 
-The CLI pairs with one thin, cross-agent skill (Claude Code and Codex) that routes agent
-questions ("how does zod implement codecs") to the right checkout via `refs resolve
---json` and keeps things fresh with `refs sync`/`refs doctor`. It is user-invoked — it
-does not activate on its own; invoke it with `/refs` in Claude Code or `$refs` in Codex.
-`refs init` prints the install command. The skill is distributed
-from the GitHub repository rather than from npm, so it is installed with `skills add`
-rather than with this package.
+Every checkout is a reference, not a working copy. `refs` installs git hooks that reject
+commits and pushes inside one, and `refs sync` restores a checkout that got dirty anyway.
 
-`refs doctor`'s `skill` check looks for the installed skill in `~/.agents`, `~/.claude`,
-`~/.codex` and the current project's `./.agents`/`./.claude`; a `warn` there means the
-check couldn't see your skill, not that it is missing.
-
-Source citations in the skill's final answer are markdown links (visible text relative,
-target an absolute checkout path): they open in the Zed terminal and the Codex app
-(verified 2026-08-03), but as of the same date the Claude app cannot open files outside
-its working directory.
+Those hooks are a backstop against mistakes. A determined local process can still write
+into a checkout, so treat this as a workflow that holds, not as a security boundary.
 
 ## Changelog
 
-`CHANGELOG.md` ships inside this package, so npm's "Code" tab shows it without leaving
-the package page.
+`CHANGELOG.md` ships inside this package, so npm's "Code" tab shows it without leaving the
+package page.
 
 ## License
 

@@ -12,12 +12,28 @@ The refs home defaults to:
 ~/.kaisers-io/refs
 ```
 
-Set `REFS_HOME` to override it — every path `refs` uses (config, state, checkouts, locks,
-hooks) is derived from this one root, so overriding it relocates the whole tool:
+Set `REFS_HOME` to override it. Every path `refs` uses, meaning the config, the state file,
+the checkouts, the locks and the hooks, is derived from this one root, so overriding it
+relocates the whole tool:
 
 ```bash
 export REFS_HOME=/path/to/somewhere
 ```
+
+On Windows, PowerShell needs its own syntax, and the obvious form only lasts as long as the
+window stays open:
+
+```powershell
+$env:REFS_HOME = "C:\refs"      # this session only
+```
+
+To keep it, write it to your user environment once:
+
+```powershell
+[Environment]::SetEnvironmentVariable('REFS_HOME', 'C:\refs', 'User')
+```
+
+Sessions started before that call keep the old value, so open a new shell afterwards.
 
 The default is deliberately `~/.kaisers-io/refs`, not the shorter `~/.refs`: "refs" is a
 generic word that overlaps git's own `refs/` terminology (branches, tags, `refs/heads/`,
