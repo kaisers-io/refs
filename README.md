@@ -4,6 +4,11 @@
 
 <p align="center"><strong>Real source code for coding agents.</strong></p>
 
+<p align="center">
+  <a href="https://www.npmjs.com/package/@kaisers-io/refs"><img src="https://img.shields.io/npm/v/@kaisers-io/refs?label=npm&color=blue" alt="npm version"></a>
+  <a href="https://github.com/kaisers-io/refs/actions/workflows/ci.yml"><img src="https://github.com/kaisers-io/refs/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status"></a>
+</p>
+
 `refs` manages arbitrary git repositories (GitHub, GitLab, self-hosted) as local, managed
 read-only source-code references, so that coding agents answer questions about
 dependencies and reference projects against **real source code** — never against a
@@ -164,3 +169,8 @@ pnpm install && pnpm build`) instead of failing cryptically.
   data shape, and exit codes.
 - [`skills/refs/SKILL.md`](skills/refs/SKILL.md) — the agent-facing skill that orchestrates
   `refs` for Claude Code and Codex.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — the toolchain, the checks a pull request has to pass,
+  and what will fail review.
+- [`SECURITY.md`](SECURITY.md) — what is in scope, and how to report a vulnerability privately.
+
+MIT licensed — see [`LICENSE`](LICENSE).
