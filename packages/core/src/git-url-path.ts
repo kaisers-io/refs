@@ -17,7 +17,12 @@ const stripGitSuffix = (path: string): string => path.replace(GIT_SUFFIX_PATTERN
  *
  * The run has to sit in the MIDDLE of the path to bite: one at the end matches in a single pass,
  * and leading slashes are gone before the trailing pattern is reached. Such a url is rejected
- * either way, but only after the trim has already run. The measurement is in the test. */
+ * either way, but only after the trim has already run. The measurement is in the test.
+ *
+ * Only the `buildKey` caller was ever exposed. The git_transport rewrite runs on urls that already
+ * survived `canonicalizeGitUrl`, and a middle run cannot survive it — the empty segments fail
+ * `zRefKey`. Both callers share this helper regardless: one trim, one set of properties, nothing
+ * to keep in sync. */
 const trimPathSlashes = (path: string): string => {
   let start = 0;
   let end = path.length;
