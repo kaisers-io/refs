@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-08-10
+
+### Fixed
+
+- Documentation that described flows which did not work. The README's quickstart failed in both
+  of its branches, the skill's onboarding handed the user a prompt naming a zod version that was
+  never tagged, and `docs/commands.md` showed a stored url and a package count the CLI does not
+  produce. Every documented command was re-run and corrected against its real output, and the
+  `skill` check's Windows note was still describing the gap 0.8.1 closed.
+
+- `git_transport` was documented as overridable per ref. It can be written there, since the
+  override schema is derived from the settings schema, but nothing reads it: only `refs add`
+  consults the setting, and `add` refuses a key that is already configured. Documented as inert.
+
+### Changed
+
+- The README and the package page are rewritten around the agent workflow, which is how refs is
+  meant to be used, with the manual CLI route kept as the side note it is.
+
+- The package description now matches the repository's.
+
 ## [0.8.1] - 2026-08-10
 
 ### Fixed
@@ -388,7 +409,8 @@ trusted-publishing pipeline end to end.
   installed git hooks.
 - Agent skill (`skills/refs/`) documenting the investigate/add/maintain workflows.
 
-[Unreleased]: https://github.com/kaisers-io/refs/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/kaisers-io/refs/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/kaisers-io/refs/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/kaisers-io/refs/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/kaisers-io/refs/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/kaisers-io/refs/compare/v0.6.1...v0.7.0
