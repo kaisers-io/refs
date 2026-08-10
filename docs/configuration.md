@@ -27,6 +27,16 @@ means this tool or git's own ref namespace. The org-namespaced default keeps eve
 this tool touches unambiguous. `REFS_HOME` always overrides this default, so you are never
 stuck with it.
 
+## Other environment variables
+
+`REFS_HOME` is the only one meant for everyday use. Three others are read:
+
+| Variable                | Read by                | Effect                                                                                                                                       |
+| ----------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CLAUDE_CONFIG_DIR`     | `refs doctor` only     | Moves where the `skill` check looks for a Claude Code install, replacing `~/.claude`. Set by the skill installer's own convention, not by refs. |
+| `CODEX_HOME`            | `refs doctor` only     | The same, for Codex, replacing `~/.codex`.                                                                                                     |
+| `REFS_ALLOW_FILE_URLS`  | `refs add`, `refs sync` | Set to `1` to accept `file://` sources. **A test-only escape hatch** — real remotes are `https`/`ssh`, and this exists so the suite and the packaged-CLI smoke tests can work against a local fixture repository without a network. Do not set it in normal use. |
+
 ## Home directory layout
 
 ```
@@ -38,9 +48,10 @@ $REFS_HOME/
 └── hooks/           # the pre-commit/pre-push guard scripts refs installs into every checkout
 ```
 
-`refs init` creates all five (config seeded or migrated, the rest as empty directories)
-and is safe to re-run — it's also what a fresh clone of this repo's own dev environment
-should run first.
+`refs init` creates the config (seeded or migrated) and the three directories, writing the
+guard scripts into `hooks/` as it goes. It does **not** create `state.json` — that appears
+the first time a ref is added or synced. `init` is safe to re-run, and is what a fresh
+clone of this repo's own dev environment should run first.
 
 ## `config.toml`
 
@@ -108,7 +119,7 @@ path = "packages/zod"
 | Field            | Meaning                                                                                                                                                                                 |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `schema_version` | Config schema version. `refs migrate` seeds/migrates it; a version older or newer than the CLI's own is a validation error telling you which of `refs migrate`/upgrading `refs` to run. |
-| `cli_version`    | The `refs` version that last wrote this file. Restamped automatically whenever it changes; never hand-edit.                                                                             |
+| `cli_version`    | The `refs` version that last wrote this file. Restamped by `refs init` and `refs migrate` when it differs; other commands leave it as they found it, so after an upgrade it lags until one of those runs. Never hand-edit.                                    |
 
 ### `[refs."host/owner/repo"]` fields
 
@@ -119,7 +130,7 @@ path = "packages/zod"
 | `default_branch` | yes      | The ref's default branch, detected at `add` time (auto-updated by `sync` if the remote's default branch is renamed).                                                                                                                                                 |
 | `tag_format`     | yes      | A template containing `{version}`, e.g. `v{version}`, used by `refs tag` to resolve a version to a git tag.                                                                                                                                                          |
 | `packages`       | no       | A map of package name → `{ description, path, tag_format? }`, for repos (typically monorepos) that register one or more importable packages. A package's `tag_format` overrides the ref's own for that package only; when absent it inherits the ref's `tag_format`. |
-| _(settings)_     | no       | Any of `clone_mode`, `git_transport`, `sync_ttl` — see below.                                                                                                                                                                                                        |
+| _(settings)_     | no       | `clone_mode` or `sync_ttl` — see below. (`git_transport` is expressible here but has no effect; see the note under `[settings]`.)                                                                                                                                    |
 
 ### `[settings]` reference
 
@@ -133,15 +144,21 @@ adding a new global setting to `zSettings` automatically makes it per-ref overri
 
 A per-ref override lives directly inside that ref's `[refs."..."]` table (see the
 `zod` example above, which overrides `clone_mode`). Resolution is: **ref override, if
-present, else the global setting** — this is `resolveSetting(key, ref, settings)`,
-consumed identically everywhere a setting is read (`add`, `list`, `sync`, `resolve`,
-`tag`).
+present, else the global setting** — this is `resolveSetting(key, ref, settings)`, read
+that way by `add`, `list`, `sync`, `resolve` and `show`.
+
+**`git_transport` is the exception, and structurally so.** Being expressible per-ref does
+not make it effective per-ref: it is only ever consulted while `refs add` rewrites an
+`npm:`-resolved URL, and at that moment there is no existing ref whose override could be
+read — `add` refuses a key that is already configured. A `git_transport` written into a
+`[refs."..."]` table is therefore accepted, stored and echoed back by `refs show`, and
+changes nothing. Set it globally under `[settings]`.
 
 | Setting         | Values             | Default    | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | --------------- | ------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `clone_mode`    | `blobless`, `full` | `blobless` | Clone strategy for newly added refs. `blobless` is a partial clone (`--filter=blob:none`) — fast, and lazily fetches blob contents on demand; `full` clones everything up front.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `git_transport` | `https`, `ssh`     | `https`    | Transport applied to **`npm:`-resolved** clone URLs at `refs add` time: the registry's repository URL is rewritten to this transport before cloning and before being stored as the entry's `url` (`ssh` yields the scp form `git@host:path.git`; the canonical ref key is never changed by the rewrite). An explicitly-typed git URL is **never** rewritten — typing the URL is choosing the transport. A URL whose non-default port can't survive the rewrite is rejected with a validation error. Changing this setting later affects only future adds: existing refs keep their stored `url` (and their checkout's remote) until `refs edit <ref> url …` rewrites it. |
-| `sync_ttl`      | duration string    | `1h`       | How long a ref's last-fetched state is considered fresh before `refs sync`/`refs list`/`refs resolve` treat it as stale. Format: `<n>m`, `<n>h`, or `<n>d` (e.g. `30m`, `1h`, `1d`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `sync_ttl`      | duration string    | `1h`       | How long a ref's last-fetched state is considered fresh before `refs sync`/`refs list`/`refs resolve`/`refs show` treat it as stale. Format: `<n>m`, `<n>h`, or `<n>d` (e.g. `30m`, `1h`, `1d`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 Change a global setting with `refs edit settings <key> <value>`; change a per-ref override
 with `refs edit <ref> <field> <value>` (same field names — see

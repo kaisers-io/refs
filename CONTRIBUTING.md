@@ -30,8 +30,9 @@ That is exactly what CI runs — on Linux, macOS and Windows, and once more on t
 CI adds a coverage gate, a version-consistency check, a bundle-determinism check, and a smoke test
 of the packaged CLI on Linux and Windows.
 
-For a faster inner loop, run `pnpm dev` inside `packages/cli` and call
-`node packages/cli/bin/refs.mjs <args>` directly.
+For a faster inner loop, run `pnpm dev` inside `packages/cli` and call the stub directly —
+`node bin/refs.mjs <args>` from that same directory, or `node packages/cli/bin/refs.mjs <args>`
+from the repository root.
 
 ## Things that will fail review
 
@@ -55,8 +56,11 @@ Please do not add AI-assistant attribution trailers.
 
 ## Adding a command
 
-Every command module exports a `registerX(program, ctx)` function and gets one entry in
-`packages/cli/src/commands/registry.ts`. Commands take their process environment (`cwd`, `env`),
+Every command module exports a `registerX(program, ctx)` function and gets one entry in a
+registrar list. There are two: `packages/cli/src/commands/registry.ts` holds the first few and
+spreads in `MORE_REGISTRARS` from `registrars-more.ts`, which is where the rest live and where a
+new one belongs — the split exists to keep either file under oxlint's per-file import cap.
+Commands take their process environment (`cwd`, `env`),
 their output (`out`, `errLine`), their stdin, and their outbound calls (`runner`, `fetcher`) from
 `CliContext` rather than reaching for the globals directly — that is what makes them testable
 without spawning real git or reading the real environment. Filesystem access is not injected;

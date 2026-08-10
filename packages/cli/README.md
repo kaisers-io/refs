@@ -43,13 +43,16 @@ refs doctor
 # 1. Seed the refs home directory, config, and git hooks guard.
 refs init
 
-# 2. Propose adding a ref — resolves npm:zod to its git repo, clones it, and writes
-#    a reviewable proposal. Nothing is added to config yet.
-refs add npm:zod --dry-run
+# 2. Propose adding a ref — resolves npm:zod to its git repo, clones it, and writes the
+#    proposal to stdout. Nothing is added to config yet, so keep the file.
+refs add npm:zod --dry-run --json > proposal.json
 
-# 3. Review the proposal JSON, then finalize it, or use --description for a
-#    one-shot add:
-refs add npm:zod --description "TypeScript-first schema validation" --json
+# 3. Fill in the descriptions the proposal left empty — zod is a monorepo, and refs will
+#    not invent a description for a workspace package that has none — then finalize:
+refs add --proposal proposal.json --json
+
+# A single-package repository needs no proposal file:
+refs add https://github.com/stevemao/left-pad --description "Left-pad a string." --json
 ```
 
 Every command accepts `--json` for a stable, machine-readable envelope and `--verbose`
@@ -78,7 +81,7 @@ The CLI pairs with one thin, cross-agent skill (Claude Code and Codex) that rout
 questions ("how does zod implement codecs") to the right checkout via `refs resolve
 --json` and keeps things fresh with `refs sync`/`refs doctor`. It is user-invoked — it
 does not activate on its own; invoke it with `/refs` in Claude Code or `$refs` in Codex.
-`refs init` prints the exact install command for your setup. The skill is distributed
+`refs init` prints the install command. The skill is distributed
 from the GitHub repository rather than from npm, so it is installed with `skills add`
 rather than with this package.
 

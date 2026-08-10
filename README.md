@@ -108,14 +108,23 @@ When launched **inside** this repo, Codex auto-discovers the skill via the
 # 1. Seed the refs home directory, config, and git hooks guard.
 refs init
 
-# 2. Propose adding a ref — resolves npm:zod to its git repo, clones it, and writes
-#    a reviewable proposal. Nothing is added to config yet.
-refs add npm:zod --dry-run
+# 2. Propose adding a ref — resolves npm:zod to its git repo, clones it, and writes the
+#    proposal to stdout. Nothing is added to config yet, so keep the file.
+refs add npm:zod --dry-run --json > proposal.json
 
-# 3. Review the proposal JSON, then finalize it (see docs/commands.md for the full
-#    two-phase add contract), or use --description for a one-shot add:
-refs add npm:zod --description "TypeScript-first schema validation" --json
+# 3. Fill in the descriptions the proposal left empty — zod is a monorepo, and refs will
+#    not invent a description for a workspace package that has none — then finalize:
+refs add --proposal proposal.json --json
 ```
+
+A single-package repository needs no proposal file; `--description` finalizes it in one
+step, and `refs add` says so when it cannot:
+
+```bash
+refs add https://github.com/stevemao/left-pad --description "Left-pad a string." --json
+```
+
+See [docs/commands.md](docs/commands.md#refs-add) for the full two-phase contract.
 
 From here, invoke the skill (`/refs how does zod implement codecs` in Claude Code,
 `$refs ...` in Codex) and the agent drives the rest: it resolves the question to the right

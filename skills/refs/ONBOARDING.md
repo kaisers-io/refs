@@ -55,8 +55,11 @@ fenced, copyable blocks:
 - **Compare versions** — read the actual history between releases:
 
   ```
-  What changed between zod v4.0.0 and v4.1.0?
+  What changed between zod v4.0.1 and v4.1.0?
   ```
+
+  Pick versions that were really tagged — `refs tag` exits 4 on one that never was, and
+  zod went from `v4.0.0-beta` straight to `v4.0.1`.
 
 ## 5. Propose a first ref
 
