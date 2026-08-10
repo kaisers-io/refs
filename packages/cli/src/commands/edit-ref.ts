@@ -79,7 +79,13 @@ const rewriteRemoteIfCheckedOut = async (
   if (!isGitCheckout(opts.dest)) {
     return;
   }
-  const result = await ctx.runner.run('git', ['remote', 'set-url', 'origin', opts.cloneUrl], {
+  // `--` for the same reason as in `cloneRepo`: end option parsing so a flag-shaped url can only
+  // be read as a url. The failure here is quieter than a clone's. `git remote set-url origin
+  // --push <url>` reads `--push` as an option and writes the PUSH url, leaving the fetch url
+  // stale and the command exiting 0 — the checkout would keep fetching from the old remote with
+  // nothing to show for it. This url arrives canonicalized, so that cannot happen today; the
+  // separator is what keeps it from depending on that.
+  const result = await ctx.runner.run('git', ['remote', 'set-url', '--', 'origin', opts.cloneUrl], {
     cwd: opts.dest,
   });
   if (result.exitCode !== SUCCESS_EXIT_CODE) {

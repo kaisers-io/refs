@@ -1,5 +1,5 @@
+import { cloneRepo, detectDefaultBranch, syncRef } from '../../src/git/repo.ts';
 import { describe, expect, it } from 'vitest';
-import { detectDefaultBranch, syncRef } from '../../src/git/repo.ts';
 import { mkdir, mkdtemp } from 'node:fs/promises';
 import { FakeRunner } from '../../src/proc/fake-runner.ts';
 import { join } from 'node:path';
@@ -168,5 +168,52 @@ describe('default-branch detection retry', () => {
     await expect(detectDefaultBranch(runner, dir)).rejects.toThrow(
       /could not detect the default branch/u,
     );
+  });
+});
+
+// `--` before the url is a security property, not formatting. Without it git honours a url shaped
+// like `--upload-pack=<cmd>` and executes that command. `canonicalizeGitUrl` refuses such urls
+// wherever one is first accepted, but `sync` re-reads the url from config, which validates it as a
+// non-empty string and nothing else — so the separator is what carries the guarantee at the call.
+//
+// Asserted against the argument list rather than through a real clone, because a real clone
+// succeeds with or without the separator: an integration test would never notice its removal.
+describe('cloneRepo argument hygiene', () => {
+  const HOSTILE_URL = '--upload-pack=touch /tmp/pwned';
+
+  const cloneWith = async (mode: 'blobless' | 'full'): Promise<readonly string[]> => {
+    const runner = new FakeRunner();
+    runner.expect('git clone', {});
+    runner.expect('git config core.hooksPath', {});
+    await cloneRepo(runner, {
+      cloneUrl: HOSTILE_URL,
+      dest: '/tmp/refs-unit-dest',
+      hooksDir: '/tmp/refs-unit-hooks',
+      mode,
+    });
+    return runner.calls[0]?.args ?? [];
+  };
+
+  it('puts `--` before the url so a flag-shaped url cannot be read as an option', async () => {
+    expect.hasAssertions();
+    await expect(cloneWith('full')).resolves.toStrictEqual([
+      'clone',
+      '-q',
+      '--',
+      HOSTILE_URL,
+      '/tmp/refs-unit-dest',
+    ]);
+  });
+
+  it('keeps the filter ahead of `--`, where git still reads it as an option', async () => {
+    expect.hasAssertions();
+    await expect(cloneWith('blobless')).resolves.toStrictEqual([
+      'clone',
+      '-q',
+      '--filter=blob:none',
+      '--',
+      HOSTILE_URL,
+      '/tmp/refs-unit-dest',
+    ]);
   });
 });
