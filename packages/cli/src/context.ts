@@ -1,5 +1,6 @@
 import type { Fetcher, Runner } from '@kaisers-io/refs-core';
 import { SpawnRunner } from '@kaisers-io/refs-core';
+import { homedir } from 'node:os';
 // eslint-disable-next-line import/no-relative-parent-imports -- package.json lives at the package root, one level above src/
 import pkg from '../package.json' with { type: 'json' };
 
@@ -22,6 +23,17 @@ type CliContext = {
   env: NodeJS.ProcessEnv;
   errLine: (line: string) => void;
   fetcher: Fetcher;
+  // The invoking user's home directory (`os.homedir()` in `realContext()`) — routed through the
+  // context for the same reason as `cwd`. `doctor`'s `skill` check used to read `$HOME` directly,
+  // which agrees with `os.homedir()` on macOS and Linux but not on Windows: there `HOME` is not
+  // consulted at all, `os.homedir()` reads `USERPROFILE` and falls back to the profile directory
+  // itself, and `HOME` is typically unset. Every global install location silently dropped out and
+  // a correctly installed skill reported as missing. The installer resolves `os.homedir()`, so
+  // reading the same thing is what keeps the two agreeing.
+  //
+  // Empty string means "no home", which is also what a homeless environment yields — see
+  // `realContext()`.
+  homedir: string;
   // The running Node version (`process.version` in `realContext()`) — routed through the context,
   // like every other real global, so `doctor`'s `node` check can be exercised with an arbitrary
   // version string instead of only ever observing whatever interpreter the test happens to run
@@ -44,6 +56,23 @@ const readRealStdin = async (): Promise<string> => {
   return Buffer.concat(chunks).toString('utf8');
 };
 
+/** `os.homedir()` does not return a fallback when it cannot resolve a home directory — Node wraps
+ * the libuv call in `getCheckedFunction` and throws `ERR_SYSTEM_ERROR` instead (`lib/os.js`,
+ * verified against v24.12.0). That happens when neither `$HOME` nor `$USERPROFILE` is set and the
+ * effective UID has no passwd entry, which is what an arbitrary-UID container looks like.
+ *
+ * `realContext()` is built before argument parsing, on EVERY command, so letting it escape would
+ * take down `refs sync` with `REFS_HOME` pointing somewhere explicit — a run that never needed a
+ * home. An empty string is the same "no home" its only reader already handles, and it is also what
+ * a set-but-empty `$HOME` yields on POSIX, so the two homeless shapes stay one case. */
+const safeHomedir = (): string => {
+  try {
+    return homedir();
+  } catch {
+    return '';
+  }
+};
+
 const realContext = (): CliContext => ({
   cliVersion: pkg.version,
   cwd: process.cwd(),
@@ -52,6 +81,7 @@ const realContext = (): CliContext => ({
     process.stderr.write(`${line}\n`);
   },
   fetcher: (url: string) => fetch(url),
+  homedir: safeHomedir(),
   nodeVersion: process.version,
   out: (line: string) => {
     process.stdout.write(`${line}\n`);

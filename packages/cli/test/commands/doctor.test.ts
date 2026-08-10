@@ -106,7 +106,7 @@ const MATCHING_SKILL_SOURCE =
   '---\nname: refs\nmetadata:\n  cli_version: "0.0.0-test"\n---\n\n# refs skill\n';
 
 describe('refs doctor: skill installed', () => {
-  it('reports the skill check as ok when SKILL.md exists under $HOME/.claude/skills/refs', async () => {
+  it('reports the skill check as ok when SKILL.md exists under ~/.claude/skills/refs', async () => {
     expect.hasAssertions();
     await withResetExitCode(() =>
       withTempHome(async (homeDir) => {
@@ -115,7 +115,10 @@ describe('refs doctor: skill installed', () => {
         await mkdir(skillDir, { recursive: true });
         await writeFile(join(skillDir, 'SKILL.md'), MATCHING_SKILL_SOURCE);
         const { ctx, stdout } = realContextFor(join(homeDir, 'refs-home'));
-        ctx.env['HOME'] = fakeHome;
+        // `ctx.homedir`, not `ctx.env['HOME']`: the check resolves its global locations through
+        // the seam from `os.homedir()`, so setting the variable would leave it looking at
+        // `testContext()`'s absent-home sentinel and report `warn`.
+        ctx.homedir = fakeHome;
         await initHome(ctx);
 
         const envelope = await runDoctorJson(ctx, stdout);
