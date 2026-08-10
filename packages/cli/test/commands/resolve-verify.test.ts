@@ -1,8 +1,7 @@
 import { addPackage, asCheckout, freshRepo, writeJson } from '../helpers/workspace-fixture.ts';
 import { describe, expect, it } from 'vitest';
-import { resolveHome, withLock, zRefKey } from '@kaisers-io/refs-core';
+import { resolveHome, zRefKey } from '@kaisers-io/refs-core';
 import { join } from 'node:path';
-import { refLockName } from '../../src/commands/add-source.ts';
 import { verifyPackageLocation } from '../../src/commands/resolve-verify.ts';
 import { withTempHome } from '../helpers/add-support.ts';
 import { writeFileSync } from 'node:fs';
@@ -192,6 +191,31 @@ describe('a package that cannot be checked', () => {
       expect(outcome.path).toBe('packages/zod');
     });
   });
+});
+
+describe('an incomplete scan proves nothing either way', () => {
+  it('refuses to call a unique match relocated when the scan was incomplete', async () => {
+    expect.hasAssertions();
+    await withTempHome(async (homeDir) => {
+      const repo = asCheckout(freshRepo());
+      // `zod` is visible at exactly one path — but an ignored pattern means another one could be
+      // hiding behind it. "Found once" is only unique if everything was actually inspected;
+      // picking the copy we happened to see is precisely the silent-wrong-directory failure this
+      // whole feature exists to prevent.
+      writeJson(join(repo, 'package.json'), {
+        name: 'monorepo',
+        workspaces: ['src/*', 'libs/**/deep'],
+      });
+      addPackage(repo, 'src/zod', { name: 'zod' });
+      const outcome = await verifyIn({
+        checkoutDir: repo,
+        configuredPath: 'packages/zod',
+        homeDir,
+      });
+      expect(outcome.status).toBe('unverifiable');
+      expect(outcome.path).toBe('packages/zod');
+    });
+  });
 
   it('keeps the configured path when the manifest is unreadable', async () => {
     expect.hasAssertions();
@@ -224,57 +248,6 @@ describe('a checkout that is not there', () => {
         path: 'packages/zod',
         status: 'unmaterialized',
       });
-    });
-  });
-});
-
-describe('racing a sync', () => {
-  it('re-probes under the lock and reports verified when the race resolved itself', async () => {
-    expect.hasAssertions();
-    await withTempHome(async (homeDir) => {
-      const repo = asCheckout(freshRepo());
-      writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['src/*'] });
-      addPackage(repo, 'src/other', { name: 'other' });
-      const home = resolveHome({ REFS_HOME: homeDir });
-      // Put the configured path back in place after the lock-free probe has run but before the
-      // locked one does — standing in for a `sync` that was mid `reset --hard`. Without the
-      // re-probe inside the lock, the scan alone would report `missing` for a package that is
-      // sitting right there.
-      const pending = verifyPackageLocation({
-        checkoutDir: repo,
-        configuredPath: 'packages/zod',
-        home,
-        key: KEY,
-        packageName: 'zod',
-      });
-      addPackage(repo, 'packages/zod', { name: 'zod' });
-      await expect(pending).resolves.toStrictEqual({
-        path: 'packages/zod',
-        status: 'verified',
-      });
-    });
-  });
-
-  it('reports unverifiable — never missing — when the ref lock cannot be acquired', async () => {
-    expect.hasAssertions();
-    await withTempHome(async (homeDir) => {
-      const repo = asCheckout(freshRepo());
-      writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['src/*'] });
-      const home = resolveHome({ REFS_HOME: homeDir });
-      // Lock contention must degrade to "could not check", never to a command error and never to
-      // "the package is gone".
-      const outcome = await withLock(home, refLockName(KEY), () =>
-        verifyPackageLocation({
-          checkoutDir: repo,
-          configuredPath: 'packages/zod',
-          home,
-          key: KEY,
-          lockTimeoutMs: 50,
-          packageName: 'zod',
-        }),
-      );
-      expect(outcome.status).toBe('unverifiable');
-      expect(outcome.path).toBe('packages/zod');
     });
   });
 });

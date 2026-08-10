@@ -198,13 +198,17 @@ describe('scan reliability', () => {
     expect(scanIsReliable({ diagnostics: [], packages: [] })).toBe(true);
   });
 
-  it('is reliable when the only diagnostic is a missing workspace declaration', () => {
+  it.each([
+    [{ kind: 'no_workspace_declaration' } as const],
+    [{ kind: 'manifest_missing_name', path: 'packages/a' } as const],
+  ])('stays reliable for %o — a complete observation, not a failure to observe', (diagnostic) => {
     expect.hasAssertions();
-    // A repo that simply declares no workspaces is a normal single-package repo, not a
-    // detection failure — its empty scan result is correct and may be trusted.
-    expect(
-      scanIsReliable({ diagnostics: [{ kind: 'no_workspace_declaration' }], packages: [] }),
-    ).toBe(true);
+    // `no_workspace_declaration`: an ordinary single-package repo; the empty scan is correct.
+    // `manifest_missing_name`: the manifest WAS read and declares no usable name, so there is
+    // no resolvable package there and we know it. Marking this unreliable would let one
+    // nameless package.json under a workspace glob permanently suppress every removal
+    // detection for that repo — and nameless manifests are real (zod's own root has none).
+    expect(scanIsReliable({ diagnostics: [diagnostic], packages: [] })).toBe(true);
   });
 
   it.each([
@@ -212,7 +216,7 @@ describe('scan reliability', () => {
     [{ kind: 'workspace_dir_unreadable', path: 'packages' } as const],
     [{ kind: 'unsupported_pattern', pattern: 'packages/**/deep' } as const],
     [{ kind: 'manifest_unreadable', path: 'packages/a' } as const],
-    [{ kind: 'manifest_missing_name', path: 'packages/a' } as const],
+    [{ kind: 'candidate_not_inspected', path: 'packages/a' } as const],
   ])('is unreliable for %o', (diagnostic) => {
     expect.hasAssertions();
     // Each of these means the scan may be MISSING packages that really exist — so a name's

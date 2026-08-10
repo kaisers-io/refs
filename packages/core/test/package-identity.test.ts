@@ -203,3 +203,20 @@ describe('a name that is not unique', () => {
     });
   });
 });
+
+describe('paths that could never be inside the checkout', () => {
+  it.each([['/etc/passwd'], ['../outside'], ['packages/../../etc']])(
+    'rejects %s lexically, before touching the filesystem',
+    async (relPath) => {
+      expect.hasAssertions();
+      const repo = freshRepo();
+      // The check is purely textual and runs first, so an absolute path or a `..` segment never
+      // reaches a filesystem call at all — on any platform, including the Windows drive and UNC
+      // forms `isAbsolute` recognises.
+      await expect(probePackageIdentity(repo, relPath, 'zod')).resolves.toStrictEqual({
+        kind: 'unreadable',
+        reason: 'path escapes the checkout',
+      });
+    },
+  );
+});

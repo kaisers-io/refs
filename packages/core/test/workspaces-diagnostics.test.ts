@@ -121,18 +121,20 @@ describe('unusable package candidates', () => {
     expect(scanIsReliable(scan)).toBe(false);
   });
 
-  it('reports manifest_missing_name — not unreadable — for a nameless manifest', async () => {
+  it('reports manifest_missing_name for a nameless manifest, and stays reliable', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
     writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['packages/*'] });
     addPackage(repo, 'packages/nameless', { private: true, version: '1.0.0' });
     const scan = await detectWorkspacePackagesDetailed(repo);
-    // The manifest read fine — it just is not a package. Saying "unreadable" here would tell an
-    // agent something failed when nothing did.
+    // The manifest read fine — it just is not a package. Saying "unreadable" would tell an agent
+    // something failed when nothing did, and marking the SCAN unreliable would be worse still:
+    // one nameless package.json under a glob would suppress every removal detection for this
+    // repo forever. The observation is complete; it simply found no package here.
     expect(scan.diagnostics).toStrictEqual([
       { kind: 'manifest_missing_name', path: 'packages/nameless' },
     ]);
-    expect(scanIsReliable(scan)).toBe(false);
+    expect(scanIsReliable(scan)).toBe(true);
   });
 });
 
@@ -164,22 +166,38 @@ describe('candidates behind symlinks', () => {
     expect(scanIsReliable(scan)).toBe(false);
   });
 
-  it('silently skips a candidate directory that is itself a symlink', async () => {
+  it('admits that a symlinked candidate directory was never inspected', async () => {
     expect.hasAssertions();
     const { outside, repo } = seedMonorepoWithOutside();
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     symlinkSync(outside, join(repo, 'packages', 'b'));
     const scan = await detectWorkspacePackagesDetailed(repo);
-    // Pinning a KNOWN LIMIT rather than asserting ideal behaviour: `readdir(withFileTypes)` uses
-    // lstat semantics, so a symlinked directory is not `isDirectory()` and never becomes a
-    // candidate at all — inside or outside the repo alike. Detection has always behaved this way
-    // (workspaces-containment.test.ts pins the exclusion); diagnostics cannot see what candidate
-    // selection never produced. A repo that wires packages in by symlink is therefore invisible
-    // to detection, and the scan does not know it. Widening this means changing candidate
-    // selection itself, which is out of scope here.
+    // `readdir` uses lstat semantics, so a symlinked directory is not `isDirectory()` and never
+    // becomes a candidate — it stays excluded from `packages`, exactly as before. What changed
+    // is that the omission is now VISIBLE: callers infer "this package is gone" and "this is its
+    // one new home" from a scan, and neither conclusion is safe while a possible package sits
+    // unexamined behind a link.
     expect(scan.packages).toStrictEqual([
       { description: undefined, name: '@mono/a', path: 'packages/a' },
     ]);
+    expect(scan.diagnostics).toStrictEqual([
+      { kind: 'candidate_not_inspected', path: 'packages/b' },
+    ]);
+    expect(scanIsReliable(scan)).toBe(false);
+  });
+});
+
+describe('symlinks that are not candidates', () => {
+  it('stays silent about a symlink that is not a package candidate at all', async () => {
+    expect.hasAssertions();
+    const { repo } = seedMonorepoWithOutside();
+    // A link to something with no manifest is not a missed package. Reporting it would make
+    // every incidental link in a monorepo suppress removal detection.
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    mkdirSync(join(repo, 'notes'), { recursive: true });
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    symlinkSync(join(repo, 'notes'), join(repo, 'packages', 'link-to-notes'));
+    const scan = await detectWorkspacePackagesDetailed(repo);
     expect(scan.diagnostics).toStrictEqual([]);
     expect(scanIsReliable(scan)).toBe(true);
   });

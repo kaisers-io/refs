@@ -1,5 +1,6 @@
 import type { RefKey, RefsHome } from '@kaisers-io/refs-core';
 import {
+  RefsError,
   detectWorkspacePackagesDetailed,
   isGitCheckout,
   lookupPackagePath,
@@ -74,12 +75,19 @@ const rescanLocked = async (opts: VerifyOpts): Promise<VerifyOutcome> => {
 };
 
 // Where does this package live according to a fresh scan of the checkout?
+const incomplete = (opts: VerifyOpts, reason: string): VerifyOutcome => ({
+  path: opts.configuredPath,
+  reason,
+  status: 'unverifiable',
+});
+
 const searchScan = async (opts: VerifyOpts): Promise<VerifyOutcome> => {
   const scan = await detectWorkspacePackagesDetailed(opts.checkoutDir);
   const lookup = lookupPackagePath(scan.packages, opts.packageName);
-  if (lookup.kind === 'found') {
-    return { configuredPath: opts.configuredPath, path: lookup.path, status: 'relocated' };
-  }
+  const reliable = scanIsReliable(scan);
+
+  // `ambiguous` is the one conclusion an incomplete scan can still support: seeing the name
+  // twice already proves it is not unique, and inspecting more could only have found more.
   if (lookup.kind === 'ambiguous') {
     return {
       candidates: lookup.paths,
@@ -88,16 +96,23 @@ const searchScan = async (opts: VerifyOpts): Promise<VerifyOutcome> => {
       status: 'ambiguous',
     };
   }
-  if (!scanIsReliable(scan)) {
-    // Absence from an INCOMPLETE scan is not evidence of anything. Reporting `missing` here
-    // would be a confident lie, and downstream that becomes "propose deleting this entry".
-    return {
-      path: opts.configuredPath,
-      reason: 'workspace detection was incomplete',
-      status: 'unverifiable',
-    };
+
+  // Both remaining answers claim something about EVERY path — "it is only here", "it is nowhere"
+  // — so neither survives a scan that skipped something. A second package of the same name could
+  // be sitting behind an unreadable manifest or an unsupported pattern, and picking the copy we
+  // happened to see is precisely the silent wrong-directory failure this exists to prevent.
+  if (!reliable) {
+    return incomplete(
+      opts,
+      lookup.kind === 'found'
+        ? 'workspace detection was incomplete, so the new location is not confirmed unique'
+        : 'workspace detection was incomplete',
+    );
   }
-  return { configuredPath: opts.configuredPath, path: NO_PATH, status: 'missing' };
+
+  return lookup.kind === 'found'
+    ? { configuredPath: opts.configuredPath, path: lookup.path, status: 'relocated' }
+    : { configuredPath: opts.configuredPath, path: NO_PATH, status: 'missing' };
 };
 
 /** Wraps `rescanLocked` in the per-ref lock `sync` mutates behind. `withLock` REJECTS with a
@@ -114,11 +129,18 @@ const rescanFor = async (opts: VerifyOpts): Promise<VerifyOutcome> => {
       opts.lockTimeoutMs === undefined ? undefined : { timeoutMs: opts.lockTimeoutMs },
     );
   } catch (error) {
-    return {
-      path: opts.configuredPath,
-      reason: `could not verify under the ref lock: ${String(error)}`,
-      status: 'unverifiable',
-    };
+    // ONLY the lock conflict becomes a status. Catching everything here would turn any defect
+    // inside `rescanLocked` into a plausible-looking `unverifiable`, which is worse than a
+    // crash: the caller is told the location could not be checked when in fact our own code
+    // broke. Anything else propagates and `wrapAction` renders it as the unexpected error it is.
+    if (error instanceof RefsError && error.code === 'conflict') {
+      return {
+        path: opts.configuredPath,
+        reason: 'could not acquire the ref lock in time',
+        status: 'unverifiable',
+      };
+    }
+    throw error;
   }
 };
 

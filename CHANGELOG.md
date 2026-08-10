@@ -32,11 +32,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ambiguous`, where no safe location is known. A caller that treated a zero exit as "here is a
   usable path" must check `package.status` first; previously the field was always a string.
 
-- Workspace detection now reports why it found nothing. Every failure — an unreadable or
-  malformed workspace declaration, an unreadable manifest, a candidate resolving outside the
-  repo, an unsupported pattern — used to collapse into the same empty result, leaving a
-  transient read error indistinguishable from "every package was removed". `refs add` is
-  unaffected: it consumes the same best-effort list it always has.
+- Workspace detection now reports why it found nothing. An unreadable or malformed workspace
+  declaration, an unreadable manifest, a candidate resolving outside the repo, an unsupported
+  pattern, a package directory reachable only through a symlink — each used to collapse into the
+  same empty result, leaving a transient read error indistinguishable from "every package was
+  removed". Each is now reported, and a scan carrying any of them is treated as possibly
+  incomplete: it can neither conclude that a package is gone nor that a single sighting of one is
+  unique. `refs add` is unaffected — it consumes the same best-effort list it always has.
+
+  A manifest that reads fine but declares no usable `name` is reported too, but does **not** make
+  a scan incomplete: there is demonstrably no resolvable package at that path. Nameless manifests
+  are common enough (zod's own repository root has none) that treating them as failures would
+  permanently suppress detection for those repos.
 
 - `refs init`'s skill-install hint now presents the second form as installing from a local
   clone, rather than as a workaround for the repository's development phase. Both commands

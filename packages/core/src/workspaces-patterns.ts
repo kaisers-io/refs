@@ -32,6 +32,12 @@ type WorkspacePatternPlan =
 // transient read error from "every package was removed". These diagnostics are that missing
 // distinction.
 type WorkspaceDiagnostic =
+  // A directory entry that WOULD have been a package candidate but was never inspected, because
+  // candidate selection cannot see it: `readdir` uses lstat semantics, so a symlinked directory
+  // is not `isDirectory()` and never becomes a candidate. Reported rather than skipped silently
+  // — a scan that omits a possible package is not complete, and callers now draw conclusions
+  // ("this package is gone", "this is its one new home") from completeness.
+  | { kind: 'candidate_not_inspected'; path: string }
   // A candidate directory declared no usable `name`. Not a read failure: the manifest was read
   // fine, it just is not a package. Distinct from `manifest_unreadable` so nobody is told
   // something failed when nothing did.
@@ -47,11 +53,23 @@ type WorkspaceScan = {
   packages: WorkspacePackage[];
 };
 
-// `no_workspace_declaration` is deliberately absent: a repo with no workspaces is an ordinary
-// single-package repo, and its empty scan is a correct, trustworthy answer. Every OTHER
-// diagnostic means the scan may be incomplete, so a name's absence from it proves nothing.
+// Two kinds are deliberately absent, because both are COMPLETE observations rather than
+// failures to observe:
+//
+//   `no_workspace_declaration` — a repo with no workspaces is an ordinary single-package repo,
+//   and its empty scan is the correct answer.
+//
+//   `manifest_missing_name` — the manifest was read successfully and declares no usable name.
+//   There is no resolvable package at that path, and we know it. Marking this unreliable would
+//   be worse than noise: one nameless `package.json` under a workspace glob would make a repo's
+//   scan permanently unreliable, suppressing every removal detection built on top of it. Such
+//   manifests are real (zod's own repo root has no `name`), so this would not be a rare case.
+//
+// Every OTHER diagnostic means the scan may be INCOMPLETE — some path that could hold a package
+// was not inspected — so a name's absence from it proves nothing, and a name's single appearance
+// in it does not prove uniqueness either.
 const UNRELIABLE_DIAGNOSTIC_KINDS: ReadonlySet<WorkspaceDiagnostic['kind']> = new Set([
-  'manifest_missing_name',
+  'candidate_not_inspected',
   'manifest_unreadable',
   'unsupported_pattern',
   'workspace_dir_unreadable',

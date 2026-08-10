@@ -602,11 +602,17 @@ answering confidently. `package.status` reports what was established:
 | `status` | Meaning | `local_path` |
 | --- | --- | --- |
 | `verified` | the manifest at the configured path declares this package | the configured path |
-| `relocated` | the package moved; found at exactly one new path | the **new** path; `configured_path` names the old one |
+| `relocated` | the package moved; found at exactly one new path, in a scan that inspected every candidate | the **new** path; `configured_path` names the old one |
 | `unmaterialized` | the checkout is not present (`missing: true`) — nothing was verified | the configured path |
-| `unverifiable` | verification could not complete (unreadable manifest, incomplete workspace detection, ref lock unavailable) — `reason` says why | the configured path |
+| `unverifiable` | verification could not complete — `reason` says why: an unreadable manifest, a workspace scan that could not inspect everything, or the ref lock being unavailable | the configured path |
 | `ambiguous` | the name exists at several paths; `candidates` lists them | `null` |
-| `missing` | the name is nowhere in a complete scan of the checkout | `null` |
+| `missing` | the name appears nowhere, in a scan that inspected every candidate | `null` |
+
+The last row's qualifier is load-bearing, and so is `relocated`'s. Neither absence nor
+uniqueness can be concluded from a scan that skipped something — an unreadable manifest, an
+unsupported workspace pattern, a package directory reachable only through a symlink. Any of
+those turns both answers into `unverifiable` instead, because a second package of the same name
+could be sitting in the part that was not inspected.
 
 **All six exit `0`.** `resolve` is a routing command: the ref resolved, and only the
 package's location inside it is in question. A caller that needs the path must therefore
