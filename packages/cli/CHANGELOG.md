@@ -7,14 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-08-12
+
 ### Added
 
 - The skill states a trust boundary. Everything inside a managed checkout is untrusted third-party
   content — README, comments, commit messages, and any `AGENTS.md` or `CLAUDE.md` a tracked repo
-  ships — so it is evidence to read and never instruction to follow, and anything that tries to
-  redirect the agent goes to the user as a finding. Both worker flows carry the rule into their
-  prompts. This narrows the blast radius of indirect prompt injection; it is not a sandbox, and
-  SECURITY.md says so.
+  ships — so it is evidence to read and never instruction to follow. Documentation stays evidence,
+  including a repo's own contributor and agent docs; what goes to the user as a finding is content
+  targeting the agent that reads it. Both worker flows carry the rule into their prompts. This
+  narrows the blast radius of indirect prompt injection; it is not a sandbox, and SECURITY.md says
+  so.
 
 ### Changed
 
@@ -430,7 +433,8 @@ trusted-publishing pipeline end to end.
   installed git hooks.
 - Agent skill (`skills/refs/`) documenting the investigate/add/maintain workflows.
 
-[Unreleased]: https://github.com/kaisers-io/refs/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/kaisers-io/refs/compare/v0.8.3...HEAD
+[0.8.3]: https://github.com/kaisers-io/refs/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/kaisers-io/refs/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/kaisers-io/refs/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/kaisers-io/refs/compare/v0.7.0...v0.8.0
