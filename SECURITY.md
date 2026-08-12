@@ -47,3 +47,29 @@ Similarly out of scope:
 - Vulnerabilities in the dependency source code that `refs` checks out. Report those upstream.
 - Anything that requires an attacker to already control the machine `refs` runs on.
 - Findings from automated scanners without a demonstrated impact on `refs`.
+
+## Untrusted checkout content
+
+`refs` exists to put third-party source code in front of an agent, so a checkout is
+attacker-controlled input by construction: its README, comments, and commit messages were written by
+whoever owns that repository, and nobody vetted them on the way in. The bundled skill states this as
+an explicit trust boundary (`skills/refs/SKILL.md` §4) and carries it into every worker prompt —
+checkout content is evidence to read, never instruction to follow, and anything that tries to
+redirect the agent is reported to the user instead of acted on.
+
+That is an instruction-level mitigation, not a sandbox. Indirect prompt injection through a tracked
+dependency is a real residual risk and prose in a skill does not remove it. What is enforced in code
+is narrower: `refs` never runs a checkout's own code (the `core.hooksPath` note above), and it never
+reads checkout content as configuration.
+
+Automated skill scanners flag this shape, and one class of finding will keep coming back: Snyk Agent
+Scan's `W011`, *exposure to untrusted third-party content*. When it fires, it is right — that is a
+description of the feature, not a defect report, and the answer is the guard above rather than not
+fetching repositories.
+
+`.github/workflows/skill-audit.yml` runs that scanner on every pull request touching the skill, and
+waives nothing. The scanner offers an `--ignore-issues-codes`; we do not use it, because the skill
+is clean without one and a standing waiver would hide the real finding it was written for. Its
+judges are LLM-based and not deterministic, so treat a single red run as a prompt to re-run and
+reproduce locally (`pnpm skill:audit`), not as a verdict — and never edit the skill into something
+untrue to make one go away.

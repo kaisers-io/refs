@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The skill states a trust boundary. Everything inside a managed checkout is untrusted third-party
+  content — README, comments, commit messages, and any `AGENTS.md` or `CLAUDE.md` a tracked repo
+  ships — so it is evidence to read and never instruction to follow, and anything that tries to
+  redirect the agent goes to the user as a finding. Both worker flows carry the rule into their
+  prompts. This narrows the blast radius of indirect prompt injection; it is not a sandbox, and
+  SECURITY.md says so.
+
+### Changed
+
+- The skill installs nothing. Its capability gate used to ask permission and then run
+  `npm i -g @kaisers-io/refs` itself; it now prints the command — pinned to the version the skill
+  was written against, not `@latest` — and stops until the user has run it. A skill that installs
+  the executable giving it its capabilities is a bootstrap trust boundary worth keeping explicit,
+  and Anthropic's own guidance discourages global installs from a skill. The cost is one manual
+  step, once.
+
+- The `--json` examples in the skill's command reference use placeholder repositories
+  (`example-org/…`) instead of real third-party ones, and say up front that they are illustrative
+  output rather than repositories the skill fetches.
+
 ## [0.8.2] - 2026-08-10
 
 ### Fixed
