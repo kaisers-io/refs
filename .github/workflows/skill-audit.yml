@@ -1,0 +1,92 @@
+name: skill-audit
+# skills.sh runs three vendor audits (Gen Agent Trust Hub, Socket, Snyk) against the *published*
+# skill, so without a pre-merge run the first sign of a regression is a severity badge on the skill's
+# public page. These two jobs are that pre-flight.
+#
+# Path-filtered on purpose. The Snyk job uploads the skill's text to a hosted API on every run, and
+# Snyk asks callers not to use it at scale; nothing outside these paths can change the verdict, so
+# there is no reason to spend a scan on an unrelated pull request.
+on:
+  push:
+    branches: [main]
+    paths: ['skills/**', '.github/workflows/skill-audit.yml', 'package.json']
+  pull_request:
+    paths: ['skills/**', '.github/workflows/skill-audit.yml', 'package.json']
+# Kept separate from ci.yml precisely so that workflow can stay on `contents: read`: the SARIF upload
+# below needs `security-events: write`, and that permission has no business in a job that also runs
+# PR-controlled build and test code.
+permissions:
+  contents: read
+jobs:
+  # Cisco's scanner is Apache-2.0 and needs no credentials, so this is the only skill check that also
+  # runs on pull requests from forks. It does not predict Snyk: verified locally against this repo,
+  # it returns the identical verdict for the skill before and after the W011/W013 fixes. Its value is
+  # as a regression net for the classes it does cover — injected instructions, exfiltration patterns,
+  # malicious code, obfuscation.
+  static:
+    permissions:
+      contents: read
+      security-events: write
+    # Pinned to the commit behind tag 2.0.13. The documented usage is `@main`, which is a standing
+    # agreement to run whatever that repository publishes next — the same reasoning as ci.yml's pins.
+    uses: cisco-ai-defense/skill-scanner/.github/workflows/scan-skills.yml@433ab08f8a4eda9b2a1b5e2b4857b691162faf8f # 2.0.13
+    with:
+      # `skills`, not `skills/refs`. The workflow's default scan_mode is `scan-all`, which enumerates
+      # the *children* of this path — given a single skill's own directory it reports "No skills
+      # found to scan" and exits green, a job that checks nothing and says so to nobody. Verified
+      # locally against skill-scanner 2.0.13.
+      skill_path: skills
+      # The skill is clean at every severity today, so anything from medium up is a real regression.
+      fail_on_severity: medium
+  # The same engine skills.sh publishes its Snyk verdict from, which makes this the only true
+  # pre-flight. Analysis is server-side and needs SNYK_TOKEN; pull requests from forks get no
+  # secrets, so this is skipped there and runs on the push to main instead. Do not "fix" that with
+  # `pull_request_target` — that would hand repository secrets to PR-controlled content.
+  snyk:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .node-version, cache: pnpm }
+      # The scanner is a Python package invoked through `uvx`, so the runner needs uv. pipx ships on
+      # GitHub's Ubuntu images, which keeps this to one line and adds no further third-party action.
+      - run: pipx install uv
+      # `pnpm skill:audit` rather than the raw command, so the scanner version pin lives in exactly
+      # one place and a contributor runs locally what CI runs here. The script needs none of the
+      # workspace's dependencies — it shells straight out to uvx — but pnpm installs them before
+      # running a script anyway, which is what the setup-node cache above is for.
+      #
+      # What that script passes, and why:
+      #   --ci                            exit 1 on any finding at all. Nothing is waived: the
+      #                                   scanner also has an --ignore-issues-codes, and the skill
+      #                                   is clean without it, so adding one would only blind us.
+      #                                   --ci also covers the "scanned nothing" case — with no
+      #                                   usable SNYK_TOKEN the run fails rather than reporting a
+      #                                   clean skill.
+      #   --dangerously-run-mcp-servers   unconditionally required by --ci (agent_scan/cli.py, in
+      #                                   enforce_consent_requirements — a pure two-flag check that
+      #                                   never looks at what is being scanned) because a CI run
+      #                                   cannot answer the per-server consent prompt. Inert here
+      #                                   only because the target holds skills and no MCP config:
+      #                                   pointed at a tree that had one, this flag would launch it.
+      #
+      # That target is `skills/` rather than `skills/refs/`, which keeps it as tight as it can be
+      # while still finding anything: discovery is exactly one level deep (`<path>/<name>/SKILL.md`),
+      # so the parent is the narrowest path under which a second skill would still get scanned
+      # instead of silently skipped.
+      #
+      # Expect the occasional false red. Snyk's judges are LLM-based and not deterministic, and
+      # during this workflow's development trees a single line apart drew verdicts further apart
+      # than that line explains. The current skill came back clean four runs in a row, which is
+      # evidence and not a guarantee. Re-run before believing a lone finding, reproduce it locally
+      # with `pnpm skill:audit`, and only then change the skill to satisfy it.
+      #
+      # The secret is a Snyk personal access token, which expires. An expired one fails this job the
+      # same way a real finding does — if the log says "set the SNYK_TOKEN environment variable"
+      # rather than naming issue codes, the token is the problem, not the skill. Mint a new one at
+      # https://app.snyk.io/account/personal-access-tokens and replace the repository secret.
+      - run: pnpm skill:audit
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}

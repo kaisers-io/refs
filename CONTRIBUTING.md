@@ -47,6 +47,18 @@ That is exactly what CI runs, on Linux, macOS and Windows, and once more on the 
 CI adds a coverage gate, a version-consistency check, a bundle-determinism check, and a smoke test
 of the packaged CLI on Linux and Windows.
 
+If you touched anything under `skills/`, CI also runs the skill audit (`.github/workflows/skill-audit.yml`),
+which is the pre-flight for the vendor audits skills.sh publishes on the skill's public page after
+release. To run the same gate locally:
+
+```bash
+pnpm skill:audit           # Snyk Agent Scan against skills/refs, nothing waived
+```
+
+It needs [uv](https://docs.astral.sh/uv/getting-started/installation/) and a `SNYK_TOKEN` from a
+free Snyk account, because the analysis runs server-side. The workflow explains every flag it
+passes, including why a red run is worth re-running before you believe it.
+
 For a faster inner loop, run `pnpm dev` inside `packages/cli` and call the stub directly. From
 that directory it is `node bin/refs.mjs <args>`; from the repository root,
 `node packages/cli/bin/refs.mjs <args>`.
