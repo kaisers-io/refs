@@ -67,9 +67,6 @@ Scan's `W011`, *exposure to untrusted third-party content*. When it fires, it is
 description of the feature, not a defect report, and the answer is the guard above rather than not
 fetching repositories.
 
-`.github/workflows/skill-audit.yml` runs that scanner on every pull request touching the skill, and
-waives nothing. The scanner offers an `--ignore-issues-codes`; we do not use it, because the skill
-is clean without one and a standing waiver would hide the real finding it was written for. Its
-judges are LLM-based and not deterministic, so treat a single red run as a prompt to re-run and
-reproduce locally (`pnpm skill:audit`), not as a verdict — and never edit the skill into something
-untrue to make one go away.
+`.github/workflows/skill-audit.yml` runs that scanner on every pull request touching the skill and
+waives nothing, so such a finding is looked at rather than inherited. What it must never produce is
+a skill edited into something untrue to clear it.
