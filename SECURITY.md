@@ -62,11 +62,12 @@ dependency is a real residual risk and prose in a skill does not remove it. What
 is narrower: `refs` never runs a checkout's own code (the `core.hooksPath` note above), and it never
 reads checkout content as configuration.
 
-Automated skill scanners flag this shape, and one class of finding will keep coming back: Snyk Agent
-Scan's `W011`, *exposure to untrusted third-party content*. When it fires, it is right — that is a
-description of the feature, not a defect report, and the answer is the guard above rather than not
-fetching repositories.
+Automated skill scanners flag this shape. Snyk Agent Scan reports `W011`, *exposure to untrusted
+third-party content*, against the skill on every run, citing the paragraph above as its evidence.
+The finding is correct and it is not a defect: it describes the feature. Clearing it would mean
+either not fetching repositories, or saying less plainly what refs does with them, and the second is
+worse than the finding.
 
-`.github/workflows/skill-audit.yml` runs that scanner on every pull request touching the skill and
-waives nothing, so such a finding is looked at rather than inherited. What it must never produce is
-a skill edited into something untrue to clear it.
+So `W011` is the one code `.github/workflows/skill-audit.yml` waives, and it is the only one — every
+other code fails the job, on every pull request that touches the skill. What that workflow must
+never produce is a skill edited into something untrue to clear a finding.

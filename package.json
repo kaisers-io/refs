@@ -15,7 +15,7 @@
     "build": "pnpm -r run build",
     "check": "pnpm lint && pnpm fmt:check && pnpm typecheck && pnpm test",
     "versions": "node scripts/versions.mjs",
-    "skill:audit": "uvx snyk-agent-scan@0.5.17 scan --skills --ci --dangerously-run-mcp-servers skills",
+    "skill:audit": "uvx snyk-agent-scan@0.5.17 scan --skills --ci --dangerously-run-mcp-servers --ignore-issues-codes W011 skills",
     "refs": "pnpm --filter @kaisers-io/refs build && node packages/cli/bin/refs.mjs"
   },
   "devDependencies": {

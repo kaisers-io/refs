@@ -49,12 +49,15 @@ jobs:
       # contributor runs locally. Its flags:
       #   --ci                          exit non-zero on any finding, and also when no token is
       #                                 usable, so a run that analyzed nothing fails rather than
-      #                                 reporting a clean skill. Nothing is waived — the scanner's
-      #                                 --ignore-issues-codes is deliberately unused.
+      #                                 reporting a clean skill.
       #   --dangerously-run-mcp-servers required by --ci unconditionally, because a CI run cannot
       #                                 answer the per-server consent prompt. It starts every stdio
       #                                 MCP server in the scanned tree, and is inert only because
       #                                 the target holds skills and no MCP config.
+      #   --ignore-issues-codes W011    the single waived code: "exposure to untrusted third-party
+      #                                 content", which is a description of what refs does. It is
+      #                                 argued in SECURITY.md, and it is the only one — every other
+      #                                 code, known or new, fails this job.
       # The target is `skills/` rather than `skills/refs/` because discovery is one level deep
       # (`<path>/<name>/SKILL.md`), so the parent is the narrowest path that still finds everything.
       #
