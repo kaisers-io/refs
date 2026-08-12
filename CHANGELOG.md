@@ -22,8 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `npm i -g @kaisers-io/refs` itself; it now prints the command — pinned to the version the skill
   was written against, not `@latest` — and stops until the user has run it. A skill that installs
   the executable giving it its capabilities is a bootstrap trust boundary worth keeping explicit,
-  and Anthropic's own guidance discourages global installs from a skill. The cost is one manual
-  step, once.
+  and Anthropic's skill documentation discourages global installs from a skill.
 
 - The `--json` examples in the skill's command reference use placeholder repositories
   (`example-org/…`) instead of real third-party ones, and say up front that they are illustrative

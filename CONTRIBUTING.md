@@ -52,12 +52,12 @@ which is the pre-flight for the vendor audits skills.sh publishes on the skill's
 release. To run the same gate locally:
 
 ```bash
-pnpm skill:audit           # Snyk Agent Scan against skills/refs, nothing waived
+pnpm skill:audit           # Snyk Agent Scan against skills/
 ```
 
 It needs [uv](https://docs.astral.sh/uv/getting-started/installation/) and a `SNYK_TOKEN` from a
-free Snyk account, because the analysis runs server-side. The workflow explains every flag it
-passes, including why a red run is worth re-running before you believe it.
+free Snyk account, because the analysis runs server-side. `.github/workflows/skill-audit.yml`
+documents every flag it passes and the one issue code that is waived.
 
 For a faster inner loop, run `pnpm dev` inside `packages/cli` and call the stub directly. From
 that directory it is `node bin/refs.mjs <args>`; from the repository root,

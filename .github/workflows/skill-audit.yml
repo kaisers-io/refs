@@ -5,45 +5,52 @@ name: skill-audit
 #
 # Path-filtered because the Snyk job uploads the skill's text to a hosted API, and Snyk asks callers
 # not to scan at scale.
+#
+# Both scanners are Python packages run through uvx, pinned to an exact version. pipx ships on
+# GitHub's Ubuntu images, so installing uv is one line and adds no third-party action.
 on:
   push:
     branches: [main]
     paths: ['skills/**', '.github/workflows/skill-audit.yml', 'package.json']
   pull_request:
     paths: ['skills/**', '.github/workflows/skill-audit.yml', 'package.json']
-# Separate from ci.yml so that workflow keeps `contents: read`: the SARIF upload needs
-# `security-events: write`, which has no business in a job that runs PR-controlled build and test code.
 permissions:
   contents: read
 jobs:
   # Apache-2.0 and credential-free, so this is the one skill check that also covers pull requests
   # from forks. Different engine from Snyk's, and different findings: injected instructions,
   # exfiltration patterns, malicious code, obfuscation.
+  #
+  # Deliberately not the reusable workflow that repository documents. That workflow `pip install`s
+  # the scanner unpinned, so pinning its own sha would freeze the harness and leave the engine
+  # floating; it also uploads SARIF, which needs `security-events: write` — a permission a fork
+  # pull request cannot be granted, so the upload would fail there on every run, findings or not.
   static:
-    permissions:
-      contents: read
-      security-events: write
-    # Pinned to the commit behind tag 2.0.13. The documented `@main` would run whatever that
-    # repository publishes next.
-    uses: cisco-ai-defense/skill-scanner/.github/workflows/scan-skills.yml@433ab08f8a4eda9b2a1b5e2b4857b691162faf8f # 2.0.13
-    with:
-      # `skills`, not `skills/refs`: the default scan_mode is `scan-all`, which enumerates the
-      # children of this path. Given a single skill's own directory it reports "No skills found to
-      # scan" and exits green.
-      skill_path: skills
-      fail_on_severity: medium
-  # The engine behind the Snyk verdict skills.sh publishes. Needs SNYK_TOKEN, and pull requests from
-  # forks get no secrets, so it is skipped there and runs on the push to main. `pull_request_target`
-  # would hand repository secrets to PR-controlled content.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: pipx install uv
+      # `scan-all skills`, not `scan skills/refs`: scan-all enumerates the children of the path, and
+      # given a single skill's own directory it reports "No skills found to scan" and exits 0.
+      - run: >
+          uvx --from cisco-ai-skill-scanner==2.0.13 skill-scanner scan-all skills
+          --policy balanced --recursive --fail-on-severity medium --format summary
+  # The engine behind the Snyk verdict skills.sh publishes. Analysis is server-side and needs
+  # SNYK_TOKEN, which rules out two kinds of run: pull requests from forks get no secrets, and
+  # Dependabot runs read Dependabot secrets rather than Actions secrets. Both would fail on an empty
+  # token rather than on a finding, so both are skipped and main picks the change up on push.
+  # `pull_request_target` would hand repository secrets to PR-controlled content and is not an option.
   snyk:
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    if: >
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name == 'push' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .node-version, cache: pnpm }
-      # The scanner is a Python package invoked through uvx. pipx ships on GitHub's Ubuntu images.
       - run: pipx install uv
       # `pnpm skill:audit` keeps the scanner version pin in one place and runs here what a
       # contributor runs locally. Its flags:
@@ -54,16 +61,16 @@ jobs:
       #                                 answer the per-server consent prompt. It starts every stdio
       #                                 MCP server in the scanned tree, and is inert only because
       #                                 the target holds skills and no MCP config.
-      #   --ignore-issues-codes W011    the single waived code: "exposure to untrusted third-party
-      #                                 content", which is a description of what refs does. It is
-      #                                 argued in SECURITY.md, and it is the only one — every other
-      #                                 code, known or new, fails this job.
+      #   --ignore-issues-codes         W011 "exposure to untrusted third-party content" and W012
+      #                                 "unverifiable external dependency" — one observation about
+      #                                 what refs does, which the scanner files under either code
+      #                                 from run to run. Argued in SECURITY.md. These two are the
+      #                                 whole waiver; every other code, known or new, fails the job.
       # The target is `skills/` rather than `skills/refs/` because discovery is one level deep
       # (`<path>/<name>/SKILL.md`), so the parent is the narrowest path that still finds everything.
       #
       # Snyk's judges are LLM-based and not deterministic. Re-run a lone red result and reproduce it
-      # with `pnpm skill:audit` before acting on it, and never edit the skill into something untrue
-      # to clear one.
+      # with `pnpm skill:audit` before acting on it.
       #
       # SNYK_TOKEN is a personal access token and expires. An expired one fails this job the same way
       # a finding does; a log line saying to set SNYK_TOKEN means the token, not the skill.
