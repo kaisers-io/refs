@@ -91,7 +91,8 @@ See `ADD.md` for the flow and the approval rule.
 
 `description` starts `""`. A package with no detected description has **no `description`
 key at all** — test for key presence, never falsiness. `tag_format_candidate` is `null`
-when none was detected; finalizing then requires you to supply one.
+when none was detected; it finalizes to a ref with no `tag_format`, which is a valid entry.
+Don't fill one in to make it look complete (`ADD.md` §3).
 
 `--proposal` / `--description` `data` (the finalized entry):
 
@@ -109,9 +110,8 @@ when none was detected; finalizing then requires you to supply one.
 ```
 
 Exit codes: `2` (no mode flag, more than one, or missing `<source>`), `3` (bad proposal
-shape, missing or invalid `tag_format_candidate`, or `--description` with an undescribed
-package), `4`
-(finalizing with no checkout on disk), `5` (ref already configured).
+shape, an invalid `tag_format_candidate`, or `--description` with an undescribed package),
+`4` (finalizing with no checkout on disk), `5` (ref already configured).
 
 ## `refs edit`
 
@@ -340,6 +340,8 @@ Resolves a version to the git tag it maps to, by rendering the applicable `tag_f
 verifying the tag exists in the checkout. `--package <name>` uses that package's
 `tag_format` when it overrides the ref's.
 
+`tag_format` is optional, so a ref may have none — this is the only command that needs it.
+
 ```json
 {
   "key": "github.com/example-org/example-monorepo",
@@ -352,5 +354,9 @@ verifying the tag exists in the checkout. `--package <name>` uses that package's
 Always pass tags to git as `ref_path` (`refs/tags/<tag>`) — a bare tag starting with `-`
 parses as an option.
 
-Exit codes: `2` (ambiguous suffix), `4` (ref/package not found, checkout missing, or no
+Exit codes: `2` (ambiguous suffix), `3` (no `tag_format` configured for the ref, or for the
+named package with none to inherit), `4` (ref/package not found, checkout missing, or no
 such tag — see `INVESTIGATE.md` before concluding the release doesn't exist).
+
+The `3`/`4` split is the useful one: `3` means this ref cannot resolve any version, `4`
+means this particular version was never tagged.

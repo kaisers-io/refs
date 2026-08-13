@@ -93,9 +93,9 @@ const packagesMissingDescription = (
 
 /** Fails closed — before any write — when the `--description` one-shot's detected packages include
  * any missing a description, naming ALL of them (the repo's established "list every offending key"
- * precedent — see `resolve.ts`'s multi-ref ambiguity message) rather than just the first. Mirrors
- * `requireTagFormat`'s "validate before finalize" placement: called from `add.ts#buildDescriptionRef`
- * before `finalizeRef` ever runs, so a rejection here writes nothing to config or state. */
+ * precedent — see `resolve.ts`'s multi-ref ambiguity message) rather than just the first. Validates
+ * before finalize: called from `add.ts#buildDescriptionRef` before `finalizeRef` ever runs, so a
+ * rejection here writes nothing to config or state. */
 const requireAllDescribed = (proposalPackages: Record<string, ProposalPackageEntry>): void => {
   const missing = packagesMissingDescription(proposalPackages);
   if (missing.length === 0) {
@@ -120,45 +120,35 @@ const finalProposalPackages = (
   return packages;
 };
 
-/** A `null` `tag_format_candidate` means dry-run detection found no reliable tag format — finalize
- * (either `--proposal` or `--description`) needs a real one to satisfy `zRefEntry.tag_format`
- * (required, unlike the proposal's nullable candidate): either the human filled it in in the
- * proposal file, or the source repo really has none and finalizing must be rejected. */
-const requireTagFormat = (candidate: TagFormat | null): TagFormat => {
-  if (candidate === null) {
-    throw validationError(
-      "tag_format_candidate must be set to a valid tag format (containing '{version}') " +
-        'before finalizing — edit the proposal and provide one, or add the ref manually',
-    );
-  }
-  return candidate;
-};
-
+/** A `null` `tag_format_candidate` means dry-run detection found no reliable tag format, and that
+ * survives finalize as an absent `tag_format`. Finalize used to reject it, which left whoever ran
+ * `refs add` two options for a repository that simply has no tags: invent a convention, or give up.
+ * The invented one then read as observed fact to every later agent. `refs tag` reports the absence
+ * instead; nothing else consults the field. */
 type FinalizedRefInput = {
   default_branch: string;
   description: string;
   key: RefKey;
   packages?: Record<string, PackageEntry>;
-  tag_format: TagFormat;
+  tag_format?: TagFormat;
   url: string;
 };
 
+// Built key-by-key rather than spread, because `exactOptionalPropertyTypes` distinguishes an absent
+// key from one set to `undefined`, and TOML has no way to write the latter.
 const buildRefEntry = (ref: FinalizedRefInput): RefEntry => {
-  if (ref.packages === undefined) {
-    return {
-      default_branch: ref.default_branch,
-      description: ref.description,
-      tag_format: ref.tag_format,
-      url: ref.url,
-    };
-  }
-  return {
+  const entry: RefEntry = {
     default_branch: ref.default_branch,
     description: ref.description,
-    packages: ref.packages,
-    tag_format: ref.tag_format,
     url: ref.url,
   };
+  if (ref.packages !== undefined) {
+    entry.packages = ref.packages;
+  }
+  if (ref.tag_format !== undefined) {
+    entry.tag_format = ref.tag_format;
+  }
+  return entry;
 };
 
 export {
@@ -168,6 +158,5 @@ export {
   finalProposalPackages,
   packagesMissingDescription,
   requireAllDescribed,
-  requireTagFormat,
 };
 export type { FinalizedRefInput };

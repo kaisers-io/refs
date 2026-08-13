@@ -66,11 +66,15 @@ const zPackageEntry = z.strictObject({
   tag_format: zTagFormat.optional(),
 });
 
+// `tag_format` is optional at both levels, and for the same reason: plenty of repositories publish
+// no tags at all, or tag in a shape no format can describe. Requiring one there forced whoever ran
+// `refs add` to invent a convention and write it down as if it had been observed — `refs tag` is
+// the only command that reads the field, and it reports the absence itself.
 const zRefEntry = z.strictObject({
   default_branch: z.string().min(1),
   description: z.string().min(1),
   packages: zSafePackagesRecord(zPackageEntry).optional(),
-  tag_format: zTagFormat,
+  tag_format: zTagFormat.optional(),
   url: z.string().min(1),
   ...zRefSettingsOverride.shape,
 });

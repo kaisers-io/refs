@@ -1,9 +1,4 @@
-import {
-  buildFinalPackages,
-  finalProposalPackages,
-  requireAllDescribed,
-  requireTagFormat,
-} from './add-packages.ts';
+import { buildFinalPackages, finalProposalPackages, requireAllDescribed } from './add-packages.ts';
 import {
   checkoutPath,
   isGitCheckout,
@@ -58,9 +53,11 @@ const buildProposalRef = (finalProposal: FinalProposal): FinalizedRefInput => {
     default_branch: finalProposal.default_branch,
     description: finalProposal.description,
     key: finalProposal.key,
-    tag_format: requireTagFormat(finalProposal.tag_format_candidate),
     url: finalProposal.url,
   };
+  if (finalProposal.tag_format_candidate !== null) {
+    ref.tag_format = finalProposal.tag_format_candidate;
+  }
   const packages = finalProposalPackages(finalProposal.packages);
   if (packages !== undefined) {
     ref.packages = packages;
@@ -80,20 +77,21 @@ const runAddProposal = async (ctx: CliContext, location: string): Promise<AddOut
   return { data: { entry, key }, human: finalizeHuman(key), warnings: [] };
 };
 
-// `requireAllDescribed` runs FIRST, before anything else here (including `requireTagFormat`'s own
-// validation) and before `finalizeRef` is ever reached — the one-shot `--description` text is only
-// ever the top-level ref's own description, never a per-package fallback (see that function's own
-// doc comment), so any package still missing a detected description must fail closed here, with no
-// config/state write having happened yet.
+// `requireAllDescribed` runs FIRST, before anything else here and before `finalizeRef` is ever
+// reached — the one-shot `--description` text is only ever the top-level ref's own description,
+// never a per-package fallback (see that function's own doc comment), so any package still missing
+// a detected description must fail closed here, with no config/state write having happened yet.
 const buildDescriptionRef = (outcome: DryRunOutcome, description: string): FinalizedRefInput => {
   requireAllDescribed(outcome.proposal.packages);
   const ref: FinalizedRefInput = {
     default_branch: outcome.proposal.default_branch,
     description,
     key: outcome.proposal.key,
-    tag_format: requireTagFormat(outcome.proposal.tag_format_candidate),
     url: outcome.proposal.url,
   };
+  if (outcome.proposal.tag_format_candidate !== null) {
+    ref.tag_format = outcome.proposal.tag_format_candidate;
+  }
   const packages = buildFinalPackages(outcome.proposal.packages);
   if (packages !== undefined) {
     ref.packages = packages;

@@ -103,7 +103,7 @@ sync_ttl = "1h"
 # description = "Short description of the repo."
 # url = "https://github.com/owner/repo"
 # default_branch = "main"
-# tag_format = "v{version}"
+# tag_format = "v{version}"   # optional — omit it if the repo has no usable tag pattern
 # # Per-ref overrides of [settings] go in the same table, e.g.:
 # # clone_mode = "full"
 ```
@@ -144,7 +144,7 @@ path = "packages/zod"
 | `description`    | yes      | Short human/agent-facing description.                                                                                                                                                                                                                                |
 | `url`            | yes      | The canonical clone URL (rewritten by `refs edit <ref> url <value>`, which refuses a URL that would derive a different ref key).                                                                                                                                     |
 | `default_branch` | yes      | The ref's default branch, detected at `add` time (auto-updated by `sync` if the remote's default branch is renamed).                                                                                                                                                 |
-| `tag_format`     | yes      | A template containing `{version}`, e.g. `v{version}`, used by `refs tag` to resolve a version to a git tag.                                                                                                                                                          |
+| `tag_format`     | no       | A template containing `{version}`, e.g. `v{version}`, used by `refs tag` to resolve a version to a git tag. Absent for a repository that publishes no tags, or none in a describable shape: `refs tag` then exits `3`, and nothing else is affected. `refs edit` can set one but has no unset — removing a recorded format means deleting the line from this file.  |
 | `packages`       | no       | A map of package name → `{ description, path, tag_format? }`, for repos (typically monorepos) that register one or more importable packages. A package's `tag_format` overrides the ref's own for that package only; when absent it inherits the ref's `tag_format`. |
 | _(settings)_     | no       | `clone_mode` or `sync_ttl` — see below. (`git_transport` is expressible here but has no effect; see the note under `[settings]`.)                                                                                                                                    |
 

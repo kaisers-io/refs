@@ -233,6 +233,14 @@ outside its working directory, whatever the link format.
 --sort=-version:refname` in the checkout); some releases are only reachable as
    version-bump commits in `git log`, not as tags.
 
+   A `3` exit is a different thing: nothing maps versions onto tags here at all. Look at the
+   checkout's real tags (`git tag -l`). If a pattern is there, offer it to the user — the
+   error names the command, and the level matters: `refs edit <ref> tag_format '<format>'`
+   sets it for the whole ref (inherited by every package without its own), while the
+   `--package <name>` form sets it for that package alone. In a monorepo where packages tag
+   as `pkg@{version}`, only the package form is right. If the repo simply doesn't tag, say
+   so and answer from `git log` instead — do not invent a format.
+
    **Sanity-check the resolved tags.** Tags can lie: a similarly-named tag may predate
    the actual release. If a diff looks wrong for a claimed range (e.g. a zero diff),
    verify the tag's content before trusting it — `git show refs/tags/<tag>:<path-to-manifest>`
