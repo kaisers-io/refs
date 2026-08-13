@@ -4,8 +4,17 @@ import { canonicalizeGitUrl } from './git-url.ts';
 import { z } from 'zod';
 import { zPackagePath } from './schemas/primitives.ts';
 
-// Injectable HTTP client; production passes the global `fetch`.
-type Fetcher = (url: string) => Promise<{ json: () => Promise<unknown>; status: number }>;
+// Injectable HTTP client; production passes the global `fetch`. `init` carries only what callers
+// here actually need — an abort signal, so a request can be given a deadline. Kept narrower than
+// `RequestInit` so a fake in a test has one obvious thing to honour.
+type FetchInit = {
+  signal?: AbortSignal;
+};
+
+type Fetcher = (
+  url: string,
+  init?: FetchInit,
+) => Promise<{ json: () => Promise<unknown>; status: number }>;
 
 type ResolvedNpmPackage = {
   cloneUrl: string;
@@ -142,4 +151,4 @@ const resolveNpmPackage = async (
 };
 
 export { resolveNpmPackage };
-export type { Fetcher, ResolvedNpmPackage };
+export type { FetchInit, Fetcher, ResolvedNpmPackage };

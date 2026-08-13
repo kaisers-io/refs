@@ -80,7 +80,7 @@ const realContext = (): CliContext => ({
   errLine: (line: string) => {
     process.stderr.write(`${line}\n`);
   },
-  fetcher: (url: string) => fetch(url),
+  fetcher: (url: string, init?: { signal?: AbortSignal }) => fetch(url, init),
   homedir: safeHomedir(),
   nodeVersion: process.version,
   out: (line: string) => {

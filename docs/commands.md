@@ -354,7 +354,7 @@ refs doctor
 ```
 
 Runs the environment/integrity checks, always in this order: `git`, `node`, `config`,
-`hooks-guard`, `dirty-checkouts`, `orphans`, `skill`, `ssh-auth` (the last one only runs
+`hooks-guard`, `dirty-checkouts`, `orphans`, `skill`, `cli-update`, `ssh-auth` (the last one only runs
 when a configured ref uses an `ssh` transport URL). Every check runs to completion
 regardless of earlier failures.
 

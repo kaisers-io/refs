@@ -184,7 +184,7 @@ refs doctor
 ```
 
 Checks always run in this order: `git`, `node`, `config`, `hooks-guard`,
-`dirty-checkouts`, `orphans`, `skill`, `ssh-auth` (the last only when some ref uses an ssh
+`dirty-checkouts`, `orphans`, `skill`, `cli-update`, `ssh-auth` (the last only when some ref uses an ssh
 url). `status` is `ok` | `warn` | `fail`; `MAINTAIN.md` explains each check.
 
 The `skill` check reports whether this skill and the running CLI are in step. Every
@@ -313,6 +313,10 @@ refs sync [refs...] [--stale-only]
 Fetches, or re-clones a missing checkout. Defaults to every configured ref; name keys or
 unique suffixes to narrow. `--stale-only` skips refs still inside their `sync_ttl` that
 also have a checkout — a missing checkout is always re-cloned. Up to 4 refs at a time.
+
+This is also where a newer published CLI surfaces: at most once a day, `warnings` may carry
+one line naming the version and the command to install it. Relay it to the user and carry on
+— it says nothing about the refs that were synced, and nothing about it is yours to run.
 
 ```json
 {

@@ -3,11 +3,15 @@ import {
   EXIT,
   checkoutPath,
   durationToMs,
+  isBehind,
   isGitCheckout,
+  loadLatestVersion,
   readConfig,
   readState,
   resolveHome,
   resolveSetting,
+  shouldNotify,
+  updateMessage,
   zRefKey,
 } from '@kaisers-io/refs-core';
 import type { SyncItemStatus, SyncResultItem } from './sync-core.ts';
@@ -76,6 +80,33 @@ type SyncOptions = {
 type SyncOutcome = {
   failedCount: number;
   results: SyncResultItem[];
+  warnings: string[];
+};
+
+/** One update check per `refs sync` invocation, deliberately outside the per-ref pipeline: that
+ * pipeline fans out four refs at a time (`syncAll`) and turns any throw into a per-ref failure
+ * recorded in state (`syncOneKey`). A question about this CLI's own version belongs to neither.
+ *
+ * Only the invocation that actually refreshed the cache announces anything, which is what limits
+ * the notice to once a day without recording that a notice was shown. Failure is silent: `sync`
+ * reports on refs, and a registry it could not reach is not a fact about them. */
+const updateWarnings = async (
+  ctx: CliContext,
+  home: RefsHome,
+  config: Config,
+): Promise<string[]> => {
+  if (!shouldNotify({ env: ctx.env, updates: config.updates })) {
+    return [];
+  }
+  const { latest, refreshed } = await loadLatestVersion({
+    fetch: ctx.fetcher,
+    home,
+    nowMs: Date.now(),
+  });
+  if (!refreshed || latest === undefined || !isBehind(ctx.cliVersion, latest)) {
+    return [];
+  }
+  return [updateMessage(ctx.cliVersion, latest)];
 };
 
 /** Applies `--stale-only`'s filter, reading state only when it's actually needed. */
@@ -96,9 +127,14 @@ const runSync = async (ctx: CliContext, opts: SyncOptions): Promise<SyncOutcome>
   const config = await readConfig(home);
   const targets = resolveTargets(home, config, opts.refs);
   const scoped = await scopeTargets(home, targets, opts.staleOnly);
-  const results = await syncAll(ctx, scoped);
+  // Concurrent with the refs themselves — a sync that had nothing to do (everything inside its
+  // `sync_ttl`) stays the no-op it is, and never touches the network on its own account.
+  const [results, warnings] = await Promise.all([
+    syncAll(ctx, scoped),
+    scoped.length > 0 ? updateWarnings(ctx, home, config) : Promise.resolve([]),
+  ]);
   const failedCount = results.filter((item) => item.status === 'failed').length;
-  return { failedCount, results };
+  return { failedCount, results, warnings };
 };
 
 const STATUS_ORDER: readonly SyncItemStatus[] = [
@@ -183,7 +219,7 @@ const registerSync = (program: RefsCommand, ctx: CliContext): void => {
         // the rule fires on the `Sync` name suffix alone, not on any synchronous fs call.
         // eslint-disable-next-line node/no-sync -- runSync is an async command body; the rule matches the name suffix only
         const outcome = await runSync(ctx, buildSyncOptions(refs, localOpts));
-        emit(ctx, opts, syncHuman(outcome.results), { results: outcome.results });
+        emit(ctx, opts, syncHuman(outcome.results), { results: outcome.results }, outcome.warnings);
         // `wrapAction` only sets `process.exitCode` on a THROWN error; a batch with per-ref
         // failures is not one (the envelope itself is still `ok: true`), so this is the one place
         // that needs to set it directly — exactly once, and only in the failure case.

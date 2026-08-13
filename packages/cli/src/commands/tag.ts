@@ -57,6 +57,13 @@ const formatFor = (
  * stays reserved for a ref, package, checkout or rendered tag that genuinely does not exist —
  * the caller can tell "this ref cannot resolve versions at all" from "that version was never
  * tagged". */
+/** Single-quotes a value for a copy-pasteable shell command, closing and reopening the quote around
+ * any embedded `'`. Package names reach this from a tracked repository's own workspace manifests
+ * and are validated only for being non-empty and not a prototype key, so a dependency can name a
+ * package `$(…)`. The message below is meant to be pasted into a shell, which turns an unquoted
+ * name into an execution primitive. */
+const shellQuote = (value: string): string => `'${value.replaceAll("'", String.raw`'\''`)}'`;
+
 const requireFormat = (
   format: string | undefined,
   key: RefKey,
@@ -69,10 +76,10 @@ const requireFormat = (
   // fixed with `--package`: setting the ref-level format instead would hand that convention to
   // every other package that has no override of its own.
   const subject = packageName === undefined ? `ref '${key}'` : `package '${packageName}'`;
-  const scope = packageName === undefined ? '' : ` --package ${packageName}`;
+  const scope = packageName === undefined ? '' : ` --package ${shellQuote(packageName)}`;
   throw validationError(
     `${subject} has no tag_format configured — inspect the repository's real tags and set one ` +
-      `with: refs edit ${key} tag_format '<format>'${scope}`,
+      `with: refs edit ${shellQuote(key)} tag_format '<format>'${scope}`,
   );
 };
 

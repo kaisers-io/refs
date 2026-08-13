@@ -20,12 +20,14 @@ describe('resolveHome', () => {
     const root = resolve('/x/y');
     const home = resolveHome({ REFS_HOME: '/x/y' });
     expect(home).toStrictEqual({
+      cacheDir: join(root, 'cache'),
       configPath: join(root, 'config.toml'),
       hooksDir: join(root, 'hooks'),
       locksDir: join(root, 'locks'),
       root,
       sourcesDir: join(root, 'sources'),
       statePath: join(root, 'state.json'),
+      updateCachePath: join(root, 'cache', 'update-check.json'),
     });
   });
 
