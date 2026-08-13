@@ -16,10 +16,11 @@ import {
 } from '@kaisers-io/refs-core';
 import { cliOptsOf, emit, wrapAction } from '../output.ts';
 import { isStale, statusLines } from './ref-status.ts';
+import { packageDataFor, packageLines } from './resolve-package.ts';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
+import type { ResolvePackage } from './resolve-package.ts';
 import { allowFileUrlsFrom } from './add-source.ts';
-import { join } from 'node:path';
 import { matchRefKey } from './list.ts';
 import { requireEntry } from './ref-context.ts';
 
@@ -28,12 +29,6 @@ import { requireEntry } from './ref-context.ts';
 // where applicable, the one package within it) the query denotes, via a deterministic
 // four-step precedence (see `routeQuery` below). No match at all → `notFoundError` with the fixed
 // "no ref matches" message every step below ultimately funnels into.
-
-type ResolvePackage = {
-  local_path: string;
-  name: string;
-  path: string;
-};
 
 type ResolveData = {
   key: string;
@@ -214,15 +209,6 @@ const routeQuery = (config: Config, query: string, options: RouteOptions): Route
   return { key: matchSuffixOrThrow(config, query) };
 };
 
-const packageDataFor = (match: RouteMatch, dest: string): ResolvePackage | null => {
-  if (match.packageMatch === undefined) {
-    // eslint-disable-next-line unicorn/no-null -- cross-process JSON contract requires null, not undefined
-    return null;
-  }
-  const { entry, name } = match.packageMatch;
-  return { local_path: join(dest, entry.path), name, path: entry.path };
-};
-
 const runResolve = async (ctx: CliContext, query: string, now: number): Promise<ResolveData> => {
   const home = resolveHome(ctx.env);
   const config = await readConfig(home);
@@ -237,7 +223,17 @@ const runResolve = async (ctx: CliContext, query: string, now: number): Promise<
     ...(lastFetchedAt === undefined ? {} : { last_fetched_at: lastFetchedAt }),
     local_path: dest,
     missing: !isGitCheckout(dest),
-    package: packageDataFor(match, dest),
+    package:
+      match.packageMatch === undefined
+        ? // eslint-disable-next-line unicorn/no-null -- cross-process JSON contract requires null
+          null
+        : await packageDataFor({
+            checkoutDir: dest,
+            configuredPath: match.packageMatch.entry.path,
+            home,
+            key: match.key,
+            packageName: match.packageMatch.name,
+          }),
     stale: isStale(lastFetchedAt, ttlMs, now),
   };
 };
@@ -257,7 +253,7 @@ const resolveHuman = (data: ResolveData, now: number): string[] => {
     }),
   ];
   if (data.package !== null) {
-    lines.push(`package: ${data.package.name}`, `package path: ${data.package.local_path}`);
+    lines.push(...packageLines(data.package));
   }
   return lines;
 };

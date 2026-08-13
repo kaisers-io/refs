@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `refs resolve` now verifies that the package it routes to is actually where the config says
+  it is. A configured `path` is only a locator; the package name is its identity, and upstream
+  repos restructure on their own schedule. Previously a package that had moved — or a different
+  package that had taken over its directory — was handed back regardless, so an agent read the
+  wrong source and answered confidently. That failure produced no error and no warning.
+
+  `package.status` now reports what was established: `verified`, `relocated` (found at exactly
+  one new path, which is returned in place of the stale one), `unmaterialized` (no checkout yet),
+  `unverifiable` (verification could not complete — `reason` says why), `ambiguous` (the name
+  exists at several paths, listed in `candidates`), or `missing`. All six exit `0`; see
+  `docs/commands.md` for the full contract.
+
+  `relocated` corrects the answer for that call only and never writes to `config.toml`. Persist
+  it with `refs edit <ref> --package <name> path <new-path>`.
+
+### Changed
+
+- **`resolve`'s `package.local_path` can now be `null`.** It is `null` for `missing` and
+  `ambiguous`, where no safe location is known. A caller that treated a zero exit as "here is a
+  usable path" must check `package.status` first; previously the field was always a string.
+
+- Workspace detection now reports why it found nothing. An unreadable or malformed workspace
+  declaration, an unreadable manifest, a candidate resolving outside the repo, an unsupported
+  pattern, a package directory reachable only through a symlink — each used to collapse into the
+  same empty result, leaving a transient read error indistinguishable from "every package was
+  removed". Each is now reported, and a scan carrying any of them is treated as possibly
+  incomplete: it can neither conclude that a package is gone nor that a single sighting of one is
+  unique. `refs add` is unaffected — it consumes the same best-effort list it always has.
+
+  A manifest that reads fine but declares no usable `name` is reported too, but does **not** make
+  a scan incomplete: there is demonstrably no resolvable package at that path. Nameless manifests
+  are common enough (zod's own repository root has none) that treating them as failures would
+  permanently suppress detection for those repos.
+
+  One limit is deliberate and worth knowing: a scan only covers what the repo's workspace
+  declaration points at. A package registered by `refs add`'s npm fallback — at `path: "."`, or
+  the packument's `directory` — lives outside that coverage, so if it moves, `resolve` reports
+  `unverifiable` rather than guessing. It never reports `missing` from a scan that had nowhere
+  to look.
+
 ## [0.9.0] - 2026-08-13
 
 ### Added

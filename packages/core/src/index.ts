@@ -1,6 +1,7 @@
 export * from './config-io.ts';
 export * from './errors.ts';
 export * from './fs-atomic.ts';
+export * from './fs-containment.ts';
 export * from './git/repo.ts';
 export * from './git/tags.ts';
 export * from './git-url-redact.ts';
@@ -8,6 +9,7 @@ export * from './git-url.ts';
 export * from './home.ts';
 export * from './lock.ts';
 export * from './npm-resolver.ts';
+export * from './package-identity.ts';
 export * from './proc/fake-runner.ts';
 export * from './proc/runner.ts';
 export * from './schemas/config.ts';

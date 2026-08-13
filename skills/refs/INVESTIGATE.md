@@ -50,6 +50,36 @@ absolute `local_path` — the package directory, not the ref's. Rule 1 of the ci
 contract below wants the checkout root, so read the top-level `local_path` for that, and
 treat the package's only as a starting directory for the search.
 
+**Check `package.status` before reading anything.** The configured path is only a
+locator, and upstream repos move things; `resolve` verifies it against the manifest
+actually sitting there. All six statuses exit `0`, so the status — not the exit code —
+is what tells you whether the path is trustworthy:
+
+- **`verified`** — proceed.
+- **`relocated`** — proceed with the returned `local_path`; it is the verified current
+  location, and `configured_path` names the stale one. Mention the move **after**
+  answering the question, and offer to persist it with
+  `refs edit <ref> --package <name> path <new-path>`.
+- **`unmaterialized`** — the checkout is not there. Sync (step 2), then resolve again.
+  The same applies whenever you sync at all: verification described the checkout as it was
+  BEFORE the sync, so re-run `resolve` afterwards rather than reusing the earlier path.
+- **`unverifiable`** — the path returned is the _configured_ one and may be stale: an
+  unreadable manifest can sit on top of the wrong package. Do not treat it as confirmed.
+  `reason` names the actual failure — a malformed manifest, a permissions error, a
+  symlink out of the checkout, an unavailable lock. None of those is fixed by syncing, so
+  do not reflexively `refs sync`. Either say plainly in your answer that the location is
+  unverified and why, or ask the user before relying on package-specific findings.
+- **`ambiguous`** — the name exists at several paths (`candidates`). Do **not** pick one
+  yourself. Ask the user, or establish which is current from the repo's own history,
+  before reading anything.
+- **`missing`** — the package is not in this checkout under that name, and `local_path`
+  is `null`. Do not guess a path. Report it, and offer to investigate what happened
+  upstream — `git log --diff-filter=D -- <configured-path>` usually names the commit that
+  removed or renamed it.
+- **no `status` field at all** — the installed CLI predates verification. The path is the
+  configured one and nothing checked it; proceed, but treat it as unverified, and mention
+  that upgrading (`npm i -g @kaisers-io/refs@latest`) would let refs confirm it.
+
 **`refs list --json` is the fallback, not the first step.** Reach for it only
 when the question is too fuzzy for `resolve` to match (e.g. "the caching library
 we use") — then match against the `description` fields. If nothing matches
@@ -89,23 +119,35 @@ doesn't surface what you need, widen: whole-file reads and broad searches are
 always available and sometimes the right call.
 
 1. Locate before you read: `git grep -n "<term>"` (or `rg -l "<term>"`) inside the
-   checkout finds the defining sites cheaply. When a broad term is drowned out by
+   checkout finds the defining sites cheaply — both search the working tree and are
+   purely local, however broad the pattern. When a broad term is drowned out by
    vendored/generated hits, exclude them with pathspecs
-   (`git grep -n "<term>" -- ':(exclude)**/node_modules/**' ':(exclude)dist'`), and
-   narrow to a subdirectory first on a cold blobless checkout (see below).
+   (`git grep -n "<term>" -- ':(exclude)**/node_modules/**' ':(exclude)dist'`).
 2. Read the smallest span that answers the question (the defining function/class
    plus its immediate context), not the whole file.
 3. Follow only the call sites/imports you actually need.
-4. Use `git log`/`git blame` when history is part of the question — scoped to the
-   file or line range (`git blame -L <start>,<end> <path>`), and `git log
---oneline` before any `-p` variant.
+4. Use `git log`/`git blame` when history is part of the question — `git log
+--oneline` (local) before any `-p` variant, and scope both to the file that
+   matters. Note that `git blame -L <start>,<end>` shortens the _output_ only: it
+   reads the same history as an unscoped blame, so it is not the cheap option on a
+   blobless checkout (see below).
 
 Two things worth knowing about these checkouts:
 
-- Default `clone_mode` is **blobless** — the first read of a file fetches its blob
-  over the network. Tree-wide scans (`rg` across the whole repo, `git grep` with
-  broad patterns) are fine but may be slower on a cold checkout; narrowing to a
-  subdirectory first keeps it fast.
+- Default `clone_mode` is **blobless**, but the checked-out tree is **complete**: the
+  current contents of every tracked file are on disk. Reading files, `rg`, and
+  `git grep` (with or without `--cached`) are purely local, as are commit/tree-only
+  queries — `git log --oneline`, `git tag -l`, `git rev-list`, `git show --no-patch`,
+  and `git diff --name-status --no-renames`. What a blobless clone omits is
+  **historical file content**, so the commands that read it may fetch: `git show`,
+  `git diff`, `git log -p`, `git blame`, and `git grep <rev>`. Two cost tiers there,
+  worth keeping apart: `git diff` collects the blobs it needs and fetches them in one
+  round trip, while **`git blame` and `git log -p` fetch one blob at a time** — a file
+  with a long history costs one network round trip per revision. Reach for `git blame`
+  deliberately, not exploratively. Scoping to a path genuinely reduces what is fetched
+  (`git diff A..B -- pkg/x` fetched half as many blobs as the unscoped diff in a
+  measured five-commit repo); `--stat` and `git blame -L` do **not** — both read the
+  same content as their unscoped forms and only shorten the output.
 - Vendored/generated directories (`dist/`, `build/`, `vendor/`, lockfiles) are
   usually noise for behavior questions — exclude them by default, but remember
   they exist: some questions ("what actually ships in the published bundle?") are
@@ -246,27 +288,40 @@ outside its working directory, whatever the link format.
    verify the tag's content before trusting it — `git show refs/tags/<tag>:<path-to-manifest>`
    should report the version you asked about.
 
-3. Diff between the two tags **locally**, read-only, with raw git.
+3. Diff between the two tags read-only, with raw git. This is history work, so on a
+   blobless checkout these commands may fetch missing historical file content — the
+   funnel below is ordered by that cost, not only by output size.
 
-   **Recommended diff funnel** — start cheap, drill down only where the question
-   points; if the funnel doesn't answer it, a full diff is always available.
-   Always spell tags fully qualified as `refs/tags/<tag>` (the returned
-   `ref_path`) — a tag starting with `-` would otherwise parse as an option:
+   **Recommended diff funnel** — establish the shape from commit/tree metadata
+   first, then request file content only where the question points; if that doesn't
+   answer it, a full diff is always available. Always spell tags fully qualified as
+   `refs/tags/<tag>` (the returned `ref_path`) — a tag starting with `-` would
+   otherwise parse as an option:
 
    ```bash
-   # 1. Overview — changelog, commit list, diff stats:
-   git show refs/tags/<new-tag>:CHANGELOG.md
+   # 1. Overview — no file content read, so nothing is fetched:
    git log refs/tags/<old-tag>..refs/tags/<new-tag> --oneline --no-merges
-   git diff refs/tags/<old-tag>..refs/tags/<new-tag> --stat   # add -- <package-path> in monorepos
+   git diff refs/tags/<old-tag>..refs/tags/<new-tag> --name-status --no-renames
+   #   ... add -- <package-path> in monorepos
 
-   # 2. Only then, targeted content:
+   # 2. Then targeted content (reads blobs; may fetch):
+   git show refs/tags/<new-tag>:CHANGELOG.md
    git show <sha> -- <path>
    git diff refs/tags/<old-tag>..refs/tags/<new-tag> -- <path>
    ```
 
-   Scope to the package path (`-- packages/<name>`) in monorepos — most of a wide
-   range's noise is usually other packages. A worker still returns only the
-   compact output contract from §3 above — commit list + `path:line` highlights,
-   never a pasted raw diff; inline, hold yourself to the same discipline.
+   `--stat` belongs in step 2, not step 1: counting changed lines reads the same
+   file contents as the full patch, so it costs exactly what the full diff costs
+   and only shortens the output. `--name-status --no-renames` is the genuinely
+   content-free overview — `--no-renames` matters because similarity detection
+   would otherwise read contents to find renames.
+
+   Scope to the package path (`-- packages/<name>`) in monorepos. It cuts the
+   noise, and on a blobless checkout it also cuts what gets fetched: in a measured
+   five-commit repo the scoped diff fetched half the blobs of the unscoped one.
+
+   A worker still returns only the compact output contract from §3 above — commit
+   list + `path:line` highlights, never a pasted raw diff; inline, hold yourself to
+   the same discipline.
 
 4. Synthesize as in §3 step 4.

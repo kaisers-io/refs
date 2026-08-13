@@ -385,12 +385,22 @@ refs doctor --json
         "name": "skill",
         "status": "warn",
         "detail": "refs skill not found in the locations this check knows about (~/.agents, ~/.claude, ~/.codex, ./.agents, ./.claude) — an install anywhere else is invisible here and still works; if it really is missing: npx skills add kaisers-io/refs"
+      },
+      {
+        "name": "cli-update",
+        "status": "ok",
+        "detail": "this CLI (0.9.0) is npm's latest published release"
       }
     ]
   },
   "warnings": []
 }
 ```
+
+`cli-update` is always present, including when the check is switched off — it then reports `ok`
+with a detail saying which switch did it (`[updates].check`, `REFS_UPDATE_CHECK`, or CI
+detection). It never `fail`s: an unreachable registry is not a fault of your setup, and a `fail`
+would make `refs doctor` exit non-zero over it.
 
 Each check's `status` is `ok`, `warn`, or `fail`. As with `sync` (see
 [Exit codes](#exit-codes) above), the envelope is `{"ok":true,...}` even when a check
@@ -561,6 +571,12 @@ appears when the query resolved to a specific package, and always comes after th
 lines; `package path:` is the package's own directory, as distinct from `path:` for the
 ref checkout as a whole.
 
+A verified package adds nothing further — the output above is the ordinary case. When the
+package's location could **not** simply be confirmed, extra lines follow it
+(`package status:`, and where applicable `configured path:`, `candidates:`, `reason:`),
+because each of those changes what `package path:` means. See
+[Package location verification](#package-location-verification) below.
+
 ```bash
 refs resolve zod/mini --json
 refs resolve left-pad --json
@@ -579,7 +595,8 @@ refs resolve https://github.com/stevemao/left-pad --json
     "package": {
       "name": "left-pad",
       "path": ".",
-      "local_path": "/Users/you/.kaisers-io/refs/sources/github.com/stevemao/left-pad"
+      "local_path": "/Users/you/.kaisers-io/refs/sources/github.com/stevemao/left-pad",
+      "status": "verified"
     }
   },
   "warnings": []
@@ -590,8 +607,50 @@ refs resolve https://github.com/stevemao/left-pad --json
 plain git-URL or suffix match with no package involved. `last_fetched_at` is the same
 optional ISO 8601 field `refs list` carries, absent when the ref has never been fetched.
 
+### Package location verification
+
+A configured `path` is only a **locator**; the package **name** is its identity. Upstream
+repos restructure on their own schedule, so `resolve` does not trust the stored path blindly:
+it reads the manifest sitting there and compares its `name` against the configured package
+name. Without that check, a package that moved — or a different package that took over its
+directory — would be handed back silently, and an agent would read the wrong source while
+answering confidently. `package.status` reports what was established:
+
+| `status` | Meaning | `local_path` |
+| --- | --- | --- |
+| `verified` | the manifest at the configured path declares this package | the configured path |
+| `relocated` | the package moved; found at exactly one new path, in a scan that inspected every candidate | the **new** path; `configured_path` names the old one |
+| `unmaterialized` | the checkout is not present (`missing: true`) — nothing was verified | the configured path |
+| `unverifiable` | verification could not complete — `reason` says why: an unreadable manifest, a workspace scan that could not inspect everything, or the ref lock being unavailable | the configured path |
+| `ambiguous` | the name exists at several paths; `candidates` lists them | `null` |
+| `missing` | the name appears nowhere, in a scan that inspected every candidate | `null` |
+
+The last row's qualifier is load-bearing, and so is `relocated`'s. Neither absence nor
+uniqueness can be concluded from a scan that skipped something — an unreadable manifest, an
+unsupported workspace pattern, a package directory reachable only through a symlink, a
+declaration in a YAML form the reader cannot parse. Any of those turns both answers into
+`unverifiable` instead, because a second package of the same name could be sitting in the part
+that was not inspected.
+
+The scan also only covers what the repo's **workspace declaration** points at. A package
+registered by `refs add`'s npm fallback — at `path: "."`, or at the packument's `directory` —
+is outside that coverage: workspace detection can never see it. If such a package moves,
+`resolve` reports `unverifiable`, not `missing`, because a scan with nowhere to look is no
+evidence of absence.
+
+**All six exit `0`.** `resolve` is a routing command: the ref resolved, and only the
+package's location inside it is in question. A caller that needs the path must therefore
+check `status` (or test `local_path` for `null`) rather than treating a zero exit as "here is
+a usable directory" — before this existed, `local_path` was always a string.
+
+`relocated` corrects the answer for **this call only** and never writes to `config.toml`. To
+persist it: `refs edit <ref> --package <name> path <new-path>`. Automatic reconciliation is
+not implemented yet.
+
 Exit codes: `3` (`<query>` looks like a git URL but isn't a supported/canonicalizable
-form), `2` (matches more than one ref/package ambiguously), `4` (no match at all).
+form), `2` (matches more than one ref/package ambiguously), `4` (no match at all — the
+query matched no ref, which is distinct from a package whose location could not be
+established).
 
 ---
 

@@ -3,7 +3,9 @@ import {
   deduplicateAndSort,
   isRelPathContained,
   isSafeWorkspacePattern,
+  scanIsReliable,
   selectPackageDirs,
+  sortDiagnostics,
   toWorkspacePackage,
 } from '../src/workspaces-patterns.ts';
 import { describe, expect, it } from 'vitest';
@@ -187,5 +189,93 @@ describe('dedupe and sort', () => {
     const input = [pkgA, pkgB];
     expect(deduplicateAndSort(input)).toStrictEqual([pkgB, pkgA]);
     expect(input).toStrictEqual([pkgA, pkgB]);
+  });
+});
+
+describe('scan reliability', () => {
+  it('is reliable with no diagnostics', () => {
+    expect.hasAssertions();
+    expect(scanIsReliable({ diagnostics: [], packages: [] })).toBe(true);
+  });
+
+  it.each([
+    [{ kind: 'no_workspace_declaration' } as const],
+    [{ kind: 'manifest_missing_name', path: 'packages/a' } as const],
+  ])('stays reliable for %o — a complete observation, not a failure to observe', (diagnostic) => {
+    expect.hasAssertions();
+    // `no_workspace_declaration`: an ordinary single-package repo; the empty scan is correct.
+    // `manifest_missing_name`: the manifest WAS read and declares no usable name, so there is
+    // no resolvable package there and we know it. Marking this unreliable would let one
+    // nameless package.json under a workspace glob permanently suppress every removal
+    // detection for that repo — and nameless manifests are real (zod's own root has none).
+    expect(scanIsReliable({ diagnostics: [diagnostic], packages: [] })).toBe(true);
+  });
+
+  it.each([
+    [{ file: 'pnpm-workspace.yaml', kind: 'workspace_file_unreadable' } as const],
+    [{ kind: 'workspace_dir_unreadable', path: 'packages' } as const],
+    [{ kind: 'unsupported_pattern', pattern: 'packages/**/deep' } as const],
+    [{ kind: 'manifest_unreadable', path: 'packages/a' } as const],
+    [{ kind: 'candidate_not_inspected', path: 'packages/a' } as const],
+  ])('is unreliable for %o', (diagnostic) => {
+    expect.hasAssertions();
+    // Each of these means the scan may be MISSING packages that really exist — so a name's
+    // absence from it proves nothing, and no removal may ever be inferred.
+    expect(scanIsReliable({ diagnostics: [diagnostic], packages: [] })).toBe(false);
+  });
+});
+
+describe('diagnostic ordering', () => {
+  it('sorts by kind, then by the identifying field', () => {
+    expect.hasAssertions();
+    expect(
+      sortDiagnostics([
+        { kind: 'unsupported_pattern', pattern: 'a/**' },
+        { kind: 'manifest_unreadable', path: 'z/pkg' },
+        { kind: 'no_workspace_declaration' },
+        { kind: 'manifest_unreadable', path: 'a/pkg' },
+        { file: 'package.json', kind: 'workspace_file_unreadable' },
+      ]),
+    ).toStrictEqual([
+      { kind: 'manifest_unreadable', path: 'a/pkg' },
+      { kind: 'manifest_unreadable', path: 'z/pkg' },
+      { kind: 'no_workspace_declaration' },
+      { kind: 'unsupported_pattern', pattern: 'a/**' },
+      { file: 'package.json', kind: 'workspace_file_unreadable' },
+    ]);
+  });
+
+  it('does not mutate its input', () => {
+    expect.hasAssertions();
+    const input = [
+      { kind: 'no_workspace_declaration' } as const,
+      { kind: 'manifest_unreadable', path: 'a' } as const,
+    ];
+    sortDiagnostics(input);
+    expect(input).toStrictEqual([
+      { kind: 'no_workspace_declaration' },
+      { kind: 'manifest_unreadable', path: 'a' },
+    ]);
+  });
+});
+
+describe('diagnostic ordering is host-independent', () => {
+  it('orders by codepoint, not host collation', () => {
+    expect.hasAssertions();
+    // `localeCompare` orders these differently (it downweights `-` and `_`) and its ordering
+    // is host-dependent; CI runs macOS, Linux and Windows and this array is asserted exactly.
+    expect(
+      sortDiagnostics([
+        { kind: 'manifest_unreadable', path: 'pkgb' },
+        { kind: 'manifest_unreadable', path: 'pkg_b' },
+        { kind: 'manifest_unreadable', path: 'pkg-b' },
+        { kind: 'manifest_unreadable', path: 'Pkg' },
+      ]),
+    ).toStrictEqual([
+      { kind: 'manifest_unreadable', path: 'Pkg' },
+      { kind: 'manifest_unreadable', path: 'pkg-b' },
+      { kind: 'manifest_unreadable', path: 'pkg_b' },
+      { kind: 'manifest_unreadable', path: 'pkgb' },
+    ]);
   });
 });

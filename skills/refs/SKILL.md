@@ -79,7 +79,9 @@ one.
 
 - Read freely: `git log`, `git diff`, `git show`, `git blame` are encouraged. Leave the
   checkout exactly as you found it — no edits, no `git add`, `commit`, `push`,
-  `checkout -b`, or `reset`.
+  `checkout -b`, or `reset`. Free to read is not free to run: checkouts are blobless by
+  default, so history commands that read file content may fetch it — see `INVESTIGATE.md`
+  §3 for which commands are local and which are not.
 - Route every change to a ref through the CLI (`refs sync`, `refs remove`), never through
   raw git you run yourself.
 - This is a workflow promise, not a sandbox. refs-installed hooks reject commits and
