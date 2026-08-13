@@ -18,8 +18,10 @@ const REF_KEY = 'github.com/acme/untagged';
 // repository itself has no format worth recording.
 const PACKAGE_NAME = 'pkg';
 // Neither its own format nor a ref-level one to inherit — the case that used to be unreachable,
-// because the ref level was mandatory.
-const NO_FORMAT_PACKAGE_NAME = 'pkg-no-format';
+// because the ref level was mandatory. The name carries shell metacharacters on purpose: package
+// keys come from a tracked repository's own manifests and are validated only for being non-empty,
+// while the error message below is meant to be pasted into a shell.
+const NO_FORMAT_PACKAGE_NAME = "$(id);'weird";
 const REF_ENTRY = {
   default_branch: 'main',
   description: 'Widget, recorded without a tag format',
@@ -172,13 +174,15 @@ describe('refs tag: package override without a ref-level format', () => {
 
           expect(process.exitCode).toBe(EXIT.VALIDATION);
           const envelope = parseSoleEnvelope(stdout);
-          expect(envelope.error?.message).toMatch(/no tag_format configured/u);
-          expect(envelope.error?.message).toMatch(new RegExp(NO_FORMAT_PACKAGE_NAME, 'u'));
+          expect(envelope.error).toBeDefined();
+          const message = String(envelope.error?.message);
+          expect(message).toMatch(/no tag_format configured/u);
+          expect(message).toContain(NO_FORMAT_PACKAGE_NAME);
           // The fix it suggests must target the package, not the ref: a ref-level format would be
-          // inherited by every other package that has no override of its own.
-          expect(envelope.error?.message).toMatch(
-            new RegExp(`--package ${NO_FORMAT_PACKAGE_NAME}`, 'u'),
-          );
+          // inherited by every other package that has no override of its own. And it must be
+          // quoted — this string is meant to be pasted into a shell, and the name came from a
+          // third-party repository's manifest.
+          expect(message).toContain(String.raw`--package '$(id);'\''weird'`);
         }),
       );
     },

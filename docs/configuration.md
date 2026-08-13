@@ -192,10 +192,10 @@ notify = true   # let a routine command mention it
 
 Both default to `true`, and the table is absent from a config that wants those defaults.
 
-`check` governs the network request. With it off, refs never contacts the registry. `notify`
-governs only whether a routine command interrupts with the news: with `check = true` and
-`notify = false`, `refs sync` stays quiet and `refs doctor` still answers — asking for a health
-report is asking.
+`check` governs the registry request everywhere. With it off, refs never contacts the registry at
+all. `notify` governs the routine path only: with `check = true` and `notify = false`, `refs sync`
+neither asks nor mentions, while `refs doctor` still asks and still answers — requesting a health
+report is asking to be told.
 
 `REFS_UPDATE_CHECK` overrides `check`: `0` off, `1` on. Any other value falls through to the config,
 so a typo cannot silently disable it. Without either, the check is on everywhere except CI, which
@@ -203,8 +203,13 @@ is detected from a `CI` variable set to anything but `false` or `0`.
 
 The request goes to `registry.npmjs.org` — hardcoded, not read from npm configuration — at most once
 a day, and its answer is cached in `<refs home>/cache/update-check.json`. That file is discardable:
-deleting it costs one round-trip. A failed or unreachable request changes nothing and is never
-reported as a fault.
+deleting it costs one round-trip. A failed or unreachable request changes nothing, keeps the
+previous answer, and is never reported as a fault — though a reported answer that could not be
+refreshed is labelled as the registry's last, not its current, word.
+
+The once-a-day cap depends on that cache being writable. Before `refs init` there is no refs home to
+write it into, and refs will not create one just to cache an answer, so `refs doctor` on a machine
+without a home asks every time it runs.
 
 ## `state.json`
 

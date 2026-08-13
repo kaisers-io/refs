@@ -70,8 +70,15 @@ const writeUpdateCache = async (home: RefsHome, cache: UpdateCache): Promise<voi
   }
 };
 
-const isFresh = (cache: UpdateCache, nowMs: number): boolean =>
-  nowMs - Date.parse(cache.checked_at) < CACHE_TTL_MS;
+/** A cache is fresh only within the ttl AND not dated in the future. Without the lower bound a
+ * stamp ahead of the clock — a hand-edited file, a machine whose time was corrected backwards —
+ * reads as fresh until real time catches up, which silently disables the check for as long as the
+ * skew lasts and leaves doctor reporting an answer nobody can refresh. NaN from an unparseable
+ * date fails both comparisons, which is the right outcome too. */
+const isFresh = (cache: UpdateCache, nowMs: number): boolean => {
+  const ageMs = nowMs - Date.parse(cache.checked_at);
+  return ageMs >= 0 && ageMs < CACHE_TTL_MS;
+};
 
 /** Asks the registry for the `latest` dist-tag. `undefined` on any failure — including a body that
  * does not carry a plain version, which a prerelease `latest` would produce. */
@@ -96,31 +103,34 @@ type RefreshArgs = {
   nowMs: number;
 };
 
-/**
- * Returns the known `latest`, refreshing it from the registry when the cache is stale or absent.
- *
- * `refreshed` distinguishes the invocation that actually went to the network from one that read a
- * warm cache. It is what keeps a routine notice down to once a day without recording anything about
- * notices: only the run that refreshed announces.
- */
-const loadLatestVersion = async (
-  args: RefreshArgs,
-): Promise<{ latest: string | undefined; refreshed: boolean }> => {
+type LatestResult = {
+  latest: string | undefined;
+  /** This invocation went to the network and got an answer. Only such a run announces anything —
+   * that, and nothing recorded about notices, is what limits a routine notice to once a day. */
+  refreshed: boolean;
+  /** `latest` is the last thing npm said, not what it says now: the cache had expired and the
+   * refresh failed. A caller that reports the value must say so, because "0.9.0 is the latest" and
+   * "0.9.0 was the latest when we last managed to ask" are different claims. */
+  stale: boolean;
+};
+
+/** Returns the known `latest`, refreshing it from the registry when the cache is stale or absent. */
+const loadLatestVersion = async (args: RefreshArgs): Promise<LatestResult> => {
   const cached = await readUpdateCache(args.home);
   if (cached !== undefined && isFresh(cached, args.nowMs)) {
-    return { latest: cached.latest_version, refreshed: false };
+    return { latest: cached.latest_version, refreshed: false, stale: false };
   }
   const latest = await fetchLatestVersion(args.fetch);
   if (latest === undefined) {
     // Deliberately does not touch the cache: a failed request must not push the next attempt out by
     // another day, and must not overwrite a usable older answer.
-    return { latest: cached?.latest_version, refreshed: false };
+    return { latest: cached?.latest_version, refreshed: false, stale: true };
   }
   await writeUpdateCache(args.home, {
     checked_at: new Date(args.nowMs).toISOString(),
     latest_version: latest,
   });
-  return { latest, refreshed: true };
+  return { latest, refreshed: true, stale: false };
 };
 
 /** `true` when `latest` is a version this CLI does not have. An unorderable pair (either side not
@@ -154,22 +164,43 @@ const isCi = (env: NodeJS.ProcessEnv): boolean => {
   return raw !== undefined && raw !== '' && raw !== 'false' && raw !== '0';
 };
 
+// `updates` is optional in the config and stays optional here rather than being filled in by the
+// caller: absent means the defaults, and only this module should know what those are.
+const UPDATES_DEFAULTS: Updates = { check: true, notify: true };
+
 type PolicyArgs = {
   env: NodeJS.ProcessEnv;
-  updates: Updates;
+  updates: Updates | undefined;
+};
+
+/** Why the check will or will not run. A boolean would be enough to decide, but not enough to
+ * explain: `refs doctor` has to tell the user which of three different reasons applies, and
+ * "remove [updates].check=false" is wrong advice on a CI machine with a default config. */
+type CheckDecision = 'ci' | 'config' | 'env' | 'on';
+
+const updateCheckDecision = (args: PolicyArgs): CheckDecision => {
+  const forced = forcedByEnv(args.env);
+  if (forced !== undefined) {
+    return forced ? 'on' : 'env';
+  }
+  if (!(args.updates ?? UPDATES_DEFAULTS).check) {
+    return 'config';
+  }
+  return isCi(args.env) ? 'ci' : 'on';
 };
 
 /** Whether to contact the registry at all: `REFS_UPDATE_CHECK` wins, then `[updates].check`, then
  * on everywhere except CI — where the answer helps nobody and costs every job a request. */
-const shouldCheck = (args: PolicyArgs): boolean =>
-  forcedByEnv(args.env) ?? (args.updates.check && !isCi(args.env));
+const shouldCheck = (args: PolicyArgs): boolean => updateCheckDecision(args) === 'on';
 
 /** Whether a routine command may mention it. `refs doctor` ignores this: asking for a health report
  * is asking. */
-const shouldNotify = (args: PolicyArgs): boolean => shouldCheck(args) && args.updates.notify;
+const shouldNotify = (args: PolicyArgs): boolean =>
+  shouldCheck(args) && (args.updates ?? UPDATES_DEFAULTS).notify;
 
 export {
   CACHE_TTL_MS,
+  updateCheckDecision,
   isBehind,
   loadLatestVersion,
   readUpdateCache,
@@ -179,4 +210,4 @@ export {
   updateMessage,
   writeUpdateCache,
 };
-export type { UpdateCache };
+export type { CheckDecision, LatestResult, UpdateCache };

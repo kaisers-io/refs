@@ -1,7 +1,12 @@
 import { EXIT, resolveHome } from '@kaisers-io/refs-core';
 import type { RefsHome, State } from '@kaisers-io/refs-core';
-import { buildConfigCheck, checkGit, checkNode, loadConfigSafely } from './doctor-checks-basic.ts';
-import { checkCliUpdate, checkSkill } from './doctor-checks-skill.ts';
+import {
+  buildConfigCheck,
+  checkCliUpdate,
+  checkGit,
+  checkNode,
+  loadConfigSafely,
+} from './doctor-checks-basic.ts';
 import { checkDirtyCheckouts, checkHooksGuard } from './doctor-checks-checkouts.ts';
 import { checkOrphans, loadStateSafely } from './doctor-checks-orphans.ts';
 import { cliOptsOf, emit, errorMessageOf, wrapAction } from '../output.ts';
@@ -9,6 +14,7 @@ import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
 import type { ConfigLoad } from './doctor-checks-basic.ts';
 import type { RefsCommand } from './registry.ts';
+import { checkSkill } from './doctor-checks-skill.ts';
 import { checkSshAuth } from './doctor-checks-ssh.ts';
 
 // `refs doctor [--json]` — the 9 environment/integrity checks: `git`, `node`,

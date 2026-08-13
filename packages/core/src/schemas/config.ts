@@ -118,9 +118,12 @@ const zConfig = z.strictObject({
   meta: zMeta,
   refs: zRefs.default({}),
   settings: zSettings,
-  // Absent in every config written before this existed, and in every one where the defaults are
-  // wanted — the table only appears once someone opts out.
-  updates: zUpdates.default({ check: true, notify: true }),
+  // `.optional()`, deliberately not `.default(...)`: a default here would be materialized by
+  // `readConfig` and then serialized by `writeConfig`, so the first `refs add`/`refs edit` after
+  // upgrading would write `[updates]` into every config — including those of users who never
+  // touched it — and a `strictObject` in an older CLI rejects the whole file over an unknown key.
+  // Absent means the defaults; the table exists only where someone wrote one.
+  updates: zUpdates.optional(),
 });
 
 type Config = z.infer<typeof zConfig>;

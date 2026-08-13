@@ -1,12 +1,22 @@
-import type { Config, RefsHome } from '@kaisers-io/refs-core';
-import { SCHEMA_VERSION, readConfig, zConfig } from '@kaisers-io/refs-core';
+import type { CheckDecision, Config, RefsHome } from '@kaisers-io/refs-core';
+import {
+  SCHEMA_VERSION,
+  isBehind,
+  loadLatestVersion,
+  readConfig,
+  resolveHome,
+  updateCheckDecision,
+  updateMessage,
+  zConfig,
+} from '@kaisers-io/refs-core';
 import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
 import { errorMessageOf } from '../output.ts';
 
-// The three checks that touch neither the filesystem, a per-checkout `Runner` loop, nor the
-// `sources/` directory walk: `git`/`node` are environment probes and `config` wraps `readConfig`'s
-// own typed errors. Sibling modules own the rest: doctor-checks-checkouts.ts (per-checkout git
+// The checks that touch neither a per-checkout `Runner` loop nor the `sources/` directory walk:
+// `git`/`node` are environment probes, `config` wraps `readConfig`'s own typed errors, and
+// `cli-update` asks npm whether this CLI is the version it publishes. All four answer one question
+// from different angles — is what is installed here in working order and current. Sibling modules own the rest: doctor-checks-checkouts.ts (per-checkout git
 // iteration), doctor-checks-orphans.ts (sources/ directory walk), doctor-checks-skill.ts (the
 // installed skill's version pin, split out of this file in 0.6.1 when its location table outgrew
 // what the two could share under the repo's 300-line cap), doctor-checks-ssh.ts (ssh auth probing);
@@ -113,5 +123,67 @@ const buildConfigCheck = (errorMessage: string | undefined): CheckResult => {
   return { detail: errorMessage, name: 'config', status: 'fail' };
 };
 
-export { buildConfigCheck, checkGit, checkNode, loadConfigSafely };
+// `cli-update` is one of only two places refs contacts the registry (the other is `refs sync`), and
+// the only one that reports the answer as a check.
+//
+// `[updates].notify` is deliberately NOT consulted. It governs whether routine commands interrupt
+// with the news; running `refs doctor` is asking for a health report, and withholding a known
+// answer from someone who asked would be the wrong kind of quiet. `[updates].check` and
+// `REFS_UPDATE_CHECK` do apply — those say "do not go to the network", which is a different thing.
+//
+// Everything is caught in here. An escaping throw becomes a `fail` in `doctor.ts`'s `runStepSafely`,
+// and a `fail` makes `refs doctor` exit non-zero — so an unreachable registry would turn a healthy
+// machine into a failing one.
+
+const DISABLED_DETAIL: Record<Exclude<CheckDecision, 'on'>, string> = {
+  ci: 'update check is off in CI — set REFS_UPDATE_CHECK=1 to run it here anyway',
+  config: 'update check is off ([updates].check = false in config.toml)',
+  env: 'update check is off (REFS_UPDATE_CHECK=0)',
+};
+
+const UNREACHABLE_DETAIL =
+  'could not reach npm to learn the latest published version — not a fault of your setup, and nothing else depends on it';
+
+/** A stale answer is worth reporting, but never as the current state of npm: the cache had expired
+ * and the refresh failed, so it is the last thing the registry said, not what it says now. */
+const buildUpdateResult = (current: string, latest: string, stale: boolean): CheckResult => {
+  if (isBehind(current, latest)) {
+    const asOf = stale ? ' (npm was unreachable just now; this was its last answer)' : '';
+    return {
+      detail: `${updateMessage(current, latest)}${asOf}`,
+      name: 'cli-update',
+      status: 'warn',
+    };
+  }
+  if (stale) {
+    return {
+      detail: `could not reach npm to check; its last answer was ${latest}, which this CLI (${current}) already has`,
+      name: 'cli-update',
+      status: 'warn',
+    };
+  }
+  return {
+    detail: `this CLI (${current}) is npm's latest published release`,
+    name: 'cli-update',
+    status: 'ok',
+  };
+};
+
+const checkCliUpdate = async (ctx: CliContext, config: Config): Promise<CheckResult> => {
+  const decision = updateCheckDecision({ env: ctx.env, updates: config.updates });
+  if (decision !== 'on') {
+    return { detail: DISABLED_DETAIL[decision], name: 'cli-update', status: 'ok' };
+  }
+  const { latest, stale } = await loadLatestVersion({
+    fetch: ctx.fetcher,
+    home: resolveHome(ctx.env),
+    nowMs: Date.now(),
+  });
+  if (latest === undefined) {
+    return { detail: UNREACHABLE_DETAIL, name: 'cli-update', status: 'warn' };
+  }
+  return buildUpdateResult(ctx.cliVersion, latest, stale);
+};
+
+export { buildConfigCheck, checkCliUpdate, checkGit, checkNode, loadConfigSafely };
 export type { ConfigLoad };

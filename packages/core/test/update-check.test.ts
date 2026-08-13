@@ -53,7 +53,7 @@ describe('update cache: refreshing', () => {
         nowMs: NOW_MS,
       });
 
-      expect(result).toStrictEqual({ latest: LATEST, refreshed: true });
+      expect(result).toStrictEqual({ latest: LATEST, refreshed: true, stale: false });
       const written: unknown = JSON.parse(await readFile(home.updateCachePath, 'utf8'));
       expect(written).toStrictEqual({
         checked_at: new Date(NOW_MS).toISOString(),
@@ -79,8 +79,8 @@ describe('update cache: refreshing', () => {
       });
 
       // `refreshed: false` is what keeps a routine notice to once a day: only the invocation that
-      // actually refreshed announces anything.
-      expect(result).toStrictEqual({ latest: LATEST, refreshed: false });
+      // actually refreshed announces anything. Not stale: the cache is inside its ttl.
+      expect(result).toStrictEqual({ latest: LATEST, refreshed: false, stale: false });
     });
   });
 });
@@ -105,7 +105,7 @@ describe('update cache: ttl', () => {
         nowMs: NOW_MS,
       });
 
-      expect(result).toStrictEqual({ latest: LATEST, refreshed: true });
+      expect(result).toStrictEqual({ latest: LATEST, refreshed: true, stale: false });
     });
   });
 });
@@ -125,8 +125,9 @@ describe('update cache: failure paths', () => {
       const result = await loadLatestVersion({ fetch: failingFetcher, home, nowMs: NOW_MS });
 
       // A failed request must not push the next attempt out by another day, so the timestamp is
-      // untouched — and the older answer is still better than none.
-      expect(result).toStrictEqual({ latest: '0.8.0', refreshed: false });
+      // untouched — and the older answer is still better than none, as long as whoever reports it
+      // is told it is old.
+      expect(result).toStrictEqual({ latest: '0.8.0', refreshed: false, stale: true });
       const written = JSON.parse(await readFile(home.updateCachePath, 'utf8')) as {
         checked_at: string;
       };
@@ -151,9 +152,9 @@ describe('update cache: failure paths', () => {
         fetch: respondingWith({ version: '1.0.0-rc.1' }),
       });
 
-      expect(notFound).toStrictEqual({ latest: undefined, refreshed: false });
-      expect(noVersion).toStrictEqual({ latest: undefined, refreshed: false });
-      expect(prerelease).toStrictEqual({ latest: undefined, refreshed: false });
+      expect(notFound).toStrictEqual({ latest: undefined, refreshed: false, stale: true });
+      expect(noVersion).toStrictEqual({ latest: undefined, refreshed: false, stale: true });
+      expect(prerelease).toStrictEqual({ latest: undefined, refreshed: false, stale: true });
     });
   });
 });
@@ -172,7 +173,7 @@ describe('update cache: where it may write', () => {
         nowMs: NOW_MS,
       });
 
-      expect(result).toStrictEqual({ latest: LATEST, refreshed: true });
+      expect(result).toStrictEqual({ latest: LATEST, refreshed: true, stale: false });
       await expect(readFile(home.updateCachePath, 'utf8')).rejects.toThrow(/ENOENT/u);
     });
   });

@@ -68,6 +68,35 @@ describe('refs sync: when there is nothing to announce', () => {
     },
     TEST_TIMEOUT_MS,
   );
+});
+
+describe('refs sync: a run with nothing to do', () => {
+  it(
+    'never asks when --stale-only filtered every ref away',
+    async () => {
+      // A sync with nothing to do is a no-op, and must stay one: the whole reason this check rides
+      // `sync` is that `sync` was already going to the network. A run that was not is not a licence
+      // to start.
+      expect.hasAssertions();
+      await withResetExitCode(() =>
+        withTempHome(async (homeDir) => {
+          const { ctx, stdout } = await setupSyncedRef(homeDir);
+          let asked = 0;
+          ctx.fetcher = () => {
+            asked += 1;
+            return Promise.reject(new Error('should not have been called'));
+          };
+
+          // The ref was just added, so it is well inside its sync_ttl and gets filtered out.
+          const envelope = await runSyncJson(ctx, stdout, { refKeys: [], staleOnly: true });
+
+          expect(envelope.data.results).toStrictEqual([]);
+          expect(asked).toBe(0);
+        }),
+      );
+    },
+    TEST_TIMEOUT_MS,
+  );
 
   it(
     'stays silent when notifications are switched off, and still syncs',

@@ -14,10 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `refs doctor` reports it as a `cli-update` check. `refs --version` is untouched — it stays exactly
   one version line on stdout, because the skill's capability gate and any script parse it.
 
-  Both switches live in `[updates]` in `config.toml` and default to on: `check` governs the network
-  request, `notify` only whether a routine command mentions it. `notify = false` with `check = true`
-  is "don't interrupt me, but answer when I ask" — `refs sync` stays quiet, `refs doctor` still
-  reports. `REFS_UPDATE_CHECK` overrides `check` (`0` off, `1` on), and the check is off in CI.
+  Both switches live in `[updates]` in `config.toml` and default to on: `check` governs the registry
+  request everywhere, `notify` the routine path only. `notify = false` with `check = true` is
+  "don't interrupt me, but answer when I ask" — `refs sync` neither asks nor mentions, `refs doctor`
+  still does both. `REFS_UPDATE_CHECK` overrides `check` (`0` off, `1` on), and the check is off in
+  CI. The table is absent from a config that wants the defaults, and refs never writes one.
 
   Nothing about it is load-bearing: an unreachable registry, a malformed answer or an unwritable
   cache all mean "we don't know" and are never reported as a fault. The registry host is hardcoded
