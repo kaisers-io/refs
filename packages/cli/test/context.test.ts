@@ -67,12 +67,32 @@ describe('real context wiring', () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response);
     try {
       await expect(realContext().fetcher('https://example.invalid/x')).resolves.toBe(response);
-      expect(fetchSpy).toHaveBeenCalledWith('https://example.invalid/x');
+      expect(fetchSpy).toHaveBeenCalledWith('https://example.invalid/x', undefined);
     } finally {
       fetchSpy.mockRestore();
     }
   });
+});
 
+describe('real context wiring: fetch options', () => {
+  it('fetcher passes an abort signal through, so a caller can bound the request', async () => {
+    // The update check gives its request a deadline; a seam that dropped the signal would turn
+    // that deadline into decoration.
+    expect.hasAssertions();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok'));
+    const controller = new AbortController();
+    try {
+      await realContext().fetcher('https://example.invalid/x', { signal: controller.signal });
+      expect(fetchSpy).toHaveBeenCalledWith('https://example.invalid/x', {
+        signal: controller.signal,
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+});
+
+describe('real context wiring: streams', () => {
   it('out writes the line plus a trailing newline to real stdout', () => {
     expect.hasAssertions();
     const written = captureWrites(process.stdout, () => {

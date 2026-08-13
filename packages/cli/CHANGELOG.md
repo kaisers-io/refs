@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- refs tells you when a newer version is published. `refs sync` and `refs doctor` ask npm at most
+  once a day and cache the answer; `refs sync` mentions a newer release in its `warnings`, and
+  `refs doctor` reports it as a `cli-update` check. `refs --version` is untouched — it stays exactly
+  one version line on stdout, because the skill's capability gate and any script parse it.
+
+  Both switches live in `[updates]` in `config.toml` and default to on: `check` governs the network
+  request, `notify` only whether a routine command mentions it. `notify = false` with `check = true`
+  is "don't interrupt me, but answer when I ask" — `refs sync` stays quiet, `refs doctor` still
+  reports. `REFS_UPDATE_CHECK` overrides `check` (`0` off, `1` on), and the check is off in CI.
+
+  Nothing about it is load-bearing: an unreachable registry, a malformed answer or an unwritable
+  cache all mean "we don't know" and are never reported as a fault. The registry host is hardcoded
+  rather than read from npm configuration, only a plain `x.y.z` is accepted from the response, and
+  the update command is printed for you to run — refs does not install itself.
+
 ### Fixed
 
 - A ref can be recorded without a `tag_format`. Finalizing an add used to reject a proposal whose

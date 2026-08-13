@@ -45,22 +45,24 @@ stuck with it.
 
 ## Other environment variables
 
-`REFS_HOME` is the only one meant for everyday use. Three others are read:
+`REFS_HOME` is the only one meant for everyday use. Four others are read:
 
 | Variable                | Read by                | Effect                                                                                                                                       |
 | ----------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | `CLAUDE_CONFIG_DIR`     | `refs doctor` only     | Moves where the `skill` check looks for a Claude Code install, replacing `~/.claude`. Set by the skill installer's own convention, not by refs. |
 | `CODEX_HOME`            | `refs doctor` only     | The same, for Codex, replacing `~/.codex`.                                                                                                     |
+| `REFS_UPDATE_CHECK`     | `refs sync`, `refs doctor` | `0` never contacts the npm registry, `1` always does. Overrides `[updates].check`; any other value is ignored. See [`[updates]`](#updates). |
 | `REFS_ALLOW_FILE_URLS`  | `refs add`, `refs sync` | Set to `1` to accept `file://` sources. **A test-only escape hatch** — real remotes are `https`/`ssh`, and this exists so the suite and the packaged-CLI smoke tests can work against a local fixture repository without a network. Do not set it in normal use. |
 
 ## Home directory layout
 
 ```
 $REFS_HOME/
-├── config.toml     # user-authored: refs, settings, meta
+├── config.toml     # user-authored: refs, settings, updates, meta
 ├── state.json      # machine-managed: per-ref fetch/head state (self-healing, never hand-edit)
 ├── sources/         # managed checkouts, one directory tree per ref key
 ├── locks/           # advisory lock files (per-ref and a shared 'home' lock)
+├── cache/           # discardable: the last answer from the npm update check
 └── hooks/           # the pre-commit/pre-push guard scripts refs installs into every checkout
 ```
 
@@ -179,6 +181,30 @@ changes nothing. Set it globally under `[settings]`.
 Change a global setting with `refs edit settings <key> <value>`; change a per-ref override
 with `refs edit <ref> <field> <value>` (same field names — see
 [`docs/commands.md`](commands.md)).
+
+### `[updates]`
+
+```toml
+[updates]
+check = true    # ask npm whether a newer refs is published
+notify = true   # let a routine command mention it
+```
+
+Both default to `true`, and the table is absent from a config that wants those defaults.
+
+`check` governs the network request. With it off, refs never contacts the registry. `notify`
+governs only whether a routine command interrupts with the news: with `check = true` and
+`notify = false`, `refs sync` stays quiet and `refs doctor` still answers — asking for a health
+report is asking.
+
+`REFS_UPDATE_CHECK` overrides `check`: `0` off, `1` on. Any other value falls through to the config,
+so a typo cannot silently disable it. Without either, the check is on everywhere except CI, which
+is detected from a `CI` variable set to anything but `false` or `0`.
+
+The request goes to `registry.npmjs.org` — hardcoded, not read from npm configuration — at most once
+a day, and its answer is cached in `<refs home>/cache/update-check.json`. That file is discardable:
+deleting it costs one round-trip. A failed or unreachable request changes nothing and is never
+reported as a fault.
 
 ## `state.json`
 

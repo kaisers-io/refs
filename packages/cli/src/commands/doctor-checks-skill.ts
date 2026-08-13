@@ -289,4 +289,5 @@ const checkSkill = async (ctx: CliContext): Promise<CheckResult> => {
   return checks.find((check) => check.status !== 'ok') ?? checks[0] ?? notFoundOf(candidates);
 };
 
+export { checkCliUpdate } from './doctor-checks-update.ts';
 export { checkSkill };
