@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A ref can be recorded without a `tag_format`. Finalizing an add used to reject a proposal whose
+  `tag_format_candidate` was `null`, which left one option for a repository that publishes no tags:
+  invent a convention. A real user hit this and was asked to confirm `v{version}` for two
+  repositories that have no tags at all — a claim nobody had verified, written into `config.toml`
+  where later agents read it as fact. The candidate now survives finalize as an absent field.
+
+  `refs tag` is the only command that reads it, and it now exits `3` (validation) naming the ref or
+  package rather than crashing. The distinction from `4` carries information: `3` means this ref
+  cannot resolve any version, `4` means this particular version was never tagged. The skill's add
+  flow gained an explicit branch for the `null` case, so an agent reports the absence instead of
+  proposing something to fill the gap.
+
 ## [0.8.3] - 2026-08-12
 
 ### Added

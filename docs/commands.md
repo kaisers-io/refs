@@ -116,9 +116,8 @@ Adds a git reference in **two phases**: propose, then finalize. Exactly one of
    reviewable `Proposal` — nothing is added to `config.toml` yet. The checkout itself,
    however, does exist on disk after this step.
 2. **Finalize** (`refs add --proposal <file|->`): reads a completed proposal (edited by a
-   human/agent to fill in `description` and a real `tag_format_candidate`, if the
-   detected candidate was `null`), re-verifies the checkout's identity, and writes the
-   ref into `config.toml`/`state.json`.
+   human/agent to fill in `description`), re-verifies the checkout's identity, and writes
+   the ref into `config.toml`/`state.json`.
 
 `--description <text>` is a one-shot convenience that runs both phases in one process,
 using `<text>` as the **top-level** ref description and skipping proposal review — for
@@ -140,7 +139,7 @@ alone and never carries a description, so such sources always need the two-phase
 # Phase 1: propose
 refs add npm:zod --dry-run --json > proposal.json
 
-# (edit proposal.json — fill in description, and tag_format_candidate if it's null)
+# (edit proposal.json — fill in description)
 
 # Phase 2: finalize
 refs add --proposal proposal.json --json
@@ -171,10 +170,12 @@ refs add https://github.com/stevemao/left-pad --description "Left-pad a string."
 }
 ```
 
-`tag_format_candidate` is `null` when no reliable tag format was detected — finalizing
-then requires editing the proposal to supply one (`--description` cannot recover from
-this; a `null` candidate makes `--description` fail too, with a validation error).
-`packages` entries are partial (`description` optional) until finalized.
+`tag_format_candidate` is `null` when no reliable tag format was detected — either the
+repository publishes no tags, or its tags follow no pattern a format can express. It
+finalizes to a ref with no `tag_format`, which is a complete entry: only `refs tag` reads
+the field, and it reports the absence itself. Supplying one is worthwhile when you know the
+convention and the detector missed it, and wrong when the repository simply has no
+releases. `packages` entries are partial (`description` optional) until finalized.
 
 **`--proposal`/`--description`** — the finalized entry:
 
@@ -198,16 +199,16 @@ this; a `null` candidate makes `--description` fail too, with a validation error
 ### Proposal file shape (for hand-editing between phases)
 
 The file passed to `--proposal` must validate as a `FinalProposal`: `key`, `url`,
-`default_branch`, `tag_format_candidate` (must be a real tag format, not `null`, by this
-point), a non-empty `description`, and a `packages` map whose entries each have a
+`default_branch`, `tag_format_candidate` (a real tag format, or `null`), a non-empty
+`description`, and a `packages` map whose entries each have a
 non-empty `description` and a `path`. `--proposal` accepts either that bare object, or the
 full `--json` envelope wrapping it (`{ok, data, warnings}`) — the exact stdout of
 `refs add ... --dry-run --json`, so it can be piped straight through without stripping the
 envelope first.
 
 Exit codes: `2` (neither/more than one of `--dry-run`/`--proposal`/`--description` given,
-or `<source>` missing), `3` (invalid proposal JSON/shape, missing `tag_format`, or —
-`--description` only — one or more detected packages lack a description), `4` (finalizing
+or `<source>` missing), `3` (invalid proposal JSON/shape, or — `--description` only — one
+or more detected packages lack a description), `4` (finalizing
 a source whose checkout is missing), `5` (the ref is already configured).
 
 ---
@@ -725,6 +726,10 @@ Resolves a version (e.g. `4.1.0`) to the actual git tag it corresponds to, by re
 the applicable `tag_format` (`--package <name>`'s own `tag_format`, or else the ref's) and
 verifying the rendered tag exists in the checkout.
 
+`tag_format` is optional, and this is the only command that reads it. A ref recorded
+without one — because its repository publishes no tags, or none in a describable shape —
+exits `3` here rather than resolving against a guess.
+
 ```bash
 refs tag left-pad 1.3.0 --json
 refs tag zod 4.1.0 --package zod --json
@@ -744,4 +749,7 @@ refs tag zod 4.1.0 --package zod --json
 ```
 
 Exit codes: `4` (ref/package not found, checkout missing, or the rendered tag doesn't
-exist in the checkout), `2` (ambiguous suffix).
+exist in the checkout), `3` (the ref, or the named package with no ref-level format to
+inherit, has no `tag_format` configured), `2` (ambiguous suffix). The `3`/`4` distinction
+carries information: `3` means this ref cannot resolve any version, `4` means this one was
+never tagged.

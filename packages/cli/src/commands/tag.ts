@@ -1,5 +1,11 @@
 import type { RefEntry, RefKey } from '@kaisers-io/refs-core';
-import { checkoutPath, readConfig, resolveHome, resolveTag } from '@kaisers-io/refs-core';
+import {
+  checkoutPath,
+  readConfig,
+  resolveHome,
+  resolveTag,
+  validationError,
+} from '@kaisers-io/refs-core';
 import { cliOptsOf, emit, wrapAction } from '../output.ts';
 import { requireCheckout, requireEntry, requirePackage } from './ref-context.ts';
 import type { CliContext } from '../context.ts';
@@ -34,12 +40,36 @@ type TagArgs = {
 /** Resolves the `tag_format` to render `version` against: the named package's own override when
  * `packageName` is given and it has one, else the ref's own `tag_format`. An unregistered
  * `packageName` is a `notFoundError`, not a silent ref-level
- * fallback. */
-const formatFor = (entry: RefEntry, key: RefKey, packageName: string | undefined): string => {
+ * fallback. Either level may be absent — see `requireFormat`. */
+const formatFor = (
+  entry: RefEntry,
+  key: RefKey,
+  packageName: string | undefined,
+): string | undefined => {
   if (packageName === undefined) {
     return entry.tag_format;
   }
   return requirePackage(entry, key, packageName).tag_format ?? entry.tag_format;
+};
+
+/** A ref (or package) with no `tag_format` is configured, just not for this: nothing maps a version
+ * onto a tag name. That is a `validationError` (exit 3) rather than `notFoundError` (exit 4), which
+ * stays reserved for a ref, package, checkout or rendered tag that genuinely does not exist —
+ * the caller can tell "this ref cannot resolve versions at all" from "that version was never
+ * tagged". */
+const requireFormat = (
+  format: string | undefined,
+  key: RefKey,
+  packageName: string | undefined,
+): string => {
+  if (format !== undefined) {
+    return format;
+  }
+  const subject = packageName === undefined ? `ref '${key}'` : `package '${packageName}'`;
+  throw validationError(
+    `${subject} has no tag_format configured — inspect the repository's real tags and set one ` +
+      `with: refs edit ${key} tag_format '<format>'`,
+  );
 };
 
 const runTag = async (ctx: CliContext, args: TagArgs): Promise<TagData> => {
@@ -47,7 +77,12 @@ const runTag = async (ctx: CliContext, args: TagArgs): Promise<TagData> => {
   const config = await readConfig(home);
   const key = matchRefKey(config, args.query);
   const entry = requireEntry(config, key);
-  const format = formatFor(entry, key, args.opts.packageName);
+  // Before touching the checkout: a missing format is a configuration answer, not a git one.
+  const format = requireFormat(
+    formatFor(entry, key, args.opts.packageName),
+    key,
+    args.opts.packageName,
+  );
   const dest = checkoutPath(home, key);
   requireCheckout(dest, key);
   const tag = await resolveTag(ctx.runner, dest, format, args.version);
