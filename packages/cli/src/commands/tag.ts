@@ -65,10 +65,14 @@ const requireFormat = (
   if (format !== undefined) {
     return format;
   }
+  // The suggested fix has to target the level that failed. A package resolving to nothing must be
+  // fixed with `--package`: setting the ref-level format instead would hand that convention to
+  // every other package that has no override of its own.
   const subject = packageName === undefined ? `ref '${key}'` : `package '${packageName}'`;
+  const scope = packageName === undefined ? '' : ` --package ${packageName}`;
   throw validationError(
     `${subject} has no tag_format configured — inspect the repository's real tags and set one ` +
-      `with: refs edit ${key} tag_format '<format>'`,
+      `with: refs edit ${key} tag_format '<format>'${scope}`,
   );
 };
 

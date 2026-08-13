@@ -55,6 +55,15 @@ const refInput = (description: string): FinalizedRefInput => ({
   url: REF_URL,
 });
 
+// The same input minus the format — what `add.ts` builds when the dry-run's
+// `tag_format_candidate` came back `null` and nobody supplied one.
+const untaggedRefInput = (description: string): FinalizedRefInput => ({
+  default_branch: 'main',
+  description,
+  key: REF_KEY,
+  url: REF_URL,
+});
+
 describe('finalize: schema-invalid documents leave the home untouched', () => {
   it('rejects an invalid ref entry before writing either config or state', async () => {
     expect.hasAssertions();
@@ -68,6 +77,27 @@ describe('finalize: schema-invalid documents leave the home untouched', () => {
       expect(config.refs[REF_KEY]).toBeUndefined();
       const state = await readState(home);
       expect(state.refs[REF_KEY]).toBeUndefined();
+    });
+  });
+});
+
+describe('finalize: a ref with no tag_format', () => {
+  it('writes the entry with the field absent rather than rejecting it', async () => {
+    expect.hasAssertions();
+    await withTempHome(async (homeDir) => {
+      const { ctx, home, opts } = await setupFinalizeHome(homeDir);
+
+      const result = await finalizeRef(ctx, opts(untaggedRefInput('A repo that never tags.')));
+
+      expect(result.key).toBe(REF_KEY);
+      const config = await readConfig(home);
+      const entry = config.refs[REF_KEY];
+      expect(entry).toBeDefined();
+      expect(entry).not.toHaveProperty('tag_format');
+      // Everything else is written exactly as it would be with a format present — this is a
+      // complete entry, not a degraded one.
+      expect(entry?.description).toBe('A repo that never tags.');
+      expect(entry?.url).toBe(REF_URL);
     });
   });
 });

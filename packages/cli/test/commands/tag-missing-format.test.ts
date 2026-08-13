@@ -81,6 +81,17 @@ const setupUntaggedFixture = async (homeDir: string): Promise<TagFixture> => {
   return { ctx, stdout };
 };
 
+/** Same formatless ref, no checkout on disk — both guards would fire, so which one wins is
+ * observable. */
+const setupUntaggedFixtureNoCheckout = async (homeDir: string): Promise<TagFixture> => {
+  const { ctx, stdout } = testContext();
+  ctx.runner = new SpawnRunner();
+  ctx.env['REFS_HOME'] = homeDir;
+  const home = resolveHome(ctx.env);
+  await seedConfig(home, { [REF_KEY]: REF_ENTRY });
+  return { ctx, stdout };
+};
+
 describe('refs tag: ref without a tag_format', () => {
   it(
     '(g) exits 3 (validation) rather than resolving against an invented format',
@@ -97,6 +108,29 @@ describe('refs tag: ref without a tag_format', () => {
           expect(envelope.ok).toBe(false);
           expect(envelope.error?.code).toBe('validation');
           expect(envelope.error?.message).toMatch(/no tag_format configured/u);
+        }),
+      );
+    },
+    TEST_TIMEOUT_MS,
+  );
+});
+
+describe('refs tag: a missing format outranks a missing checkout', () => {
+  it(
+    '(j) exits 3, not the 4 the absent checkout would otherwise produce',
+    async () => {
+      // Pins the ordering the 3/4 split depends on: no configured format means no version can
+      // resolve here at all, which is true whether or not the checkout is present. Move
+      // `requireCheckout` above `requireFormat` and this is the only test that notices.
+      expect.hasAssertions();
+      await withResetExitCode(() =>
+        withTempHome(async (homeDir) => {
+          const { ctx, stdout } = await setupUntaggedFixtureNoCheckout(homeDir);
+
+          await run(ctx, ['node', 'refs', 'tag', REF_KEY, '1.0.0', '--json']);
+
+          expect(process.exitCode).toBe(EXIT.VALIDATION);
+          expect(parseSoleEnvelope(stdout).error?.code).toBe('validation');
         }),
       );
     },
@@ -140,6 +174,11 @@ describe('refs tag: package override without a ref-level format', () => {
           const envelope = parseSoleEnvelope(stdout);
           expect(envelope.error?.message).toMatch(/no tag_format configured/u);
           expect(envelope.error?.message).toMatch(new RegExp(NO_FORMAT_PACKAGE_NAME, 'u'));
+          // The fix it suggests must target the package, not the ref: a ref-level format would be
+          // inherited by every other package that has no override of its own.
+          expect(envelope.error?.message).toMatch(
+            new RegExp(`--package ${NO_FORMAT_PACKAGE_NAME}`, 'u'),
+          );
         }),
       );
     },
