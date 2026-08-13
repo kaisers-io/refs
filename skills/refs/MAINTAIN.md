@@ -40,8 +40,14 @@ refs doctor --json
 
 Runs environment/integrity checks and returns `{checks: [{name, status, detail}]}` with
 `status` one of `ok`, `warn`, `fail`: `git`, `node`, `config`, `hooks-guard`,
-`dirty-checkouts`, `orphans`, `skill`, and (when any ref uses ssh) `ssh-auth`. Report
+`dirty-checkouts`, `orphans`, `skill`, `cli-update`, and (when any ref uses ssh) `ssh-auth`. Report
 every non-`ok` check with its `detail` message, and explain what it means in plain terms.
+A `warn` on `cli-update` means either that a newer refs is published on npm — the `detail`
+carries the version and the command to install it, which you print for the user rather than
+running — or that npm could not be reached, which is not a fault of their setup and needs no
+action. It is `ok` and says so when the check is switched off (`[updates].check = false` or
+`REFS_UPDATE_CHECK=0`).
+
 A `warn` on `skill` means one of three things: the skill wasn't found where the check
 looked, the installed copy predates the version gate, or the CLI version it pins in its
 frontmatter doesn't match the running CLI. The locations it looks in are `~/.agents/skills`,
@@ -56,8 +62,10 @@ never treat it as blocking. You are reading this file, so the skill is installed
 capability gate (`SKILL.md` §1) compares `refs --version` against the pin above and is the
 only thing that matters. Every `detail` carries the command that fixes it, but only a
 version mismatch it can order names which side is behind — an unorderable pair (a
-prerelease on either side) says to reinstall both. Relay it verbatim rather than
-guessing. On `dirty-checkouts` the two statuses mean different things: a **`warn`** is a
+prerelease on either side) says to reinstall both. Relay it verbatim rather than guessing —
+print it for the user to run, per `SKILL.md` §1: this skill installs nothing itself.
+
+On `dirty-checkouts` the two statuses mean different things: a **`warn`** is a
 managed checkout carrying local changes, which the next `refs sync` will discard — say so
 before syncing, because the changes are gone afterwards. A **`fail`** is `git status`
 itself failing on that checkout, which points at a broken or unreadable `.git` rather than

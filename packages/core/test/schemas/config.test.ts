@@ -14,6 +14,15 @@ const minimalRef = {
   url: 'https://github.com/vercel/next.js',
 };
 
+// A repository that publishes no tags has no tag format to record, and inventing one would write a
+// claim nobody verified. `tag_format` is therefore optional; `refs tag` is the only command that
+// needs it and says so itself when it is absent.
+const untaggedRef = {
+  default_branch: 'main',
+  description: 'An internal repo that never tags releases.',
+  url: 'https://github.com/acme/untagged',
+};
+
 describe('zSettings schema', () => {
   it('applies defaults', () => {
     expect.hasAssertions();
@@ -38,6 +47,19 @@ describe('settings-inheritance invariant', () => {
     expect(overrideKeys).toStrictEqual(settingsKeys);
     const entry = zRefEntry.parse({ ...minimalRef, clone_mode: 'full', sync_ttl: '2h' });
     expect(entry.clone_mode).toBe('full');
+  });
+});
+
+describe('zRefEntry tag_format', () => {
+  it('accepts a ref that has none', () => {
+    expect.hasAssertions();
+    const entry = zRefEntry.parse(untaggedRef);
+    expect(entry.tag_format).toBeUndefined();
+  });
+
+  it('still rejects one that cannot render a version', () => {
+    expect.hasAssertions();
+    expect(zRefEntry.safeParse({ ...untaggedRef, tag_format: 'release' }).success).toBe(false);
   });
 });
 

@@ -193,3 +193,67 @@ jobs:
         # It does not re-check repository visibility, so read it as an assertion about this
         # job, not as a guard against the repository going private again.
         run: npm publish --ignore-scripts --provenance
+
+  # The GitHub release entry. Separate from `publish` on purpose: creating one needs
+  # `contents: write`, and the publish job is deliberately the narrowest thing in this repository —
+  # it holds `id-token: write`, runs no repository-controlled code, and installs nothing. Handing it
+  # write access to the repository as well would undo that. This job holds the other half instead,
+  # and never sees the npm identity.
+  #
+  # `contents: write` is the narrowest scope GitHub offers for creating a release, not a scope
+  # limited to releases: it also permits pushing to unprotected branches and creating or deleting
+  # tags. That is why `--verify-tag` below is not decoration.
+  #
+  # `needs: publish` so a failed publish leaves no release entry announcing something that never
+  # shipped. The reverse gap is the tolerable one: a published package with no release entry is
+  # visible and fixable by hand, which is how v0.8.3 and v0.9.0 were created before this existed.
+  announce:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Extract this version's changelog section as the release notes
+        # `verify` already proved the heading exists, so a missing section here means the two jobs
+        # disagree about the tag — worth failing on rather than publishing an empty release body.
+        #
+        # `TAG` goes through env, never spliced into the script: once the repository is public,
+        # anyone who can push a tag controls that text (same reasoning as the guards in `verify`).
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          awk -v heading="## [$VERSION] - " '
+            index($0, heading) == 1 { capturing = 1; next }
+            capturing && /^## \[/ { exit }
+            capturing { print }
+          ' CHANGELOG.md > release-notes.md
+          # Not `test -s`: a heading followed straight by the next one captures the blank line
+          # between them, which is a nonempty file and an empty release. `verify` proves the heading
+          # exists, not that anything was written under it.
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "::error::the changelog section for $VERSION is empty — nothing to put in the release" >&2
+            exit 1
+          fi
+          echo "release notes: $(wc -l < release-notes.md) lines"
+      - name: Create the release
+        # Notes come from the changelog rather than `--generate-notes`: the changelog is written for
+        # the people this affects, and a list of commit subjects is not.
+        #
+        # `--verify-tag` matters more than it looks. Without it, `gh release create` CREATES a
+        # missing tag, pointing at the default branch's current head — so this sequence would
+        # fabricate one: publish succeeds, this job fails, someone deletes the tag while sorting
+        # that out, then re-runs the failed job. `needs` is already satisfied by the successful
+        # publish in the same run, so this job would run alone and resurrect the tag on whatever
+        # `main` points at by then — a commit `verify` never checked, wearing the released version's
+        # name. With the flag it fails instead, which is the only acceptable outcome.
+        #
+        # Note on Latest: gh sends no `make_latest`, and the API defaults it to true, so whatever
+        # this creates becomes Latest. Correct for a forward release; it would mislabel a backport
+        # tag pushed after a higher version, which this project has never done.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" --verify-tag --title "$TAG" --notes-file release-notes.md

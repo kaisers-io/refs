@@ -13,6 +13,11 @@ type RefsHome = {
   locksDir: string;
   sourcesDir: string;
   hooksDir: string;
+  // Discardable data, kept apart from `config.toml` (the user's) and `state.json` (per-ref
+  // operational state, rewritten under lock by add/sync). Deleting this directory costs a
+  // network round-trip and nothing else.
+  cacheDir: string;
+  updateCachePath: string;
 };
 
 // `resolve()` the configured root so a relative REFS_HOME (e.g. "./refs-home") still yields
@@ -20,12 +25,14 @@ type RefsHome = {
 const resolveHome = (env: NodeJS.ProcessEnv): RefsHome => {
   const root = resolve(env['REFS_HOME'] ?? join(homedir(), '.kaisers-io', 'refs'));
   return {
+    cacheDir: join(root, 'cache'),
     configPath: join(root, 'config.toml'),
     hooksDir: join(root, 'hooks'),
     locksDir: join(root, 'locks'),
     root,
     sourcesDir: join(root, 'sources'),
     statePath: join(root, 'state.json'),
+    updateCachePath: join(root, 'cache', 'update-check.json'),
   };
 };
 

@@ -1,6 +1,12 @@
 import { EXIT, resolveHome } from '@kaisers-io/refs-core';
 import type { RefsHome, State } from '@kaisers-io/refs-core';
-import { buildConfigCheck, checkGit, checkNode, loadConfigSafely } from './doctor-checks-basic.ts';
+import {
+  buildConfigCheck,
+  checkCliUpdate,
+  checkGit,
+  checkNode,
+  loadConfigSafely,
+} from './doctor-checks-basic.ts';
 import { checkDirtyCheckouts, checkHooksGuard } from './doctor-checks-checkouts.ts';
 import { checkOrphans, loadStateSafely } from './doctor-checks-orphans.ts';
 import { cliOptsOf, emit, errorMessageOf, wrapAction } from '../output.ts';
@@ -11,9 +17,9 @@ import type { RefsCommand } from './registry.ts';
 import { checkSkill } from './doctor-checks-skill.ts';
 import { checkSshAuth } from './doctor-checks-ssh.ts';
 
-// `refs doctor [--json]` — the 8 environment/integrity checks: `git`, `node`,
-// `config`, `hooks-guard`, `dirty-checkouts`, `orphans`, `skill`, `ssh-auth` (the last one only
-// ever appears when a configured ref uses an ssh transport url). Every check runs to completion
+// `refs doctor [--json]` — the 9 environment/integrity checks: `git`, `node`,
+// `config`, `hooks-guard`, `dirty-checkouts`, `orphans`, `skill`, `cli-update`, `ssh-auth` (the
+// last one only ever appears when a configured ref uses an ssh transport url). Every check runs to completion
 // before anything is reported — a failing `config` check must never prevent `orphans`/
 // `dirty-checkouts`/etc. from still running against whatever they can determine — so the actual
 // check implementations live in sibling doctor-checks-*.ts modules, grouped by
@@ -74,6 +80,7 @@ const buildCheckSteps = (load: DoctorLoad): CheckStep[] => {
     { name: 'dirty-checkouts', run: () => checkDirtyCheckouts(ctx, home, configLoad.config) },
     { name: 'orphans', run: () => checkOrphans(home, configLoad.config, state) },
     { name: 'skill', run: () => checkSkill(ctx) },
+    { name: 'cli-update', run: () => checkCliUpdate(ctx, configLoad.config) },
     { name: 'ssh-auth', run: () => checkSshAuth(ctx, configLoad.config) },
   ];
 };

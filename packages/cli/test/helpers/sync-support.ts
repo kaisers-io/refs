@@ -119,6 +119,9 @@ const setupTwoRefs = async (homeDir: string): Promise<TwoRefsFixture> => {
 type SyncEnvelope = {
   data: { results: { error?: string; key: string; status: string; warning?: string }[] };
   ok: boolean;
+  // Envelope-level, and distinct from a per-ref `warning`: this is where a newer published CLI is
+  // announced, which is a fact about the installation rather than about any ref.
+  warnings: string[];
 };
 
 /** Runs `refs sync [...opts.refKeys] --json` (`--stale-only` optionally appended) and returns the

@@ -66,11 +66,15 @@ const zPackageEntry = z.strictObject({
   tag_format: zTagFormat.optional(),
 });
 
+// `tag_format` is optional at both levels, and for the same reason: plenty of repositories publish
+// no tags at all, or tag in a shape no format can describe. Requiring one there forced whoever ran
+// `refs add` to invent a convention and write it down as if it had been observed — `refs tag` is
+// the only command that reads the field, and it reports the absence itself.
 const zRefEntry = z.strictObject({
   default_branch: z.string().min(1),
   description: z.string().min(1),
   packages: zSafePackagesRecord(zPackageEntry).optional(),
-  tag_format: zTagFormat,
+  tag_format: zTagFormat.optional(),
   url: z.string().min(1),
   ...zRefSettingsOverride.shape,
 });
@@ -97,16 +101,36 @@ const zRefs = withValidatedKeys(
   z.record(z.string(), zRefEntry),
 );
 
+// Deliberately NOT part of `zSettings`: every settings key becomes per-ref overridable by
+// construction (`zRefSettingsOverride` above, pinned by a test), and whether this CLI asks npm for
+// its own latest version has nothing to do with any individual ref. A separate table keeps that
+// invariant honest instead of adding a second key that is expressible per ref but inert.
+//
+// `check` governs the network request; `notify` governs only whether a routine command mentions it.
+// Turning `notify` off but leaving `check` on is the "don't interrupt me, but answer when I ask"
+// position: `refs doctor` still reports, `refs sync` stays quiet.
+const zUpdates = z.strictObject({
+  check: z.boolean().default(true),
+  notify: z.boolean().default(true),
+});
+
 const zConfig = z.strictObject({
   meta: zMeta,
   refs: zRefs.default({}),
   settings: zSettings,
+  // `.optional()`, deliberately not `.default(...)`: a default here would be materialized by
+  // `readConfig` and then serialized by `writeConfig`, so the first `refs add`/`refs edit` after
+  // upgrading would write `[updates]` into every config — including those of users who never
+  // touched it — and a `strictObject` in an older CLI rejects the whole file over an unknown key.
+  // Absent means the defaults; the table exists only where someone wrote one.
+  updates: zUpdates.optional(),
 });
 
 type Config = z.infer<typeof zConfig>;
 type PackageEntry = z.infer<typeof zPackageEntry>;
 type RefEntry = z.infer<typeof zRefEntry>;
 type Settings = z.infer<typeof zSettings>;
+type Updates = z.infer<typeof zUpdates>;
 
 export {
   SCHEMA_VERSION,
@@ -116,5 +140,6 @@ export {
   zRefEntry,
   zRefSettingsOverride,
   zSettings,
+  zUpdates,
 };
-export type { Config, PackageEntry, RefEntry, Settings };
+export type { Config, PackageEntry, RefEntry, Settings, Updates };

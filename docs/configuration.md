@@ -45,22 +45,24 @@ stuck with it.
 
 ## Other environment variables
 
-`REFS_HOME` is the only one meant for everyday use. Three others are read:
+`REFS_HOME` is the only one meant for everyday use. Four others are read:
 
 | Variable                | Read by                | Effect                                                                                                                                       |
 | ----------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | `CLAUDE_CONFIG_DIR`     | `refs doctor` only     | Moves where the `skill` check looks for a Claude Code install, replacing `~/.claude`. Set by the skill installer's own convention, not by refs. |
 | `CODEX_HOME`            | `refs doctor` only     | The same, for Codex, replacing `~/.codex`.                                                                                                     |
+| `REFS_UPDATE_CHECK`     | `refs sync`, `refs doctor` | `0` never contacts the npm registry, `1` always does. Overrides `[updates].check`; any other value is ignored. See [`[updates]`](#updates). |
 | `REFS_ALLOW_FILE_URLS`  | `refs add`, `refs sync` | Set to `1` to accept `file://` sources. **A test-only escape hatch** — real remotes are `https`/`ssh`, and this exists so the suite and the packaged-CLI smoke tests can work against a local fixture repository without a network. Do not set it in normal use. |
 
 ## Home directory layout
 
 ```
 $REFS_HOME/
-├── config.toml     # user-authored: refs, settings, meta
+├── config.toml     # user-authored: refs, settings, updates, meta
 ├── state.json      # machine-managed: per-ref fetch/head state (self-healing, never hand-edit)
 ├── sources/         # managed checkouts, one directory tree per ref key
 ├── locks/           # advisory lock files (per-ref and a shared 'home' lock)
+├── cache/           # discardable: the last answer from the npm update check
 └── hooks/           # the pre-commit/pre-push guard scripts refs installs into every checkout
 ```
 
@@ -103,7 +105,7 @@ sync_ttl = "1h"
 # description = "Short description of the repo."
 # url = "https://github.com/owner/repo"
 # default_branch = "main"
-# tag_format = "v{version}"
+# tag_format = "v{version}"   # optional — omit it if the repo has no usable tag pattern
 # # Per-ref overrides of [settings] go in the same table, e.g.:
 # # clone_mode = "full"
 ```
@@ -144,7 +146,7 @@ path = "packages/zod"
 | `description`    | yes      | Short human/agent-facing description.                                                                                                                                                                                                                                |
 | `url`            | yes      | The canonical clone URL (rewritten by `refs edit <ref> url <value>`, which refuses a URL that would derive a different ref key).                                                                                                                                     |
 | `default_branch` | yes      | The ref's default branch, detected at `add` time (auto-updated by `sync` if the remote's default branch is renamed).                                                                                                                                                 |
-| `tag_format`     | yes      | A template containing `{version}`, e.g. `v{version}`, used by `refs tag` to resolve a version to a git tag.                                                                                                                                                          |
+| `tag_format`     | no       | A template containing `{version}`, e.g. `v{version}`, used by `refs tag` to resolve a version to a git tag. Absent for a repository that publishes no tags, or none in a describable shape: `refs tag` then exits `3`, and nothing else is affected. `refs edit` can set one but has no unset — removing a recorded format means deleting the line from this file.  |
 | `packages`       | no       | A map of package name → `{ description, path, tag_format? }`, for repos (typically monorepos) that register one or more importable packages. A package's `tag_format` overrides the ref's own for that package only; when absent it inherits the ref's `tag_format`. |
 | _(settings)_     | no       | `clone_mode` or `sync_ttl` — see below. (`git_transport` is expressible here but has no effect; see the note under `[settings]`.)                                                                                                                                    |
 
@@ -179,6 +181,35 @@ changes nothing. Set it globally under `[settings]`.
 Change a global setting with `refs edit settings <key> <value>`; change a per-ref override
 with `refs edit <ref> <field> <value>` (same field names — see
 [`docs/commands.md`](commands.md)).
+
+### `[updates]`
+
+```toml
+[updates]
+check = true    # ask npm whether a newer refs is published
+notify = true   # let a routine command mention it
+```
+
+Both default to `true`, and the table is absent from a config that wants those defaults.
+
+`check` governs the registry request everywhere. With it off, refs never contacts the registry at
+all. `notify` governs the routine path only: with `check = true` and `notify = false`, `refs sync`
+neither asks nor mentions, while `refs doctor` still asks and still answers — requesting a health
+report is asking to be told.
+
+`REFS_UPDATE_CHECK` overrides `check`: `0` off, `1` on. Any other value falls through to the config,
+so a typo cannot silently disable it. Without either, the check is on everywhere except CI, which
+is detected from a `CI` variable set to anything but `false` or `0`.
+
+The request goes to `registry.npmjs.org` — hardcoded, not read from npm configuration — at most once
+a day, and its answer is cached in `<refs home>/cache/update-check.json`. That file is discardable:
+deleting it costs one round-trip. A failed or unreachable request changes nothing, keeps the
+previous answer, and is never reported as a fault — though a reported answer that could not be
+refreshed is labelled as the registry's last, not its current, word.
+
+The once-a-day cap depends on that cache being writable. Before `refs init` there is no refs home to
+write it into, and refs will not create one just to cache an answer, so `refs doctor` on a machine
+without a home asks every time it runs.
 
 ## `state.json`
 

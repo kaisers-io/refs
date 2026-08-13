@@ -6,8 +6,9 @@ copyable example prompts, and end with a concrete first ref to add.
 
 ## 1. Verify the CLI
 
-Run the capability gate from `SKILL.md` §1, including its install flow if the CLI is
-missing (ask before installing; verify with `refs --version` afterwards).
+Run the capability gate from `SKILL.md` §1. If the CLI or the Node runtime is missing, the
+gate prints the command for the user to run and stops there — this skill installs nothing
+itself. Verify with `refs --version` once they confirm, then continue.
 
 ## 2. Health check
 

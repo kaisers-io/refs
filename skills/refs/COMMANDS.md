@@ -3,6 +3,11 @@
 The `--json` contract for the CLI version pinned in `SKILL.md`'s frontmatter. Shapes below
 are the `data` payload only — always wrapped in the envelope.
 
+Every JSON block here is illustrative output, showing the shape a command returns. The
+keys, urls, and paths in them are placeholders (`example-org/…`) — not repositories this
+skill fetches, tracks, or suggests. Real ones come from the user's own config, via
+`refs list`, `refs resolve`, or `refs show`.
+
 ## Envelope, streams, exit codes
 
 ```
@@ -42,7 +47,8 @@ refs init
 ```
 
 Creates the refs home and its `sources/`, `locks/`, and `hooks/` subdirectories, seeds or
-migrates `config.toml`, installs the git hooks guard. Idempotent.
+migrates `config.toml`, writes the git hooks guard. Everything it touches lives inside the
+refs home; it changes nothing elsewhere on the machine. Idempotent.
 
 ```json
 { "config": "seeded", "home": "/Users/you/.kaisers-io/refs", "skill_hint": "…" }
@@ -76,16 +82,17 @@ See `ADD.md` for the flow and the approval rule.
 {
   "default_branch": "master",
   "description": "",
-  "key": "github.com/stevemao/left-pad",
-  "packages": { "left-pad": { "path": "." } },
+  "key": "github.com/example-org/example-lib",
+  "packages": { "example-lib": { "path": "." } },
   "tag_format_candidate": "v{version}",
-  "url": "https://github.com/stevemao/left-pad.git"
+  "url": "https://github.com/example-org/example-lib.git"
 }
 ```
 
 `description` starts `""`. A package with no detected description has **no `description`
 key at all** — test for key presence, never falsiness. `tag_format_candidate` is `null`
-when none was detected; finalizing then requires you to supply one.
+when none was detected; it finalizes to a ref with no `tag_format`, which is a valid entry.
+Don't fill one in to make it look complete (`ADD.md` §3).
 
 `--proposal` / `--description` `data` (the finalized entry):
 
@@ -93,19 +100,18 @@ when none was detected; finalizing then requires you to supply one.
 {
   "entry": {
     "default_branch": "master",
-    "description": "Left-pad a string.",
-    "packages": { "left-pad": { "description": "Left-pad a string.", "path": "." } },
+    "description": "Pads a string on the left.",
+    "packages": { "example-lib": { "description": "Pads a string on the left.", "path": "." } },
     "tag_format": "v{version}",
-    "url": "https://github.com/stevemao/left-pad.git"
+    "url": "https://github.com/example-org/example-lib.git"
   },
-  "key": "github.com/stevemao/left-pad"
+  "key": "github.com/example-org/example-lib"
 }
 ```
 
 Exit codes: `2` (no mode flag, more than one, or missing `<source>`), `3` (bad proposal
-shape, missing or invalid `tag_format_candidate`, or `--description` with an undescribed
-package), `4`
-(finalizing with no checkout on disk), `5` (ref already configured).
+shape, an invalid `tag_format_candidate`, or `--description` with an undescribed package),
+`4` (finalizing with no checkout on disk), `5` (ref already configured).
 
 ## `refs edit`
 
@@ -147,7 +153,7 @@ refs list [--packages]
   {
     "clone_mode": "blobless",
     "description": "…",
-    "key": "github.com/colinhacks/zod",
+    "key": "github.com/example-org/example-monorepo",
     "last_fetched_at": "2026-07-05T06:28:47.633Z",
     "missing": false,
     "packages_count": 4,
@@ -178,7 +184,7 @@ refs doctor
 ```
 
 Checks always run in this order: `git`, `node`, `config`, `hooks-guard`,
-`dirty-checkouts`, `orphans`, `skill`, `ssh-auth` (the last only when some ref uses an ssh
+`dirty-checkouts`, `orphans`, `skill`, `cli-update`, `ssh-auth` (the last only when some ref uses an ssh
 url). `status` is `ok` | `warn` | `fail`; `MAINTAIN.md` explains each check.
 
 The `skill` check reports whether this skill and the running CLI are in step. Every
@@ -215,7 +221,7 @@ refs remove <ref>
 mode. Confirm with the user first (`MAINTAIN.md`).
 
 ```json
-{ "key": "github.com/colinhacks/zod", "removed_checkout": true }
+{ "key": "github.com/example-org/example-monorepo", "removed_checkout": true }
 ```
 
 An already-missing checkout is a warning, not an error; removal still proceeds.
@@ -234,14 +240,14 @@ a unique ref-key suffix, tried in that order.
 
 ```json
 {
-  "key": "github.com/colinhacks/zod",
+  "key": "github.com/example-org/example-monorepo",
   "last_fetched_at": "2026-07-05T06:28:47.633Z",
-  "local_path": "/Users/you/.kaisers-io/refs/sources/github.com/colinhacks/zod",
+  "local_path": "/Users/you/.kaisers-io/refs/sources/github.com/example-org/example-monorepo",
   "missing": false,
   "package": {
-    "local_path": "/Users/you/.kaisers-io/refs/sources/github.com/colinhacks/zod/packages/zod",
-    "name": "zod",
-    "path": "packages/zod"
+    "local_path": "/Users/you/.kaisers-io/refs/sources/github.com/example-org/example-monorepo/packages/example-pkg",
+    "name": "example-pkg",
+    "path": "packages/example-pkg"
   },
   "stale": false
 }
@@ -274,18 +280,18 @@ refs show <ref> [--packages] [--tags]
 {
   "default_branch": "main",
   "description": "…",
-  "key": "github.com/colinhacks/zod",
-  "local_path": "/Users/you/.kaisers-io/refs/sources/github.com/colinhacks/zod",
+  "key": "github.com/example-org/example-monorepo",
+  "local_path": "/Users/you/.kaisers-io/refs/sources/github.com/example-org/example-monorepo",
   "missing": false,
   "packages_count": 4,
   "stale": false,
   "state": {
     "effective_clone_mode": "blobless",
-    "head_sha": "2fca6157fcca165438e0f9495cf0e5a4e6f71349",
+    "head_sha": "0000000000000000000000000000000000000000",
     "last_fetched_at": "2026-07-05T06:28:47.633Z"
   },
   "tag_format": "v{version}",
-  "url": "https://github.com/colinhacks/zod.git"
+  "url": "https://github.com/example-org/example-monorepo.git"
 }
 ```
 
@@ -308,11 +314,15 @@ Fetches, or re-clones a missing checkout. Defaults to every configured ref; name
 unique suffixes to narrow. `--stale-only` skips refs still inside their `sync_ttl` that
 also have a checkout — a missing checkout is always re-cloned. Up to 4 refs at a time.
 
+This is also where a newer published CLI surfaces: at most once a day, `warnings` may carry
+one line naming the version and the command to install it. Relay it to the user and carry on
+— it says nothing about the refs that were synced, and nothing about it is yours to run.
+
 ```json
 {
   "results": [
-    { "key": "github.com/colinhacks/zod", "status": "updated" },
-    { "key": "github.com/stevemao/left-pad", "error": "…", "status": "failed" }
+    { "key": "github.com/example-org/example-monorepo", "status": "updated" },
+    { "key": "github.com/example-org/example-lib", "error": "…", "status": "failed" }
   ]
 }
 ```
@@ -334,9 +344,11 @@ Resolves a version to the git tag it maps to, by rendering the applicable `tag_f
 verifying the tag exists in the checkout. `--package <name>` uses that package's
 `tag_format` when it overrides the ref's.
 
+`tag_format` is optional, so a ref may have none — this is the only command that needs it.
+
 ```json
 {
-  "key": "github.com/colinhacks/zod",
+  "key": "github.com/example-org/example-monorepo",
   "ref_path": "refs/tags/v4.1.0",
   "tag": "v4.1.0",
   "version": "4.1.0"
@@ -346,5 +358,9 @@ verifying the tag exists in the checkout. `--package <name>` uses that package's
 Always pass tags to git as `ref_path` (`refs/tags/<tag>`) — a bare tag starting with `-`
 parses as an option.
 
-Exit codes: `2` (ambiguous suffix), `4` (ref/package not found, checkout missing, or no
+Exit codes: `2` (ambiguous suffix), `3` (no `tag_format` configured for the ref, or for the
+named package with none to inherit), `4` (ref/package not found, checkout missing, or no
 such tag — see `INVESTIGATE.md` before concluding the release doesn't exist).
+
+The `3`/`4` split is the useful one: `3` means this ref cannot resolve any version, `4`
+means this particular version was never tagged.

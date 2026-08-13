@@ -1,6 +1,7 @@
 import { readFile, realpath } from 'node:fs/promises';
 import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
+import { comparePlainVersions } from '@kaisers-io/refs-core';
 import { join } from 'node:path';
 
 // `refs doctor`'s `skill` check: reads the installed skill's YAML frontmatter out of every install
@@ -182,38 +183,25 @@ const skillCliVersionOf = (source: string): string | undefined => {
   return CLI_VERSION_PATTERN.exec(body)?.groups?.['version'];
 };
 
-// Guards the split because `Number` is far more permissive than the `x.y.z` this ever means:
-// `Number('0x2') === 2` would let `1.0x2.3` through as `[1, 2, 3]`, and `Number('') === 0` would
-// let `1..3` through as `[1, 0, 3]`. Anything that is not three plain decimal components is left
-// to the `unknown` verdict, which tells the user to reinstall both sides rather than guessing an
-// ordering. Once this matches, the split can only yield three non-negative integers.
-const PLAIN_VERSION_PATTERN = /^\d+\.\d+\.\d+$/u;
-
-const parseVersionParts = (version: string): number[] | undefined => {
-  if (!PLAIN_VERSION_PATTERN.test(version)) {
-    return undefined;
-  }
-  return version.split('.').map(Number);
-};
-
 type SkillVerdict = 'cli-older' | 'match' | 'skill-older' | 'unknown';
 
-const NOT_FOUND_INDEX = -1;
-
+// Anything that is not three plain decimal components — a prerelease on either side — is left to
+// the `unknown` verdict, which tells the user to reinstall both sides rather than guessing an
+// ordering. `comparePlainVersions` is the single implementation of that rule; this file used to
+// carry a second one that compared through `Number`, which agrees with it everywhere except past
+// 2^53, where it silently reported a match.
 const compareSkillVersion = (skillVersion: string, cliVersion: string): SkillVerdict => {
   if (skillVersion === cliVersion) {
     return 'match';
   }
-  const skillParts = parseVersionParts(skillVersion);
-  const cliParts = parseVersionParts(cliVersion);
-  if (skillParts === undefined || cliParts === undefined) {
+  const compared = comparePlainVersions(skillVersion, cliVersion);
+  if (compared === undefined) {
     return 'unknown';
   }
-  const index = skillParts.findIndex((part, position) => part !== cliParts[position]);
-  if (index === NOT_FOUND_INDEX) {
+  if (compared === 0) {
     return 'match';
   }
-  return (skillParts[index] ?? 0) > (cliParts[index] ?? 0) ? 'cli-older' : 'skill-older';
+  return compared > 0 ? 'cli-older' : 'skill-older';
 };
 
 const DETAIL_BY_VERDICT: Record<SkillVerdict, (skill: string, cli: string) => string> = {

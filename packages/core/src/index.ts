@@ -19,4 +19,6 @@ export * from './schemas/record-keys.ts';
 export * from './schemas/state.ts';
 export * from './settings.ts';
 export * from './state-io.ts';
+export * from './update-check.ts';
+export * from './version.ts';
 export * from './workspaces.ts';

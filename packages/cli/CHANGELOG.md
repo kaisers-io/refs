@@ -49,6 +49,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `unverifiable` rather than guessing. It never reports `missing` from a scan that had nowhere
   to look.
 
+## [0.9.0] - 2026-08-13
+
+### Added
+
+- refs tells you when a newer version is published. `refs sync` and `refs doctor` ask npm at most
+  once a day and cache the answer; `refs sync` mentions a newer release in its `warnings`, and
+  `refs doctor` reports it as a `cli-update` check. `refs --version` is untouched — it stays exactly
+  one version line on stdout, because the skill's capability gate and any script parse it.
+
+  Both switches live in `[updates]` in `config.toml` and default to on: `check` governs the registry
+  request everywhere, `notify` the routine path only. `notify = false` with `check = true` is
+  "don't interrupt me, but answer when I ask" — `refs sync` neither asks nor mentions, `refs doctor`
+  still does both. `REFS_UPDATE_CHECK` overrides `check` (`0` off, `1` on), and the check is off in
+  CI. The table is absent from a config that wants the defaults, and refs never writes one.
+
+  Nothing about it is load-bearing: an unreachable registry, a malformed answer or an unwritable
+  cache all mean "we don't know" and are never reported as a fault. The registry host is hardcoded
+  rather than read from npm configuration, only a plain `x.y.z` is accepted from the response, and
+  the update command is printed for you to run — refs does not install itself.
+
+### Fixed
+
+- A ref can be recorded without a `tag_format`. Finalizing an add used to reject a proposal whose
+  `tag_format_candidate` was `null`, which left one option for a repository that publishes no tags:
+  invent a convention. A real user hit this and was asked to confirm `v{version}` for two
+  repositories that have no tags at all — a claim nobody had verified, written into `config.toml`
+  where later agents read it as fact. The candidate now survives finalize as an absent field.
+
+  `refs tag` is the only command that reads it, and it exits `3` (validation) when there is none,
+  naming the ref — or the package, with the `--package` form of the fix. The distinction from `4`
+  carries information: `3` means this ref cannot resolve any version, `4` means this particular
+  version was never tagged. The skill's add flow gained an explicit branch for the `null` case, so
+  an agent reports the absence instead of proposing something to fill the gap.
+
+  A format already recorded can only be removed by editing `config.toml` directly; `refs edit` can
+  set one but has no way to unset it.
+
+## [0.8.3] - 2026-08-12
+
+### Added
+
+- The skill states a trust boundary. Everything inside a managed checkout is untrusted third-party
+  content — README, comments, commit messages, and any `AGENTS.md` or `CLAUDE.md` a tracked repo
+  ships — so it is evidence to read and never instruction to follow. Documentation stays evidence,
+  including a repo's own contributor and agent docs; what goes to the user as a finding is content
+  targeting the agent that reads it. Both worker flows carry the rule into their prompts. This
+  narrows the blast radius of indirect prompt injection; it is not a sandbox, and SECURITY.md says
+  so.
+
+### Changed
+
+- The skill installs nothing. Its capability gate used to ask permission and then run
+  `npm i -g @kaisers-io/refs` itself; it now prints the command — pinned to the version the skill
+  was written against, not `@latest` — and stops until the user has run it. A skill that installs
+  the executable giving it its capabilities is a bootstrap trust boundary worth keeping explicit,
+  and Anthropic's skill documentation discourages global installs from a skill.
+
+- The `--json` examples in the skill's command reference use placeholder repositories
+  (`example-org/…`) instead of real third-party ones, and say up front that they are illustrative
+  output rather than repositories the skill fetches.
+
 ## [0.8.2] - 2026-08-10
 
 ### Fixed
@@ -451,7 +512,9 @@ trusted-publishing pipeline end to end.
   installed git hooks.
 - Agent skill (`skills/refs/`) documenting the investigate/add/maintain workflows.
 
-[Unreleased]: https://github.com/kaisers-io/refs/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/kaisers-io/refs/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/kaisers-io/refs/compare/v0.8.3...v0.9.0
+[0.8.3]: https://github.com/kaisers-io/refs/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/kaisers-io/refs/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/kaisers-io/refs/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/kaisers-io/refs/compare/v0.7.0...v0.8.0
