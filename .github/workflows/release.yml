@@ -193,3 +193,48 @@ jobs:
         # It does not re-check repository visibility, so read it as an assertion about this
         # job, not as a guard against the repository going private again.
         run: npm publish --ignore-scripts --provenance
+
+  # The GitHub release entry. Separate from `publish` on purpose: creating one needs
+  # `contents: write`, and the publish job is deliberately the narrowest thing in this repository —
+  # it holds `id-token: write`, runs no repository-controlled code, and installs nothing. Handing it
+  # write access to the repository as well would undo that. This job holds the opposite pair: it can
+  # write a release and nothing else, and never sees the npm identity.
+  #
+  # `needs: publish` so a failed publish leaves no release entry announcing something that never
+  # shipped. The reverse gap is the tolerable one: a published package with no release entry is
+  # visible and fixable by hand, which is how v0.8.3 and v0.9.0 were created before this existed.
+  announce:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Extract this version's changelog section as the release notes
+        # `verify` already proved the heading exists, so a missing section here means the two jobs
+        # disagree about the tag — worth failing on rather than publishing an empty release body.
+        #
+        # `TAG` goes through env, never spliced into the script: once the repository is public,
+        # anyone who can push a tag controls that text (same reasoning as the guards in `verify`).
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          awk -v heading="## [$VERSION] - " '
+            index($0, heading) == 1 { capturing = 1; next }
+            capturing && /^## \[/ { exit }
+            capturing { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "::error::no changelog section found for $VERSION — nothing to put in the release" >&2
+            exit 1
+          fi
+          echo "release notes: $(wc -l < release-notes.md) lines"
+      - name: Create the release
+        # Notes come from the changelog rather than `--generate-notes`: the changelog is written for
+        # the people this affects, and a list of commit subjects is not.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" --title "$TAG" --notes-file release-notes.md
