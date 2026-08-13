@@ -385,12 +385,22 @@ refs doctor --json
         "name": "skill",
         "status": "warn",
         "detail": "refs skill not found in the locations this check knows about (~/.agents, ~/.claude, ~/.codex, ./.agents, ./.claude) — an install anywhere else is invisible here and still works; if it really is missing: npx skills add kaisers-io/refs"
+      },
+      {
+        "name": "cli-update",
+        "status": "ok",
+        "detail": "this CLI (0.9.0) is npm's latest published release"
       }
     ]
   },
   "warnings": []
 }
 ```
+
+`cli-update` is always present, including when the check is switched off — it then reports `ok`
+with a detail saying which switch did it (`[updates].check`, `REFS_UPDATE_CHECK`, or CI
+detection). It never `fail`s: an unreachable registry is not a fault of your setup, and a `fail`
+would make `refs doctor` exit non-zero over it.
 
 Each check's `status` is `ok`, `warn`, or `fail`. As with `sync` (see
 [Exit codes](#exit-codes) above), the envelope is `{"ok":true,...}` even when a check

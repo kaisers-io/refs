@@ -247,7 +247,8 @@ a unique ref-key suffix, tried in that order.
   "package": {
     "local_path": "/Users/you/.kaisers-io/refs/sources/github.com/example-org/example-monorepo/packages/example-pkg",
     "name": "example-pkg",
-    "path": "packages/example-pkg"
+    "path": "packages/example-pkg",
+    "status": "verified"
   },
   "stale": false
 }
@@ -256,8 +257,18 @@ a unique ref-key suffix, tried in that order.
 `last_fetched_at` is absent for a ref that has never been synced. `package` is `null` when
 the query resolved to the ref itself rather than one of its packages.
 
+`package.status` says whether the location was confirmed, and **you must read it before
+reading any source**: `verified`, `relocated` (it moved; `local_path` is the new place and
+`configured_path` the stale one), `unmaterialized` (no checkout yet), `unverifiable` (could
+not be confirmed; `reason` says why), `ambiguous` (the name exists at several paths, in
+`candidates`), or `missing`. **`local_path` is `null` for `ambiguous` and `missing`** — those
+are the two cases with no known location, so a zero exit does not by itself mean you have a
+usable path. `configured_path`, `candidates` and `reason` appear only where they apply.
+`INVESTIGATE.md` §1 has what to do for each status.
+
 Exit codes: `2` (matches more than one ref/package), `3` (looks like a git url but is not
-a supported form), `4` (no match — the ref isn't tracked; see `ADD.md`).
+a supported form), `4` (no match — the ref isn't tracked; see `ADD.md`). All six `status`
+values exit `0`: the ref resolved, and only the package's location inside it is in question.
 
 ## `refs show <ref>`
 

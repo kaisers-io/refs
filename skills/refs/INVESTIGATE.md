@@ -76,6 +76,9 @@ is what tells you whether the path is trustworthy:
   is `null`. Do not guess a path. Report it, and offer to investigate what happened
   upstream — `git log --diff-filter=D -- <configured-path>` usually names the commit that
   removed or renamed it.
+- **no `status` field at all** — the installed CLI predates verification. The path is the
+  configured one and nothing checked it; proceed, but treat it as unverified, and mention
+  that upgrading (`npm i -g @kaisers-io/refs@latest`) would let refs confirm it.
 
 **`refs list --json` is the fallback, not the first step.** Reach for it only
 when the question is too fuzzy for `resolve` to match (e.g. "the caching library
