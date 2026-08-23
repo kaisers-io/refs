@@ -19,15 +19,15 @@
     "refs": "pnpm --filter @kaisers-io/refs build && node packages/cli/bin/refs.mjs"
   },
   "devDependencies": {
-    "@tsconfig/node24": "24.0.4",
+    "@tsconfig/node24": "24.0.5",
     "@tsconfig/strictest": "2.0.8",
     "@types/node": "24.13.3",
-    "@vitest/coverage-v8": "4.1.10",
-    "oxfmt": "0.63.0",
-    "oxlint": "1.78.0",
+    "@vitest/coverage-v8": "4.1.11",
+    "oxfmt": "0.64.0",
+    "oxlint": "1.79.0",
     "tsdown": "0.22.14",
     "typescript": "7.0.2",
-    "vite": "8.2.1",
-    "vitest": "4.1.10"
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
   }
 }
