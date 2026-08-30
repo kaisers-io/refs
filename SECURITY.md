@@ -62,14 +62,13 @@ dependency is a real residual risk and prose in a skill does not remove it. What
 is narrower: `refs` never runs a checkout's own code (the `core.hooksPath` note above), and it never
 reads checkout content as configuration.
 
-Automated skill scanners flag this shape. Snyk Agent Scan reports it against the skill on every run,
-filing it from run to run as either `W011` (*exposure to untrusted third-party content*) or `W012`
-(*unverifiable external dependency*) — two codes for one observation: refs clones the repository it
-was pointed at and reads it. That is accurate, and it is the feature rather than a defect. Clearing
-it would mean either not fetching repositories at all, or saying less plainly what refs does with
-them; the second is worse than the finding.
+Automated skill scanners flag this shape. Snyk Agent Scan reports it against the skill on every run
+as `third_party_content_exposure`: refs clones the repository it was pointed at and reads it. That is
+accurate, and it is the feature rather than a defect. Clearing it would mean either not fetching
+repositories at all, or saying less plainly what refs does with them; the second is worse than the
+finding.
 
-Those two codes are what `.github/workflows/skill-audit.yml` waives, and the only ones: every other
-code fails the job. It runs on same-repo pull requests touching the skill and again on the push to
-`main`, since the analysis needs a token and forked pull requests get no secrets. What it must never
-produce is a skill edited into something untrue to clear a finding.
+That risk key is what `.github/workflows/skill-audit.yml` waives, and the only one: every other risk
+or scanner failure fails the job. It runs on same-repo pull requests touching the skill and again on
+the push to `main`, since the analysis needs a token and forked pull requests get no secrets. What it
+must never produce is a skill edited into something untrue to clear a finding.

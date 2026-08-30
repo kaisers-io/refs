@@ -3,7 +3,7 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "packageManager": "pnpm@11.21.0",
+  "packageManager": "pnpm@11.24.0",
   "engines": { "node": ">=24.2", "pnpm": ">=11" },
   "scripts": {
     "lint": "oxlint",
@@ -15,19 +15,19 @@
     "build": "pnpm -r run build",
     "check": "pnpm lint && pnpm fmt:check && pnpm typecheck && pnpm test",
     "versions": "node scripts/versions.mjs",
-    "skill:audit": "uvx snyk-agent-scan@0.5.17 scan --skills --ci --dangerously-run-mcp-servers --ignore-issues-codes W011,W012 skills",
+    "skill:audit": "uvx snyk-agent-scan@0.6.0 scan --skills --ci --dangerously-run-mcp-servers --ignore-risks third_party_content_exposure skills",
     "refs": "pnpm --filter @kaisers-io/refs build && node packages/cli/bin/refs.mjs"
   },
   "devDependencies": {
-    "@tsconfig/node24": "24.0.4",
+    "@tsconfig/node24": "24.0.5",
     "@tsconfig/strictest": "2.0.8",
     "@types/node": "24.13.3",
-    "@vitest/coverage-v8": "4.1.10",
-    "oxfmt": "0.63.0",
-    "oxlint": "1.78.0",
+    "@vitest/coverage-v8": "4.1.11",
+    "oxfmt": "0.65.0",
+    "oxlint": "1.80.0",
     "tsdown": "0.22.14",
     "typescript": "7.0.2",
-    "vite": "8.2.1",
-    "vitest": "4.1.10"
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
   }
 }

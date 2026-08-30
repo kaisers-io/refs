@@ -61,11 +61,10 @@ jobs:
       #                                 answer the per-server consent prompt. It starts every stdio
       #                                 MCP server in the scanned tree, and is inert only because
       #                                 the target holds skills and no MCP config.
-      #   --ignore-issues-codes         W011 "exposure to untrusted third-party content" and W012
-      #                                 "unverifiable external dependency" — one observation about
-      #                                 what refs does, which the scanner files under either code
-      #                                 from run to run. Argued in SECURITY.md. These two are the
-      #                                 whole waiver; every other code, known or new, fails the job.
+      #   --ignore-risks                third_party_content_exposure — the scanner's risk name for
+      #                                 the accurate observation that refs reads source selected by
+      #                                 the user. Argued in SECURITY.md. This is the whole waiver;
+      #                                 every other risk or failure, known or new, fails the job.
       # The target is `skills/` rather than `skills/refs/` because discovery is one level deep
       # (`<path>/<name>/SKILL.md`), so the parent is the narrowest path that still finds everything.
       #
