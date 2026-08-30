@@ -7,7 +7,7 @@ useful thing you can do before writing code is open an issue and describe the pr
 
 - **Node.js `>=24.2`** is the supported floor for the published CLI, verified in CI against the
   built bundle rather than only the source.
-- **Node 24.12** for development (see `.node-version`). The bundler needs a newer interpreter than
+- **Node 24.20** for development (see `.node-version`). The bundler needs a newer interpreter than
   the floor, so CI builds on the pin and then re-runs the checks on the floor.
 - **pnpm 11 or newer** (`corepack enable` picks up the pinned version automatically). The
   published CLI has no pnpm requirement of its own.
@@ -57,7 +57,7 @@ pnpm skill:audit           # Snyk Agent Scan against skills/
 
 It needs [uv](https://docs.astral.sh/uv/getting-started/installation/) and a `SNYK_TOKEN` from a
 free Snyk account, because the analysis runs server-side. `.github/workflows/skill-audit.yml`
-documents every flag it passes and the one issue code that is waived.
+documents every flag it passes and the one risk that is waived.
 
 For a faster inner loop, run `pnpm dev` inside `packages/cli` and call the stub directly. From
 that directory it is `node bin/refs.mjs <args>`; from the repository root,
