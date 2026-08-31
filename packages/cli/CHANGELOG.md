@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A lock is no longer taken away from a holder that is still working. Locks were judged by a fixed
+  ten-minute age: past it, a waiter treated the lock as abandoned and stole it even when its owner
+  was demonstrably alive and mid-operation. Since the per-ref lock is held across a whole clone or
+  fetch, any repository large enough to take ten minutes could end up with two processes running
+  `checkout -B` / `reset --hard` / `clean -fd` against the same directory.
+
+  A holder now renews a lease while it works, so a lock is abandoned when its process is definitely
+  gone **or** its lease has expired — never merely because the work took a long time. "The pid still
+  exists" does not override an expired lease, which is what keeps a recycled pid from stranding a
+  lock forever.
+
+  The same constant was also too long at the other end: a crashed `sync` or `add` left its lock
+  behind and blocked the ref for the full ten minutes. An abandoned lock is now reclaimable after
+  two minutes rather than ten.
+
+  A lock written by an older CLI carries no lease and is still judged by the ten-minute rule it was
+  written under, so upgrading never dispossesses a running older process. The reverse does not hold:
+  an older CLI reads no lease, so it can still take a lock from a live current holder once ten
+  minutes pass. Holds longer than that during a rolling upgrade are not protected.
+
+### Changed
+
+- **An operation that ran without the lock it asked for now fails instead of reporting success.**
+  A lock can still be lost while its holder works — a stolen lock is detected by the next renewal,
+  or by release finding a foreign token. Previously the callback's result was returned as if
+  nothing had happened. It is now reported as a `conflict` (exit code 5), because the work ran
+  without the mutual exclusion it requested and its result is not trustworthy. An operation that
+  failed on its own keeps precedence: its own error is what the caller sees.
+
 ## [0.10.0] - 2026-08-13
 
 ### Added

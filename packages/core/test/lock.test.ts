@@ -15,7 +15,8 @@ import { join } from 'node:path';
 import { withLock } from '../src/lock.ts';
 
 const HOLD_MS = 50;
-// Comfortably past the implementation's 10-minute stale threshold.
+// Comfortably past the legacy 10-minute budget, which is what a lock carrying no lease sidecar is
+// still judged by.
 const STALE_AGE_MS = 660_000;
 // Far enough ahead that `isClaimStale`'s `Date.now() - mtime` can never reach its window.
 const CLAIM_FUTURE_MTIME_MS = 3_600_000;
@@ -187,14 +188,14 @@ describe('withLock timeout on an unstealable stale lock', () => {
 });
 
 describe('withLock release ownership', () => {
-  it('does not remove the lock on release when its token was stolen mid-hold', async () => {
+  it('rejects and leaves the foreign lock alone when its token was stolen mid-hold', async () => {
     expect.hasAssertions();
     const home = makeHome();
     const lockPath = join(home.locksDir, 'home');
     const metaPath = join(lockPath, 'meta.json');
 
     let sawSimulatedTheft = false;
-    await withLock(home, 'home', () => {
+    const held = withLock(home, 'home', () => {
       // Simulate a concurrent steal: another process renamed our lock away, rm'd the tombstone,
       // Re-mkdir'd fresh, and wrote its own token — all while we still (wrongly) think we hold it.
       // eslint-disable-next-line node/no-sync -- test simulates a concurrent steal mid-hold
@@ -206,13 +207,15 @@ describe('withLock release ownership', () => {
       return Promise.resolve();
     });
 
+    // The callback ran without the mutual exclusion it asked for, so its success is not
+    // trustworthy — release detects the foreign token and reports it rather than staying silent.
+    // A theft can land after the last heartbeat, so release is the backstop the heartbeat cannot be.
+    await expect(held).rejects.toThrow(/was lost while the operation was running/u);
     expect(sawSimulatedTheft).toBe(true);
-    // Release must have refused to remove the (now-foreign) lock dir since the token no longer
-    // Matched this acquisition's token.
+    // Release must still have refused to REMOVE the (now-foreign) lock dir, since the token no
+    // longer matched this acquisition's token.
     // eslint-disable-next-line node/no-sync -- test assertion, sync is fine
-    expect(existsSync(lockPath)).toBe(true);
-    // eslint-disable-next-line node/no-sync -- test assertion, sync is fine
-    expect(existsSync(metaPath)).toBe(true);
+    expect([existsSync(lockPath), existsSync(metaPath)]).toStrictEqual([true, true]);
 
     // Manual cleanup — our fake "new holder" never releases on its own.
     // eslint-disable-next-line node/no-sync -- test cleanup, sync is fine
