@@ -35,37 +35,64 @@ const VARIABLE_LINE = /^(?<name>[A-Za-z][A-Za-z0-9-]*)\s*(?:=\s*(?<value>.*))?$/
 // The only escapes git defines inside a config value. Anything else is a malformed file.
 // eslint-disable-next-line id-length -- keys are the literal escape characters git defines (b/n/t)
 const ESCAPES: Record<string, string> = { '"': '"', '\\': '\\', b: '\b', n: '\n', t: '\t' };
-const LAST = -1;
-const PAIR = 2;
+const CRLF = 2;
 
-/** How many backslashes a line ends with. An ODD count means the last one escapes the newline and
- * the line continues; an even count means they are literal backslashes and the line does not. */
-const trailingBackslashes = (line: string): number => {
-  let count = 0;
-  while (line.at(LAST - count) === '\\') {
-    count += 1;
-  }
-  return count;
-};
-
-/** Joins a line whose newline is escaped with the one that follows, which git treats as one logical
- * line. Done before anything else, so a continued value cannot be mistaken for two statements. */
-const joinContinuations = (text: string): string[] => {
-  const joined: string[] = [];
-  for (const raw of text.split('\n')) {
-    const line = raw.replace(/\r$/u, '');
-    const previous = joined.at(LAST);
-    if (previous !== undefined && trailingBackslashes(previous) % PAIR === 1) {
-      joined[joined.length - 1] = previous.slice(0, LAST) + line;
+/** Splits `text` into git's LOGICAL lines, honouring the one thing a lexical split cannot: whether
+ * a trailing backslash is actually a continuation.
+ *
+ * It is not one inside a comment. Git reads
+ *
+ *     hooksPath = /expected # note \
+ *     hooksPath = /attacker
+ *
+ * as two assignments and resolves the setting to `/attacker`. Joining first and stripping the
+ * comment afterwards would see only `/expected` — hiding both the value git actually uses and the
+ * duplicate that would otherwise fail the read closed. A config could then present the expected
+ * marker and origin while git identified the repository as something else entirely.
+ *
+ * Nor is a backslash a continuation when it is itself escaped: `\\` at end of line is a literal
+ * backslash. Both cases need the quote/comment/escape state carried across the scan, which is why
+ * this walks characters rather than lines. */
+// eslint-disable-next-line max-statements -- a scanner whose branches all depend on the quote/comment/escape state the others maintain; splitting it would thread that state through helpers and read worse than the single pass it is
+const logicalLines = function* logicalLines(text: string): Generator<string> {
+  let current = '';
+  let quoted = false;
+  let commented = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === '\n') {
+      yield current;
+      current = '';
+      quoted = false;
+      commented = false;
+    } else if (char === '\r') {
+      // Swallowed: CRLF files end their logical lines at the \n above.
+    } else if (commented) {
+      current += char;
+    } else if (char === '\\') {
+      const next = text[index + 1];
+      if (next === '\n' || (next === '\r' && text[index + CRLF] === '\n')) {
+        // A real continuation: consume the newline and keep building the same logical line.
+        index += next === '\r' ? CRLF : 1;
+      } else {
+        // An escape. Both characters belong to the value, and neither can start a comment.
+        current += char + (next ?? '');
+        index += 1;
+      }
     } else {
-      joined.push(line);
+      if (char === '"') {
+        quoted = !quoted;
+      } else if (!quoted && (char === '#' || char === ';')) {
+        commented = true;
+      }
+      current += char;
     }
   }
-  return joined;
+  if (current !== '') {
+    yield current;
+  }
 };
 
-/** Strips comments and resolves escapes in one pass, because whether a `#` starts a comment depends
- * on whether it is inside quotes — which a separate comment-stripping step could not know. */
 const MALFORMED = Symbol('malformed git config');
 type Decoded = string | typeof MALFORMED;
 
@@ -219,7 +246,7 @@ const readGitConfigValues = (
 ): ReadonlyMap<string, string[]> | undefined => {
   const found = new Map<string, string[]>();
   let section = NO_SECTION;
-  for (const line of joinContinuations(text)) {
+  for (const line of logicalLines(text)) {
     const trimmed = line.trim();
     const next = isSkippable(trimmed)
       ? section

@@ -138,6 +138,18 @@ describe('keeping quoted whitespace, which git treats as significant', () => {
     expect(found.get(MARKER)).toStrictEqual(['/hooks']);
   });
 
+  it('does not continue a line whose trailing backslash is inside a comment', () => {
+    expect.hasAssertions();
+    // Verified against `git config --file --get-all`: git reads both assignments here and resolves
+    // the setting to the SECOND. Joining the lines before stripping the comment would show only
+    // `/expected` — hiding both the value git actually uses and the duplicate that makes the read
+    // fail closed. A config could then present the expected marker while git identified the
+    // repository as something else.
+    const found = read('[core]\n\thooksPath = /expected # note \\\n\thooksPath = /attacker\n');
+
+    expect(found.get(MARKER)).toStrictEqual(['/expected', '/attacker']);
+  });
+
   it('reads a line ending in an escaped backslash as a value, not a continuation', () => {
     expect.hasAssertions();
     // `\\` at end of line is a literal backslash to git; only an ODD number of trailing
