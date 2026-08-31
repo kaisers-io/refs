@@ -52,6 +52,14 @@ const REF_LOCK_ESCAPE_PREFIX = `${REF_LOCK_PREFIX}_`;
  * separators. Nothing decodes these names — `doctor`'s `locks` check prints them verbatim — so the
  * grammar is documented here rather than implemented twice.
  *
+ * Two limits this does NOT close, both older than the encoding. The name becomes a single
+ * directory component under `locksDir`, so the whole key has to fit one component's byte limit
+ * (255 on the usual filesystems) — the escaped form spends one more byte per `/` and per `_`, plus
+ * the namespace byte, so it reaches that ceiling marginally sooner than the old scheme did. And
+ * `zRefKey` admits path characters `LOCK_NAME_PATTERN` rejects (`@` and a space among them), which
+ * makes `withLock` reject the derived name outright. Neither is reachable from a key `refs add`
+ * produces from a forge url; both are tracked separately.
+ *
  * Shared by the dry-run clone step and the finalize identity/head checks so both ever use the
  * exact same name for a given ref. */
 const refLockName = (key: RefKey): string => {

@@ -45,9 +45,12 @@ describe('refLockName: names refs has already written', () => {
   });
 });
 
-describe('refLockName: every name is a legal lock name', () => {
-  // The allowlist `withLock` enforces (`LOCK_NAME_PATTERN` in core's `lock.ts`). A name that fails
-  // it turns every locking command for that ref into a validation error.
+describe('refLockName: the encoding itself introduces nothing the allowlist rejects', () => {
+  // The allowlist `withLock` enforces (`LOCK_NAME_PATTERN` in core's `lock.ts`). Deliberately NOT
+  // titled "every name is legal": `zRefKey` admits path characters the allowlist rejects (`@`, a
+  // space), which `refLockName` passes straight through, so that stronger claim is false and
+  // predates this encoding. What is checked here is narrower and is what this change owns — the
+  // namespace prefix and the two escape codes are themselves legal.
   const LOCK_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u;
 
   it('accepts the escaped form as well as the plain one', () => {

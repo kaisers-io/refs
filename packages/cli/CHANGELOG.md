@@ -22,10 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   because a ref key always starts with `[a-z0-9]` and so a plain name never begins `ref._`.
 
   **One caveat if you run refs concurrently across an upgrade.** For a ref whose key contains `_`,
-  an 0.11.0 process and a newer one derive different lock names, so for the length of that overlap
-  they would not exclude each other on that ref. The window is a mid-upgrade concurrent run on the
-  same refs home; if that is a situation you can be in, let running operations finish before
-  upgrading.
+  a process from any earlier release — the old scheme dates to 0.1.1 — derives a different lock
+  name from a new one, so for the length of that overlap the two would not exclude each other on
+  that ref. The window is a mid-upgrade concurrent run on the same refs home; if that is a
+  situation you can be in, let running operations finish before upgrading.
 
 ## [0.11.0] - 2026-08-31
 
