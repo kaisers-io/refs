@@ -80,11 +80,14 @@ const gitDirVerdict = async (dest: string): Promise<CheckoutInfo | undefined> =>
     }
     return undefined;
   } catch (error) {
-    // The containment check above already established the checkout directory itself resolves, so a
-    // failure here is about `.git` specifically. Only ENOENT/ENOTDIR mean it is not there; a
-    // permissions or I/O fault means we could not tell, which is not the same claim.
+    // Containment already established that `dest` itself resolves, so reaching here means the
+    // DIRECTORY exists and `.git` does not. That is not a missing checkout — it is an occupied
+    // path, and calling it `missing` would both let package verification run against whatever it
+    // contains and invite a clone into a directory that is not empty.
     const code = errorCode(error);
-    return code !== undefined && NOT_THERE.has(code) ? missing : unverifiable('git_unreadable');
+    return code !== undefined && NOT_THERE.has(code)
+      ? unmanaged('no_git')
+      : unverifiable('git_unreadable');
   }
 };
 

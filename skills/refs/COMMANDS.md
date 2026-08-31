@@ -288,8 +288,8 @@ Package statuses (`verified`, `relocated`, `unmaterialized`, `unverifiable`, `am
 `missing`) are unchanged; see `INVESTIGATE.md` §1 for how to act on each.
 
 Exit codes: `0`, `2` (ambiguous package name, or `--project` on a query that names a ref rather
-than a package), `3` (a `--sync-if-stale` that could not run, or a sync that failed), `4` (no
-match).
+than a package), `3` (a `--sync-if-stale` refused because the checkout is not this ref's), `4` (no
+match), `5` (a `--sync-if-stale` that could not take the ref's lock, or lost it mid-operation).
 
 ## `refs show <ref>`
 

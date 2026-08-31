@@ -28,8 +28,9 @@
 
 // Git allows only alphanumerics, `-` and `.` in a section name, and only alphanumerics and `-`
 // in a variable name — notably no underscore, which `\w` would have admitted.
+// A trailing comment after the closing bracket is valid: `[core] # local settings`.
 const SECTION_LINE =
-  /^\[\s*(?<section>[A-Za-z0-9.-]+)\s*(?:"(?<subsection>(?:[^"\\]|\\.)*)")?\s*\]$/u;
+  /^\[\s*(?<section>[A-Za-z0-9.-]+)\s*(?:"(?<subsection>(?:[^"\\]|\\.)*)")?\s*\]\s*(?:[#;].*)?$/u;
 const VARIABLE_LINE = /^(?<name>[A-Za-z][A-Za-z0-9-]*)\s*(?:=\s*(?<value>.*))?$/u;
 // The only escapes git defines inside a config value. Anything else is a malformed file.
 // eslint-disable-next-line id-length -- keys are the literal escape characters git defines (b/n/t)

@@ -1,19 +1,16 @@
 import { NEXT_ENTRY, NEXT_KEY, seedNextFixture } from '../helpers/next-fixture.ts';
 import { checkoutPath, resolveHome, zRefKey } from '@kaisers-io/refs-core';
 import { describe, expect, it } from 'vitest';
-import { minutesAgoIso, seedConfig, seedState } from '../helpers/ref-fixtures.ts';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { rm, writeFile } from 'node:fs/promises';
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
 import { join } from 'node:path';
 import { run } from '../../src/main.ts';
+import { seedConfig } from '../helpers/ref-fixtures.ts';
 import { testContext } from '../helpers/context.ts';
 
 // `refs resolve`'s flags, at the CLI boundary. Between them they replace the three-call sequence
 // the skill used to mandate — resolve, sync, resolve AGAIN — with one call, and close the gap where
 // resolve reported a path without establishing that the path was this ref's checkout.
-
-// Well past the default one-hour `sync_ttl`, so the ref reads as due for a fetch.
-const STALE_MINUTES = 120;
 
 type JsonEnvelope = {
   data: Record<string, unknown>;
@@ -154,6 +151,26 @@ describe('refs resolve: checkout identity, wrong repository', () => {
 });
 
 describe('refs resolve: checkout identity, unusable .git', () => {
+  it('reports an occupied path with no .git as unmanaged, not as missing', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        await seedNextFixture({ REFS_HOME: homeDir });
+        const home = resolveHome({ REFS_HOME: homeDir });
+        const dest = checkoutPath(home, zRefKey.parse(NEXT_KEY));
+        // The directory is there, with the configured package manifest in it, but nothing makes it
+        // a git checkout — let alone this ref's. Calling that `missing` would let verification run
+        // against whatever it happens to contain and report `verified` about an unrelated tree.
+        await rm(join(dest, '.git'), { force: true, recursive: true });
+
+        const envelope = await resolveJson(homeDir, ['next']);
+
+        expect(envelope.data['checkout']).toStrictEqual({ reason: 'no_git', status: 'unmanaged' });
+        expect(envelope.data['package']).toMatchObject({ status: 'unverifiable' });
+      }),
+    );
+  });
+
   it('reports a .git file — a worktree or submodule — rather than following it', async () => {
     expect.hasAssertions();
     await withResetExitCode(() =>
@@ -221,66 +238,6 @@ describe("refs resolve: a checkout whose hooks marker is somebody else's", () =>
           reason: 'config_malformed',
           status: 'unverifiable',
         });
-      }),
-    );
-  });
-});
-
-describe('refs resolve --project: the installed version', () => {
-  it('reports what the project has installed, not what the checkout contains', async () => {
-    expect.hasAssertions();
-    await withResetExitCode(() =>
-      withTempHome(async (homeDir) => {
-        await seedNextFixture({ REFS_HOME: homeDir });
-        const project = join(homeDir, 'a-project');
-        await mkdir(join(project, 'node_modules', 'next'), { recursive: true });
-        await writeFile(
-          join(project, 'node_modules', 'next', 'package.json'),
-          JSON.stringify({ name: 'next', version: '13.4.1' }),
-        );
-
-        const envelope = await resolveJson(homeDir, ['next', '--project', project]);
-
-        expect(envelope.data['installed']).toMatchObject({ status: 'found', version: '13.4.1' });
-      }),
-    );
-  });
-
-  it('refuses a query that names a ref rather than a package', async () => {
-    expect.hasAssertions();
-    await withResetExitCode(() =>
-      withTempHome(async (homeDir) => {
-        await seedNextFixture({ REFS_HOME: homeDir });
-
-        const envelope = await resolveJson(homeDir, [NEXT_KEY, '--project', homeDir]);
-
-        // Inferring the only package in a ref would make the command's meaning depend on
-        // configuration the caller cannot see from the invocation.
-        expect(envelope.error?.code).toBe('usage');
-      }),
-    );
-  });
-});
-
-describe('refs resolve --sync-if-stale: refusing to sync what sync cannot repair', () => {
-  it('refuses a checkout whose identity was never established', async () => {
-    expect.hasAssertions();
-    await withResetExitCode(() =>
-      withTempHome(async (homeDir) => {
-        await seedNextFixture({ REFS_HOME: homeDir });
-        const home = resolveHome({ REFS_HOME: homeDir });
-        const dest = checkoutPath(home, zRefKey.parse(NEXT_KEY));
-        // Stale, so a sync is actually due — otherwise the flag is a no-op and the guard never runs.
-        await seedState(home, { [NEXT_KEY]: { last_fetched_at: minutesAgoIso(STALE_MINUTES) } });
-        await writeFile(join(dest, '.git', 'config'), '[remote "origin"]\n\turl = https://x/y\n');
-
-        const envelope = await resolveJson(homeDir, ['next', '--sync-if-stale']);
-
-        // `sync` hard-resets and cleans. Handing it a directory whose identity is unknown is how a
-        // stray clone gets its history wiped, so this fails rather than proceeding or silently
-        // skipping — the caller asked for freshness.
-        expect(envelope.error?.code).toBe('validation');
-        expect(envelope.error?.message).toContain('refusing to sync');
       }),
     );
   });

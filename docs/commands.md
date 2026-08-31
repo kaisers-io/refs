@@ -592,7 +592,7 @@ is the path really this ref's checkout? `add` and `sync` have always checked thi
 | `checkout.status` | Meaning |
 | --- | --- |
 | `managed` | The refs marker and the configured origin both match. Proceed. |
-| `missing` | Nothing is there. `missing: true` is exactly this case, kept for callers that predate the field. |
+| `missing` | The directory itself does not exist. `missing: true` is exactly this case, kept for callers that predate the field. A directory that exists without a `.git` is `unmanaged` (`no_git`), not missing — it is an occupied path, and treating it as absent would let verification run against whatever it holds. |
 | `unmanaged` | Something is there that is not this ref's checkout. `reason` is a stable slug: `no_refs_marker`, `origin_mismatch`, `no_origin`, `git_is_file`, `git_is_symlink`, `outside_sources`. |
 | `unverifiable` | The path could not be inspected: `path_unreadable`, `git_unreadable`, `config_unreadable`, `config_malformed`, `duplicate_config_values`. |
 
@@ -613,7 +613,7 @@ straight out of `.git/config`; `resolve` spawns no subprocess.
 
 | `installed.status` | Meaning |
 | --- | --- |
-| `found` | `version` plus the manifest's own `name` — which differs from the query when the dependency was installed under an alias — and `package_json`. |
+| `found` | `version` plus the manifest's own `name` and `package_json`. The name differs from the query when the installed slot is itself an alias (`node_modules/x` whose manifest says `y`). An alias declared the other way round — `"my-zod": "npm:zod@3"`, where the slot is `node_modules/my-zod` — is **not** discovered, since nothing reads the project's own manifest; such a query reports `not_materialized`. |
 | `not_materialized` | Nothing installed under that name anywhere up the tree. |
 | `unsupported_layout` | Yarn Plug'n'Play (`reason: "yarn_pnp"`). `.pnp.cjs` is detected, never loaded: reading a version out of it would mean executing project code. |
 | `unverifiable` | An installation slot exists but its manifest is unusable (`manifest_unreadable`, `manifest_has_no_version`), the slot itself could not be inspected (`slot_unreadable`), or the package name cannot safely become a path (`unsupported_package_name`). |
@@ -631,7 +631,8 @@ checkout produces no `sync` field at all.
 
 A failing sync fails the whole command with the ordinary error envelope, rather than returning a
 success envelope containing a stale path: a caller that asked for freshness and did not get it is
-being handed something it did not ask for.
+being handed something it did not ask for. Exit `3` when the sync was refused because the checkout
+is not this ref's, and `5` when the ref's lock could not be taken or was lost mid-operation.
 
 ```bash
 refs resolve zod/mini --json

@@ -53,6 +53,15 @@ describe('reading a value git would honour', () => {
     expect(found.get(MARKER)).toStrictEqual(['/ho#oks']);
   });
 
+  it('accepts a comment after a section header, which git allows', () => {
+    expect.hasAssertions();
+    // Rejecting this would turn a perfectly valid managed checkout into `unverifiable`, and
+    // `--sync-if-stale` would then refuse to update it.
+    const found = read('[core] # local settings\n\thooksPath = /hooks\n');
+
+    expect(found.get(MARKER)).toStrictEqual(['/hooks']);
+  });
+
   it('joins a value continued onto the next line', () => {
     expect.hasAssertions();
     const found = read('[core]\n\thooksPath = /ho\\\noks\n');
