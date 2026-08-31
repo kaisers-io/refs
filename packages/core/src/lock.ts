@@ -72,6 +72,24 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 // the intent unmistakable at the one call site that guards every destructive fs op below.
 const LOCK_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u;
 
+// The single-component byte limit on ext4, APFS and NTFS alike. A lock name becomes one directory
+// entry under `locksDir`, so this is the ceiling everything below has to live under.
+const FS_NAME_LIMIT_BYTES = 255;
+// The steal protocol derives sibling entries from the lock name (`lock-steal.ts`): a claim adds
+// `.steal-claim`, and a tombstone adds `.steal.` plus a 36-character uuid. The tombstone is the
+// longer of the two, and it is the one that must not fail: a name that can be CREATED but not
+// RENAMED leaves an abandoned lock nothing can reclaim, and the ref stays blocked until someone
+// deletes the directory by hand.
+// `randomUUID()`'s canonical form: 32 hex digits and 4 hyphens.
+const UUID_LENGTH = 36;
+const STEAL_SUFFIX_RESERVE_BYTES = '.steal.'.length + UUID_LENGTH;
+
+/** The longest a lock name may be. Callers deriving a name from something unbounded — `refLockName`
+ * in the CLI, from a ref key — must keep within it, INCLUDING the room the steal protocol needs
+ * for its own sibling entries. Exported so that budget cannot drift from the suffixes it is
+ * budgeting for. */
+const MAX_LOCK_NAME_BYTES = FS_NAME_LIMIT_BYTES - STEAL_SUFFIX_RESERVE_BYTES;
+
 // Writes this acquisition's meta.json, reporting `'retry'` instead of throwing on ENOENT. Under
 // the claim-gated steal design (module header) a fresh, meta-less dir is protected by
 // `MISSING_META_GRACE_MS`, so this should not happen in practice; if it somehow does, the caller
@@ -225,8 +243,8 @@ const validateLockName = (name: string): void => {
  * Runs `fn` while holding the named advisory lock, always releasing it afterwards (also on throw).
  * Waits up to `opts.timeoutMs` (default 10s) for the lock, stealing it if abandoned; on timeout
  * rejects with a conflictError (exit code 5). `name` must match the strict allowlist enforced by
- * `validateLockName` — ref-key callers replace `/` with `_` before calling (e.g.
- * `ref.github.com_owner_repo`).
+ * `validateLockName` — ref-key callers encode the key first (`refLockName` in the CLI, e.g.
+ * `ref.github.com_owner_repo`), since `/` is not in the allowlist.
  *
  * The lock is held for as long as `fn` runs, however long that is: a heartbeat renews the lease
  * throughout (module header). If ownership is nevertheless lost — observed by the heartbeat, or by
@@ -253,4 +271,4 @@ const withLock = async <TResult>(
   return finishHold(ctx, token, heartbeat, await settle(fn));
 };
 
-export { withLock };
+export { MAX_LOCK_NAME_BYTES, withLock };
