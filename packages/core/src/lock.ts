@@ -225,8 +225,8 @@ const validateLockName = (name: string): void => {
  * Runs `fn` while holding the named advisory lock, always releasing it afterwards (also on throw).
  * Waits up to `opts.timeoutMs` (default 10s) for the lock, stealing it if abandoned; on timeout
  * rejects with a conflictError (exit code 5). `name` must match the strict allowlist enforced by
- * `validateLockName` — ref-key callers replace `/` with `_` before calling (e.g.
- * `ref.github.com_owner_repo`).
+ * `validateLockName` — ref-key callers encode the key first (`refLockName` in the CLI, e.g.
+ * `ref.github.com_owner_repo`), since `/` is not in the allowlist.
  *
  * The lock is held for as long as `fn` runs, however long that is: a heartbeat renews the lease
  * throughout (module header). If ownership is nevertheless lost — observed by the heartbeat, or by

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Two unrelated refs could share one lock.** The per-ref lock name replaced `/` with `_`, and `_`
+  is legal inside a ref key — so `github.com/acme_tools/widget` and `github.com/acme/tools_widget`
+  both derived `ref.github.com_acme_tools_widget`. The two then serialized against each other:
+  `sync` fans out four refs at a time and the loser failed on a lock conflict after the timeout,
+  `resolve`'s verification could block on a sync of a ref it has nothing to do with, and `doctor`'s
+  `config-drift` check reported the wrong ref as busy.
+
+  The name is now injective. A key containing no `_` encodes exactly as before, so every lock name
+  refs has already written for such a key is unchanged; a key containing one moves into an escaped
+  form under `ref._`, where `_` becomes `_u` and `/` becomes `_s`. The two forms cannot collide,
+  because a ref key always starts with `[a-z0-9]` and so a plain name never begins `ref._`.
+
+  **One caveat if you run refs concurrently across an upgrade.** For a ref whose key contains `_`,
+  an 0.11.0 process and a newer one derive different lock names, so for the length of that overlap
+  they would not exclude each other on that ref. The window is a mid-upgrade concurrent run on the
+  same refs home; if that is a situation you can be in, let running operations finish before
+  upgrading.
+
 ## [0.11.0] - 2026-08-31
 
 ### Changed

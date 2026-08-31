@@ -29,10 +29,37 @@ const NPM_PREFIX = 'npm:';
 const REF_LOCK_PREFIX = 'ref.';
 const ALLOW_FILE_URLS_FLAG = '1';
 
-/** Per-ref advisory lock name for `key` — `/` replaced by `_` since lock names are joined verbatim
- * onto `locksDir` (see `lock.ts`'s allowlist). Shared by the dry-run clone step and the finalize
- * identity/head checks so both ever use the exact same name for a given ref. */
-const refLockName = (key: RefKey): string => `${REF_LOCK_PREFIX}${key.replaceAll('/', '_')}`;
+// Escaped-form prefix. `HOST_SEGMENT` makes a ref key start with `[a-z0-9]`, so a plain name can
+// never begin `ref._` — which is what keeps the two forms below disjoint by construction rather
+// than by convention.
+const REF_LOCK_ESCAPE_PREFIX = `${REF_LOCK_PREFIX}_`;
+
+/** Per-ref advisory lock name for `key`. Lock names are joined verbatim onto `locksDir` (see
+ * `lock.ts`'s allowlist), so `/` cannot survive — but `_` is legal inside a ref key, and simply
+ * substituting one for the other is not injective: `acme_tools/widget` and `acme/tools_widget`
+ * both come out as `acme_tools_widget`, and two unrelated refs then serialize against each other.
+ *
+ * Two forms, in a namespace each:
+ *
+ *   - **No `_` in the key** — `/` becomes `_`, exactly as before. The only `_` in the result came
+ *     from a `/`, so this is injective within the form, and every lock name refs has ever written
+ *     for such a key is unchanged.
+ *   - **Otherwise** — `ref._` opens the escaped form, in which `_` becomes `_u` and `/` becomes
+ *     `_s`. Every `_` in the output therefore opens a complete two-character code, which a
+ *     left-to-right scan reads back unambiguously; a literal `_u` in the key encodes as `_uu`.
+ *
+ * The escape must run before the substitution, or the `_`s it writes would themselves be read as
+ * separators. Nothing decodes these names — `doctor`'s `locks` check prints them verbatim — so the
+ * grammar is documented here rather than implemented twice.
+ *
+ * Shared by the dry-run clone step and the finalize identity/head checks so both ever use the
+ * exact same name for a given ref. */
+const refLockName = (key: RefKey): string => {
+  if (!key.includes('_')) {
+    return `${REF_LOCK_PREFIX}${key.replaceAll('/', '_')}`;
+  }
+  return `${REF_LOCK_ESCAPE_PREFIX}${key.replaceAll('_', '_u').replaceAll('/', '_s')}`;
+};
 
 /** Whether `REFS_ALLOW_FILE_URLS=1` is set — the same escape hatch `canonicalizeGitUrl` itself
  * gates its `file:` support on. Threaded through everywhere this module re-derives a repo's

@@ -74,11 +74,11 @@ const buildResult = (lines: readonly string[], checkoutCount: number): CheckResu
   return { detail: lines.join(SEPARATOR), name: CHECK_NAME, status: 'warn' };
 };
 
-/** One ref at a time, never `Promise.all` — the same rule `doctor.ts` applies to its own steps,
- * and here it is load-bearing rather than merely tidy: `refLockName` collapses `/` to `_`, so two
- * legal ref keys can derive one lock name (`acme_tools/widget` and `acme/tools_widget`). Probing
- * concurrently would let a single `doctor` run contend with ITSELF and report a ref as busy on its
- * own account. Each probe is a handful of milliseconds, so serializing costs nothing worth having.
+/** One ref at a time, never `Promise.all` — the same rule `doctor.ts` applies to its own steps.
+ * It was once load-bearing here too, because `refLockName` could derive one lock name from two
+ * legal ref keys and a single `doctor` run could then contend with itself; `refLockName` is
+ * injective since #79, so this is now consistency rather than correctness. Each probe is a handful
+ * of milliseconds, so serializing costs nothing worth having either way.
  *
  * Recursive rather than a loop, mirroring `doctor.ts#runStepsInOrder`: every await stays a plain
  * sequential step, and async recursion does not grow the stack. */
