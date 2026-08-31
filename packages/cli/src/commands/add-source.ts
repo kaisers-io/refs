@@ -1,5 +1,6 @@
 import type { Config, RefKey, RefsHome, Settings } from '@kaisers-io/refs-core';
 import {
+  MAX_LOCK_NAME_BYTES,
   applyGitTransport,
   canonicalizeGitUrl,
   conflictError,
@@ -36,15 +37,13 @@ const ALLOW_FILE_URLS_FLAG = '1';
 // can begin either.
 const REF_LOCK_ESCAPE_PREFIX = `${REF_LOCK_PREFIX}_`;
 const REF_LOCK_DIGEST_PREFIX = `${REF_LOCK_ESCAPE_PREFIX}_`;
-// The single-component byte limit on ext4, APFS and NTFS alike. A lock name is one directory
-// entry under `locksDir`, so this is what it has to fit.
-const MAX_LOCK_NAME_BYTES = 255;
 
 /** The last resort for a key whose readable name does not fit a directory entry. Unreadable, and
  * that is the trade: `doctor`'s `locks` check can no longer show which ref it is, but the
  * alternative is `mkdir` failing with `ENAMETOOLONG` and every locking command for that ref
- * erroring out — which is what the old scheme did past 251 characters, and what escaping would
- * otherwise start doing a few bytes sooner. Reached only by a key of roughly 250 characters,
+ * erroring out — or, worse, succeeding and then failing on the RENAME the steal protocol needs,
+ * which leaves an abandoned lock nothing can reclaim. `MAX_LOCK_NAME_BYTES` (core) is the budget
+ * and already reserves room for that suffix. Reached only by a key of roughly 200 characters,
  * which needs a self-hosted url: no forge allows a path that long. */
 const digestLockName = (key: RefKey): string =>
   `${REF_LOCK_DIGEST_PREFIX}${createHash('sha256').update(key, 'utf8').digest('hex')}`;

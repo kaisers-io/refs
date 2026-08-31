@@ -1,6 +1,6 @@
+import { MAX_LOCK_NAME_BYTES, zRefKey } from '@kaisers-io/refs-core';
 import { describe, expect, it } from 'vitest';
 import { refLockName } from '../../src/commands/add-source.ts';
-import { zRefKey } from '@kaisers-io/refs-core';
 
 // `refLockName` maps a ref key onto a lock name, and that map has to be injective: two refs that
 // derive one name serialize against each other for the length of a clone, and `doctor` then names
@@ -10,6 +10,10 @@ import { zRefKey } from '@kaisers-io/refs-core';
 // wrong); the sweep at the end is what says the property holds rather than that four cases pass.
 
 const nameFor = (key: string): string => refLockName(zRefKey.parse(key));
+
+// What a single directory entry actually holds on ext4, APFS and NTFS. `MAX_LOCK_NAME_BYTES` is
+// this minus what the steal protocol needs for its own sibling entries.
+const FS_NAME_LIMIT_BYTES = 255;
 
 describe('refLockName: keys that used to collide', () => {
   it('distinguishes a key whose segment contains "_" from one where "/" sat instead', () => {
@@ -62,12 +66,17 @@ describe('refLockName: the encoding itself introduces nothing the allowlist reje
   });
 });
 
-const MAX_LOCK_NAME_BYTES = 255;
-// Codex's construction during review of this change: a valid key from
-// `https://a.com:1/g/<241-character-repo>`. Its OLD lock name was exactly 255 bytes — it worked —
-// and the escaped form is 259, so escaping alone would have broken a ref that used to be fine.
+// A valid key from `https://a.com:1/g/<241-character-repo>` — the case cross-model review
+// constructed. Its OLD lock name was exactly 255 bytes, the filesystem ceiling, so it worked;
+// the escaped form is 259, so escaping alone would have broken a ref that used to be fine.
 const LONG_REPO_LENGTH = 241;
 const AT_THE_LIMIT_KEY = `a.com_1/g/${'r'.repeat(LONG_REPO_LENGTH)}`;
+
+// The steal protocol renames a lock to `<name>.steal.<uuid>`, so a name that only just fits a
+// directory entry can be CREATED and then not RENAMED — which strands an abandoned lock nothing
+// can reclaim. `MAX_LOCK_NAME_BYTES` is the budget with that suffix already reserved.
+const UUID_LENGTH = 36;
+const STEAL_TOMBSTONE_SUFFIX_BYTES = '.steal.'.length + UUID_LENGTH;
 
 describe('refLockName: names that do not fit a directory entry', () => {
   it('keeps a key whose escaped name would overflow inside the byte limit', () => {
@@ -77,6 +86,16 @@ describe('refLockName: names that do not fit a directory entry', () => {
 
     expect(Buffer.byteLength(name, 'utf8')).toBeLessThanOrEqual(MAX_LOCK_NAME_BYTES);
     expect(name).toMatch(/^ref\.__[0-9a-f]{64}$/u);
+  });
+
+  it('leaves room for the tombstone the steal protocol renames a lock to', () => {
+    expect.hasAssertions();
+
+    const name = nameFor(AT_THE_LIMIT_KEY);
+
+    expect(Buffer.byteLength(name, 'utf8') + STEAL_TOMBSTONE_SUFFIX_BYTES).toBeLessThanOrEqual(
+      FS_NAME_LIMIT_BYTES,
+    );
   });
 
   it('still distinguishes two keys that both overflow', () => {
