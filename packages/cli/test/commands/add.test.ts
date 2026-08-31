@@ -14,6 +14,7 @@ import {
   withResetExitCode,
   withTempHome,
 } from '../helpers/add-support.ts';
+import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { access } from 'node:fs/promises';
 import { createFixtureRepo } from '../helpers/fixture-repo.ts';
 import { resolveAddSource } from '../../src/commands/add-source.ts';
@@ -28,7 +29,6 @@ import type { zProposal } from '@kaisers-io/refs-core';
 // helpers live in `test/helpers/add-support.ts`, split out purely to keep both files under the
 // repo's 300-line oxlint cap and each individual test under its max-statements cap.
 
-const TEST_TIMEOUT_MS = 30_000;
 const TWO_PACKAGES = 2;
 const HTTP_STATUS_OK = 200;
 
@@ -88,7 +88,7 @@ describe('refs add --dry-run', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -112,7 +112,7 @@ describe('refs add --proposal', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 
   it(
@@ -133,7 +133,7 @@ describe('refs add --proposal', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -166,7 +166,7 @@ describe('refs add: conflict on an already-configured ref', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -199,7 +199,7 @@ describe('refs add --description', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 

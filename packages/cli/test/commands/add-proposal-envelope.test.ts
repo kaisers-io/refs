@@ -16,6 +16,7 @@ import {
 import type { CliContext } from '../../src/context.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { ErrorEnvelope } from '../helpers/add-support.ts';
+import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { createFixtureRepo } from '../helpers/fixture-repo.ts';
 import { run } from '../../src/main.ts';
 
@@ -23,8 +24,6 @@ import { run } from '../../src/main.ts';
 // (the pipe workflow `refs add ... --dry-run --json > f.json` then `refs add --proposal f.json`
 // documented in `docs/commands.md`) — split out of `add.test.ts` purely to keep that file under
 // the repo's 300-line oxlint cap.
-
-const TEST_TIMEOUT_MS = 30_000;
 
 type Envelope = {
   data: unknown;
@@ -78,7 +77,7 @@ describe('refs add --proposal: accepts the full dry-run --json envelope (a file)
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -105,7 +104,7 @@ describe('refs add --proposal: accepts the envelope via stdin', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -133,7 +132,7 @@ describe('refs add --proposal: a failed (`ok: false`) envelope', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -166,7 +165,7 @@ describe('refs add --proposal: a hybrid proposal+envelope object', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -193,7 +192,7 @@ describe('refs add --proposal: a bare proposal with a stray `ok: false` key', ()
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -219,6 +218,6 @@ describe('refs add --proposal: an envelope-shaped object without a usable data o
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });

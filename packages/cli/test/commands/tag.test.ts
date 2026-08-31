@@ -2,6 +2,7 @@ import { EXIT, SpawnRunner, checkoutPath, resolveHome, zRefKey } from '@kaisers-
 import { describe, expect, it } from 'vitest';
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
 import type { CliContext } from '../../src/context.ts';
+import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { createFixtureRepo } from '../helpers/fixture-repo.ts';
 import { run } from '../../src/main.ts';
 import { seedConfig } from '../helpers/ref-fixtures.ts';
@@ -15,7 +16,6 @@ import { testContext } from '../helpers/context.ts';
 // fixture in setup — well under 5s alone, but not under the full-workspace parallel `pnpm check`
 // load, so each `it` gets the same generous per-test timeout `add.test.ts`/`sync.test.ts` use for
 // their own real-git cases.
-const TEST_TIMEOUT_MS = 30_000;
 const REF_KEY = 'github.com/acme/widget';
 const PACKAGE_NAME = 'pkg';
 const UNKNOWN_PACKAGE_NAME = 'nope';
@@ -123,7 +123,7 @@ describe('refs tag: ref-level tag_format', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -158,7 +158,7 @@ describe('refs tag: --package override', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -193,7 +193,7 @@ describe('refs tag: --package tag_format inheritance', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -216,7 +216,7 @@ describe('refs tag: missing version', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -247,7 +247,7 @@ describe('refs tag: unknown --package', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -272,7 +272,7 @@ describe('refs tag: git revision syntax in version', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -295,6 +295,6 @@ describe('refs tag: missing checkout', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });

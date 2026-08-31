@@ -20,6 +20,7 @@ import {
   withResetExitCode,
   withTempHome,
 } from '../helpers/add-support.ts';
+import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { join } from 'node:path';
 import { mkdir } from 'node:fs/promises';
 import { run } from '../../src/main.ts';
@@ -35,7 +36,6 @@ import { writePendingProposal } from '../../src/commands/add-dry-run.ts';
 // `test/helpers/add-support.ts`. (The former `--description` monorepo-fallback case now lives in
 // `add-description-required.test.ts` — that fallback was removed; see its own header comment.)
 
-const TEST_TIMEOUT_MS = 30_000;
 const BOGUS_ORIGIN = 'https://example.com/someone/else.git';
 // A `git remote get-url origin` value carrying an embedded credential — the secret-echo case
 // For the origin-mismatch conflict message below.
@@ -79,7 +79,7 @@ describe('refs add --proposal: corrupt checkout guard', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -102,7 +102,7 @@ describe('refs add: checkout identity verification', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 
   it(
@@ -124,7 +124,7 @@ describe('refs add: checkout identity verification', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -152,7 +152,7 @@ describe('refs add: origin-mismatch message redacts embedded credentials', () =>
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -180,7 +180,7 @@ describe('refs add --dry-run: pending-proposal race guard', () => {
         ).rejects.toThrow(/already exists/u);
       });
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -209,7 +209,7 @@ describe('refs add --dry-run: repeated on the same source', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -249,6 +249,6 @@ describe('refs add: case-collision guard', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });

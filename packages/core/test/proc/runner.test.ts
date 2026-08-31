@@ -6,6 +6,7 @@ import {
 } from '../../src/proc/runner.ts';
 import { access, mkdtemp } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
+import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { setTimeout as delay } from 'node:timers/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -19,8 +20,7 @@ import { tmpdir } from 'node:os';
 // full capture of large/interleaved output, signal-killed exit code normalization, and resolution
 // waiting for the child's `close` event (streams drained) rather than its `exit` event.
 
-const TEST_TIMEOUT_MS = 30_000;
-const SUITE_OPTS = { timeout: TEST_TIMEOUT_MS };
+const SUITE_OPTS = { timeout: SLOW_IO_TIMEOUT_MS };
 const SHORT_TIMEOUT_MS = 100;
 const RESOLVE_MARGIN_MS = 2000;
 const KILL_CHECK_DELAY_MS = 1500;

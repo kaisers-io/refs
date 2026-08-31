@@ -10,6 +10,7 @@ import {
   tagExists,
 } from '../../src/git/repo.ts';
 import { describe, expect, it } from 'vitest';
+import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { SpawnRunner } from '../../src/proc/runner.ts';
 import { join } from 'node:path';
 import { resolveHome } from '../../src/home.ts';
@@ -20,9 +21,8 @@ import { tmpdir } from 'node:os';
 // The way a managed checkout must: clone blobless, survive a force-pushed upstream, restore a
 // Dirty tree back to the tracked state, and refuse to touch a checkout that is not managed.
 
-const TEST_TIMEOUT_MS = 30_000;
 const SUCCESS_EXIT_CODE = 0;
-const SUITE_OPTS = { timeout: TEST_TIMEOUT_MS };
+const SUITE_OPTS = { timeout: SLOW_IO_TIMEOUT_MS };
 
 const runner = new SpawnRunner();
 

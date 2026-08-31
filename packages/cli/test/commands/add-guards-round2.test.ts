@@ -15,6 +15,7 @@ import {
   withResetExitCode,
   withTempHome,
 } from '../helpers/add-support.ts';
+import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { createFixtureRepo } from '../helpers/fixture-repo.ts';
 import { resolveAddSource } from '../../src/commands/add-source.ts';
 import { rm } from 'node:fs/promises';
@@ -26,8 +27,6 @@ import { run } from '../../src/main.ts';
 // and finding 3 (checkout-identity comparison must tolerate cosmetic url variance). Kept out of
 // `add-guards.test.ts` purely to keep both files under the repo's 300-line oxlint cap and
 // `add-guards.test.ts`'s own dependency count under its cap.
-
-const TEST_TIMEOUT_MS = 30_000;
 
 type ErrorEnvelope = {
   error?: { code: string; message: string };
@@ -64,7 +63,7 @@ describe('refs add: SHA-256 (--object-format=sha256) repo head_sha guard', () =>
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -88,7 +87,7 @@ describe('refs add: checkout reuse — managed-checkout marker guard', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -116,7 +115,7 @@ describe('refs add: checkout finalize — managed-checkout marker guard', () => 
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -146,7 +145,7 @@ describe('refs add: checkout identity — unparseable expected url', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -177,7 +176,7 @@ describe('refs add: checkout identity — credentialed expected url is redacted'
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -208,6 +207,6 @@ describe('refs add: checkout identity — cosmetic url variance', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });

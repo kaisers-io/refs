@@ -2,6 +2,7 @@ import { EXIT, SpawnRunner, checkoutPath, resolveHome, zRefKey } from '@kaisers-
 import { describe, expect, it } from 'vitest';
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
 import type { CliContext } from '../../src/context.ts';
+import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { createFixtureRepo } from '../helpers/fixture-repo.ts';
 import { run } from '../../src/main.ts';
 import { seedConfig } from '../helpers/ref-fixtures.ts';
@@ -12,7 +13,6 @@ import { testContext } from '../helpers/context.ts';
 // only because that file is at its line limit; same fixture strategy (a real `file://` clone into
 // the checkout path, config seeded directly via `seedConfig`) and the same generous timeout, since
 // each case clones a real git repository in setup.
-const TEST_TIMEOUT_MS = 30_000;
 const REF_KEY = 'github.com/acme/untagged';
 // Carries a verified override, so a monorepo can still resolve per-package versions even when the
 // repository itself has no format worth recording.
@@ -113,7 +113,7 @@ describe('refs tag: ref without a tag_format', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -136,7 +136,7 @@ describe('refs tag: a missing format outranks a missing checkout', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -158,7 +158,7 @@ describe('refs tag: package override without a ref-level format', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 
   it(
@@ -186,6 +186,6 @@ describe('refs tag: package override without a ref-level format', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });

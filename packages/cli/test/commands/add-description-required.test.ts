@@ -8,6 +8,7 @@ import {
   withTempHome,
 } from '../helpers/add-support.ts';
 import type { CliContext } from '../../src/context.ts';
+import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { createFixtureRepo } from '../helpers/fixture-repo.ts';
 import { run } from '../../src/main.ts';
 
@@ -23,7 +24,6 @@ import { run } from '../../src/main.ts';
 // no way to resolve an `npm:<pkg>` source to a local `file://` fixture end-to-end. Kept out of
 // `add-guards.test.ts` purely to keep both files under the repo's 300-line oxlint cap.
 
-const TEST_TIMEOUT_MS = 30_000;
 const TWO_PACKAGES = 2;
 const NO_REFS = 0;
 
@@ -91,7 +91,7 @@ describe('refs add --description: fails when a detected package has no descripti
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 
   it(
@@ -112,7 +112,7 @@ describe('refs add --description: fails when a detected package has no descripti
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -133,7 +133,7 @@ describe('refs add --description: an empty-string manifest description counts as
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -153,7 +153,7 @@ describe('refs add --description: succeeds when every detected package already h
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 
   it(
@@ -172,6 +172,6 @@ describe('refs add --description: succeeds when every detected package already h
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
