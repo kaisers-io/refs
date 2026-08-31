@@ -1,10 +1,20 @@
+/* eslint-disable import/max-dependencies -- composition root: this module's whole job is to import
+   every command module and list its registrar, so its dependency count is a count of commands, not
+   of coupling. Capping it only pushed commands into an overflow file, which taught contributors a
+   workaround and moved the cap one file over rather than reducing anything. */
 import type { CliContext } from '../context.ts';
 import type { Command } from '@commander-js/extra-typings';
-import { MORE_REGISTRARS } from './registrars-more.ts';
 import { registerAdd } from './add.ts';
+import { registerDoctor } from './doctor.ts';
 import { registerEdit } from './edit.ts';
 import { registerInit } from './init.ts';
 import { registerList } from './list.ts';
+import { registerMigrate } from './migrate.ts';
+import { registerRemove } from './remove.ts';
+import { registerResolve } from './resolve.ts';
+import { registerShow } from './show.ts';
+import { registerSync } from './sync.ts';
+import { registerTag } from './tag.ts';
 
 // The real `--json`/`--verbose` global option shape every command inherits from the root program
 // built in `main.ts#buildProgram`. Named here (rather than left for each command module to
@@ -31,7 +41,13 @@ const REGISTRARS: readonly ((program: RefsCommand, ctx: CliContext) => void)[] =
   registerAdd,
   registerEdit,
   registerList,
-  ...MORE_REGISTRARS,
+  registerDoctor,
+  registerMigrate,
+  registerRemove,
+  registerResolve,
+  registerShow,
+  registerSync,
+  registerTag,
 ];
 
 const registerCommands = (program: RefsCommand, ctx: CliContext): void => {

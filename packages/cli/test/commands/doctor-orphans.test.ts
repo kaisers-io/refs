@@ -27,7 +27,7 @@ const hoursAgoIso = (hoursAgo: number): string =>
 const daysAgoIso = (daysAgo: number): string => hoursAgoIso(daysAgo * HOURS_PER_DAY);
 
 describe('refs doctor: (c) true orphan checkout', () => {
-  it('reports orphans as warn, naming the exact rm -rf path', async () => {
+  it('reports orphans as warn, naming a pasteable rm -rf command', async () => {
     expect.hasAssertions();
     await withResetExitCode(() =>
       withTempHome(async (homeDir) => {
@@ -40,7 +40,9 @@ describe('refs doctor: (c) true orphan checkout', () => {
         const envelope = await runDoctorJson(ctx, stdout);
 
         expectCheck(envelope, 'orphans', {
-          detailContains: `orphan — remove with: rm -rf ${orphanDest}`,
+          // Quoted and `--`-terminated: the path can contain spaces (the refs home often does),
+          // so an unquoted suggestion would delete the wrong things when pasted.
+          detailContains: `orphan — remove with: rm -rf -- '${orphanDest}'`,
           status: 'warn',
         });
       }),

@@ -11,6 +11,7 @@ import { requireCheckout, requireEntry, requirePackage } from './ref-context.ts'
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
 import { matchRefKey } from './list.ts';
+import { shellQuote } from '../shell-quote.ts';
 
 // `refs tag <ref> <version> [--package <name>]` — resolves a semver-ish `<version>` to the actual
 // git tag it corresponds to, by rendering the applicable `tag_format` and verifying the rendered
@@ -57,13 +58,6 @@ const formatFor = (
  * stays reserved for a ref, package, checkout or rendered tag that genuinely does not exist —
  * the caller can tell "this ref cannot resolve versions at all" from "that version was never
  * tagged". */
-/** Single-quotes a value for a copy-pasteable shell command, closing and reopening the quote around
- * any embedded `'`. Package names reach this from a tracked repository's own workspace manifests
- * and are validated only for being non-empty and not a prototype key, so a dependency can name a
- * package `$(…)`. The message below is meant to be pasted into a shell, which turns an unquoted
- * name into an execution primitive. */
-const shellQuote = (value: string): string => `'${value.replaceAll("'", String.raw`'\''`)}'`;
-
 const requireFormat = (
   format: string | undefined,
   key: RefKey,

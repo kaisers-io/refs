@@ -3,11 +3,12 @@ import { isEnoent, isGitCheckout, readState, zState } from '@kaisers-io/refs-cor
 import type { CheckResult } from './doctor-types.ts';
 import { join } from 'node:path';
 import { readdir } from 'node:fs/promises';
+import { rmCommand } from '../shell-quote.ts';
 
 // The orphans check: a checkout directory under sources/ that is not (or no longer) a configured
 // ref. Deliberately read-only — it never deletes anything: a fresh pending_proposal_at (a
 // dry-run clone still awaiting refs add --proposal/--description) reports as 'pending add';
-// anything else reports as a true orphan with the exact rm -rf <path> a human/agent can run by
+// anything else reports as a true orphan with the exact rm -rf command a human/agent can run by
 // hand.
 
 /** Never throws: `readState` is already self-healing for a corrupt/malformed state file, but an
@@ -70,7 +71,7 @@ const classifyOrphan = (candidate: OrphanCandidate, state: State, now: number): 
   if (isFreshPendingProposal(state, candidate.key, now)) {
     return `${candidate.key}: pending add`;
   }
-  return `${candidate.key}: orphan — remove with: rm -rf ${candidate.dest}`;
+  return `${candidate.key}: orphan — remove with: ${rmCommand(candidate.dest)}`;
 };
 
 const toCandidate = (home: RefsHome, segments: readonly string[]): OrphanCandidate => ({

@@ -34,7 +34,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   automatically" — nothing removes a lock in the background; the phrase means the next acquisition
   attempt is entitled to take it.
 
+- **An operation that ran without the lock it asked for now fails instead of reporting success.**
+  A lock can still be lost while its holder works — a stolen lock is detected by the next renewal,
+  or by release finding a foreign token. Previously the callback's result was returned as if
+  nothing had happened. It is now reported as a `conflict` (exit code 5), because the work ran
+  without the mutual exclusion it requested and its result is not trustworthy. An operation that
+  failed on its own keeps precedence: its own error is what the caller sees.
+
 ### Fixed
+
+- The `rm -rf` commands `refs doctor` and `refs add` suggest are now quoted. Ref keys derive from
+  user-supplied urls and permit spaces, `$()`, backticks, semicolons and quotes, and the refs home
+  itself routinely sits under a path containing a space — so pasting an unquoted suggestion could
+  delete several wrong paths and leave the intended one, or execute a command substitution embedded
+  in a repository name. The form is now `rm -rf -- '<path>'`; `--` additionally stops a path
+  beginning with `-` from parsing as options.
 
 - A pid in a lock's metadata is now required to be a positive integer within the range
   `process.kill` accepts. `0` and negative values are
@@ -67,15 +81,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   older process. The reverse does not hold:
   an older CLI reads no lease, so it can still take a lock from a live current holder once ten
   minutes pass. Holds longer than that during a rolling upgrade are not protected.
-
-### Changed
-
-- **An operation that ran without the lock it asked for now fails instead of reporting success.**
-  A lock can still be lost while its holder works — a stolen lock is detected by the next renewal,
-  or by release finding a foreign token. Previously the callback's result was returned as if
-  nothing had happened. It is now reported as a `conflict` (exit code 5), because the work ran
-  without the mutual exclusion it requested and its result is not trustworthy. An operation that
-  failed on its own keeps precedence: its own error is what the caller sees.
 
 ## [0.10.0] - 2026-08-13
 

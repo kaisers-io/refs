@@ -13,6 +13,7 @@ import type { CliContext } from '../context.ts';
 import { dirname } from 'node:path';
 import { mkdir } from 'node:fs/promises';
 import { progress } from '../output.ts';
+import { rmCommand } from '../shell-quote.ts';
 
 // Checkout-identity + head-sha guards shared by `refs add`'s idempotent clone/finalize flow and
 // `refs sync`'s per-ref pipeline (`sync-checkout.ts`). Owns everything that runs AGAINST an
@@ -78,7 +79,7 @@ const ensureCheckoutOrigin = async (
 };
 
 const unmanagedCheckoutMessage = (dest: string): string =>
-  `checkout at ${dest} exists but is not refs-managed — remove it (rm -rf ${dest}) and retry`;
+  `checkout at ${dest} exists but is not refs-managed — remove it (${rmCommand(dest)}) and retry`;
 
 /** Reuse-path-only guard: confirms `dest` is a checkout `refs` itself produced — the `cloneRepo`
  * marker (`core.hooksPath` pointing at this home's `hooksDir`) — rather than merely a directory
