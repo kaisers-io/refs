@@ -216,8 +216,12 @@ const routeWithinRef = (config: Config, query: string, ref: string): RouteMatch 
   const key = matchSuffixOrThrow(config, ref);
   const found = packageWithin(config.refs[key]?.packages ?? {}, query);
   if (found === undefined) {
+    // A url-shaped query is never echoed: it can carry credentials, which is the same reason the
+    // unscoped path raises a message that does not mention the query at all.
     throw notFoundError(
-      `ref '${key}' registers no package matching '${query}' — run: refs show ${key} --json`,
+      looksLikeGitUrl(query)
+        ? `ref '${key}' registers no package matching that query — run: refs show ${key} --json`
+        : `ref '${key}' registers no package matching '${query}' — run: refs show ${key} --json`,
     );
   }
   return { key, packageMatch: { ...found, key } };

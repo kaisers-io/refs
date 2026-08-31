@@ -11,10 +11,12 @@
 // variable names case-INSENSITIVELY while comparing subsection names case-SENSITIVELY. A grep for
 // `hooksPath` would be fooled by a comment, and one for `url` by a second remote.
 //
-// It deliberately does NOT implement `include`/`includeIf`. Both values are written into the local
-// config by the clone that created the checkout, so they are expected to be physically present —
-// and git itself disables includes when a specific config scope is selected, which is what the
-// existing `git config --local` marker check already relied on.
+// It deliberately does NOT implement `include`/`includeIf`, nor `url.<base>.insteadOf` rewriting.
+// Both values are written into the local config by the clone that created the checkout, so they are
+// expected to be physically present — and git itself disables includes when a specific config scope
+// is selected, which is what the existing `git config --local` marker check already relied on.
+// The limit that follows is real and stated on `sameRepository` in `resolve-checkout.ts`: a config
+// carrying an `insteadOf` rewrite would fetch from a url this reader does not compute.
 //
 // Every value seen is returned, not the last one, so the caller can fail closed on a duplicate
 // rather than guess at first-versus-last precedence.

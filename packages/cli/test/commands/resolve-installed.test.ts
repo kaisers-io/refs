@@ -108,14 +108,28 @@ describe('resolving an installed version it cannot determine', () => {
     });
   });
 
-  it('stops at an installed slot whose manifest is unusable, instead of falling through', async () => {
+  it('walks past an empty slot, because Node does too', async () => {
     expect.hasAssertions();
-    // The slot exists, so this IS the installation Node would load. Continuing to an ancestor would
-    // report a different version as though it were this one.
+    // Node tries each `node_modules` candidate and continues upward when one cannot resolve, so a
+    // directory with nothing loadable in it does not shadow a real installation further up.
+    // Stopping here would report `unverifiable` for a package Node loads perfectly well.
     const root = await makeProject();
     await install(root, 'zod', { name: 'zod', version: '3.1.0' });
     const nested = join(root, 'apps', 'api');
     await mkdir(join(nested, 'node_modules', 'zod'), { recursive: true });
+
+    await expect(resolveInstalled(nested, 'zod')).resolves.toMatchObject({ version: '3.1.0' });
+  });
+
+  it('stops at a slot whose manifest is present but unusable', async () => {
+    expect.hasAssertions();
+    // Here the nearer slot IS what Node would load, so reporting the ancestor's version instead
+    // would be a wrong answer dressed as a found one.
+    const root = await makeProject();
+    await install(root, 'zod', { name: 'zod', version: '3.1.0' });
+    const nested = join(root, 'apps', 'api');
+    await mkdir(join(nested, 'node_modules', 'zod'), { recursive: true });
+    await writeFile(join(nested, 'node_modules', 'zod', 'package.json'), '{ not json');
 
     await expect(resolveInstalled(nested, 'zod')).resolves.toMatchObject({
       reason: 'manifest_unreadable',

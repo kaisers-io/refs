@@ -105,8 +105,16 @@ const singleValue = (values: ReadonlyMap<string, string[]>, key: string): string
 };
 
 /** Whether the recorded origin denotes the same repository as `expectedUrl`, compared through
- * `canonicalizeGitUrl`'s canonical key rather than by byte equality — the same comparison
- * `add`'s origin guard makes, so the two commands cannot disagree about repository identity.
+ * `canonicalizeGitUrl`'s canonical key rather than by byte equality — the same comparison `add`'s
+ * origin guard makes.
+ *
+ * One difference from `add` is worth naming rather than glossing: `add` asks git (`git remote
+ * get-url`), which expands `url.<base>.insteadOf` rewrites, while this reads the literal value. A
+ * config carrying both the expected origin and a rewrite would fetch from somewhere else, and this
+ * check would not see it. Closing that means either spawning git — which this deliberately avoids,
+ * since `resolve` is on the hot path of every source question — or reimplementing the rewrite
+ * rules. It is accepted because writing such a config requires write access to the refs tree, which
+ * `SECURITY.md` puts out of scope; anyone with it can set the hooks marker directly anyway.
  *
  * A url that fails to canonicalize counts as a mismatch: failing closed on something unparseable is
  * the point of the check. */

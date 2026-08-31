@@ -62,7 +62,12 @@ const lookupDirs = function* lookupDirs(from: string): Generator<string> {
   }
 };
 
-const readManifest = async (path: string): Promise<InstalledInfo> => {
+/** `undefined` means "no manifest here" — the slot exists but holds nothing Node could load from,
+ * so the walk continues, as Node's own `LOAD_NODE_MODULES` does. Anything else is an answer. */
+const readManifest = async (path: string): Promise<InstalledInfo | undefined> => {
+  if ((await probe(path)) === 'absent') {
+    return undefined;
+  }
   try {
     const parsed: unknown = JSON.parse(await readFile(path, 'utf8'));
     const record =
@@ -137,25 +142,34 @@ const assertProjectDir = async (project: string): Promise<void> => {
   }
 };
 
+/** One `node_modules/<name>` candidate: an answer, or `undefined` to keep walking. */
+const inspectSlot = async (slot: string): Promise<InstalledInfo | undefined> => {
+  const found = await probe(slot);
+  if (found === 'unreadable') {
+    return { reason: 'slot_unreadable', status: 'unverifiable' };
+  }
+  return found === 'present' ? readManifest(join(slot, 'package.json')) : undefined;
+};
+
 /** The installed version of `packageName` as seen from `project`.
  *
- * Stops at the first `node_modules/<name>` that EXISTS, rather than the first readable manifest.
- * Falling through to an ancestor would report a different, shadowed installation — the one Node
- * would not have loaded — which is a wrong answer dressed as a found one. */
+ * Stops at the first slot Node itself would load from — which is not merely the first that exists.
+ * Node tries each `node_modules` candidate and continues upward when one cannot resolve, so an
+ * empty `node_modules/<name>` does not shadow a real installation further up and must not stop the
+ * walk here either.
+ *
+ * A slot whose manifest is present but unusable DOES stop it: that is the installation Node would
+ * have loaded, and reporting an ancestor's version instead would be a wrong answer dressed as a
+ * found one. */
 const resolveInstalled = async (project: string, packageName: string): Promise<InstalledInfo> => {
   if (!isSafePackageName(packageName)) {
     return { reason: 'unsupported_package_name', status: 'unverifiable' };
   }
   for (const dir of lookupDirs(project)) {
-    const slot = join(dir, ...packageName.split('/'));
     // eslint-disable-next-line no-await-in-loop -- Node's lookup order is sequential by definition
-    const found = await probe(slot);
-    if (found === 'unreadable') {
-      return { reason: 'slot_unreadable', status: 'unverifiable' };
-    }
-    if (found === 'present') {
-      // eslint-disable-next-line no-await-in-loop -- as above
-      return await readManifest(join(slot, 'package.json'));
+    const candidate = await inspectSlot(join(dir, ...packageName.split('/')));
+    if (candidate !== undefined) {
+      return candidate;
     }
   }
   return (await hasPnpManifest(project))
