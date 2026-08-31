@@ -184,7 +184,7 @@ refs doctor
 ```
 
 Checks always run in this order: `git`, `node`, `config`, `hooks-guard`,
-`dirty-checkouts`, `orphans`, `skill`, `cli-update`, `ssh-auth` (the last only when some ref uses an ssh
+`dirty-checkouts`, `orphans`, `locks`, `skill`, `cli-update`, `ssh-auth` (the last only when some ref uses an ssh
 url). `status` is `ok` | `warn` | `fail`; `MAINTAIN.md` explains each check.
 
 The `skill` check reports whether this skill and the running CLI are in step. Every

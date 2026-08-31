@@ -7,7 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `refs doctor` gained a `locks` check. A held lock used to be invisible: acquisition failed with a
+  message that named no owner, and `doctor` had no lock check at all — so the one command meant to
+  answer "is something stuck?" could not see the thing that was stuck. The check lists every entry
+  in the locks directory with its recorded owner, how long it has been held, and against which
+  window.
+
+  A held lock is **not** a warning by itself: that is what a concurrent `refs sync` looks like, so
+  it reports `ok` with the holder listed. `warn` is reserved for something that will not resolve on
+  its own — a recorded process that is gone, a lock past its window and still there, metadata that
+  cannot be read, or something that is not a lock at all occupying a lock name. Like every other
+  `doctor` warning, it does not change the exit code.
+
+### Changed
+
+- **The "lock is held" error now says who holds it and for how long.** It used to read `lock <name>
+is held — another refs process is running`, which left no way to tell a running `sync` from
+  something that crashed 90 seconds ago. It now names the recorded pid, whether that pid is still
+  present, how long the lock has been held, and when it becomes reclaimable.
+
+  It deliberately says "recorded pid … is present (identity not verified)" rather than "held by pid
+  …": only `ESRCH` establishes that a process is gone, so a pid that answers may equally be an
+  unrelated process that reused the number. And it says "reclaimable", never "released
+  automatically" — nothing removes a lock in the background; the phrase means the next acquisition
+  attempt is entitled to take it.
+
 ### Fixed
+
+- A pid in a lock's metadata is now required to be a positive integer. `0` and negative values are
+  process-_group_ selectors for `process.kill`, so metadata carrying either made the liveness probe
+  answer for a whole group — reporting a long-gone owner as present, and keeping its lock
+  unreclaimable for the rest of its window. Such metadata is now reported as malformed instead of
+  acted on.
 
 - A lock is no longer taken away from a holder that is still working, however long the work takes.
   Locks were judged by a fixed ten-minute age: past it, a waiter treated the lock as abandoned and

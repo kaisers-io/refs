@@ -48,6 +48,14 @@ const isPidAlive = (pid: number): boolean => {
   }
 };
 
+// What a `meta.json` read established. `readLockMeta` collapses every failure into `undefined`,
+// which is right for deciding staleness — anything unreadable is treated conservatively either way
+// — but a diagnostic has to tell the cases apart: "the holder has not published yet" and "this
+// file is corrupt" call for different words, and one of them is abnormal.
+type MetaRead =
+  | { meta: LockMeta; state: 'valid' }
+  | { state: 'malformed' | 'missing' | 'unreadable' };
+
 // `undefined` is a safe "parse failed" sentinel — see the identical note in `state-io.ts`.
 const tryParseJson = (text: string): unknown => {
   try {
@@ -62,6 +70,18 @@ const readTextOrUndefined = async (path: string): Promise<string | undefined> =>
     return await readFile(path, 'utf8');
   } catch {
     return undefined;
+  }
+};
+
+// Same read, but keeping the reason: ENOENT is a lock that has not published its metadata yet (or
+// has just been released), anything else is a file that exists and could not be read.
+const readTextDetailed = async (
+  path: string,
+): Promise<{ state: 'missing' | 'unreadable' } | { state: 'read'; text: string }> => {
+  try {
+    return { state: 'read', text: await readFile(path, 'utf8') };
+  } catch (error) {
+    return { state: errnoCode(error) === 'ENOENT' ? 'missing' : 'unreadable' };
   }
 };
 
@@ -87,14 +107,27 @@ const extractToken = (raw: unknown): string | undefined => {
   return token;
 };
 
+/** A pid is only usable if it is a positive integer. `typeof pid === 'number'` was too loose: `0`
+ * and negatives are process-GROUP selectors for `process.kill`, so a meta.json carrying either
+ * would make `isPidAlive` answer for a whole group — reporting "alive" for a lock whose real owner
+ * is long gone, and keeping it unreclaimable for the rest of its window. A non-integer is simply
+ * not a pid. All three are rejected here, which reports the metadata as malformed rather than
+ * acting on it. */
+const parsePid = (value: unknown): number | undefined => {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
+    return undefined;
+  }
+  return value;
+};
+
 const parseLockMeta = (raw: unknown): LockMeta | undefined => {
   if (typeof raw !== 'object' || raw === null) {
     return undefined;
   }
   const record = raw as Record<string, unknown>;
-  const { pid } = record;
+  const pid = parsePid(record['pid']);
   const acquiredAtMs = parseAcquiredAtMs(record['acquired_at']);
-  if (typeof pid !== 'number' || acquiredAtMs === undefined) {
+  if (pid === undefined || acquiredAtMs === undefined) {
     return undefined;
   }
   const token = extractToken(raw);
@@ -119,6 +152,20 @@ const readLockToken = async (lockPath: string): Promise<string | undefined> => {
     return undefined;
   }
   return extractToken(tryParseJson(text));
+};
+
+/** `readLockMeta` with the failure reason preserved — see `MetaRead`. The two share one parser, so
+ * a shape either reader accepts is a shape the other accepts too. */
+const readLockMetaDetailed = async (lockPath: string): Promise<MetaRead> => {
+  const read = await readTextDetailed(join(lockPath, META_FILENAME));
+  if (read.state !== 'read') {
+    return { state: read.state };
+  }
+  const meta = parseLockMeta(tryParseJson(read.text));
+  if (meta === undefined) {
+    return { state: 'malformed' };
+  }
+  return { meta, state: 'valid' };
 };
 
 const dirMtimeMs = async (path: string): Promise<number | undefined> => {
@@ -238,8 +285,9 @@ export {
   leaseMtimeMs,
   newLockToken,
   readLockMeta,
+  readLockMetaDetailed,
   readLockToken,
   touchLeaseSidecar,
   writeInitialMeta,
 };
-export type { LockMeta };
+export type { LockMeta, MetaRead };

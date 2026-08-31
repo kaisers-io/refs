@@ -7,6 +7,8 @@ export * from './git/tags.ts';
 export * from './git-url-redact.ts';
 export * from './git-url.ts';
 export * from './home.ts';
+export * from './lock-inspect.ts';
+export * from './lock-lease.ts';
 export * from './lock.ts';
 export * from './npm-resolver.ts';
 export * from './package-identity.ts';
