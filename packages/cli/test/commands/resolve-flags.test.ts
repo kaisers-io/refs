@@ -18,6 +18,9 @@ type JsonEnvelope = {
   ok: boolean;
 };
 
+// Git stores a backslash in a config value as `\\`; a Windows hooks path is full of them.
+const escapeGitValue = (value: string): string => value.replaceAll('\\', String.raw`\\`);
+
 const soleEnvelope = (stdout: readonly string[]): JsonEnvelope => {
   const [line] = stdout;
   if (line === undefined) {
@@ -150,7 +153,7 @@ describe('refs resolve: checkout identity, wrong repository', () => {
         const dest = checkoutPath(home, zRefKey.parse(NEXT_KEY));
         await writeFile(
           join(dest, '.git', 'config'),
-          `[core]\n\thooksPath = ${home.hooksDir}\n[remote "origin"]\n\turl = https://github.com/acme/elsewhere\n`,
+          `[core]\n\thooksPath = ${escapeGitValue(home.hooksDir)}\n[remote "origin"]\n\turl = https://github.com/acme/elsewhere\n`,
         );
 
         const envelope = await resolveJson(homeDir, ['next']);
@@ -244,7 +247,7 @@ describe("refs resolve: a checkout whose hooks marker is somebody else's", () =>
         // config still produce the marker and origin, and so still read as managed.
         await writeFile(
           join(dest, '.git', 'config'),
-          `[core]\n\thooksPath = "${home.hooksDir}\n[remote "origin"]\n\turl = ${NEXT_ENTRY.url}\n`,
+          `[core]\n\thooksPath = "${escapeGitValue(home.hooksDir)}\n[remote "origin"]\n\turl = ${NEXT_ENTRY.url}\n`,
         );
 
         const envelope = await resolveJson(homeDir, ['next']);

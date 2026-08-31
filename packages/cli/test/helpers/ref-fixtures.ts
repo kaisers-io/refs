@@ -39,6 +39,11 @@ const seedState = async (home: RefsHome, refs: Record<string, unknown>): Promise
   return state;
 };
 
+/** Escapes a value the way git writes one. On Windows a hooks path is full of backslashes, and git
+ * stores each as `\\` — a fixture that writes the raw path produces a file git itself would read
+ * differently, or reject. */
+const gitConfigValue = (value: string): string => value.replaceAll('\\', String.raw`\\`);
+
 /** Marks `dest` as an existing git checkout.
  *
  * With `managed`, it carries the two values that identify a refs-managed one: the `core.hooksPath`
@@ -57,7 +62,7 @@ const markCheckoutPresent = async (
   const config =
     managed === undefined
       ? ''
-      : `[core]\n\thooksPath = ${managed.hooksDir}\n[remote "origin"]\n\turl = ${managed.url}\n`;
+      : `[core]\n\thooksPath = ${gitConfigValue(managed.hooksDir)}\n[remote "origin"]\n\turl = ${gitConfigValue(managed.url)}\n`;
   await writeFile(join(dest, '.git', 'config'), config, 'utf8');
 };
 
