@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- A lock is no longer taken away from a holder that is still working. Locks were judged by a fixed
-  ten-minute age: past it, a waiter treated the lock as abandoned and stole it even when its owner
-  was demonstrably alive and mid-operation. Since the per-ref lock is held across a whole clone or
+- A lock is no longer taken away from a holder that is still working, however long the work takes.
+  Locks were judged by a fixed ten-minute age: past it, a waiter treated the lock as abandoned and
+  stole it even when its owner was demonstrably alive and mid-operation. Since the per-ref lock is held across a whole clone or
   fetch, any repository large enough to take ten minutes could end up with two processes running
   `checkout -B` / `reset --hard` / `clean -fd` against the same directory.
 
@@ -24,8 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   behind and blocked the ref for the full ten minutes. An abandoned lock is now reclaimable after
   two minutes rather than ten.
 
-  A lock written by an older CLI carries no lease and is still judged by the ten-minute rule it was
-  written under, so upgrading never dispossesses a running older process. The reverse does not hold:
+  Two limits are worth knowing. A holder whose event loop is stopped for longer than the lease — a
+  suspended process, a sleeping machine — cannot renew, and is stealable after two minutes where it
+  used to take ten; in practice a sleeping machine suspends every refs process on it, and the
+  pending renewal fires on resume. And a lock written by an older CLI carries no lease and is still
+  judged by the ten-minute rule it was written under, so upgrading never dispossesses a running
+  older process. The reverse does not hold:
   an older CLI reads no lease, so it can still take a lock from a live current holder once ten
   minutes pass. Holds longer than that during a rolling upgrade are not protected.
 

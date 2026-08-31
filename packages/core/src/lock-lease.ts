@@ -18,6 +18,17 @@ import type { RenewOutcome } from './lock-heartbeat.ts';
 
 // How long a stamped lease stays valid without renewal. Renewed at a fraction of this, so a lock
 // only expires after several consecutive renewals have failed to land.
+//
+// The assumption this rests on, stated rather than left implicit: a live holder's event loop runs
+// at least once per lease. Anything that stops it for two minutes — process suspension, a machine
+// sleeping, a pathologically long synchronous step — leaves a live holder stealable, and this
+// window used to be the ten minutes below. That is a real narrowing, and it is accepted for three
+// reasons: refs' own work is async subprocesses and fs calls, so a two-minute synchronous stall
+// would itself be a bug; a sleeping machine suspends every refs process on it, not just the holder,
+// so there is rarely anyone awake to do the stealing; and on resume the pending timer fires
+// immediately, so the exposed window is the scheduling gap, not the sleep. Weighed against a
+// crashed holder blocking a ref for ten minutes — the failure this replaces — the trade is worth
+// making, but it IS a trade.
 const LEASE_MS = 120_000;
 // How often a holder re-stamps its lease. A quarter of `LEASE_MS`: short enough that transient fs
 // failures get several retries inside one lease, long enough not to be fs churn.
