@@ -26,9 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   Only refs that actually sync are probed, which keeps `--stale-only` a genuine no-op — and is why
   `refs doctor` gains a `config-drift` check as the deliberate "check everything now" counterpart.
-  It takes each ref's lock with a short timeout and reports `a sync is in progress` rather than
-  waiting, writes nothing, and reports `warn` rather than `fail`: the configuration has fallen
-  behind, nothing is broken. `refs list` deliberately stays blind — without stored state it would
+  It takes each ref's lock with a short timeout and reports the ref as busy rather than waiting,
+  writes nothing, and reports `warn` rather than `fail`: the configuration has fallen behind,
+  nothing is broken. `refs list` deliberately stays blind — without stored state it would
   turn a cheap inventory command into a locking filesystem sweep.
 
 - **`refs resolve` answers in one call what used to take three.** The skill's investigation flow

@@ -74,15 +74,31 @@ const buildResult = (lines: readonly string[], checkoutCount: number): CheckResu
   return { detail: lines.join(SEPARATOR), name: CHECK_NAME, status: 'warn' };
 };
 
+/** One ref at a time, never `Promise.all` — the same rule `doctor.ts` applies to its own steps,
+ * and here it is load-bearing rather than merely tidy: `refLockName` collapses `/` to `_`, so two
+ * legal ref keys can derive one lock name (`acme_tools/widget` and `acme/tools_widget`). Probing
+ * concurrently would let a single `doctor` run contend with ITSELF and report a ref as busy on its
+ * own account. Each probe is a handful of milliseconds, so serializing costs nothing worth having.
+ *
+ * Recursive rather than a loop, mirroring `doctor.ts#runStepsInOrder`: every await stays a plain
+ * sequential step, and async recursion does not grow the stack. */
+const probeInOrder = async (
+  home: RefsHome,
+  config: Config,
+  checkouts: readonly ExistingCheckout[],
+): Promise<string[]> => {
+  const [item, ...rest] = checkouts;
+  if (item === undefined) {
+    return [];
+  }
+  const report = await probeUnderLock(home, config, item);
+  const remaining = await probeInOrder(home, config, rest);
+  return [...driftLines(report).map((line) => `${item.key}: ${line}`), ...remaining];
+};
+
 const checkConfigDrift = async (home: RefsHome, config: Config): Promise<CheckResult> => {
   const checkouts = existingCheckouts(home, config);
-  const probed = await Promise.all(
-    checkouts.map(async (item) => ({ item, report: await probeUnderLock(home, config, item) })),
-  );
-  const lines = probed.flatMap((entry) =>
-    driftLines(entry.report).map((line) => `${entry.item.key}: ${line}`),
-  );
-  return buildResult(lines, checkouts.length);
+  return buildResult(await probeInOrder(home, config, checkouts), checkouts.length);
 };
 
 export { checkConfigDrift };
