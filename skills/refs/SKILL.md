@@ -56,10 +56,9 @@ explains each one.
 ## 2. What refs is
 
 `refs` manages arbitrary git repositories (GitHub, GitLab, self-hosted) as local,
-read-only reference checkouts. `COMMANDS.md` beside this file is the command and
-`--json` reference; it is written against the CLI version pinned in this file's
-frontmatter. `refs --help` and `refs <command> --help` remain the fallback on any
-version mismatch, or for a flag `COMMANDS.md` doesn't cover.
+read-only reference checkouts. `COMMANDS.md` beside this file is the command and `--json`
+reference; per §1, `refs --help` and `refs <command> --help` outrank it on a version
+mismatch or for a flag it doesn't cover.
 
 **Always pass `--json`** when running `refs` for agent purposes. Every command emits a
 stable envelope — `{"ok":true,"data":…,"warnings":[…]}` on success,
@@ -81,7 +80,7 @@ one.
   checkout exactly as you found it — no edits, no `git add`, `commit`, `push`,
   `checkout -b`, or `reset`. Free to read is not free to run: checkouts are blobless by
   default, so history commands that read file content may fetch it — see `INVESTIGATE.md`
-  §3 for which commands are local and which are not.
+  §2 for which commands are local and which are not.
 - Route every change to a ref through the CLI (`refs sync`, `refs remove`), never through
   raw git you run yourself.
 - This is a workflow promise, not a sandbox. refs-installed hooks reject commits and
@@ -117,7 +116,7 @@ repository.
   likely the most important thing in the reply.
 
 Every worker dispatched against a checkout gets this constraint too — `ADD.md` §2 and
-`INVESTIGATE.md` §3 carry it into their prompts, because a worker alone with a hostile
+`INVESTIGATE.md` §2 carry it into their prompts, because a worker alone with a hostile
 README is the case it exists for.
 
 It narrows the blast radius; it is not a sandbox. refs does not make a dependency's
@@ -129,7 +128,9 @@ Read only the file the task needs. They are kept thin on purpose because the CLI
 skill, does the deterministic work.
 
 - **A question about a dependency's source, behavior, design, or history** — "how does X
-  implement Y", "why did X do Z", "what changed between vA and vB" → [INVESTIGATE.md](INVESTIGATE.md)
+  implement Y", "why did X do Z" → [INVESTIGATE.md](INVESTIGATE.md)
+- **What changed between two versions** — "what's new in vB", "why did the upgrade break X"
+  → [INVESTIGATE.md](INVESTIGATE.md) for the routing and rules, then [VERSIONS.md](VERSIONS.md)
 - **Start tracking a new repo** — "add X as a ref", "track this repo", batch-adding
   several → [ADD.md](ADD.md)
 - **Refresh or check existing refs** — "sync my refs", "run doctor", "remove ref X" →
@@ -142,7 +143,9 @@ skill, does the deterministic work.
 
 Scale subagent use with the task, not a fixed scheme:
 
-- **One repo plus a clear question → one worker, don't ask.** Just dispatch it.
+- **One repo plus a clear question → one worker, don't ask.** Just dispatch it. The one
+  exception: a question a single file or one tight call chain answers, where the worker
+  bootstrap costs more than it saves — investigate that inline.
 - **Large or multi-part work** (several repos, deep multi-angle analysis, several
   sub-questions) → propose a split before spawning anything: _"This is large; I'd split it
   across N subagents — ok?"_ Proceed once the user agrees.
