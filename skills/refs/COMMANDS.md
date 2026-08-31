@@ -419,7 +419,7 @@ parses as an option.
 
 Exit codes: `2` (ambiguous suffix), `3` (no `tag_format` configured for the ref, or for the
 named package with none to inherit), `4` (ref/package not found, checkout missing, or no
-such tag — see `INVESTIGATE.md` before concluding the release doesn't exist).
+such tag — see `VERSIONS.md` before concluding the release doesn't exist).
 
 The `3`/`4` split is the useful one: `3` means this ref cannot resolve any version, `4`
 means this particular version was never tagged.
