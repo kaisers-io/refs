@@ -1,4 +1,4 @@
-import { dirname, isAbsolute, join, parse, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { readFile, stat } from 'node:fs/promises';
 import { usageError } from '@kaisers-io/refs-core';
 
@@ -39,20 +39,26 @@ const isSafePackageName = (name: string): boolean =>
   !name.includes('\\') &&
   name.split('/').every((segment) => !UNSAFE_SEGMENT.has(segment));
 
-/** Ancestor directories of `from`, nearest first, with any `node_modules` segment skipped —
- * Node's own lookup does not nest `node_modules/node_modules`, and a naive walk from inside an
- * installed package would otherwise probe paths that can never exist. */
+/** The `node_modules` directories Node would consult from `from`, nearest first.
+ *
+ * The path is made absolute first: `dirname('.')` is `'.'` and `parse('.').root` is empty, so a
+ * relative start had no terminating condition at all — `--project .` looped forever.
+ *
+ * Only the redundant `node_modules/node_modules` candidate is skipped, which is exactly what Node
+ * skips. Skipping every directory that merely SITS under a `node_modules` would miss a nested
+ * dependency's own installs: from `…/node_modules/pkg/src`, Node still consults
+ * `…/node_modules/pkg/src/node_modules` and `…/node_modules/pkg/node_modules`. */
 const lookupDirs = function* lookupDirs(from: string): Generator<string> {
-  let current = from;
-  const { root } = parse(from);
+  let current = resolve(from);
   while (true) {
-    if (!current.split(sep).includes(NODE_MODULES)) {
+    if (basename(current) !== NODE_MODULES) {
       yield join(current, NODE_MODULES);
     }
-    if (current === root) {
+    const parent = dirname(current);
+    if (parent === current) {
       return;
     }
-    current = dirname(current);
+    current = parent;
   }
 };
 
@@ -76,12 +82,24 @@ const readManifest = async (path: string): Promise<InstalledInfo> => {
   }
 };
 
-const exists = async (path: string): Promise<boolean> => {
+// Absence and "could not look" are different answers. Collapsing them would let a permissions
+// fault on the nearest installation fall through to an ancestor and report a version Node would
+// never have loaded — precisely the shadowing this walk stops at the first slot to avoid.
+const NOT_THERE = new Set(['ENOENT', 'ENOTDIR']);
+
+const probe = async (path: string): Promise<'absent' | 'present' | 'unreadable'> => {
   try {
     await stat(path);
-    return true;
-  } catch {
-    return false;
+    return 'present';
+  } catch (error) {
+    const code =
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      typeof error.code === 'string'
+        ? error.code
+        : undefined;
+    return code !== undefined && NOT_THERE.has(code) ? 'absent' : 'unreadable';
   }
 };
 
@@ -95,7 +113,7 @@ const hasPnpManifest = async (from: string): Promise<boolean> => {
   for (const dir of lookupDirs(from)) {
     const project = dirname(dir);
     // eslint-disable-next-line no-await-in-loop -- the walk is inherently ordered, nearest first
-    if (await exists(join(project, '.pnp.cjs'))) {
+    if ((await probe(join(project, '.pnp.cjs'))) === 'present') {
       return true;
     }
   }
@@ -131,7 +149,11 @@ const resolveInstalled = async (project: string, packageName: string): Promise<I
   for (const dir of lookupDirs(project)) {
     const slot = join(dir, ...packageName.split('/'));
     // eslint-disable-next-line no-await-in-loop -- Node's lookup order is sequential by definition
-    if (await exists(slot)) {
+    const found = await probe(slot);
+    if (found === 'unreadable') {
+      return { reason: 'slot_unreadable', status: 'unverifiable' };
+    }
+    if (found === 'present') {
       // eslint-disable-next-line no-await-in-loop -- as above
       return await readManifest(join(slot, 'package.json'));
     }

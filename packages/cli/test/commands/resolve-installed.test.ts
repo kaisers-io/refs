@@ -71,6 +71,33 @@ describe('resolving an installed version of a scoped or aliased package', () => 
   });
 });
 
+describe('resolving an installed version from a relative project path', () => {
+  it('terminates', async () => {
+    expect.hasAssertions();
+    // `dirname('.')` is `'.'` and `parse('.').root` is empty, so a relative start had no
+    // terminating condition at all: `refs resolve zod --project .` looped forever. The assertion is
+    // secondary — this test failing at all means it hung.
+    await expect(resolveInstalled('.', 'refs-no-such-package')).resolves.toMatchObject({
+      status: 'not_materialized',
+    });
+  });
+});
+
+describe('resolving an installed version from inside an installed package', () => {
+  it("consults the package's own node_modules, as Node does", async () => {
+    expect.hasAssertions();
+    // Node skips only the redundant `node_modules/node_modules` candidate. Skipping every directory
+    // that merely sits under a `node_modules` would miss a nested dependency's own installs.
+    const root = await makeProject();
+    await install(root, 'zod', { name: 'zod', version: '3.1.0' });
+    const inside = join(root, 'node_modules', 'host', 'src');
+    await install(join(root, 'node_modules', 'host'), 'zod', { name: 'zod', version: '5.5.5' });
+    await mkdir(inside, { recursive: true });
+
+    await expect(resolveInstalled(inside, 'zod')).resolves.toMatchObject({ version: '5.5.5' });
+  });
+});
+
 describe('resolving an installed version it cannot determine', () => {
   it('says not_materialized rather than guessing when nothing is installed', async () => {
     expect.hasAssertions();

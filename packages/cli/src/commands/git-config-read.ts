@@ -26,8 +26,11 @@
 // point of reading this file is to establish identity, and a file git would not accept is not
 // evidence of anything.
 
-const SECTION_LINE = /^\[\s*(?<section>[\w.-]+)\s*(?:"(?<subsection>(?:[^"\\]|\\.)*)")?\s*\]$/u;
-const VARIABLE_LINE = /^(?<name>[A-Za-z][\w-]*)\s*(?:=\s*(?<value>.*))?$/u;
+// Git allows only alphanumerics, `-` and `.` in a section name, and only alphanumerics and `-`
+// in a variable name — notably no underscore, which `\w` would have admitted.
+const SECTION_LINE =
+  /^\[\s*(?<section>[A-Za-z0-9.-]+)\s*(?:"(?<subsection>(?:[^"\\]|\\.)*)")?\s*\]$/u;
+const VARIABLE_LINE = /^(?<name>[A-Za-z][A-Za-z0-9-]*)\s*(?:=\s*(?<value>.*))?$/u;
 // The only escapes git defines inside a config value. Anything else is a malformed file.
 // eslint-disable-next-line id-length -- keys are the literal escape characters git defines (b/n/t)
 const ESCAPES: Record<string, string> = { '"': '"', '\\': '\\', b: '\b', n: '\n', t: '\t' };
@@ -152,12 +155,18 @@ const consumeLine = (
   if (parsed !== undefined) {
     return parsed;
   }
+  if (opts.section === NO_SECTION) {
+    // An assignment before any section header. Git rejects the file; skipping the line would let
+    // the rest of a malformed config still yield a marker and an origin.
+    return MALFORMED;
+  }
   return recordVariable(found, opts) === 'malformed' ? MALFORMED : opts.section;
 };
 
-// Stands in for "no section has been opened yet". A variable before the first section header is not
-// valid git config, and this name can never qualify into a wanted key, so such lines are ignored
-// without needing a nullable to carry that state.
+// Stands in for "no section has been opened yet". Git rejects an assignment before the first
+// section header, so reaching `recordVariable` with this is a malformed file rather than a line to
+// skip — the empty name is what `qualify` turns into a key no caller ever wants, and the guard in
+// `consumeLine` refuses it outright.
 const NO_SECTION: Section = { name: '' };
 
 /** Every value in `text` for each requested key, in file order — or `undefined` when the file is

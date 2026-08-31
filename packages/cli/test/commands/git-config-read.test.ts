@@ -109,6 +109,9 @@ describe('refusing a config git would reject', () => {
     ['an unterminated quote', '[core]\n\thooksPath = "/hooks\n'],
     ['an escape git does not define', '[core]\n\thooksPath = /ho\\qoks\n'],
     ['a line that is neither a section nor an assignment', '[core]\nnot a setting!\n'],
+    ['an assignment before any section header', 'hooksPath = /hooks\n[core]\n'],
+    ['an underscore in a section name', '[co_re]\n\thooksPath = /hooks\n'],
+    ['an underscore in a variable name', '[core]\n\thooks_path = /hooks\n'],
   ])('returns nothing for %s', (_label, config) => {
     expect.hasAssertions();
 
