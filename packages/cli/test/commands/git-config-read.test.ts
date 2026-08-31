@@ -104,6 +104,42 @@ describe('telling one remote from another', () => {
   });
 });
 
+describe('keeping quoted whitespace, which git treats as significant', () => {
+  it('does not trim a quoted subsection down to a different one', () => {
+    expect.hasAssertions();
+    // Git treats `[remote " origin "]` as a subsection distinct from `origin`. Trimming it would
+    // let a config that declares only `" origin "` satisfy a check for `origin` — so a checkout
+    // with no origin remote at all would read as this ref's.
+    const found = read('[remote " origin "]\n\turl = https://example.com/x.git\n');
+
+    expect(found.get(ORIGIN)).toBeUndefined();
+  });
+
+  it('keeps whitespace inside a quoted value', () => {
+    expect.hasAssertions();
+    const found = read('[core]\n\thooksPath = " /ho oks "\n');
+
+    expect(found.get(MARKER)).toStrictEqual([' /ho oks ']);
+  });
+
+  it('still drops whitespace outside quotes', () => {
+    expect.hasAssertions();
+    const found = read('[core]\n\thooksPath =   /hooks   \n');
+
+    expect(found.get(MARKER)).toStrictEqual(['/hooks']);
+  });
+
+  it('reads a line ending in an escaped backslash as a value, not a continuation', () => {
+    expect.hasAssertions();
+    // `\\` at end of line is a literal backslash to git; only an ODD number of trailing
+    // backslashes escapes the newline. Joining here would swallow the next section header and
+    // condemn a perfectly valid config as malformed.
+    const found = read('[core]\n\thooksPath = C:\\\\\n[remote "origin"]\n\turl = https://e/x\n');
+
+    expect(found.get(ORIGIN)).toStrictEqual(['https://e/x']);
+  });
+});
+
 describe('refusing a config git would reject', () => {
   it.each([
     ['an unterminated quote', '[core]\n\thooksPath = "/hooks\n'],

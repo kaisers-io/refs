@@ -594,7 +594,13 @@ is the path really this ref's checkout? `add` and `sync` have always checked thi
 | `managed` | The refs marker and the configured origin both match. Proceed. |
 | `missing` | Nothing is there. `missing: true` is exactly this case, kept for callers that predate the field. |
 | `unmanaged` | Something is there that is not this ref's checkout. `reason` is a stable slug: `no_refs_marker`, `origin_mismatch`, `no_origin`, `git_is_file`, `git_is_symlink`, `outside_sources`. |
-| `unverifiable` | The path could not be inspected: `path_unreadable`, `config_unreadable`, `duplicate_config_values`. |
+| `unverifiable` | The path could not be inspected: `path_unreadable`, `git_unreadable`, `config_unreadable`, `config_malformed`, `duplicate_config_values`. |
+
+`no_refs_marker` covers a `core.hooksPath` that is absent **or** set to something other than this
+home's hooks directory — a manual clone that sets it for its own purposes is not refs-managed.
+`config_malformed` means the file is one git itself would reject (an unterminated quote, an escape
+git does not define, an assignment before any section); it is not partially read, because a file
+git would not accept is not evidence of identity.
 
 The origin URL is never echoed back in `reason` — it can carry credentials. Both values are read
 straight out of `.git/config`; `resolve` spawns no subprocess.
@@ -610,7 +616,7 @@ straight out of `.git/config`; `resolve` spawns no subprocess.
 | `found` | `version` plus the manifest's own `name` — which differs from the query when the dependency was installed under an alias — and `package_json`. |
 | `not_materialized` | Nothing installed under that name anywhere up the tree. |
 | `unsupported_layout` | Yarn Plug'n'Play (`reason: "yarn_pnp"`). `.pnp.cjs` is detected, never loaded: reading a version out of it would mean executing project code. |
-| `unverifiable` | An installation slot exists but its manifest is unusable (`manifest_unreadable`, `manifest_has_no_version`), or the package name cannot safely become a path (`unsupported_package_name`). |
+| `unverifiable` | An installation slot exists but its manifest is unusable (`manifest_unreadable`, `manifest_has_no_version`), the slot itself could not be inspected (`slot_unreadable`), or the package name cannot safely become a path (`unsupported_package_name`). |
 
 The walk stops at the first `node_modules/<name>` that **exists**, not the first readable manifest:
 falling through to an ancestor would report a shadowed installation Node would not have loaded.

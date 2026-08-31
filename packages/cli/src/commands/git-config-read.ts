@@ -35,15 +35,26 @@ const VARIABLE_LINE = /^(?<name>[A-Za-z][A-Za-z0-9-]*)\s*(?:=\s*(?<value>.*))?$/
 // eslint-disable-next-line id-length -- keys are the literal escape characters git defines (b/n/t)
 const ESCAPES: Record<string, string> = { '"': '"', '\\': '\\', b: '\b', n: '\n', t: '\t' };
 const LAST = -1;
+const PAIR = 2;
 
-/** Joins lines ending in a backslash with the line that follows, which git treats as one logical
+/** How many backslashes a line ends with. An ODD count means the last one escapes the newline and
+ * the line continues; an even count means they are literal backslashes and the line does not. */
+const trailingBackslashes = (line: string): number => {
+  let count = 0;
+  while (line.at(LAST - count) === '\\') {
+    count += 1;
+  }
+  return count;
+};
+
+/** Joins a line whose newline is escaped with the one that follows, which git treats as one logical
  * line. Done before anything else, so a continued value cannot be mistaken for two statements. */
 const joinContinuations = (text: string): string[] => {
   const joined: string[] = [];
   for (const raw of text.split('\n')) {
     const line = raw.replace(/\r$/u, '');
     const previous = joined.at(LAST);
-    if (previous !== undefined && previous.endsWith('\\')) {
+    if (previous !== undefined && trailingBackslashes(previous) % PAIR === 1) {
       joined[joined.length - 1] = previous.slice(0, LAST) + line;
     } else {
       joined.push(line);
@@ -57,9 +68,35 @@ const joinContinuations = (text: string): string[] => {
 const MALFORMED = Symbol('malformed git config');
 type Decoded = string | typeof MALFORMED;
 
+type DecodedChar = { char: string; quoted: boolean };
+
+const isTrimmable = (entry: DecodedChar | undefined): boolean =>
+  entry !== undefined && !entry.quoted && entry.char.trim() === '';
+
+/** Drops leading and trailing whitespace that was NOT inside quotes.
+ *
+ * A plain `trim()` would be wrong in a way that matters: git treats `[remote " origin "]` as a
+ * subsection distinct from `origin`, so trimming quoted space would let a config declaring only
+ * `" origin "` satisfy a check for `origin` — and a checkout with no origin remote at all would
+ * read as managed. Quoted whitespace is part of the value; unquoted whitespace is layout. */
+const trimUnquoted = (chars: readonly DecodedChar[]): string => {
+  let start = 0;
+  let end = chars.length;
+  while (start < end && isTrimmable(chars[start])) {
+    start += 1;
+  }
+  while (end > start && isTrimmable(chars[end - 1])) {
+    end -= 1;
+  }
+  return chars
+    .slice(start, end)
+    .map((entry) => entry.char)
+    .join('');
+};
+
 // eslint-disable-next-line max-statements -- one pass over the characters, where each branch depends on the quoting state the others maintain; splitting it would need that state threaded through helpers and read worse
 const decodeValue = (raw: string): Decoded => {
-  let out = '';
+  const chars: DecodedChar[] = [];
   let quoted = false;
   for (let index = 0; index < raw.length; index += 1) {
     const char = raw[index];
@@ -71,17 +108,18 @@ const decodeValue = (raw: string): Decoded => {
       if (escaped === undefined) {
         return MALFORMED;
       }
-      out += escaped;
+      // An escaped character is literal wherever it appears, so it is never trimmable.
+      chars.push({ char: escaped, quoted: true });
     } else if (char === '"') {
       quoted = !quoted;
     } else if (!quoted && (char === '#' || char === ';')) {
-      return out.trim();
+      return trimUnquoted(chars);
     } else {
-      out += char;
+      chars.push({ char: char ?? '', quoted });
     }
   }
   // An unterminated quote is not a value with a stray character in it; git rejects the file.
-  return quoted ? MALFORMED : out.trim();
+  return quoted ? MALFORMED : trimUnquoted(chars);
 };
 
 type Section = { name: string; subsection?: string };

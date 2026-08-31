@@ -275,12 +275,13 @@ the query resolves to the ref itself.
 **Gate on `checkout.status` before reading anything.** `managed` means the path really is this
 ref's checkout. `unmanaged` (`reason`: `no_refs_marker`, `origin_mismatch`, `no_origin`,
 `git_is_file`, `git_is_symlink`, `outside_sources`) means something else is there — do not read it
-and do not sync it. `unverifiable` (`path_unreadable`, `config_unreadable`,
-`duplicate_config_values`) means it could not be inspected. Package verification is gated on the
+and do not sync it. `unverifiable` (`path_unreadable`, `git_unreadable`, `config_unreadable`,
+`config_malformed`, `duplicate_config_values`) means it could not be inspected. Package verification is gated on the
 same thing, so anything but `managed`/`missing` yields `package.status: "unverifiable"`.
 
 `installed.status` is one of `found`, `not_materialized` (nothing installed there),
-`unsupported_layout` (Yarn PnP), `unverifiable` (a slot exists but its manifest is unusable). None
+`unsupported_layout` (Yarn PnP), `unverifiable` (`manifest_unreadable`, `manifest_has_no_version`,
+`slot_unreadable`, `unsupported_package_name`). None
 of the last three is a reason to read a lockfile instead — say the version is unknown and ask.
 
 Package statuses (`verified`, `relocated`, `unmaterialized`, `unverifiable`, `ambiguous`,
