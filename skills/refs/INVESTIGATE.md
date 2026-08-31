@@ -32,20 +32,40 @@ default you may deviate from when the situation calls for it.
 
 ### 1. Route deterministically
 
-Go straight to `resolve` when the question names a package, import path, URL, or
-recognizable repo name:
+One call does the routing, the refresh, and the verification:
 
 ```bash
-refs resolve <query> --json
+refs resolve <query> --sync-if-stale --json
 ```
 
 `<query>` can be an npm package name, an import path (`react/jsx-runtime`,
 `@scope/pkg/sub/path` — longest matching prefix wins), a git URL, or a ref-key
-suffix (`zod`). This returns `{key, local_path, package, stale, missing}`, plus
-`last_fetched_at` once the ref has been fetched; `package` is `null` when the query
-resolves to the ref itself rather than one of its packages.
+suffix (`zod`). `--sync-if-stale` fetches — or clones, when the checkout is absent —
+only when needed, and everything it reports describes the checkout **after** that. Drop
+the flag when you want a purely offline answer.
 
-When it is not null, `package` is `{name, path, local_path}` and carries its **own**
+It returns `{key, local_path, checkout, package, stale, missing}`, plus
+`last_fetched_at` once the ref has been fetched and `sync` when a sync actually ran;
+`package` is `null` when the query resolves to the ref itself rather than one of its
+packages.
+
+**Check `checkout.status` before reading anything.** It says whether the path is this
+ref's checkout at all, which presence alone does not:
+
+- **`managed`** — proceed.
+- **`missing`** — nothing is there. With `--sync-if-stale` this should not survive into
+  the answer; without it, add the flag and call again.
+- **`unmanaged`** — something else occupies the path (a manual clone, a different
+  repository, a worktree file). `reason` says which. Do **not** read it, and do not
+  sync it: report it and offer `refs doctor`.
+- **`unverifiable`** — the path could not be inspected. Same handling as `unmanaged`;
+  say so rather than reading anything.
+
+When a package name is registered by more than one ref, `resolve` refuses and names the
+remedy — pass `--ref <ref>` to scope the query to one of them.
+
+Once the checkout is `managed`, the package inside it gets the same treatment. When `package`
+is not null it is `{name, path, local_path, status}` and carries its **own**
 absolute `local_path` — the package directory, not the ref's. Rule 1 of the citation
 contract below wants the checkout root, so read the top-level `local_path` for that, and
 treat the package's only as a starting directory for the search.
@@ -60,9 +80,9 @@ is what tells you whether the path is trustworthy:
   location, and `configured_path` names the stale one. Mention the move **after**
   answering the question, and offer to persist it with
   `refs edit <ref> --package <name> path <new-path>`.
-- **`unmaterialized`** — the checkout is not there. Sync (step 2), then resolve again.
-  The same applies whenever you sync at all: verification described the checkout as it was
-  BEFORE the sync, so re-run `resolve` afterwards rather than reusing the earlier path.
+- **`unmaterialized`** — the checkout is not there. With `--sync-if-stale` this should not
+  survive into the answer, since the clone happens before verification runs; without the flag,
+  add it and call again.
 - **`unverifiable`** — the path returned is the _configured_ one and may be stale: an
   unreadable manifest can sit on top of the wrong package. Do not treat it as confirmed.
   `reason` names the actual failure — a malformed manifest, a permissions error, a
@@ -92,20 +112,7 @@ it does to the checkout — they help you pick a ref, and nothing more.
 If `resolve` exits `4` (not found), the ref isn't tracked yet — tell the user and
 point them at `ADD.md` instead of inventing an answer from training knowledge.
 
-### 2. Sync only if stale
-
-Check `resolve`'s `stale` (and `missing`) fields. If `stale: false` and
-`missing: false`, skip straight to step 3 — the fast path stays fast. Only sync when
-needed:
-
-```bash
-refs sync <ref> --json
-```
-
-`<ref>` accepts the full key or a unique suffix. Never analyze a `missing` checkout
-without syncing first (a missing checkout re-clones on sync).
-
-### 3. Investigate
+### 2. Investigate
 
 Analyze the checkout **locally** — never paste large excerpts or diffs into your own
 context. Dose subagents per the rule in `SKILL.md` §6: one repo + one clear question =
@@ -205,7 +212,7 @@ outside them:
                 path relative to <local_path>
 ```
 
-### 4. Synthesize
+### 3. Synthesize
 
 Combine every finding into the final answer, whether it came back in a worker's contract
 or you noted it during inline investigation. Cite commit shas directly from wherever they
@@ -255,10 +262,21 @@ outside its working directory, whatever the link format.
 
 ## Version questions ("what changed between vA and vB")
 
-1. Find the version actually installed in the _user's_ project — read its lockfile or
-   manifest (`package.json` + `package-lock.json`/`pnpm-lock.yaml`/`npm-shrinkwrap.json`
-   for npm; the equivalent lockfile for other ecosystems). This is the project being
-   worked on, not the ref checkout.
+1. Ask for the version the project actually has installed — do **not** parse a lockfile:
+
+   ```bash
+   refs resolve <package> --project <dir> --json
+   ```
+
+   `<dir>` is the directory that imports the dependency (in a monorepo, the workspace
+   package, not the repo root — that is where Node's own lookup would start). The answer
+   is in `installed`: `status: "found"` carries `version` and the manifest's own `name`
+   (which differs from the query when the dependency was installed under an alias).
+
+   `not_materialized` (nothing installed there), `unsupported_layout` (Yarn PnP) and
+   `unverifiable` all mean the version is unknown. Say so and ask — none of them is a
+   reason to fall back to reading a lockfile by hand, which is what this replaces.
+
 2. Resolve each version to a concrete git tag — the diff is then plain read-only git in
    the checkout (worker or inline, per the dosing rule):
 
@@ -320,8 +338,8 @@ outside its working directory, whatever the link format.
    noise, and on a blobless checkout it also cuts what gets fetched: in a measured
    five-commit repo the scoped diff fetched half the blobs of the unscoped one.
 
-   A worker still returns only the compact output contract from §3 above — commit
+   A worker still returns only the compact output contract from §2 above — commit
    list + `path:line` highlights, never a pasted raw diff; inline, hold yourself to
    the same discipline.
 
-4. Synthesize as in §3 step 4.
+4. Synthesize as in §3.

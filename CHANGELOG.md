@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`refs resolve` answers in one call what used to take three.** The skill's investigation flow
+  began `resolve` → `sync` → `resolve` **again**, and the third call was not ceremony: package
+  verification had described the checkout as it was *before* the sync, so reusing that answer meant
+  reporting a path that no longer necessarily held what it claimed. `--sync-if-stale` fetches (or
+  clones) only when the ref is stale or its checkout absent, and everything it reports describes the
+  checkout afterwards. The rule has left the skill and become code.
+
+  It refuses, rather than syncing, when the checkout is `unmanaged` or `unverifiable`. `sync`
+  hard-resets and cleans; running it against a directory whose identity was never established is
+  how a stray clone loses its history. A failing sync fails the command rather than returning a
+  success envelope containing a stale path.
+
+- **`refs resolve --project <dir>` reports the version a project has installed.** The skill used to
+  tell the agent to read the project's lockfile by hand, and nothing in refs touched one — so the
+  deterministic half of every "what changed between my version and a newer one" question was done
+  by the least deterministic component available, against pnpm's peer-qualified keys, aliases,
+  overrides and three vendor-specific formats.
+
+  The answer is read from `node_modules`, walking up in Node's own lookup order, and stops at the
+  first installation slot that exists rather than the first readable manifest — falling through to
+  an ancestor would report a shadowed install Node would not have loaded. There is deliberately no
+  lockfile fallback: a lockfile says what *should* be installed, `node_modules` says what *is*, and
+  the second is the question. `installed.status` is `found`, `not_materialized`,
+  `unsupported_layout` (Yarn PnP, detected but never loaded — `.pnp.cjs` is project code) or
+  `unverifiable`.
+
+- **`refs resolve --ref <ref>`** scopes a query to one ref's packages. A package name registered by
+  several refs used to be answered with "use the full ref key" — advice the command could not
+  honour, because a full-key query routes by *ref* and comes back with `package: null`. The error
+  now names a remedy that exists.
+
 - `refs doctor` gained a `locks` check. A held lock used to be invisible: acquisition failed with a
   message that named no owner, and `doctor` had no lock check at all — so the one command meant to
   answer "is something stuck?" could not see the thing that was stuck. The check lists every entry
@@ -22,6 +53,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `doctor` warning, it does not change the exit code.
 
 ### Changed
+
+- **`refs resolve` establishes that the path it hands back is really this ref's checkout.** It used
+  to report presence from a `.git` entry alone, while `add` and `sync` both ran a stronger guard
+  before mutating — so the one command whose result is read as "the source is here" was the one
+  that did not check what was there. A manual clone at the derived path, a half-finished `remove`,
+  a restored backup or a symlinked second home all produced a confident answer about the wrong
+  repository, with no error and no warning.
+
+  Every reply now carries `checkout: {status, reason?}` — `managed`, `missing`, `unmanaged` or
+  `unverifiable` — read straight out of `.git/config` without spawning git, so the hot path stays
+  subprocess-free. The origin URL is never echoed back in `reason`; it can carry credentials.
+
+  `managed` requires the `core.hooksPath` marker to be **this home's** hooks directory, not merely
+  present — the comparison `add` already makes — so a manual clone that sets it for its own purposes
+  does not pass. A config git itself would reject (an unterminated quote, an undefined escape, a
+  line that is neither a section nor an assignment) is `unverifiable` rather than partially read: a
+  file git would not accept is not evidence of identity.
+
+  **Package verification is gated on it.** A manifest read inside an unrelated checkout can answer
+  `verified` for a package that has nothing to do with the query, so anything other than `managed`
+  or `missing` now yields `package.status: "unverifiable"` instead of a confident location.
+
+  `missing` is unchanged and still means `checkout.status === "missing"`. Callers should branch on
+  `checkout.status`, which answers the question `missing` was often assumed to.
 
 - **The "lock is held" error now says who holds it and for how long.** It used to read `lock <name>
   is held — another refs process is running`, which left no way to tell a running `sync` from

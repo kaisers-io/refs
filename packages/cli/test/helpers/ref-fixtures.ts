@@ -7,8 +7,8 @@ import {
   zState,
   // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { mkdir } from 'node:fs/promises';
 
 // Shared config/state/checkout fixture builders for `list.test.ts` and `show.test.ts` — both drive
 // `refs list`/`refs show` against a config seeded directly via `writeConfig` (never through a real
@@ -39,10 +39,31 @@ const seedState = async (home: RefsHome, refs: Record<string, unknown>): Promise
   return state;
 };
 
-/** Marks `checkoutPath(home, key)` as an existing git checkout — a bare `.git` directory is enough
- * for `isGitCheckout`'s plain `existsSync` check, no real git repo needed. */
-const markCheckoutPresent = async (dest: string): Promise<void> => {
+/** Escapes a value the way git writes one. On Windows a hooks path is full of backslashes, and git
+ * stores each as `\\` — a fixture that writes the raw path produces a file git itself would read
+ * differently, or reject. */
+const gitConfigValue = (value: string): string => value.replaceAll('\\', String.raw`\\`);
+
+/** Marks `dest` as an existing git checkout.
+ *
+ * With `managed`, it carries the two values that identify a refs-managed one: the `core.hooksPath`
+ * marker `cloneRepo` stamps — which must be THIS home's hooks directory, not merely present — and
+ * the ref's configured origin url. Without it, the checkout is present but not recognisably this
+ * ref's, which is a case worth testing on its own.
+ *
+ * A bare `mkdir .git` used to be enough, because presence was decided by `existsSync`. It is not
+ * any more, and deliberately so: a directory with a `.git` in it is not evidence of identity, so a
+ * fixture standing in for a real checkout has to look like one. */
+const markCheckoutPresent = async (
+  dest: string,
+  managed?: { hooksDir: string; url: string },
+): Promise<void> => {
   await mkdir(join(dest, '.git'), { recursive: true });
+  const config =
+    managed === undefined
+      ? ''
+      : `[core]\n\thooksPath = ${gitConfigValue(managed.hooksDir)}\n[remote "origin"]\n\turl = ${gitConfigValue(managed.url)}\n`;
+  await writeFile(join(dest, '.git', 'config'), config, 'utf8');
 };
 
 const MS_PER_MINUTE = 60_000;

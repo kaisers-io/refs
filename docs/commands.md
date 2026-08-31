@@ -542,7 +542,7 @@ ambiguously — resolve it with a longer suffix or the full key).
 ## `refs resolve`
 
 ```
-refs resolve <query>
+refs resolve <query> [--ref <ref>] [--project <dir>] [--sync-if-stale]
 ```
 
 The agent-routing command: resolves a git URL, an exact npm package name, an import path
@@ -551,6 +551,12 @@ package) it denotes. Precedence, in order: (1) a parseable git URL, matched agai
 configured ref's canonical identity; (2) an exact package-name match; (3) a longest
 segment-prefix package match (so `react/jsx-runtime` resolves to package `react`); (4) a
 unique ref-key suffix match (same rule `refs show`/`refs remove`/`refs tag` use).
+
+| Option | Meaning |
+| --- | --- |
+| `--ref <ref>` | Resolve `<query>` as a package **within this ref** (full key or unique suffix). Package routing only — the query never falls through to ref routing, since the caller has already said which ref they mean. This is the remedy the ambiguity error names when one package name is registered by several refs. |
+| `--project <dir>` | Also report the version `<dir>` has **installed** of the routed package, read from `node_modules` (never from a lockfile). `<dir>` is the importing directory — in a monorepo the workspace package, not the repo root, since that is where Node's own lookup starts. Requires a query that names a package; on a ref query it is a usage error. |
+| `--sync-if-stale` | Fetch, or clone when the checkout is absent, before answering — and only when the ref is stale or missing. Everything reported then describes the checkout **after** that sync. Refuses, rather than syncing, when the checkout is `unmanaged` or `unverifiable`: `sync` hard-resets and cleans, so it must never run against a directory whose identity was not established. |
 
 ```bash
 refs resolve zod/mini
@@ -576,6 +582,57 @@ package's location could **not** simply be confirmed, extra lines follow it
 (`package status:`, and where applicable `configured path:`, `candidates:`, `reason:`),
 because each of those changes what `package path:` means. See
 [Package location verification](#package-location-verification) below.
+
+### Checkout identity
+
+Every reply carries `checkout: {status, reason?}`, answering a question presence alone does not:
+is the path really this ref's checkout? `add` and `sync` have always checked this before mutating;
+`resolve` now checks it before reporting, because its answer is what a consumer reads source from.
+
+| `checkout.status` | Meaning |
+| --- | --- |
+| `managed` | The refs marker and the configured origin both match. Proceed. |
+| `missing` | The directory itself does not exist. `missing: true` is exactly this case, kept for callers that predate the field. A directory that exists without a `.git` is `unmanaged` (`no_git`), not missing — it is an occupied path, and treating it as absent would let verification run against whatever it holds. |
+| `unmanaged` | Something is there that is not this ref's checkout. `reason` is a stable slug: `no_refs_marker`, `origin_mismatch`, `no_origin`, `git_is_file`, `git_is_symlink`, `outside_sources`. |
+| `unverifiable` | The path could not be inspected: `path_unreadable`, `git_unreadable`, `config_unreadable`, `config_malformed`, `duplicate_config_values`. |
+
+`no_refs_marker` covers a `core.hooksPath` that is absent **or** set to something other than this
+home's hooks directory — a manual clone that sets it for its own purposes is not refs-managed.
+`config_malformed` means the file is one git itself would reject (an unterminated quote, an escape
+git does not define, an assignment before any section); it is not partially read, because a file
+git would not accept is not evidence of identity.
+
+The origin URL is never echoed back in `reason` — it can carry credentials. Both values are read
+straight out of `.git/config`; `resolve` spawns no subprocess.
+
+**Package verification is gated on this.** A manifest read inside an unrelated checkout can report
+`verified` for a package that has nothing to do with the query, so anything other than `managed` or
+`missing` yields `package.status: "unverifiable"` rather than a confident answer.
+
+### `installed` (with `--project`)
+
+| `installed.status` | Meaning |
+| --- | --- |
+| `found` | `version` plus the manifest's own `name` and `package_json`. The name differs from the query when the installed slot is itself an alias (`node_modules/x` whose manifest says `y`). An alias declared the other way round — `"my-zod": "npm:zod@3"`, where the slot is `node_modules/my-zod` — is **not** discovered, since nothing reads the project's own manifest; such a query reports `not_materialized`. |
+| `not_materialized` | Nothing installed under that name anywhere up the tree. |
+| `unsupported_layout` | Yarn Plug'n'Play (`reason: "yarn_pnp"`). `.pnp.cjs` is detected, never loaded: reading a version out of it would mean executing project code. |
+| `unverifiable` | An installation slot exists but its manifest is unusable (`manifest_unreadable`, `manifest_has_no_version`), the slot itself could not be inspected (`slot_unreadable`), or the package name cannot safely become a path (`unsupported_package_name`). |
+
+The walk stops at the first `node_modules/<name>` that **exists**, not the first readable manifest:
+falling through to an ancestor would report a shadowed installation Node would not have loaded.
+There is deliberately no lockfile fallback — a lockfile says what should be installed,
+`node_modules` says what is, and the second is the question being asked.
+
+### `sync` (with `--sync-if-stale`)
+
+Present only when a sync actually ran, as `{status}` — one of `updated`, `fresh`, `cloned`,
+`restored`, the same vocabulary `refs sync` uses. A ref inside its `sync_ttl` with a present
+checkout produces no `sync` field at all.
+
+A failing sync fails the whole command with the ordinary error envelope, rather than returning a
+success envelope containing a stale path: a caller that asked for freshness and did not get it is
+being handed something it did not ask for. Exit `3` when the sync was refused because the checkout
+is not this ref's, and `5` when the ref's lock could not be taken or was lost mid-operation.
 
 ```bash
 refs resolve zod/mini --json

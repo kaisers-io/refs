@@ -57,6 +57,9 @@ describe('refs resolve: exact npm package name (step 2)', () => {
         const envelope = parseSoleEnvelope(stdout);
         expect(envelope.ok).toBe(true);
         expect(envelope.data).toStrictEqual({
+          // `resolve` now establishes that the path it hands back really is this ref's checkout,
+          // rather than reporting presence from a `.git` entry alone.
+          checkout: { status: 'managed' },
           key: NEXT_KEY,
           last_fetched_at: lastFetchedAt,
           local_path: dest,

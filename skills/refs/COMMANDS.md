@@ -231,44 +231,65 @@ Exit codes: `2` (ambiguous suffix), `4` (no ref matches).
 ## `refs resolve`
 
 ```
-refs resolve <query>
+refs resolve <query> [--ref <ref>] [--project <dir>] [--sync-if-stale] [--json]
 ```
 
-The routing command — start here. `<query>` is a git url, an exact npm package name, an
-import path (`react/jsx-runtime`, `@scope/pkg/sub/path` — longest segment prefix wins), or
-a unique ref-key suffix, tried in that order.
+Routes a git URL, npm package name, import path, or unique ref-key suffix to the one ref (and,
+where applicable, package) it denotes.
+
+| Option            | Use it when                                                                                                                                                                             |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--sync-if-stale` | Always, for investigation. Fetches or clones only when needed, and everything reported describes the checkout **after** that — which is why there is no longer a second `resolve` call. |
+| `--ref <ref>`     | A package name is registered by more than one ref. The ambiguity error names this flag; it scopes the query to that ref's packages.                                                     |
+| `--project <dir>` | You need the version the user's project has installed. `<dir>` is the importing directory — the workspace package in a monorepo, not the repo root.                                     |
+
+`--json` data:
 
 ```json
 {
-  "key": "github.com/example-org/example-monorepo",
-  "last_fetched_at": "2026-07-05T06:28:47.633Z",
-  "local_path": "/Users/you/.kaisers-io/refs/sources/github.com/example-org/example-monorepo",
+  "key": "github.com/colinhacks/zod",
+  "local_path": "/…/sources/github.com/colinhacks/zod",
+  "checkout": { "status": "managed" },
   "missing": false,
+  "stale": false,
+  "last_fetched_at": "2026-08-30T10:00:00.000Z",
+  "sync": { "status": "updated" },
   "package": {
-    "local_path": "/Users/you/.kaisers-io/refs/sources/github.com/example-org/example-monorepo/packages/example-pkg",
-    "name": "example-pkg",
-    "path": "packages/example-pkg",
+    "name": "zod",
+    "path": "packages/zod",
+    "local_path": "/…/packages/zod",
     "status": "verified"
   },
-  "stale": false
+  "installed": {
+    "status": "found",
+    "name": "zod",
+    "version": "3.23.8",
+    "package_json": "/…/node_modules/zod/package.json"
+  }
 }
 ```
 
-`last_fetched_at` is absent for a ref that has never been synced. `package` is `null` when
-the query resolved to the ref itself rather than one of its packages.
+`sync` appears only when a sync ran; `installed` only with `--project`; `package` is `null` when
+the query resolves to the ref itself.
 
-`package.status` says whether the location was confirmed, and **you must read it before
-reading any source**: `verified`, `relocated` (it moved; `local_path` is the new place and
-`configured_path` the stale one), `unmaterialized` (no checkout yet), `unverifiable` (could
-not be confirmed; `reason` says why), `ambiguous` (the name exists at several paths, in
-`candidates`), or `missing`. **`local_path` is `null` for `ambiguous` and `missing`** — those
-are the two cases with no known location, so a zero exit does not by itself mean you have a
-usable path. `configured_path`, `candidates` and `reason` appear only where they apply.
-`INVESTIGATE.md` §1 has what to do for each status.
+**Gate on `checkout.status` before reading anything.** `managed` means the path really is this
+ref's checkout. `unmanaged` (`reason`: `no_refs_marker`, `origin_mismatch`, `no_origin`,
+`git_is_file`, `git_is_symlink`, `outside_sources`) means something else is there — do not read it
+and do not sync it. `unverifiable` (`path_unreadable`, `git_unreadable`, `config_unreadable`,
+`config_malformed`, `duplicate_config_values`) means it could not be inspected. Package verification is gated on the
+same thing, so anything but `managed`/`missing` yields `package.status: "unverifiable"`.
 
-Exit codes: `2` (matches more than one ref/package), `3` (looks like a git url but is not
-a supported form), `4` (no match — the ref isn't tracked; see `ADD.md`). All six `status`
-values exit `0`: the ref resolved, and only the package's location inside it is in question.
+`installed.status` is one of `found`, `not_materialized` (nothing installed there),
+`unsupported_layout` (Yarn PnP), `unverifiable` (`manifest_unreadable`, `manifest_has_no_version`,
+`slot_unreadable`, `unsupported_package_name`). None
+of the last three is a reason to read a lockfile instead — say the version is unknown and ask.
+
+Package statuses (`verified`, `relocated`, `unmaterialized`, `unverifiable`, `ambiguous`,
+`missing`) are unchanged; see `INVESTIGATE.md` §1 for how to act on each.
+
+Exit codes: `0`, `2` (ambiguous package name, or `--project` on a query that names a ref rather
+than a package), `3` (a `--sync-if-stale` refused because the checkout is not this ref's), `4` (no
+match), `5` (a `--sync-if-stale` that could not take the ref's lock, or lost it mid-operation).
 
 ## `refs show <ref>`
 

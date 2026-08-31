@@ -7,7 +7,7 @@ import {
   withResetExitCode,
   withTempHome,
 } from '../helpers/doctor-support.ts';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, utimes, writeFile } from 'node:fs/promises';
 import { EXIT } from '@kaisers-io/refs-core';
 import { join } from 'node:path';
 
@@ -19,6 +19,21 @@ import { join } from 'node:path';
 // name a live process however busy the machine is.
 const DEAD_PID = 2_147_483_647;
 const TOKEN = '11111111-2222-4333-8444-555555555555';
+const AN_HOUR_MS = 3_600_000;
+
+/** A lock whose lease timestamp is in the FUTURE. Every age in the report derives from it, so a
+ * clock running backwards makes them all meaningless — a finding rather than a negative number. */
+const seedSkewedLock = async (locksDir: string): Promise<void> => {
+  const lockPath = join(locksDir, 'home');
+  await mkdir(lockPath, { recursive: true });
+  const sidecar = join(lockPath, `lease-${TOKEN}`);
+  await writeFile(sidecar, '');
+  // The lease is measured from the sidecar's mtime, so that is where the skew has to be.
+  const ahead = new Date(Date.now() + AN_HOUR_MS);
+  await utimes(sidecar, ahead, ahead);
+  const meta = { acquired_at: new Date().toISOString(), pid: process.pid, token: TOKEN };
+  await writeFile(join(lockPath, 'meta.json'), JSON.stringify(meta));
+};
 
 const seedLock = async (locksDir: string, name: string, pid: number): Promise<void> => {
   const lockPath = join(locksDir, name);
@@ -85,6 +100,49 @@ describe('refs doctor: locks check on an entry it cannot read', () => {
         // Reporting `ok` here would be the one failure this check exists to avoid: a clean bill of
         // health from a look that did not happen.
         expectCheck(envelope, 'locks', { detailContains: 'owner unknown', status: 'warn' });
+      }),
+    );
+  });
+});
+
+describe('refs doctor: locks check on a non-directory', () => {
+  it('warns about something that is not a lock occupying a lock name', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, home, runner, stdout } = await setupInitializedHome(homeDir);
+        // Nothing legitimate puts a file where a lock belongs. It clears itself once the metadata
+        // grace elapses, so the message must not claim it blocks forever — but it is still worth
+        // a look.
+        await mkdir(home.locksDir, { recursive: true });
+        await writeFile(join(home.locksDir, 'home'), '');
+        expectGitVersion(runner);
+
+        const envelope = await runDoctorJson(ctx, stdout);
+
+        expectCheck(envelope, 'locks', { detailContains: 'not a directory', status: 'warn' });
+      }),
+    );
+  });
+});
+
+describe('refs doctor: locks check on a clock running backwards', () => {
+  it('says the recorded time is in the future rather than printing a negative age', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, home, runner, stdout } = await setupInitializedHome(homeDir);
+        await seedSkewedLock(home.locksDir);
+        expectGitVersion(runner);
+
+        const envelope = await runDoctorJson(ctx, stdout);
+
+        // Every age in the report derives from this timestamp, so a clock running backwards makes
+        // them all meaningless — which is a finding, not something to render as a negative number.
+        expectCheck(envelope, 'locks', {
+          detailContains: 'recorded time is in the future',
+          status: 'warn',
+        });
       }),
     );
   });
