@@ -2,6 +2,7 @@ import type { Config, RefsHome, State } from '@kaisers-io/refs-core';
 import { assertProjectDir, resolveInstalled } from './resolve-installed.ts';
 import {
   checkoutPath,
+  conflictError,
   durationToMs,
   readConfig,
   readState,
@@ -176,13 +177,35 @@ const runResolve = async (ctx: CliContext, opts: ResolveOptions): Promise<Resolv
     return first;
   }
   assertSyncable(first.checkout, first.key);
-  const status = await syncTarget(ctx, target);
-  // Everything is re-read and re-derived afterwards, not patched: the sync may have created the
-  // checkout, moved packages within it, or advanced state. Reusing any part of the pre-sync
-  // snapshot is precisely the mistake the mandatory second `resolve` call existed to avoid — the
-  // one this flag exists to make unnecessary.
-  const after = await describeTarget(ctx, await loadTarget(ctx, opts), opts);
-  return { ...after, sync: { status } };
+  // eslint-disable-next-line node/no-sync -- `…AfterSync` names the sequencing, not a sync fs call; the rule matches the name suffix only
+  return await syncThenDescribe(ctx, { key: first.key, opts, target });
+};
+
+/** Syncs, then re-derives everything from disk rather than patching the earlier snapshot: the sync
+ * may have created the checkout, moved packages within it, or advanced state. Reusing any part of
+ * the pre-sync answer is precisely the mistake the mandatory second `resolve` call existed to
+ * avoid — the one this flag exists to make unnecessary. */
+// eslint-disable-next-line node/no-sync -- the name describes ordering, not a synchronous fs call
+const syncThenDescribe = async (
+  ctx: CliContext,
+  args: {
+    key: string;
+    opts: ResolveOptions;
+    target: { config: Config; home: RefsHome; match: RouteMatch; state: State };
+  },
+): Promise<ResolveData> => {
+  const { key, opts } = args;
+  const status = await syncTarget(ctx, args.target);
+  const reloaded = await loadTarget(ctx, opts);
+  /* v8 ignore next 6 -- reachable only under real concurrency: a `refs edit` landing inside the
+     sync window, between the two config reads. Provoking it deterministically would mean injecting
+     a config rewrite into the middle of a real git operation, which is more machinery than the arm
+     is worth; the guard exists so the outcome is a clear conflict rather than a reply describing
+     one ref while carrying another's sync status. */
+  if (reloaded.match.key !== key) {
+    throw conflictError(`configuration changed while resolving '${opts.query}' — retry`);
+  }
+  return { ...(await describeTarget(ctx, reloaded, opts)), sync: { status } };
 };
 
 /** Assembles the payload from an already-loaded target. Kept apart from `runResolve` so that

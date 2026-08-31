@@ -161,6 +161,17 @@ describe('keeping quoted whitespace, which git treats as significant', () => {
   });
 });
 
+describe("using git's notion of whitespace, not JavaScript's", () => {
+  it('does not strip a unicode space, which git would keep', () => {
+    expect.hasAssertions();
+    // JS `\s` covers unicode spaces; git's config whitespace is space and tab only. Trimming one
+    // here would make a value match that git reads as different.
+    const found = read('[core]\n\thooksPath = /hooks\u00A0\n');
+
+    expect(found.get(MARKER)).toStrictEqual(['/hooks\u00A0']);
+  });
+});
+
 describe('refusing a config git would reject', () => {
   it.each([
     ['an unterminated quote', '[core]\n\thooksPath = "/hooks\n'],

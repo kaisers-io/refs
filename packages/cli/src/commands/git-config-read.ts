@@ -31,12 +31,18 @@
 // Git allows only alphanumerics, `-` and `.` in a section name, and only alphanumerics and `-`
 // in a variable name — notably no underscore, which `\w` would have admitted.
 // A trailing comment after the closing bracket is valid: `[core] # local settings`.
+// Git's config whitespace is space and horizontal tab only — JavaScript's `\s` additionally covers
+// unicode spaces and vertical whitespace, which git would not strip.
 const SECTION_LINE =
-  /^\[\s*(?<section>[A-Za-z0-9.-]+)\s*(?:"(?<subsection>(?:[^"\\]|\\.)*)")?\s*\]\s*(?:[#;].*)?$/u;
-const VARIABLE_LINE = /^(?<name>[A-Za-z][A-Za-z0-9-]*)\s*(?:=\s*(?<value>.*))?$/u;
-// The only escapes git defines inside a config value. Anything else is a malformed file.
+  /^\[[ \t]*(?<section>[A-Za-z0-9.-]+)[ \t]*(?:"(?<subsection>(?:[^"\\]|\\.)*)")?[ \t]*\][ \t]*(?:[#;].*)?$/u;
+const VARIABLE_LINE = /^(?<name>[A-Za-z][A-Za-z0-9-]*)[ \t]*(?:=[ \t]*(?<value>.*))?$/u;
+// The only escapes git defines inside a config VALUE. Anything else is a malformed file.
 // eslint-disable-next-line id-length -- keys are the literal escape characters git defines (b/n/t)
 const ESCAPES: Record<string, string> = { '"': '"', '\\': '\\', b: '\b', n: '\n', t: '\t' };
+// Inside a SUBSECTION name git recognises only these two; the rest are not escapes there.
+const SUBSECTION_ESCAPES: Record<string, string> = { '"': '"', '\\': '\\' };
+// Git treats only space and horizontal tab as trimmable config whitespace.
+const CONFIG_SPACE = new Set([' ', '\t']);
 const CRLF = 2;
 
 /** Splits `text` into git's LOGICAL lines, honouring the one thing a lexical split cannot: whether
@@ -67,8 +73,9 @@ const logicalLines = function* logicalLines(text: string): Generator<string> {
       current = '';
       quoted = false;
       commented = false;
-    } else if (char === '\r') {
-      // Swallowed: CRLF files end their logical lines at the \n above.
+    } else if (char === '\r' && text[index + 1] === '\n') {
+      // Part of a CRLF line ending; the \n on the next pass closes the logical line. A lone \r is
+      // an ordinary character to git and falls through to the branches below.
     } else if (commented) {
       current += char;
     } else if (char === '\\') {
@@ -101,7 +108,7 @@ type Decoded = string | typeof MALFORMED;
 type DecodedChar = { char: string; quoted: boolean };
 
 const isTrimmable = (entry: DecodedChar | undefined): boolean =>
-  entry !== undefined && !entry.quoted && entry.char.trim() === '';
+  entry !== undefined && !entry.quoted && CONFIG_SPACE.has(entry.char);
 
 /** Drops leading and trailing whitespace that was NOT inside quotes.
  *
@@ -162,6 +169,27 @@ const qualify = (section: Section, name: string): string =>
     ? `${section.name}.${name.toLowerCase()}`
     : `${section.name}.${section.subsection}.${name.toLowerCase()}`;
 
+/** Subsection names are taken verbatim apart from `\"` and `\\`; git does not apply the value
+ * escapes (`\n`, `\t`, `\b`) there, and neither does trimming — the quotes delimit exactly. */
+// eslint-disable-next-line max-statements -- the same character-at-a-time shape as `decodeValue`, with its own narrower escape set
+const decodeSubsection = (raw: string): Decoded => {
+  let out = '';
+  for (let index = 0; index < raw.length; index += 1) {
+    const char = raw[index];
+    if (char === '\\') {
+      index += 1;
+      const escaped = SUBSECTION_ESCAPES[raw[index] ?? ''];
+      if (escaped === undefined) {
+        return MALFORMED;
+      }
+      out += escaped;
+    } else {
+      out += char ?? '';
+    }
+  }
+  return out;
+};
+
 const parseSection = (line: string): Section | typeof MALFORMED | undefined => {
   const match = SECTION_LINE.exec(line);
   if (match?.groups === undefined) {
@@ -174,9 +202,15 @@ const parseSection = (line: string): Section | typeof MALFORMED | undefined => {
   if (subsection === undefined) {
     return { name: section.toLowerCase() };
   }
-  const decoded = decodeValue(`"${subsection}"`);
+  const decoded = decodeSubsection(subsection);
   return decoded === MALFORMED ? MALFORMED : { name: section.toLowerCase(), subsection: decoded };
 };
+
+// `String.trim()` would be wrong here for the same reason `\s` is: it strips unicode whitespace,
+// which git keeps. Only leading/trailing space and tab are layout.
+const CONFIG_SPACE_EDGES = /^[ \t]+|[ \t]+$/gu;
+
+const trimConfig = (line: string): string => line.replace(CONFIG_SPACE_EDGES, '');
 
 const isSkippable = (line: string): boolean =>
   line === '' || line.startsWith('#') || line.startsWith(';');
@@ -249,7 +283,7 @@ const readGitConfigValues = (
   const found = new Map<string, string[]>();
   let section = NO_SECTION;
   for (const line of logicalLines(text)) {
-    const trimmed = line.trim();
+    const trimmed = trimConfig(line);
     const next = isSkippable(trimmed)
       ? section
       : consumeLine(found, { line: trimmed, section, wanted });

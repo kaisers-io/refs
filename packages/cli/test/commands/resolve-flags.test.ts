@@ -47,6 +47,21 @@ describe('refs resolve --ref: scoping a package name to one ref', () => {
     );
   });
 
+  it('resolves an import path within the named ref, longest prefix first', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        await seedNextFixture({ REFS_HOME: homeDir });
+
+        const envelope = await resolveJson(homeDir, ['next/navigation', '--ref', NEXT_KEY]);
+
+        // Scoping to a ref does not change what an import path means — `--ref` narrows where to
+        // look, not how to read the query.
+        expect(envelope.data['package']).toMatchObject({ name: 'next' });
+      }),
+    );
+  });
+
   it('reports a package the named ref does not register, instead of falling back to the ref', async () => {
     expect.hasAssertions();
     await withResetExitCode(() =>

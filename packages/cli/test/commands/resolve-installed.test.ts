@@ -150,6 +150,38 @@ describe('resolving an installed version from an unusable manifest', () => {
     });
   });
 
+  it('stops at a slot that has no manifest but is not empty', async () => {
+    expect.hasAssertions();
+    // Node can load a package directory from `index.js` with no `main`, so such a slot shadows
+    // anything further up. Walking past it would report an ancestor's version for a module Node
+    // would not load. Only a genuinely empty directory is transparent.
+    const root = await makeProject();
+    await install(root, 'zod', { name: 'zod', version: '3.1.0' });
+    const nested = join(root, 'apps', 'api');
+    await mkdir(join(nested, 'node_modules', 'zod'), { recursive: true });
+    await writeFile(join(nested, 'node_modules', 'zod', 'index.js'), 'module.exports = {};');
+
+    await expect(resolveInstalled(nested, 'zod')).resolves.toMatchObject({
+      reason: 'installed_without_manifest',
+      status: 'unverifiable',
+    });
+  });
+});
+
+describe('resolving an installed version under Yarn PnP', () => {
+  it.each([['.pnp.cjs'], ['.pnp.js']])('detects Yarn PnP (%s) without loading it', async (name) => {
+    expect.hasAssertions();
+    // `.pnp.cjs` is Yarn 2+, `.pnp.js` Yarn 1. Both are project code: reading a version out of
+    // either would mean executing it.
+    const project = await makeProject();
+    await writeFile(join(project, name), 'throw new Error("must never be executed");');
+
+    await expect(resolveInstalled(project, 'zod')).resolves.toStrictEqual({
+      reason: 'yarn_pnp',
+      status: 'unsupported_layout',
+    });
+  });
+
   it('detects Yarn PnP without loading it', async () => {
     expect.hasAssertions();
     // `.pnp.cjs` is project code. Reading a version out of it would mean executing it, so its

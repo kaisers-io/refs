@@ -1,5 +1,5 @@
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import { usageError } from '@kaisers-io/refs-core';
 
 // Which version of a package a project actually has installed.
@@ -17,6 +17,8 @@ import { usageError } from '@kaisers-io/refs-core';
 // a confident guess.
 
 const NODE_MODULES = 'node_modules';
+// Yarn 2+ writes `.pnp.cjs`; Yarn 1 wrote `.pnp.js`.
+const PNP_MANIFESTS = ['.pnp.cjs', '.pnp.js'];
 // Rejects anything that could climb out of `node_modules` or address a path rather than a package:
 // a package name reaches this from `config.toml`, where keys are only checked for being non-empty
 // and not a prototype key — not for being valid npm names.
@@ -92,6 +94,15 @@ const readManifest = async (path: string): Promise<InstalledInfo | undefined> =>
 // never have loaded — precisely the shadowing this walk stops at the first slot to avoid.
 const NOT_THERE = new Set(['ENOENT', 'ENOTDIR']);
 
+const isEmptyDir = async (path: string): Promise<boolean> => {
+  try {
+    const entries = await readdir(path);
+    return entries.length === 0;
+  } catch {
+    return false;
+  }
+};
+
 const probe = async (path: string): Promise<'absent' | 'present' | 'unreadable'> => {
   try {
     await stat(path);
@@ -118,7 +129,10 @@ const hasPnpManifest = async (from: string): Promise<boolean> => {
   for (const dir of lookupDirs(from)) {
     const project = dirname(dir);
     // eslint-disable-next-line no-await-in-loop -- the walk is inherently ordered, nearest first
-    if ((await probe(join(project, '.pnp.cjs'))) === 'present') {
+    // `.pnp.cjs` is Yarn 2+; Yarn 1 wrote `.pnp.js`. Both are detected, neither is loaded.
+    // eslint-disable-next-line no-await-in-loop -- the walk is ordered, nearest first
+    const manifests = await Promise.all(PNP_MANIFESTS.map((name) => probe(join(project, name))));
+    if (manifests.includes('present')) {
       return true;
     }
   }
@@ -148,7 +162,19 @@ const inspectSlot = async (slot: string): Promise<InstalledInfo | undefined> => 
   if (found === 'unreadable') {
     return { reason: 'slot_unreadable', status: 'unverifiable' };
   }
-  return found === 'present' ? readManifest(join(slot, 'package.json')) : undefined;
+  if (found === 'absent') {
+    return undefined;
+  }
+  const manifest = await readManifest(join(slot, 'package.json'));
+  if (manifest !== undefined) {
+    return manifest;
+  }
+  // No manifest — but Node can still load a package directory from `index.js` or a `main`-less
+  // layout, and such a slot shadows anything further up. Walking past it would report an ancestor's
+  // version for a module Node would not load. Only a genuinely EMPTY directory is transparent.
+  return (await isEmptyDir(slot))
+    ? undefined
+    : { reason: 'installed_without_manifest', status: 'unverifiable' };
 };
 
 /** The installed version of `packageName` as seen from `project`.
