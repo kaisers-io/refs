@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The skill's version-question flow moved into its own file.** Every question about a
+  dependency's source loads `SKILL.md` and `INVESTIGATE.md` in full, and 30 % of
+  `INVESTIGATE.md` was a block on resolving versions to tags and diffing between them — read
+  on every plain source question, used on almost none of them. It is now `VERSIONS.md`, with a
+  route of its own in `SKILL.md` §5 and a one-line pointer at the end of `INVESTIGATE.md`, so
+  a mis-route costs one extra read rather than a wrong answer.
+
+  Alongside it, a compression pass over what remains: the worker output contract was stated
+  twice and is now stated once, the five clickable-link rules became one normalization, and a
+  handful of sentences that repeated something said a few lines earlier are gone. Nothing
+  behavioural was removed — the capability gate, the trust boundary, the five hard rules and
+  the worker prompt's own safety rules are untouched, and the measured partial-clone cost model
+  (which git commands fetch blobs, and that `git blame` fetches one per visited revision) is
+  refs' own measurement rather than something the term "partial clone" implies, so it stays
+  verbatim.
+
+  A plain source question now loads 20 % less. A version question loads about what it did
+  before, plus one extra file read.
+
 ### Added
 
 - **`refs sync` and `refs doctor` now report configuration that has fallen behind its upstream.**
