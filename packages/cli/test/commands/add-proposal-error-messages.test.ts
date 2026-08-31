@@ -7,6 +7,7 @@ import {
   withResetExitCode,
   withTempHome,
 } from '../helpers/add-support.ts';
+import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 
 // Regression coverage for `parseFinalProposal`'s (`add-proposal-io.ts`) legible-error rendering:
 // zod's own default rendering of a strict-object's `unrecognized_keys` issue has an EMPTY path
@@ -21,8 +22,6 @@ import {
 // case, reading `.keys` off the issue object instead, which is unaffected by the bug either way).
 // Split out of `add-proposal-envelope.test.ts` purely to keep both files under the repo's 300-line
 // oxlint cap.
-
-const TEST_TIMEOUT_MS = 30_000;
 
 describe('refs add --proposal: a stray unrecognized top-level key', () => {
   it(
@@ -48,7 +47,7 @@ describe('refs add --proposal: a stray unrecognized top-level key', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -77,7 +76,7 @@ describe('refs add --proposal: more than one stray unrecognized top-level key', 
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -106,7 +105,7 @@ describe('refs add --proposal: a stray unrecognized key nested inside a package 
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -133,6 +132,6 @@ describe('refs add --proposal: a named-path issue still renders with its full ne
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });

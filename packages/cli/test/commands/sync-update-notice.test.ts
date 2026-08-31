@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { runSyncJson, setupSyncedRef } from '../helpers/sync-support.ts';
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
 import type { Fetcher } from '@kaisers-io/refs-core';
+import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 
 // `refs sync` is the one routine command that mentions a newer published CLI. It is the right place
 // precisely because it is already network-bound and TTL-gated: `INVESTIGATE.md` has the agent sync
@@ -10,7 +11,6 @@ import type { Fetcher } from '@kaisers-io/refs-core';
 //
 // The notice rides the existing `warnings` array. That keeps `data` — the per-ref results a caller
 // parses — exactly as it was.
-const TEST_TIMEOUT_MS = 30_000;
 
 const respondingWith =
   (version: string): Fetcher =>
@@ -40,7 +40,7 @@ describe('refs sync: update notice', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -66,7 +66,7 @@ describe('refs sync: when there is nothing to announce', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -95,7 +95,7 @@ describe('refs sync: a run with nothing to do', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 
   it(
@@ -116,6 +116,6 @@ describe('refs sync: a run with nothing to do', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });

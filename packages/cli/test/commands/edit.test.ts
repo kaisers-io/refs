@@ -8,6 +8,7 @@ import {
 } from '../helpers/edit-support.ts';
 import { describe, expect, it } from 'vitest';
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
+import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { run } from '../../src/main.ts';
 
 // Integration suite for `refs edit`'s settings/ref/package (non-url) modes, against config seeded
@@ -16,7 +17,6 @@ import { run } from '../../src/main.ts';
 // contract documents but the brief's list doesn't enumerate (an unregistered `--package` name).
 // The `url`-editing cases (e)/(f) live in `edit-url.test.ts` — split out purely to keep this file
 // under the repo's 300-line oxlint cap, per the task brief's up-front three-mode plan.
-const TEST_TIMEOUT_MS = 30_000;
 
 describe('refs edit settings: happy path', () => {
   it(
@@ -43,7 +43,7 @@ describe('refs edit settings: happy path', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -73,7 +73,7 @@ describe('refs edit settings: invalid value', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -110,7 +110,7 @@ describe('refs edit: ref field', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -151,7 +151,7 @@ describe('refs edit: package field', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -173,7 +173,7 @@ describe('refs edit: unknown field', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -196,7 +196,7 @@ describe('refs edit: packages direct edit', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -228,6 +228,6 @@ describe('refs edit: unknown --package', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });

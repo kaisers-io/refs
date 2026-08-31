@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { execFile, spawn } from 'node:child_process';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { ChildProcess } from 'node:child_process';
+import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
@@ -25,7 +26,6 @@ const CHILD_SCRIPT = fileURLToPath(
 const POLL_INTERVAL_MS = 50;
 const MARKER_TIMEOUT_MS = 5000;
 const DEATH_TIMEOUT_MS = 5000;
-const TEST_TIMEOUT_MS = 15_000;
 const PROBE_SIGNAL = 0;
 
 const fileExists = async (path: string): Promise<boolean> => {
@@ -131,7 +131,7 @@ const runParentDeathScenario = async (dir: string): Promise<Scenario> => {
   return { childAliveAfterKill: isPidAlive(childPid), childAliveBeforeKill };
 };
 
-describe('parent-death cleanup', { timeout: TEST_TIMEOUT_MS }, () => {
+describe('parent-death cleanup', { timeout: SLOW_IO_TIMEOUT_MS }, () => {
   it('kills the real child a SpawnRunner#run() is waiting on when the host process gets a catchable termination signal', async () => {
     expect.hasAssertions();
     const dir = await mkdtemp(join(tmpdir(), 'refs-spawn-cleanup-'));

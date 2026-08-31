@@ -4,6 +4,7 @@ import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { runSyncJson, setupSyncedRef } from '../helpers/sync-support.ts';
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
 import { EXIT } from '@kaisers-io/refs-core';
+import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { join } from 'node:path';
 
 // Final-review finding (round 1): `syncMissingCheckout`'s re-clone path (`sync-checkout.ts`) used
@@ -17,7 +18,6 @@ import { join } from 'node:path';
 // outside the managed tree. Kept in its own file — neither `sync.test.ts` nor `sync-support.ts`
 // has headroom left under the repo's 300-line oxlint cap.
 
-const TEST_TIMEOUT_MS = 30_000;
 const NO_ENTRIES: readonly string[] = [];
 const DIRTY_CONTENT = 'untracked local file that a hard reset/clean would sweep away\n';
 const HOST_SEGMENTS = 1;
@@ -42,7 +42,7 @@ describe('refs sync: containment guard on re-clone', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -76,6 +76,6 @@ describe('refs sync: containment guard on existing checkout', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });

@@ -17,6 +17,7 @@ import {
   withTempHome,
 } from '../helpers/add-support.ts';
 import { readFile, rm, writeFile } from 'node:fs/promises';
+import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { join } from 'node:path';
 import { run } from '../../src/main.ts';
 import { setCheckoutOrigin } from '../helpers/add-guards-support.ts';
@@ -26,7 +27,6 @@ import { setCheckoutOrigin } from '../helpers/add-guards-support.ts';
 // labels (a)-(f) mirror the task brief's Step 1 list. Shared scaffolding (fixture setup, the
 // `refs sync --json` runner, and the (f) assertion helper) lives in `test/helpers/sync-support.ts`.
 
-const TEST_TIMEOUT_MS = 30_000;
 const NO_RESULTS = 0;
 
 describe('refs sync: updated', () => {
@@ -51,7 +51,7 @@ describe('refs sync: updated', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -70,7 +70,7 @@ describe('refs sync: fresh', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -92,7 +92,7 @@ describe('refs sync: --stale-only', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -125,7 +125,7 @@ describe('refs sync: missing checkout', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -160,7 +160,7 @@ describe('refs sync: --stale-only with missing checkout', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -190,7 +190,7 @@ describe('refs sync: dirty checkout', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -221,7 +221,7 @@ describe('refs sync: partial batch failure', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -250,7 +250,7 @@ describe('refs sync: origin identity', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -277,7 +277,7 @@ describe('refs sync: unknown ref argument', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 

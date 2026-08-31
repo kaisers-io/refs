@@ -8,6 +8,7 @@ import {
   withResetExitCode,
   withTempHome,
 } from '../helpers/add-support.ts';
+import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { createFixtureRepo } from '../helpers/fixture-repo.ts';
 import { run } from '../../src/main.ts';
 
@@ -18,7 +19,6 @@ import { run } from '../../src/main.ts';
 // the user was asked to approve it. Everything below asserts the path that replaces it: null
 // survives finalize as an absent field, and `refs tag` says so rather than resolving against a
 // guess. Real git in setup (`file://` clone, like `add.test.ts`), hence the generous timeout.
-const TEST_TIMEOUT_MS = 30_000;
 
 /** Clones a tagless fixture, dry-runs it, and finalizes the proposal with only its description
  * filled in — deliberately leaving `tag_format_candidate` exactly as detection left it. */
@@ -58,6 +58,6 @@ describe('refs add: a source with no tags', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });

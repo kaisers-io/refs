@@ -9,6 +9,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
 import type { CliContext } from '../../src/context.ts';
+import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { run } from '../../src/main.ts';
 
 // Review-finding regression tests for `refs edit settings ...`'s reserved-word dispatch — split
@@ -19,7 +20,6 @@ import { run } from '../../src/main.ts';
 //     fail LOUD ENOUGH: the envelope's `warnings` names the shadowed ref.
 //   - Finding 3: `--package` is only meaningful for ref/package edits — passing it in settings
 //     mode must be a usage error, not a silently ignored option.
-const TEST_TIMEOUT_MS = 30_000;
 const SINGLE_WARNING_COUNT = 1;
 const FIRST_WARNING_INDEX = 0;
 
@@ -61,7 +61,7 @@ describe('refs edit: settings/ref suffix collision (Finding 2)', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 
   it(
@@ -80,7 +80,7 @@ describe('refs edit: settings/ref suffix collision (Finding 2)', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -106,7 +106,7 @@ describe('refs edit: settings/ref suffix collision warning reaches human-mode st
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -141,6 +141,6 @@ describe('refs edit: settings mode rejects --package (Finding 3)', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });

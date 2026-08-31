@@ -13,6 +13,7 @@ import {
   withResetExitCode,
   withTempHome,
 } from '../helpers/add-support.ts';
+import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { join } from 'node:path';
 import { readdir } from 'node:fs/promises';
 import { run } from '../../src/main.ts';
@@ -29,7 +30,6 @@ import { run } from '../../src/main.ts';
 // `local` host segment is replaced by a symlink pointing outside the managed tree. Kept in its
 // own file — `add-guards.test.ts` has little headroom left under the repo's 300-line oxlint cap.
 
-const TEST_TIMEOUT_MS = 30_000;
 const NO_ENTRIES: readonly string[] = [];
 
 type ErrorEnvelope = {
@@ -57,7 +57,7 @@ describe('refs add: containment guard on fresh clone', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -82,7 +82,7 @@ describe('refs add: containment guard on checkout reuse', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -113,6 +113,6 @@ describe('refs add: containment guard on finalize', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });

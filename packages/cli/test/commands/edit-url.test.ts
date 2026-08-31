@@ -9,6 +9,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
 import type { CliContext } from '../../src/context.ts';
+import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { join } from 'node:path';
 import { relocateBehindSymlink } from '../helpers/add-guards-support.ts';
 import { run } from '../../src/main.ts';
@@ -21,7 +22,6 @@ import { run } from '../../src/main.ts';
 // non-git fixture. The containment case at the bottom closes the same symlinked-ancestor class
 // the add/sync/finalize guards cover: `git remote set-url` writes `.git/config`, so it must never
 // run against a checkout that physically lives outside sources/.
-const TEST_TIMEOUT_MS = 30_000;
 
 /** Asserts the `refs edit ... url <newUrl>` envelope, the persisted config, and the real checkout's
  * rewritten `origin` remote — split out of the `it` body purely to keep it under the repo's
@@ -63,7 +63,7 @@ describe('refs edit: url, same key', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -97,7 +97,7 @@ describe('refs edit: url, different key', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -155,7 +155,7 @@ describe('refs edit: url, containment guard', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -190,6 +190,6 @@ describe('refs edit: url, rewrite-failure message', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });

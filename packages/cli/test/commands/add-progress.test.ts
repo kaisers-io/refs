@@ -9,6 +9,7 @@ import {
 import type { CliContext } from '../../src/context.ts';
 import type { FixtureRepo } from '../helpers/fixture-repo.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
+import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { createFixtureRepo } from '../helpers/fixture-repo.ts';
 import { resolveAddSource } from '../../src/commands/add-source.ts';
 import { run } from '../../src/main.ts';
@@ -18,7 +19,6 @@ import { testContext } from '../helpers/context.ts';
 // run for minutes with zero output) — split out of `add.test.ts` purely to keep that file under
 // the repo's 300-line oxlint cap.
 
-const TEST_TIMEOUT_MS = 30_000;
 const CLONE_LINE_PATTERN = /^refs: cloning file:\/\/.* into .*…$/u;
 const DETECT_LINE = 'refs: detecting workspace packages…';
 const NPM_LINE_PATTERN = /resolving npm package/u;
@@ -61,7 +61,7 @@ describe('refs add --dry-run: stderr progress (--json mode)', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -83,7 +83,7 @@ describe('refs add --dry-run: stderr progress (human mode)', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 

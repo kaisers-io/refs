@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { gitFor, runSyncJson, setupSyncedRef } from '../helpers/sync-support.ts';
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
+import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { readConfig } from '@kaisers-io/refs-core';
 import { rm } from 'node:fs/promises';
 
@@ -12,7 +13,6 @@ import { rm } from 'node:fs/promises';
 // lands in config would re-warn on every later sync. Kept in its own file — `sync.test.ts` has no
 // headroom left under the repo's 300-line oxlint cap.
 
-const TEST_TIMEOUT_MS = 30_000;
 const RENAME_WARNING = 'default branch renamed to trunk';
 
 describe('refs sync: upstream default-branch rename (existing checkout)', () => {
@@ -35,7 +35,7 @@ describe('refs sync: upstream default-branch rename (existing checkout)', () => 
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -64,6 +64,6 @@ describe('refs sync: upstream default-branch rename (missing checkout)', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });

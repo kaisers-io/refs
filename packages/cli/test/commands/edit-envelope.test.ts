@@ -7,6 +7,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import { readConfig, resolveHome } from '@kaisers-io/refs-core';
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
+import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { run } from '../../src/main.ts';
 
 // Review-finding regression tests for `refs edit`'s `{key, field, old, new}` envelope shape —
@@ -18,7 +19,6 @@ import { run } from '../../src/main.ts';
 //   - Finding 4: setting a package field (`tag_format`) that a package never had is a valid
 //     creation-on-edit — the whole-entry re-validation in `edit-package.ts` accepts it, and the
 //     resulting envelope's `old` ties directly into Finding 1's `null` normalization.
-const TEST_TIMEOUT_MS = 30_000;
 
 describe('refs edit: unset optional field envelope (Finding 1)', () => {
   it(
@@ -43,7 +43,7 @@ describe('refs edit: unset optional field envelope (Finding 1)', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 
   it(
@@ -60,7 +60,7 @@ describe('refs edit: unset optional field envelope (Finding 1)', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
 
@@ -95,6 +95,6 @@ describe('refs edit: package field creation-on-edit (Finding 4)', () => {
         }),
       );
     },
-    TEST_TIMEOUT_MS,
+    SLOW_IO_TIMEOUT_MS,
   );
 });
