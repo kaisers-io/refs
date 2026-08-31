@@ -1,4 +1,4 @@
-import { readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { open, readFile, rename, stat, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
@@ -9,9 +9,22 @@ import { randomUUID } from 'node:crypto';
 const NO_SIGNAL = 0;
 const META_FILENAME = 'meta.json';
 
+// Prefix for the per-acquisition lease sidecar. The full name is `LEASE_PREFIX + token`, so every
+// acquisition of the same lock path gets its OWN file — see `leaseSidecarPath` below for why that
+// generation-specific identity is what makes a claim-free heartbeat safe.
+const LEASE_PREFIX = 'lease-';
+
+// `randomUUID()`'s exact output shape. Tokens are read back out of a `meta.json` that any process
+// may have written, and the token becomes part of a filename, so it is validated before it is ever
+// joined onto a path — an unvalidated token could otherwise carry `/` or `..`.
+const TOKEN_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
+
 type LockMeta = {
   acquiredAtMs: number;
   pid: number;
+  // Absent when a `meta.json` carries no usable `token` — the lock is then treated as unownable by
+  // anyone, which is what `releaseIfOwned` and the lease lookup already do with a mismatch.
+  token?: string;
 };
 
 const errnoCode = (err: unknown): string | undefined => {
@@ -63,6 +76,17 @@ const parseAcquiredAtMs = (value: unknown): number | undefined => {
   return parsedMs;
 };
 
+const extractToken = (raw: unknown): string | undefined => {
+  if (typeof raw !== 'object' || raw === null) {
+    return undefined;
+  }
+  const { token } = raw as Record<string, unknown>;
+  if (typeof token !== 'string') {
+    return undefined;
+  }
+  return token;
+};
+
 const parseLockMeta = (raw: unknown): LockMeta | undefined => {
   if (typeof raw !== 'object' || raw === null) {
     return undefined;
@@ -73,7 +97,8 @@ const parseLockMeta = (raw: unknown): LockMeta | undefined => {
   if (typeof pid !== 'number' || acquiredAtMs === undefined) {
     return undefined;
   }
-  return { acquiredAtMs, pid };
+  const token = extractToken(raw);
+  return { acquiredAtMs, pid, ...(token === undefined ? {} : { token }) };
 };
 
 // Returns the lock's meta, or `undefined` when meta.json is missing, unreadable, or malformed —
@@ -84,17 +109,6 @@ const readLockMeta = async (lockPath: string): Promise<LockMeta | undefined> => 
     return undefined;
   }
   return parseLockMeta(tryParseJson(text));
-};
-
-const extractToken = (raw: unknown): string | undefined => {
-  if (typeof raw !== 'object' || raw === null) {
-    return undefined;
-  }
-  const { token } = raw as Record<string, unknown>;
-  if (typeof token !== 'string') {
-    return undefined;
-  }
-  return token;
 };
 
 // Returns this lock's ownership `token`, or `undefined` when unreadable/malformed/missing.
@@ -127,11 +141,105 @@ const writeMetaAtomic = async (lockPath: string, contents: string): Promise<void
   await rename(tmpPath, path);
 };
 
+/** A fresh ownership token for one acquisition. Lives here, beside `TOKEN_PATTERN`, so the shape
+ * that is written and the shape that is validated on the way back in are defined together. */
+const newLockToken = (): string => randomUUID();
+
+/** Path of the lease sidecar belonging to ONE acquisition of `lockPath`, or `undefined` when
+ * `token` is not the exact `randomUUID()` shape this module writes.
+ *
+ * The generation-specific name is the whole point. A heartbeat renews by pathname, and a pathname
+ * names a location, not the directory generation the holder originally acquired: by the time a
+ * delayed renewal actually runs, `lockPath` may already have been stolen, removed and recreated by
+ * a successor. With one constant sidecar name, that late write would land on the SUCCESSOR's file —
+ * creating it where none existed, which would silently reclassify a non-renewing (older-CLI)
+ * holder as a renewable one and expose it to the short lease. Naming the file after the acquisition
+ * token means a late renewal targets a file that does not exist in the successor's directory, so it
+ * fails with ENOENT and changes nothing. That is what lets the heartbeat skip the steal-claim
+ * protocol entirely.
+ *
+ * Tokens reach this function from a `meta.json` written by another process, so the shape check is a
+ * path-safety guard, not a formality. */
+const leaseSidecarPath = (lockPath: string, token: string): string | undefined => {
+  if (!TOKEN_PATTERN.test(token)) {
+    return undefined;
+  }
+  return join(lockPath, `${LEASE_PREFIX}${token}`);
+};
+
+/** Creates this acquisition's (empty) lease sidecar. Only the content-free mtime is ever read, so
+ * there is nothing to parse and nothing to observe half-written — the reason renewal can use
+ * `utimes` instead of rewriting a file. */
+const createLeaseSidecar = async (lockPath: string, token: string): Promise<void> => {
+  const path = leaseSidecarPath(lockPath, token);
+  /* v8 ignore next 3 -- `token` here is always this process's own `randomUUID()`; the guard exists
+     for the read path, where the token comes off disk. */
+  if (path === undefined) {
+    return;
+  }
+  const handle = await open(path, 'w');
+  await handle.close();
+};
+
+/** Renews the lease by stamping the sidecar's mtime. **Never creates it**: `utimes` on a missing
+ * path fails with ENOENT, which is reported as `'gone'` and is exactly the harmless outcome
+ * described on `leaseSidecarPath` when this acquisition's directory is no longer there. Any other
+ * error propagates — a transient fs failure is the caller's to retry, not something to silently
+ * read as "we lost the lock". */
+const touchLeaseSidecar = async (lockPath: string, token: string): Promise<'gone' | 'renewed'> => {
+  const path = leaseSidecarPath(lockPath, token);
+  /* v8 ignore next 3 -- as in `createLeaseSidecar`: the heartbeat only ever renews with the token
+     its own acquisition minted. */
+  if (path === undefined) {
+    return 'gone';
+  }
+  const now = new Date();
+  try {
+    await utimes(path, now, now);
+  } catch (error) {
+    if (errnoCode(error) === 'ENOENT') {
+      return 'gone';
+    }
+    throw error;
+  }
+  return 'renewed';
+};
+
+/** The lease timestamp for `token`'s acquisition, or `undefined` when no sidecar exists for it —
+ * which is how `isLockStale` recognizes a lock written by a CLI that does not renew, and applies
+ * the legacy policy to it instead of the short lease. */
+const leaseMtimeMs = async (lockPath: string, token: string): Promise<number | undefined> => {
+  const path = leaseSidecarPath(lockPath, token);
+  if (path === undefined) {
+    // `path` IS undefined here — returned rather than written out as a literal, which the lint
+    // rule against a bare `undefined` return would otherwise reject.
+    return path;
+  }
+  return await dirMtimeMs(path);
+};
+
+/** Publishes an acquisition. Order is load-bearing: the lease sidecar is created FIRST, because
+ * `meta.json` is the publication point — once it is readable, waiters treat the lock as held, and
+ * a crash between the two writes in the other order would leave valid metadata with no sidecar,
+ * i.e. a live lock permanently misread as legacy. Crashing before `meta.json` lands instead leaves
+ * a meta-less directory, which the existing missing-meta grace period already handles. */
 const writeInitialMeta = async (lockPath: string, token: string): Promise<void> => {
+  await createLeaseSidecar(lockPath, token);
   await writeMetaAtomic(
     lockPath,
     JSON.stringify({ acquired_at: new Date().toISOString(), pid: process.pid, token }),
   );
 };
 
-export { dirMtimeMs, errnoCode, isPidAlive, readLockMeta, readLockToken, writeInitialMeta };
+export {
+  dirMtimeMs,
+  errnoCode,
+  isPidAlive,
+  leaseMtimeMs,
+  newLockToken,
+  readLockMeta,
+  readLockToken,
+  touchLeaseSidecar,
+  writeInitialMeta,
+};
+export type { LockMeta };

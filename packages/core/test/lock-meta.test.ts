@@ -49,9 +49,23 @@ describe('readLockMeta parse edges', () => {
     });
   });
 
-  it('parses a well-formed meta into pid + epoch millis', async () => {
+  it('parses a well-formed meta into pid + epoch millis + token', async () => {
     expect.hasAssertions();
     await withLockDir(VALID_META, async (lockPath) => {
+      await expect(readLockMeta(lockPath)).resolves.toStrictEqual({
+        acquiredAtMs: Date.parse('2026-07-29T00:00:00.000Z'),
+        pid: 12_345,
+        // The token rides along because staleness needs it: the lease sidecar is named after the
+        // acquisition that wrote it, so the token is what says which sidecar to look at.
+        token: 'tok-1',
+      });
+    });
+  });
+
+  it('omits token when meta.json carries none, leaving the lock unownable', async () => {
+    expect.hasAssertions();
+    const noToken = JSON.stringify({ acquired_at: '2026-07-29T00:00:00.000Z', pid: 12_345 });
+    await withLockDir(noToken, async (lockPath) => {
       await expect(readLockMeta(lockPath)).resolves.toStrictEqual({
         acquiredAtMs: Date.parse('2026-07-29T00:00:00.000Z'),
         pid: 12_345,
