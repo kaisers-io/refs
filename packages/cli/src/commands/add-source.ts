@@ -56,8 +56,8 @@ const digestLockName = (key: RefKey): string =>
  * Two forms, in a namespace each:
  *
  *   - **No `_` in the key** — `/` becomes `_`, exactly as before. The only `_` in the result came
- *     from a `/`, so this is injective within the form, and every lock name refs has ever written
- *     for such a key is unchanged.
+ *     from a `/`, so this is injective within the form, and such a key keeps the lock name refs
+ *     has always written for it — unless it is long enough to fall into the digest form below.
  *   - **Otherwise** — `ref._` opens the escaped form, in which `_` becomes `_u` and `/` becomes
  *     `_s`. Every `_` in the output therefore opens a complete two-character code, which a
  *     left-to-right scan reads back unambiguously; a literal `_u` in the key encodes as `_uu`.

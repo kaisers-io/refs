@@ -70,6 +70,9 @@ describe('refLockName: the encoding itself introduces nothing the allowlist reje
 // constructed. Its OLD lock name was exactly 255 bytes, the filesystem ceiling, so it worked;
 // the escaped form is 259, so escaping alone would have broken a ref that used to be fine.
 const LONG_REPO_LENGTH = 241;
+// `a.com/g/<201 r's>` has no `_` at all, so it takes the plain form — whose name is 213 bytes, one
+// over the budget.
+const LONG_PLAIN_REPO_LENGTH = 201;
 const AT_THE_LIMIT_KEY = `a.com_1/g/${'r'.repeat(LONG_REPO_LENGTH)}`;
 
 // The steal protocol renames a lock to `<name>.steal.<uuid>`, so a name that only just fits a
@@ -102,6 +105,15 @@ describe('refLockName: names that do not fit a directory entry', () => {
     expect.hasAssertions();
 
     expect(nameFor(AT_THE_LIMIT_KEY)).not.toBe(nameFor(`${AT_THE_LIMIT_KEY}x`));
+  });
+
+  it('falls back for a long key without "_" too, where the plain form also overflows', () => {
+    expect.hasAssertions();
+    // No underscore, so the plain form applies — and at 213 bytes it still does not fit the
+    // budget. The unchanged-name property holds for short keys, not for every underscore-free one.
+    const key = `a.com/g/${'r'.repeat(LONG_PLAIN_REPO_LENGTH)}`;
+
+    expect(nameFor(key)).toMatch(/^ref\.__[0-9a-f]{64}$/u);
   });
 
   it('leaves a name that fits alone', () => {

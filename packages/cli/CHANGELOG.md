@@ -16,10 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `resolve`'s verification could block on a sync of a ref it has nothing to do with, and `doctor`'s
   `config-drift` check reported the wrong ref as busy.
 
-  The name is now injective. A key containing no `_` encodes exactly as before, so every lock name
-  refs has already written for such a key is unchanged; a key containing one moves into an escaped
-  form under `ref._`, where `_` becomes `_u` and `/` becomes `_s`. The two forms cannot collide,
-  because a ref key always starts with `[a-z0-9]` and so a plain name never begins `ref._`.
+  The name is now injective. A key containing no `_` encodes exactly as before, so it keeps the
+  lock name refs has always written for it; a key containing one moves into an escaped form under
+  `ref._`, where `_` becomes `_u` and `/` becomes `_s`. The two forms cannot collide, because a ref
+  key always starts with `[a-z0-9]` and so a plain name never begins `ref._`.
 
   A lock name is one directory entry, so a key long enough to overflow one now falls back to a
   digest under `ref.__` rather than failing `mkdir` with `ENAMETOOLONG`. The budget reserves room
@@ -29,11 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   true before this change, for keys past roughly 200 characters; reaching it needs a self-hosted
   url, since no forge allows a path that long.
 
-  **One caveat if you run refs concurrently across an upgrade.** For a ref whose key contains `_`,
-  a process from any earlier release — the old scheme dates to 0.1.1 — derives a different lock
-  name from a new one, so for the length of that overlap the two would not exclude each other on
-  that ref. The window is a mid-upgrade concurrent run on the same refs home; if that is a
-  situation you can be in, let running operations finish before upgrading.
+  **One caveat if you run refs concurrently across an upgrade.** The lock name changes for a ref
+  whose key contains `_`, and for one long enough to reach the digest form — roughly 200
+  characters, either way. For such a ref, a process from any earlier release (the old scheme dates
+  to 0.1.1) derives a different name from a new one, so for the length of that overlap the two
+  would not exclude each other. The window is a mid-upgrade concurrent run on the same refs home;
+  if that is a situation you can be in, let running operations finish before upgrading. Every other
+  ref keeps its name and is unaffected.
 
 ## [0.11.0] - 2026-08-31
 
