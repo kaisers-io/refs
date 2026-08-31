@@ -20,6 +20,7 @@ describe('refs resolve: resolveHuman labels the bare key line and renames local_
     expect(
       resolveHuman(
         {
+          checkout: { status: 'managed' },
           key: 'github.com/colinhacks/zod',
           last_fetched_at: new Date(NOW - THREE_HOURS * HOUR).toISOString(),
           local_path: '/home/refs/sources/github.com/colinhacks/zod',
@@ -45,6 +46,7 @@ describe('refs resolve: resolveHuman gives the package path its own key, after t
     expect(
       resolveHuman(
         {
+          checkout: { status: 'managed' },
           key: 'github.com/colinhacks/zod',
           local_path: '/home/refs/sources/github.com/colinhacks/zod',
           missing: false,

@@ -22,17 +22,41 @@ type ResolvePackage = {
   status: PackageStatus;
 };
 
+/** What a package resolves to when the checkout it would live in is not one refs manages.
+ *
+ * Verification reads a manifest at a path and compares a name; against an unrelated checkout it can
+ * perfectly well answer `verified` — for a package that has nothing to do with the configured ref.
+ * So the checkout's identity gates it: without that, this feature would report confidence in
+ * exactly the case it exists to catch. */
+const unverifiedPackage = (packageName: string, reason: string): ResolvePackage => ({
+  // eslint-disable-next-line unicorn/no-null -- cross-process JSON contract requires null
+  local_path: null,
+  name: packageName,
+  // eslint-disable-next-line unicorn/no-null -- cross-process JSON contract requires null
+  path: null,
+  reason,
+  status: 'unverifiable',
+});
+
 /** Resolves the package's location AND verifies it: the configured `path` is only a locator, and
  * an upstream repo can move or replace what sits there at any time. Without this check `resolve`
  * would hand the agent whatever occupies the old path — producing no error, just a confidently
- * wrong answer. See `resolve-verify.ts` for the ordering and its reasons. */
+ * wrong answer. See `resolve-verify.ts` for the ordering and its reasons.
+ *
+ * `checkoutManaged: false` short-circuits it: there is no point verifying a location inside a
+ * checkout that is not the one this ref names. */
 const packageDataFor = async (opts: {
   checkoutDir: string;
+  checkoutManaged: boolean;
+  checkoutReason: string;
   configuredPath: string;
   home: RefsHome;
   key: RefKey;
   packageName: string;
 }): Promise<ResolvePackage> => {
+  if (!opts.checkoutManaged) {
+    return unverifiedPackage(opts.packageName, opts.checkoutReason);
+  }
   const outcome = await verifyPackageLocation(opts);
   return {
     ...(outcome.candidates === undefined ? {} : { candidates: outcome.candidates }),

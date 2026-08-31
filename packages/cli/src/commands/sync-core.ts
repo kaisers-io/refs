@@ -47,19 +47,33 @@ const buildSuccessItem = (key: string, outcome: RefSyncOutcome): SyncResultItem 
   return result;
 };
 
-/** One ref, start to finish: git ops under the per-ref lock (`sync-checkout.ts`), then
- * config/state persistence under a separate home lock (`sync-state.ts`) — never throws; any
- * failure (git op, lock timeout, validation) is caught here and reported as a `'failed'` result
- * item instead of aborting the batch. */
-const syncOneKey = async (ctx: CliContext, rsc: RefSyncContext): Promise<SyncResultItem> => {
+/** One ref, start to finish: git ops under the per-ref lock (`sync-checkout.ts`), then config/state
+ * persistence under a separate home lock (`sync-state.ts`). The two lock scopes stay separate and
+ * sequential — holding the ref lock across persistence would deadlock anything that takes it again
+ * on the way out, which `resolve`'s own verification does.
+ *
+ * THROWS on failure, after best-effort recording it in state. That is the primitive: a single-ref
+ * caller wants the typed error (`conflict`, `validation`) so it can put it in its own envelope,
+ * and only the batch below wants it flattened into a per-item string. Deriving the lenient one
+ * from the strict one keeps a single definition of what syncing a ref means. */
+const syncOneOrThrow = async (ctx: CliContext, rsc: RefSyncContext): Promise<RefSyncOutcome> => {
   try {
     const outcome = await syncCheckout(ctx, rsc);
     await applySyncSuccess(rsc.home, rsc.key, outcome);
-    return buildSuccessItem(rsc.key, outcome);
+    return outcome;
   } catch (error) {
-    const message = errorMessageOf(error);
-    await recordFailure(rsc.home, rsc.key, message);
-    return { error: message, key: rsc.key, status: 'failed' };
+    await recordFailure(rsc.home, rsc.key, errorMessageOf(error));
+    throw error;
+  }
+};
+
+/** The batch's view of the same operation: never throws, so one ref's failure cannot abort the
+ * others. */
+const syncOneKey = async (ctx: CliContext, rsc: RefSyncContext): Promise<SyncResultItem> => {
+  try {
+    return buildSuccessItem(rsc.key, await syncOneOrThrow(ctx, rsc));
+  } catch (error) {
+    return { error: errorMessageOf(error), key: rsc.key, status: 'failed' };
   }
 };
 
@@ -108,5 +122,5 @@ const syncAll = async (
   });
 };
 
-export { syncAll };
+export { syncAll, syncOneOrThrow };
 export type { SyncItemStatus, SyncResultItem };

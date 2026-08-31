@@ -7,8 +7,8 @@ import {
   zState,
   // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 } from '@kaisers-io/refs-core';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { mkdir } from 'node:fs/promises';
 
 // Shared config/state/checkout fixture builders for `list.test.ts` and `show.test.ts` — both drive
 // `refs list`/`refs show` against a config seeded directly via `writeConfig` (never through a real
@@ -39,10 +39,23 @@ const seedState = async (home: RefsHome, refs: Record<string, unknown>): Promise
   return state;
 };
 
-/** Marks `checkoutPath(home, key)` as an existing git checkout — a bare `.git` directory is enough
- * for `isGitCheckout`'s plain `existsSync` check, no real git repo needed. */
-const markCheckoutPresent = async (dest: string): Promise<void> => {
+/** Marks `dest` as an existing, refs-MANAGED checkout: a `.git` directory carrying the two values
+ * that identify one — the `core.hooksPath` marker `cloneRepo` stamps, and an origin url.
+ *
+ * A bare `mkdir .git` used to be enough, because presence was decided by `existsSync`. It is not
+ * any more, and deliberately so: a directory with a `.git` in it is not evidence that this is the
+ * checkout a ref names. Fixtures that want to stand in for a real checkout have to look like one.
+ *
+ * Pass `url` matching the ref's configured url; omit it to build a checkout that is present but
+ * NOT recognisably this ref's, which is the case worth testing on its own. */
+const markCheckoutPresent = async (dest: string, url?: string): Promise<void> => {
   await mkdir(join(dest, '.git'), { recursive: true });
+  const origin = url === undefined ? '' : `[remote "origin"]\n\turl = ${url}\n`;
+  await writeFile(
+    join(dest, '.git', 'config'),
+    `[core]\n\thooksPath = /fixture/hooks\n${origin}`,
+    'utf8',
+  );
 };
 
 const MS_PER_MINUTE = 60_000;
