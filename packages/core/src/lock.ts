@@ -33,22 +33,27 @@ import { tryExclusiveMkdir } from './lock-fs.ts';
 // waiter can legitimately recycle `lockPath` into a brand-new, live lock — acting on the stale
 // read directly would then destroy a live holder's lock. So a waiter first wins an exclusive
 // steal claim (a separate `mkdir`-gated marker, same primitive as acquisition itself), and only
-// the claim holder re-diagnoses staleness fresh, in place, with no move. Because legitimate
-// acquisition requires `lockPath` to be absent — and it isn't, until the claim holder removes it
-// — nothing can have mutated `lockPath` between claim and re-diagnosis. This closes the
-// double-steal race by construction; `lock.test.ts` exercises it with a 12-waiter stress test.
-// The heartbeat does not participate in that protocol and does not need to: it renews a sidecar
-// named after its own acquisition token, so a delayed renewal aimed at a directory a successor has
-// since recreated finds no such file and changes nothing (`leaseSidecarPath` in `lock-meta.ts`).
-// What remains is a window of the same order as caveat (1) below — a renewal landing between the
-// claim holder's re-diagnosis and its rename — which requires every renewal in a full lease to
-// have already been missed, and whose outcome is the pre-lease behaviour, not a new failure mode.
+// the claim holder re-diagnoses staleness fresh, in place, with no move. That excludes every OTHER
+// stealer, which is what closes the double-steal race; `lock.test.ts` exercises it with a 12-waiter
+// stress test.
+//
+// It does not, however, fence the re-diagnosis against the lock's own identity changing — see
+// caveat (3). The heartbeat deliberately stays out of the claim protocol, and does not need to be
+// in it for its own sake: it renews a sidecar named after its own acquisition token, so a delayed
+// renewal aimed at a directory a successor has since recreated finds no file of that name and
+// changes nothing (`leaseSidecarPath` in `lock-meta.ts`).
 //
 // Remaining caveats (accepted for a local, single-user CLI, as in `home.ts`'s TOCTOU note): (1)
-// release is read-then-delete — `withLock`'s `finally` only removes the lock dir when its token
-// still matches, but a steal could interleave between that read and the `rm`; (2) a stealer
-// crashing mid-steal leaks a tombstone or claim marker under `locksDir` — both inert or
-// self-healing (`acquireStealClaim`), just harmless disk garbage.
+// release is read-then-delete — `finishHold` only removes the lock dir when its token still
+// matches, but a steal could interleave between that read and the `rm`; (2) a stealer crashing
+// mid-steal leaks a tombstone or claim marker under `locksDir` — both inert or self-healing
+// (`acquireStealClaim`), just harmless disk garbage; (3) the claim holder's re-diagnosis and its
+// rename are not identity-fenced, so between the two the lock can legitimately become a different,
+// live one — the holder releases and a waiter acquires, or a long-delayed renewal lands — and the
+// stealer then removes that live lock. The claim excludes other stealers only; ordinary
+// acquisition and renewal do not consult it. This predates the lease and is tracked separately;
+// reaching it through renewal additionally requires every renewal in a full lease to have already
+// been missed.
 
 // How often a waiter re-attempts acquisition while the lock is held by someone else.
 const RETRY_INTERVAL_MS = 100;
@@ -175,12 +180,19 @@ const finishHold = async <TResult>(
   heartbeat: Heartbeat,
   outcome: Settled<TResult>,
 ): Promise<TResult> => {
+  // `stop` cannot reject: every renewal outcome is handled inside the heartbeat, so the promise it
+  // awaits always settles. Release can — `rm` is real I/O — so it is captured rather than awaited
+  // bare, or an unlink failure here would replace the callback's own error and the precedence
+  // promised above would silently not hold.
   await heartbeat.stop();
-  const stillOwned = await releaseIfOwned(ctx.lockPath, token);
+  const released = await settle(() => releaseIfOwned(ctx.lockPath, token));
   if (!outcome.ok) {
     throw outcome.error;
   }
-  if (heartbeat.ownershipLost() || !stillOwned) {
+  if (!released.ok) {
+    throw released.error;
+  }
+  if (heartbeat.ownershipLost() || !released.value) {
     throw conflictError(`lock ${ctx.name} was lost while the operation was running`);
   }
   return outcome.value;
