@@ -377,15 +377,18 @@ match the checkout that was just synced. Nothing is persisted, and only refs tha
 sync are probed. `structure.status` is `ok` (no `packages` key at all), `drift`, or
 `unknown`. Each entry in `packages` says what to do about one package:
 
-| `status`       | Means                                              | Tell the user                                 |
-| -------------- | -------------------------------------------------- | --------------------------------------------- |
-| `missing`      | declared nowhere in the repo's workspaces any more | remove the package entry                      |
-| `relocated`    | now declared at `path` instead                     | change the entry's `path` to `path`           |
-| `ambiguous`    | several `candidates` declare that name             | pick one and set it                           |
-| `unverifiable` | could not be checked (`reason`)                    | nothing — it is not a claim about the package |
+| `status`       | Means                                              | Tell the user                                           |
+| -------------- | -------------------------------------------------- | ------------------------------------------------------- |
+| `missing`      | declared nowhere in the repo's workspaces any more | remove the entry, unless it moved out of the workspaces |
+| `relocated`    | now declared at `path` instead                     | change the entry's `path` to `path`                     |
+| `ambiguous`    | several `candidates` declare that name             | pick one and set it                                     |
+| `unverifiable` | could not be checked (`reason`)                    | nothing — it is not a claim about the package           |
 
-Never treat `missing` and `relocated` alike: a `missing` package is gone, and searching the
-checkout for it wastes a turn. Drift does not affect the exit code.
+Never treat `missing` and `relocated` alike: `relocated` names the new path, so there is
+nothing to look for. `missing` means the name is not in any _declared workspace_ — usually a
+deletion, occasionally a move to a directory the workspace patterns no longer cover, which
+`git log --diff-filter=D -- <configured path>` settles in one command. Drift does not affect
+the exit code.
 
 Exit codes: `1` when any item is `failed` — the envelope stays `ok: true`, so check both.
 `2`/`4` for an ambiguous/unmatched `[refs...]` argument, which aborts before any sync runs.
