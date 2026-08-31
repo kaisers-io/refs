@@ -184,8 +184,8 @@ refs doctor
 ```
 
 Checks always run in this order: `git`, `node`, `config`, `hooks-guard`,
-`dirty-checkouts`, `orphans`, `locks`, `skill`, `cli-update`, `ssh-auth` (the last only when some ref uses an ssh
-url). `status` is `ok` | `warn` | `fail`; `MAINTAIN.md` explains each check.
+`dirty-checkouts`, `config-drift`, `orphans`, `locks`, `skill`, `cli-update`, `ssh-auth` (the last only when some ref
+uses an ssh url). `status` is `ok` | `warn` | `fail`; `MAINTAIN.md` explains each check.
 
 The `skill` check reports whether this skill and the running CLI are in step. Every
 non-`ok` `detail` carries the command that fixes it, but only a version mismatch it can
@@ -353,7 +353,16 @@ one line naming the version and the command to install it. Relay it to the user 
 ```json
 {
   "results": [
-    { "key": "github.com/example-org/example-monorepo", "status": "updated" },
+    {
+      "key": "github.com/example-org/example-monorepo",
+      "status": "updated",
+      "structure": {
+        "packages": [
+          { "configured_path": "packages/old", "name": "@example/old", "status": "missing" }
+        ],
+        "status": "drift"
+      }
+    },
     { "key": "github.com/example-org/example-lib", "error": "…", "status": "failed" }
   ]
 }
@@ -362,6 +371,24 @@ one line naming the version and the command to install it. Relay it to the user 
 `status` is `updated` | `fresh` | `cloned` | `restored` | `failed`. `error` is present only
 on `failed`; `warning` (branch rename, partial-clone fallback) only on the others. A
 ref filtered out by `--stale-only` produces no item at all.
+
+`structure` is on every non-`failed` item: whether the ref's configured package paths still
+match the checkout that was just synced. Nothing is persisted, and only refs that actually
+sync are probed. `structure.status` is `ok` (no `packages` key at all), `drift`, or
+`unknown`. Each entry in `packages` says what to do about one package:
+
+| `status`       | Means                                              | Tell the user                                           |
+| -------------- | -------------------------------------------------- | ------------------------------------------------------- |
+| `missing`      | declared nowhere in the repo's workspaces any more | remove the entry, unless it moved out of the workspaces |
+| `relocated`    | now declared at `path` instead                     | change the entry's `path` to `path`                     |
+| `ambiguous`    | several `candidates` declare that name             | pick one and set it                                     |
+| `unverifiable` | could not be checked (`reason`)                    | nothing — it is not a claim about the package           |
+
+Never treat `missing` and `relocated` alike: `relocated` names the new path, so there is
+nothing to look for. `missing` means the name is not in any _declared workspace_ — usually a
+deletion, occasionally a move to a directory the workspace patterns no longer cover, which
+`git log --diff-filter=D -- <configured path>` settles in one command. Drift does not affect
+the exit code.
 
 Exit codes: `1` when any item is `failed` — the envelope stays `ok: true`, so check both.
 `2`/`4` for an ambiguous/unmatched `[refs...]` argument, which aborts before any sync runs.

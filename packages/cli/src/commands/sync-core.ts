@@ -2,6 +2,7 @@ import type { RefSyncContext, RefSyncOutcome, SyncStatus } from './sync-checkout
 import { applySyncSuccess, recordFailure } from './sync-state.ts';
 import { createSemaphore, runGated } from './sync-semaphore.ts';
 import type { CliContext } from '../context.ts';
+import type { StructureReport } from './drift-probe.ts';
 import { errorMessageOf } from '../output.ts';
 import { syncCheckout } from './sync-checkout.ts';
 
@@ -16,6 +17,9 @@ type SyncResultItem = {
   key: string;
   status: SyncItemStatus;
   error?: string;
+  // Absent on a `'failed'` ref: nothing was probed, and an absent result is the honest report of
+  // that. It never contributes to `failedCount`, which derives solely from `status`.
+  structure?: StructureReport;
   warning?: string;
 };
 
@@ -43,6 +47,9 @@ const buildSuccessItem = (key: string, outcome: RefSyncOutcome): SyncResultItem 
   const warning = buildWarning(outcome);
   if (warning !== undefined) {
     result.warning = warning;
+  }
+  if (outcome.structure !== undefined) {
+    result.structure = outcome.structure;
   }
   return result;
 };

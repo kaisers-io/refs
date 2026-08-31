@@ -354,7 +354,7 @@ refs doctor
 ```
 
 Runs the environment/integrity checks, always in this order: `git`, `node`, `config`,
-`hooks-guard`, `dirty-checkouts`, `orphans`, `locks`, `skill`, `cli-update`, `ssh-auth` (the last one only runs
+`hooks-guard`, `dirty-checkouts`, `config-drift`, `orphans`, `locks`, `skill`, `cli-update`, `ssh-auth` (the last one only runs
 when a configured ref uses an `ssh` transport URL). Every check runs to completion
 regardless of earlier failures.
 
@@ -380,6 +380,11 @@ refs doctor --json
         "detail": "hooks/pre-commit, hooks/pre-push present; 0 checkout(s) guarded"
       },
       { "name": "dirty-checkouts", "status": "ok", "detail": "no local changes in any checkout" },
+      {
+        "name": "config-drift",
+        "status": "ok",
+        "detail": "every configured package path resolves in 2 checkout(s)"
+      },
       { "name": "orphans", "status": "ok", "detail": "no orphaned checkouts under sources/" },
       {
         "name": "skill",
@@ -406,6 +411,22 @@ Each check's `status` is `ok`, `warn`, or `fail`. As with `sync` (see
 [Exit codes](#exit-codes) above), the envelope is `{"ok":true,...}` even when a check
 reports `fail`
 — but the process exits `1` in that case.
+
+### The `config-drift` check
+
+Takes each existing checkout's own ref lock and asks the same question `refs sync` asks after
+a fetch: does every configured package still live at its configured path? It writes nothing,
+so no home lock is involved, and it does not wait on a lock that is busy — a ref a `refs sync`
+is holding is reported as busy rather than blocking the run. It does not name the command that
+holds the lock: `add`, `remove` and `resolve`'s verification take the same one, and nothing records
+which of them it was.
+
+It reports `warn`, never `fail`, so drift never changes `refs doctor`'s exit code: nothing in
+refs is broken, the configuration has fallen behind its upstream. The `detail` names each
+affected ref and package with the same wording `refs sync` uses (see
+[`structure`](#structure--config-drift) above), which distinguishes a package that was removed
+upstream from one that merely moved. `refs list` deliberately has no equivalent: without
+persisted state it would turn a cheap inventory command into a locking filesystem sweep.
 
 ### The `skill` check
 
@@ -809,8 +830,25 @@ refs sync --stale-only --json
   "ok": true,
   "data": {
     "results": [
-      { "key": "github.com/stevemao/left-pad", "status": "fresh" },
-      { "key": "github.com/colinhacks/zod", "status": "updated" }
+      {
+        "key": "github.com/stevemao/left-pad",
+        "status": "fresh",
+        "structure": { "status": "ok" }
+      },
+      {
+        "key": "github.com/colinhacks/zod",
+        "status": "updated",
+        "structure": {
+          "status": "drift",
+          "packages": [
+            {
+              "name": "@zod/legacy",
+              "status": "missing",
+              "configured_path": "packages/legacy"
+            }
+          ]
+        }
+      }
     ]
   },
   "warnings": []
@@ -824,6 +862,34 @@ status). A ref skipped entirely by `--stale-only` (within its `sync_ttl` and wit
 existing checkout) produces no result item at all — it's filtered out before syncing, not
 reported as `fresh`. A branch-rename or partial-clone-fallback surfaces as a `warning`
 string on that item, not a failure. Up to 4 refs sync concurrently.
+
+### `structure` — config drift
+
+Every result that is not `failed` carries a `structure` object: the answer to "does every
+package this ref configures still live where the config says it does?", checked inside the
+same lock the sync just held, right after the checkout was updated. Nothing is persisted —
+the answer is reported and thrown away, so a later `refs sync` re-derives it from scratch.
+
+`structure.status` is `ok` (nothing to report, and then there is no `packages` key at all),
+`drift` (at least one configured path is provably wrong), or `unknown` (something could not
+be checked — never a claim about a package). `packages` lists only the entries worth acting
+on, each with its own `status`:
+
+| `status` | Means | Do |
+| --- | --- | --- |
+| `missing` | the name is declared nowhere in the repo's workspaces any more | remove the package entry — or, if it moved out of the workspaces, give it the new path |
+| `relocated` | it is now declared at `path`, a different directory | update the entry's `path` |
+| `ambiguous` | several paths (`candidates`) now declare that name | point the entry at the right one |
+| `unverifiable` | the location could not be checked (`reason` says why) | nothing — look again later |
+
+Drift never turns a successful sync into a failed one, and never changes the exit code: the
+configuration has fallen behind its upstream, which is a thing to fix, not a thing that
+broke. In human output the findings appear as indented lines under the ref they belong to,
+and a clean ref prints exactly the single line it always did.
+
+Only refs that actually sync are probed, so `--stale-only` stays a genuine no-op and a
+targeted `refs sync <ref>` inspects only that ref. `refs doctor`'s `config-drift` check is
+the deliberate "check everything now" counterpart.
 
 Exit codes: **`0` unless at least one item's `status` is `"failed"`, in which case `1`** —
 even though the envelope itself is still `{"ok":true,...}` (see [Exit codes](#exit-codes)

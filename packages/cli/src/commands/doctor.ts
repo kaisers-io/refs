@@ -18,13 +18,14 @@ import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
 import type { ConfigLoad } from './doctor-checks-basic.ts';
 import type { RefsCommand } from './registry.ts';
+import { checkConfigDrift } from './doctor-checks-structure.ts';
 import { checkLocks } from './doctor-checks-locks.ts';
 import { checkSkill } from './doctor-checks-skill.ts';
 import { checkSshAuth } from './doctor-checks-ssh.ts';
 
-// `refs doctor [--json]` — the 10 environment/integrity checks: `git`, `node`,
-// `config`, `hooks-guard`, `dirty-checkouts`, `orphans`, `locks`, `skill`, `cli-update`, `ssh-auth` (the
-// last one only ever appears when a configured ref uses an ssh transport url). Every check runs to completion
+// `refs doctor [--json]` — the 11 environment/integrity checks: `git`, `node`,
+// `config`, `hooks-guard`, `dirty-checkouts`, `config-drift`, `orphans`, `locks`, `skill`, `cli-update`,
+// `ssh-auth` (the last one only ever appears when a configured ref uses an ssh transport url). Every check runs to completion
 // before anything is reported — a failing `config` check must never prevent `orphans`/
 // `dirty-checkouts`/etc. from still running against whatever they can determine — so the actual
 // check implementations live in sibling doctor-checks-*.ts modules, grouped by
@@ -83,6 +84,7 @@ const buildCheckSteps = (load: DoctorLoad): CheckStep[] => {
     { name: 'config', run: () => Promise.resolve(buildConfigCheck(configLoad.errorMessage)) },
     { name: 'hooks-guard', run: () => checkHooksGuard(ctx, home, configLoad.config) },
     { name: 'dirty-checkouts', run: () => checkDirtyCheckouts(ctx, home, configLoad.config) },
+    { name: 'config-drift', run: () => checkConfigDrift(home, configLoad.config) },
     { name: 'orphans', run: () => checkOrphans(home, configLoad.config, state) },
     { name: 'locks', run: () => checkLocks(home) },
     { name: 'skill', run: () => checkSkill(ctx) },
@@ -114,7 +116,7 @@ const registerDoctor = (program: RefsCommand, ctx: CliContext): void => {
   program
     .command('doctor')
     .description(
-      'Run environment/integrity checks (git, node, config, hooks, checkouts, locks, ssh).',
+      'Run environment/integrity checks (git, node, config, hooks, checkouts, drift, locks, ssh).',
     )
     .action((_localOpts, command) => {
       const opts = cliOptsOf(command);

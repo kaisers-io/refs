@@ -19,6 +19,7 @@ import { cliOptsOf, emit, wrapAction } from '../output.ts';
 import type { CliContext } from '../context.ts';
 import type { RefSyncContext } from './sync-checkout.ts';
 import type { RefsCommand } from './registry.ts';
+import { driftLines } from './drift-probe.ts';
 import { isStale } from './ref-status.ts';
 import { matchRefKey } from './list.ts';
 import { requireEntry } from './ref-context.ts';
@@ -171,20 +172,29 @@ const groupByStatus = (
   return groups;
 };
 
-const lineFor = (item: SyncResultItem): string => {
+const DRIFT_INDENT = '    ';
+
+/** The ref's own line, then one further-indented line per drift finding. Drift deliberately does
+ * NOT go into the parenthesised warning: that already merges the branch-rename notice with the
+ * clone warning, and a third meaning would make one dense parenthesis carry three unrelated
+ * facts. A clean ref produces exactly the single line it always did. */
+const linesFor = (item: SyncResultItem): string[] => {
   if (item.status === 'failed') {
-    return `  ${item.key}: ${item.error ?? 'unknown error'}`;
+    return [`  ${item.key}: ${item.error ?? 'unknown error'}`];
   }
-  if (item.warning !== undefined) {
-    return `  ${item.key} (${item.warning})`;
+  const head = item.warning === undefined ? `  ${item.key}` : `  ${item.key} (${item.warning})`;
+  if (item.structure === undefined) {
+    return [head];
   }
-  return `  ${item.key}`;
+  return [head, ...driftLines(item.structure).map((line) => `${DRIFT_INDENT}${line}`)];
 };
 
 /** `Updated (N) / Fresh (N) / Cloned (N) / Restored (N) / Failed (N)` summary line, followed by
  * every non-empty group's keys (with the failure message for `Failed`, or the warning in
- * parentheses when one fired) — printed even when every count is 0 (e.g. `--stale-only` filtered
- * the whole batch away), rather than special-casing an empty result set. */
+ * parentheses when one fired, and any drift found under the ref it belongs to) — printed even
+ * when every count is 0 (e.g. `--stale-only` filtered the whole batch away), rather than
+ * special-casing an empty result set. The counts themselves are untouched by drift: a drifted ref
+ * synced fine, and moving it out of `Updated` would misreport what happened. */
 const syncHuman = (results: readonly SyncResultItem[]): string[] => {
   const groups = groupByStatus(results);
   const summary = STATUS_ORDER.map(
@@ -193,7 +203,7 @@ const syncHuman = (results: readonly SyncResultItem[]): string[] => {
   const lines = [summary];
   for (const status of STATUS_ORDER) {
     for (const item of groups[status]) {
-      lines.push(lineFor(item));
+      lines.push(...linesFor(item));
     }
   }
   return lines;
@@ -230,4 +240,4 @@ const registerSync = (program: RefsCommand, ctx: CliContext): void => {
     });
 };
 
-export { registerSync };
+export { registerSync, syncHuman };
