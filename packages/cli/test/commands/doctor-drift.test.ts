@@ -106,7 +106,9 @@ describe('refs doctor: config-drift under contention', () => {
         );
 
         expectCheck(envelope, 'config-drift', {
-          detailContains: 'a sync is in progress',
+          // Not "a sync is in progress": `add`, `remove` and `resolve` take the same lock, and
+          // nothing records which command holds it.
+          detailContains: 'another refs process is holding this ref',
           status: 'warn',
         });
       }),

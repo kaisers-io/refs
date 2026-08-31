@@ -176,17 +176,21 @@ const UNKNOWN_PATH = '(unknown)';
 /** How one issue reads to a human. Shared by `sync` and `doctor` so the two never describe the
  * same finding differently — and worded so a removal and a relocation prescribe different work.
  *
- * "no longer in this repo's workspaces" is the honest ceiling of what was checked: detection
- * expands the repo's own workspace declarations, so a package that moved somewhere no declaration
- * covers reads as removed. Saying "workspaces" rather than "this repo" keeps the claim inside the
- * evidence while still naming the entry as the thing to remove. */
+ * The `missing` line states the ceiling of what was actually checked. Detection expands the repo's
+ * own workspace declarations, so a package that moved somewhere no declaration covers is
+ * indistinguishable here from one that was deleted. Naming that possibility costs six words and
+ * keeps the line from prescribing the removal of an entry that only needs a new path — while the
+ * primary repair still comes first, because deletion is by far the commoner cause. */
 const issueLine = (issue: StructureIssue): string => {
   const at = `configured: ${issue.configured_path}`;
   if (issue.status === 'relocated') {
     return `${issue.name}: moved to ${issue.path ?? UNKNOWN_PATH} — update the entry's path (${at})`;
   }
   if (issue.status === 'missing') {
-    return `${issue.name}: no longer in this repo's workspaces — remove the entry (${at})`;
+    return (
+      `${issue.name}: gone from this repo's workspaces — remove the entry, ` +
+      `or repoint it if it moved out of them (${at})`
+    );
   }
   if (issue.status === 'ambiguous') {
     const where = (issue.candidates ?? []).join(', ');

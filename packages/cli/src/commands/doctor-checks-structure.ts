@@ -17,11 +17,16 @@ import { refLockName } from './add-source.ts';
 // would have to run this same locking filesystem sweep, and a cheap inventory command must stay
 // cheap.
 
-// Deliberately NOT `withLock`'s 10s default. Contention here means a `sync` is holding the ref
-// right now, and "a sync is in progress" is a perfectly good answer to report — far better than
-// a `doctor` run that stalls ten seconds per contended ref. One retry interval is enough to ride
-// out the brief holds `resolve`'s own verification takes.
+// Deliberately NOT `withLock`'s 10s default. Contention means another refs process holds the ref
+// right now, and saying so is a perfectly good answer — far better than a `doctor` run that stalls
+// ten seconds per contended ref. One retry interval is enough to ride out the brief holds
+// `resolve`'s own verification takes.
 const DOCTOR_LOCK_TIMEOUT_MS = 100;
+
+// Deliberately does not name `sync`. The per-ref lock is also held by `add`, `remove` and
+// `resolve`'s verification, and nothing in the lock records which command took it — so naming one
+// would be a diagnosis the check cannot make. This mirrors `lock.ts`'s own contention wording.
+const CONTENDED_REASON = 'another refs process is holding this ref';
 
 /** Takes the per-ref lock so a concurrent `sync` cannot `reset --hard` the tree between two
  * package reads and produce a report describing two different states. Nothing is written, so no
@@ -44,7 +49,7 @@ const probeUnderLock = async (
     );
   } catch (error) {
     if (error instanceof RefsError && error.code === 'conflict') {
-      return { reason: 'a sync is in progress', status: 'unknown' };
+      return { reason: CONTENDED_REASON, status: 'unknown' };
     }
     throw error;
   }

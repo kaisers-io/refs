@@ -417,7 +417,9 @@ reports `fail`
 Takes each existing checkout's own ref lock and asks the same question `refs sync` asks after
 a fetch: does every configured package still live at its configured path? It writes nothing,
 so no home lock is involved, and it does not wait on a lock that is busy — a ref a `refs sync`
-is holding is reported as `a sync is in progress` rather than blocking the run.
+is holding is reported as busy rather than blocking the run. It does not name the command that
+holds the lock: `add`, `remove` and `resolve`'s verification take the same one, and nothing records
+which of them it was.
 
 It reports `warn`, never `fail`, so drift never changes `refs doctor`'s exit code: nothing in
 refs is broken, the configuration has fallen behind its upstream. The `detail` names each
@@ -875,7 +877,7 @@ on, each with its own `status`:
 
 | `status` | Means | Do |
 | --- | --- | --- |
-| `missing` | the name is declared nowhere in the repo's workspaces any more | remove the package entry |
+| `missing` | the name is declared nowhere in the repo's workspaces any more | remove the package entry — or, if it moved out of the workspaces, give it the new path |
 | `relocated` | it is now declared at `path`, a different directory | update the entry's `path` |
 | `ambiguous` | several paths (`candidates`) now declare that name | point the entry at the right one |
 | `unverifiable` | the location could not be checked (`reason` says why) | nothing — look again later |

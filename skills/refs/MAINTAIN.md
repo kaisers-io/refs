@@ -77,10 +77,10 @@ proof of identity, only of absence when it says "not running".
 
 A `warn` on `config-drift` means a configured package path no longer matches the checkout.
 The `detail` names each affected ref and package and says which repair it needs — remove the
-entry (the package is gone upstream) or change its path (it moved). Both are `refs edit`
-work, and neither is urgent. A `detail` saying `a sync is in progress` is not a finding at
-all: that ref's lock was busy, so it was not inspected. The same probe runs on every
-`refs sync`, so drift usually surfaces there first.
+entry (the package is gone from the repo's workspaces) or change its path (it moved within
+them). Both are `refs edit` work, and neither is urgent. A `detail` saying another refs
+process holds the ref is not a finding at all: that ref's lock was busy, so it was not
+inspected. The same probe runs on every `refs sync`, so drift usually surfaces there first.
 
 On `dirty-checkouts` the two statuses mean different things: a **`warn`** is a
 managed checkout carrying local changes, which the next `refs sync` will discard — say so
