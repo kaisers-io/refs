@@ -107,14 +107,19 @@ const extractToken = (raw: unknown): string | undefined => {
   return token;
 };
 
-/** A pid is only usable if it is a positive integer. `typeof pid === 'number'` was too loose: `0`
+// Largest value `process.kill` accepts. Beyond it Node throws `ERR_INVALID_ARG_TYPE` — a TypeError,
+// not an errno — which `isPidAlive` would read as "not ESRCH, so present", reporting malformed
+// metadata as a healthy holder.
+const MAX_PID = 2_147_483_647;
+
+/** A pid is only usable if it is a positive integer within the range `process.kill` accepts. `typeof pid === 'number'` was too loose: `0`
  * and negatives are process-GROUP selectors for `process.kill`, so a meta.json carrying either
  * would make `isPidAlive` answer for a whole group — reporting "alive" for a lock whose real owner
  * is long gone, and keeping it unreclaimable for the rest of its window. A non-integer is simply
- * not a pid. All three are rejected here, which reports the metadata as malformed rather than
- * acting on it. */
+ * not a pid, and one past `MAX_PID` makes the probe throw a TypeError that reads as "present".
+ * All four are rejected here, which reports the metadata as malformed rather than acting on it. */
 const parsePid = (value: unknown): number | undefined => {
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0 || value > MAX_PID) {
     return undefined;
   }
   return value;

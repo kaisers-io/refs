@@ -24,6 +24,9 @@ const BETWEEN_POLICIES_MS = 180_000;
 const GROUP_PID = 0;
 const NEGATIVE_PID = -1;
 const FRACTIONAL_PID = 1.5;
+// One past the largest value `process.kill` accepts: beyond it Node throws a TypeError rather than
+// an errno, which the liveness probe would read as "not ESRCH, so present".
+const OUT_OF_RANGE_PID = 2_147_483_648;
 
 const nowMinus = (ms: number): string => new Date(Date.now() - ms).toISOString();
 
@@ -51,6 +54,24 @@ describe('inspectLocks empty cases', () => {
     });
 
     await expect(inspectLocks(home)).resolves.toStrictEqual([]);
+  });
+
+  it('still reports a real lock whose name collides with the claim suffix', async () => {
+    expect.hasAssertions();
+    const home = makeHome();
+    // Lock names permit `.` and `-`, so a repository named `foo.steal-claim` produces a genuine
+    // lock ending in the claim suffix. Filtering on the suffix alone would hide it for its whole
+    // life and let doctor report "no locks held" while one is held. A real claim is a bare `mkdir`
+    // and always empty; this one carries metadata.
+    seedLock(home.locksDir, 'ref.github.com_acme_foo.steal-claim', {
+      acquired_at: nowMinus(FRESH_MS),
+      pid: process.pid,
+      token: TOKEN_A,
+    });
+
+    const [lock] = await inspectLocks(home);
+
+    expect(lock?.name).toBe('ref.github.com_acme_foo.steal-claim');
   });
 });
 
@@ -138,6 +159,7 @@ describe('inspectLocks malformed metadata', () => {
     ['a pid of zero, which selects a process GROUP rather than a process', GROUP_PID],
     ['a negative pid, which selects every process', NEGATIVE_PID],
     ['a fractional pid', FRACTIONAL_PID],
+    ['a pid past the range process.kill accepts', OUT_OF_RANGE_PID],
   ])('rejects %s as malformed rather than probing it', async (_label, pid) => {
     expect.hasAssertions();
     const home = makeHome();
@@ -178,9 +200,12 @@ describe('inspectLocks anomalous entries', () => {
 
     const [lock] = await inspectLocks(home);
 
-    // It has no holder and no metadata, but exclusive `mkdir` fails against it just the same, so an
-    // acquisition waits out its whole timeout against something that will never be released.
-    expect(lock).toStrictEqual({ entry: 'blocking-entry', name: 'home' });
+    // It has no holder and no metadata, but exclusive `mkdir` fails against it just the same. It
+    // is diagnosed like any unpublished entry rather than special-cased, because that is exactly
+    // how the acquisition path treats it: `stat` yields an mtime for a file too, so the metadata
+    // grace applies and it is reclaimed once that elapses.
+    expect(lock).toMatchObject({ isDirectory: false, name: 'home' });
+    expect(lock?.diagnosis).toMatchObject({ meta: 'unreadable', policy: 'grace' });
   });
 
   it('sorts entries by name, since directory order is unspecified', async () => {

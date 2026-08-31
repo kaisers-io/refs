@@ -36,11 +36,13 @@ is held — another refs process is running`, which left no way to tell a runnin
 
 ### Fixed
 
-- A pid in a lock's metadata is now required to be a positive integer. `0` and negative values are
+- A pid in a lock's metadata is now required to be a positive integer within the range
+  `process.kill` accepts. `0` and negative values are
   process-_group_ selectors for `process.kill`, so metadata carrying either made the liveness probe
   answer for a whole group — reporting a long-gone owner as present, and keeping its lock
-  unreclaimable for the rest of its window. Such metadata is now reported as malformed instead of
-  acted on.
+  unreclaimable for the rest of its window. A value past that range is worse still: Node rejects it
+  with a `TypeError` rather than an errno, which the probe read as "not gone, therefore present".
+  Such metadata is now reported as malformed instead of acted on.
 
 - A lock is no longer taken away from a holder that is still working, however long the work takes.
   Locks were judged by a fixed ten-minute age: past it, a waiter treated the lock as abandoned and

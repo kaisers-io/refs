@@ -22,9 +22,9 @@ const SEPARATOR = '; ';
  * process inside its window — is healthy. */
 const isHealthy = (lock: InspectedLock): boolean => {
   const { diagnosis } = lock;
-  if (diagnosis === undefined) {
-    // A non-directory occupying a lock name blocks acquisition forever: nothing releases it,
-    // because nothing holds it.
+  if (!lock.isDirectory) {
+    // It resolves on its own once the metadata grace elapses, but nothing legitimate ever puts a
+    // file where a lock belongs — worth a look even though it is not permanent.
     return false;
   }
   if (diagnosis.pidState === 'definitely-dead' || diagnosis.stale) {
@@ -62,11 +62,12 @@ const ownerPhrase = (diagnosis: LockDiagnosis): string => {
  * number. */
 const lockLine = (lock: InspectedLock): string => {
   const { diagnosis } = lock;
-  if (diagnosis === undefined) {
-    return `${lock.name}: not a directory — this entry blocks acquisition and is not a lock`;
-  }
+  // Named, but not overstated: a non-directory does block `mkdir`, yet it is reclaimed on the same
+  // terms as any entry whose metadata never landed. Saying it blocks acquisition outright would
+  // send someone deleting files by hand for a condition that clears itself.
+  const kind = lock.isDirectory ? '' : 'not a directory, ';
   const reclaimable = diagnosis.stale ? ', reclaimable now' : '';
-  return `${lock.name}: ${ownerPhrase(diagnosis)}${clockPhrase(diagnosis)}${reclaimable}`;
+  return `${lock.name}: ${kind}${ownerPhrase(diagnosis)}${clockPhrase(diagnosis)}${reclaimable}`;
 };
 
 /** An unreadable locks directory is not reported here: `inspectLocks` lets that throw, and
