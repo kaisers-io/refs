@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-08-31
+
 ### Changed
 
 - **The skill's version-question flow moved into its own file.** Every question about a
@@ -54,7 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`refs resolve` answers in one call what used to take three.** The skill's investigation flow
   began `resolve` → `sync` → `resolve` **again**, and the third call was not ceremony: package
-  verification had described the checkout as it was *before* the sync, so reusing that answer meant
+  verification had described the checkout as it was _before_ the sync, so reusing that answer meant
   reporting a path that no longer necessarily held what it claimed. `--sync-if-stale` fetches (or
   clones) only when the ref is stale or its checkout absent, and everything it reports describes the
   checkout afterwards. The rule has left the skill and become code.
@@ -73,14 +75,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The answer is read from `node_modules`, walking up in Node's own lookup order, and stops at the
   first installation slot that exists rather than the first readable manifest — falling through to
   an ancestor would report a shadowed install Node would not have loaded. There is deliberately no
-  lockfile fallback: a lockfile says what *should* be installed, `node_modules` says what *is*, and
+  lockfile fallback: a lockfile says what _should_ be installed, `node_modules` says what _is_, and
   the second is the question. `installed.status` is `found`, `not_materialized`,
   `unsupported_layout` (Yarn PnP, detected but never loaded — `.pnp.cjs` is project code) or
   `unverifiable`.
 
 - **`refs resolve --ref <ref>`** scopes a query to one ref's packages. A package name registered by
   several refs used to be answered with "use the full ref key" — advice the command could not
-  honour, because a full-key query routes by *ref* and comes back with `package: null`. The error
+  honour, because a full-key query routes by _ref_ and comes back with `package: null`. The error
   now names a remedy that exists.
 
 - `refs doctor` gained a `locks` check. A held lock used to be invisible: acquisition failed with a
@@ -122,7 +124,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `checkout.status`, which answers the question `missing` was often assumed to.
 
 - **The "lock is held" error now says who holds it and for how long.** It used to read `lock <name>
-  is held — another refs process is running`, which left no way to tell a running `sync` from
+is held — another refs process is running`, which left no way to tell a running `sync` from
   something that crashed 90 seconds ago. It now names the recorded pid, whether that pid is still
   present, how long the lock has been held, and when it becomes reclaimable.
 
@@ -150,7 +152,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A pid in a lock's metadata is now required to be a positive integer within the range
   `process.kill` accepts. `0` and negative values are
-  process-*group* selectors for `process.kill`, so metadata carrying either made the liveness probe
+  process-_group_ selectors for `process.kill`, so metadata carrying either made the liveness probe
   answer for a whole group — reporting a long-gone owner as present, and keeping its lock
   unreclaimable for the rest of its window. A value past that range is worse still: Node rejects it
   with a `TypeError` rather than an errno, which the probe read as "not gone, therefore present".
@@ -687,7 +689,8 @@ trusted-publishing pipeline end to end.
   installed git hooks.
 - Agent skill (`skills/refs/`) documenting the investigate/add/maintain workflows.
 
-[Unreleased]: https://github.com/kaisers-io/refs/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/kaisers-io/refs/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/kaisers-io/refs/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/kaisers-io/refs/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/kaisers-io/refs/compare/v0.8.3...v0.9.0
 [0.8.3]: https://github.com/kaisers-io/refs/compare/v0.8.2...v0.8.3
