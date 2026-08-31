@@ -17,11 +17,17 @@ import { readdir } from 'node:fs/promises';
 //
 // Both patterns share a namespace with real lock names, which permit `.` and `-`
 // (`LOCK_NAME_PATTERN` in `lock.ts`), so matching on the suffix alone could hide a genuine lock for
-// a repository named, say, `foo.steal-claim`. Two things narrow that: the tombstone suffix must be a
-// full uuid, and a claim is only treated as one when the directory is EMPTY — a claim is a bare
-// `mkdir` and always is, while a real lock carries `meta.json` and its lease sidecar. The residual
-// case is a real lock named `*.steal-claim` observed during the few milliseconds before it publishes
-// its metadata, which is a narrower miss than hiding it for its whole life.
+// a repository named, say, `foo.steal-claim`. A claim is therefore only treated as one when the
+// directory is EMPTY — a claim is a bare `mkdir` and always is, while a real lock carries
+// `meta.json` and its lease sidecar.
+//
+// A tombstone admits no such test, and this is a deliberate limit rather than an oversight: a
+// tombstone IS a real lock directory, just renamed a moment before removal, so it is structurally
+// identical to the thing it must be told apart from. Only the name distinguishes them. Requiring a
+// full uuid narrows the collision to a repository whose lock name ends in `.steal.` followed by
+// exactly a 36-character uuid; anything short of that is reported normally. The alternative —
+// reporting tombstones — would make this check flap on every healthy steal, which is a worse
+// failure than a name nobody will ever have.
 const CLAIM_SUFFIX = '.steal-claim';
 const TOMBSTONE_PATTERN = /\.steal\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 

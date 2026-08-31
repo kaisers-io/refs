@@ -1,12 +1,6 @@
 import type { LockMeta, MetaRead } from './lock-meta.ts';
-import {
-  dirMtimeMs,
-  isPidAlive,
-  leaseMtimeMs,
-  readLockMetaDetailed,
-  readLockToken,
-  touchLeaseSidecar,
-} from './lock-meta.ts';
+import { isPidAlive, readLockMetaDetailed, readLockToken, statMtime } from './lock-meta.ts';
+import { leaseMtimeMs, touchLeaseSidecar } from './lock-sidecar.ts';
 import type { RenewOutcome } from './lock-heartbeat.ts';
 
 // The lease POLICY behind `lock.ts`'s advisory lock: how long a stamped lease stays good, how often
@@ -57,7 +51,10 @@ const MISSING_META_GRACE_MS = 5000;
 //     — including a permission error, and including a pid that has since been reused by an
 //     unrelated process — is "present, or unknown". Nothing here can say "that process is the
 //     holder", and callers must not word it that way.
-type LockPolicy = 'grace' | 'lease' | 'legacy' | 'none';
+//   - **`none` means gone, never "could not tell".** A permissions fault is `unknown`: something is
+//     there and nothing can be said about it, which is a finding rather than an absence. Collapsing
+//     the two would let a locks directory nobody can stat report as an empty one.
+type LockPolicy = 'grace' | 'lease' | 'legacy' | 'none' | 'unknown';
 
 type LockDiagnosis = {
   /** Age against `policy`'s clock. Negative means the recorded time is in the future — clock skew,
@@ -84,11 +81,17 @@ const diagnoseWithoutMeta = async (
   state: Exclude<MetaRead['state'], 'valid'>,
   observedAtMs: number,
 ): Promise<LockDiagnosis> => {
-  const mtimeMs = await dirMtimeMs(lockPath);
-  if (mtimeMs === undefined) {
+  const stamp = await statMtime(lockPath);
+  if (stamp.state === 'gone') {
     return { meta: state, observedAtMs, pidState: 'unknown', policy: 'none', stale: false };
   }
-  const ageMs = observedAtMs - mtimeMs;
+  if (stamp.state === 'unreadable') {
+    // Something occupies this path and nothing about it can be established. Never stale — stealing
+    // on the strength of an unreadable path would be acting on ignorance — but it must not vanish
+    // from a report either.
+    return { meta: state, observedAtMs, pidState: 'unknown', policy: 'unknown', stale: false };
+  }
+  const ageMs = observedAtMs - stamp.mtimeMs;
   return {
     ageMs,
     budgetMs: MISSING_META_GRACE_MS,
@@ -191,6 +194,7 @@ const POLICY_CLOCK: Record<LockPolicy, string> = {
   lease: 'lease renewed',
   legacy: 'acquired',
   none: 'observed',
+  unknown: 'observed',
 };
 
 const POLICY_WINDOW: Record<LockPolicy, string> = {
@@ -198,6 +202,7 @@ const POLICY_WINDOW: Record<LockPolicy, string> = {
   lease: 'from the last renewal',
   legacy: 'from acquisition (no renewable lease)',
   none: '',
+  unknown: '',
 };
 
 /** The "how long, and how much longer" half of the message. A future timestamp is called out rather
