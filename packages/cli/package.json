@@ -1,6 +1,6 @@
 {
   "name": "@kaisers-io/refs",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Gives coding agents the real source of your dependencies, not a guess.",
   "keywords": [
     "ai",

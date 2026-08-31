@@ -7,7 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-08-31
+
+### Changed
+
+- **The skill's version-question flow moved into its own file.** Every question about a
+  dependency's source loads `SKILL.md` and `INVESTIGATE.md` in full, and 30 % of
+  `INVESTIGATE.md` was a block on resolving versions to tags and diffing between them — read
+  on every plain source question, used on almost none of them. It is now `VERSIONS.md`, with a
+  route of its own in `SKILL.md` §5 and a one-line pointer at the end of `INVESTIGATE.md`, so
+  a mis-route costs one extra read rather than a wrong answer.
+
+  Alongside it, a compression pass over what remains: the worker output contract was stated
+  twice and is now stated once, the five clickable-link rules became one normalization, and a
+  handful of sentences that repeated something said a few lines earlier are gone. Nothing
+  behavioural was removed — the capability gate, the trust boundary, the five hard rules and
+  the worker prompt's own safety rules are untouched, and the measured partial-clone cost model
+  (which git commands fetch blobs, and that `git blame` fetches one per visited revision) is
+  refs' own measurement rather than something the term "partial clone" implies, so it stays
+  verbatim.
+
+  A plain source question now loads 20 % less. A version question loads about what it did
+  before, plus one extra file read.
+
 ### Added
+
+- **`refs sync` and `refs doctor` now report configuration that has fallen behind its upstream.**
+  A configured package path is only a locator, and upstream can delete or move what sits at it.
+  Until now only `refs resolve` noticed, for the one package an agent happened to route to, and it
+  persisted nothing — so a package deleted upstream could sit wrong in the configuration
+  indefinitely while every other package in the same checkout went uninspected.
+
+  Each successful `refs sync` result now carries a nested `structure: {status, packages}`, probed
+  inside the lock the sync already holds, right after the checkout was updated. Nothing is stored:
+  the answer is reported and thrown away, so there is no drift state that can itself go stale. A
+  removal and a relocation are reported as different findings, because they need opposite repairs —
+  telling an agent to "fix the path" of a package upstream deleted sends it looking for something
+  that is not there. Human output gains indented lines under the affected ref and stays silent when
+  everything resolves; the summary counts and exit code are untouched, since a drifted ref synced
+  perfectly well.
+
+  Only refs that actually sync are probed, which keeps `--stale-only` a genuine no-op — and is why
+  `refs doctor` gains a `config-drift` check as the deliberate "check everything now" counterpart.
+  It takes each ref's lock with a short timeout and reports the ref as busy rather than waiting,
+  writes nothing, and reports `warn` rather than `fail`: the configuration has fallen behind,
+  nothing is broken. `refs list` deliberately stays blind — without stored state it would
+  turn a cheap inventory command into a locking filesystem sweep.
 
 - **`refs resolve` answers in one call what used to take three.** The skill's investigation flow
   began `resolve` → `sync` → `resolve` **again**, and the third call was not ceremony: package
@@ -644,7 +689,8 @@ trusted-publishing pipeline end to end.
   installed git hooks.
 - Agent skill (`skills/refs/`) documenting the investigate/add/maintain workflows.
 
-[Unreleased]: https://github.com/kaisers-io/refs/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/kaisers-io/refs/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/kaisers-io/refs/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/kaisers-io/refs/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/kaisers-io/refs/compare/v0.8.3...v0.9.0
 [0.8.3]: https://github.com/kaisers-io/refs/compare/v0.8.2...v0.8.3
