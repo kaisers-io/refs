@@ -40,7 +40,8 @@ refs doctor --json
 
 Runs environment/integrity checks and returns `{checks: [{name, status, detail}]}` with
 `status` one of `ok`, `warn`, `fail`: `git`, `node`, `config`, `hooks-guard`,
-`dirty-checkouts`, `orphans`, `locks`, `skill`, `cli-update`, and (when any ref uses ssh) `ssh-auth`. Report
+`dirty-checkouts`, `config-drift`, `orphans`, `locks`, `skill`, `cli-update`, and (when any ref uses ssh)
+`ssh-auth`. Report
 every non-`ok` check with its `detail` message, and explain what it means in plain terms.
 A `warn` on `cli-update` means either that a newer refs is published on npm — the `detail`
 carries the version and the command to install it, which you print for the user rather than
@@ -73,6 +74,13 @@ listed. Nothing releases a lock in the background: "reclaimable" means the next 
 is entitled to take it, so the fix for a stuck lock is usually to re-run the command that wants it.
 Never delete a lock directory by hand on the strength of this check alone — the recorded pid is not
 proof of identity, only of absence when it says "not running".
+
+A `warn` on `config-drift` means a configured package path no longer matches the checkout.
+The `detail` names each affected ref and package and says which repair it needs — remove the
+entry (the package is gone upstream) or change its path (it moved). Both are `refs edit`
+work, and neither is urgent. A `detail` saying `a sync is in progress` is not a finding at
+all: that ref's lock was busy, so it was not inspected. The same probe runs on every
+`refs sync`, so drift usually surfaces there first.
 
 On `dirty-checkouts` the two statuses mean different things: a **`warn`** is a
 managed checkout carrying local changes, which the next `refs sync` will discard — say so

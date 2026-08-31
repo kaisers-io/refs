@@ -1,4 +1,4 @@
-import type { Config, RefsHome } from '@kaisers-io/refs-core';
+import type { Config, RefKey, RefsHome } from '@kaisers-io/refs-core';
 import { access, constants } from 'node:fs/promises';
 import { checkoutPath, isGitCheckout, zRefKey } from '@kaisers-io/refs-core';
 import type { CheckResult } from './doctor-types.ts';
@@ -14,7 +14,7 @@ const SUCCESS_EXIT_CODE = 0;
 
 type ExistingCheckout = {
   dest: string;
-  key: string;
+  key: RefKey;
 };
 
 /** Every configured ref whose checkout directory currently exists on disk — a ref with a missing
@@ -22,7 +22,8 @@ type ExistingCheckout = {
  * state elsewhere; there is nothing to probe with `git` against a directory that isn't there). */
 const existingCheckouts = (home: RefsHome, config: Config): ExistingCheckout[] =>
   Object.keys(config.refs)
-    .map((key) => ({ dest: checkoutPath(home, zRefKey.parse(key)), key }))
+    .map((raw) => zRefKey.parse(raw))
+    .map((key) => ({ dest: checkoutPath(home, key), key }))
     .filter((item) => isGitCheckout(item.dest));
 
 const PRE_COMMIT_HOOK_NAME = 'pre-commit';
@@ -158,4 +159,5 @@ const checkDirtyCheckouts = async (
   return buildDirtyCheckoutsResult(statuses);
 };
 
-export { checkDirtyCheckouts, checkHooksGuard };
+export { checkDirtyCheckouts, checkHooksGuard, existingCheckouts };
+export type { ExistingCheckout };

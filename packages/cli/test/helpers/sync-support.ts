@@ -116,8 +116,22 @@ const setupTwoRefs = async (homeDir: string): Promise<TwoRefsFixture> => {
   return { bad, badFixture, ctx, good, home, stdout };
 };
 
+type SyncStructure = {
+  packages?: { configured_path: string; name: string; status: string; path?: string }[];
+  reason?: string;
+  status: string;
+};
+
 type SyncEnvelope = {
-  data: { results: { error?: string; key: string; status: string; warning?: string }[] };
+  data: {
+    results: {
+      error?: string;
+      key: string;
+      status: string;
+      structure?: SyncStructure;
+      warning?: string;
+    }[];
+  };
   ok: boolean;
   // Envelope-level, and distinct from a per-ref `warning`: this is where a newer published CLI is
   // announced, which is a fact about the installation rather than about any ref.

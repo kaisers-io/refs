@@ -1,18 +1,16 @@
-import type { RefKey, RefsHome, WorkspaceScan } from '@kaisers-io/refs-core';
+import type { RefKey, RefsHome } from '@kaisers-io/refs-core';
 import {
   RefsError,
   detectWorkspacePackagesDetailed,
   isGitCheckout,
-  lookupPackagePath,
   probePackageIdentity,
-  scanIsReliable,
-  scanSearchedSomewhere,
   withLock,
 } from '@kaisers-io/refs-core';
+import type { VerifyOutcome } from './package-location.ts';
+import { classifyAgainstScan } from './package-location.ts';
 // `refLockName` lives in the CLI, not core — the same import `sync-checkout.ts` uses, so both
 // commands derive the identical lock name and genuinely serialize against each other.
 import { refLockName } from './add-source.ts';
-
 // Identity verification for `refs resolve`. A configured `path` is a locator whose target the
 // upstream repo can move, replace, or delete at any time — and `resolve` is the hot path where
 // an unverified locator becomes an agent reading the wrong source and answering confidently
@@ -26,22 +24,6 @@ import { refLockName } from './add-source.ts';
 //                                    absent package.
 //   3. name matches               -> `verified`.
 //   4. CONFIRMED mismatch/absence -> rescan, under the same per-ref lock `sync` mutates behind.
-
-type PackageStatus =
-  | 'ambiguous'
-  | 'missing'
-  | 'relocated'
-  | 'unmaterialized'
-  | 'unverifiable'
-  | 'verified';
-
-type VerifyOutcome = {
-  candidates?: string[];
-  configuredPath?: string;
-  path: string | null;
-  reason?: string;
-  status: PackageStatus;
-};
 
 type VerifyOpts = {
   checkoutDir: string;
@@ -59,9 +41,6 @@ type VerifyOpts = {
   onProbed?: () => void;
   packageName: string;
 };
-
-// eslint-disable-next-line unicorn/no-null -- cross-process JSON contract requires null
-const NO_PATH = null;
 
 /** Everything that happens once the lock is held.
  *
@@ -81,58 +60,10 @@ const rescanLocked = async (opts: VerifyOpts): Promise<VerifyOutcome> => {
   return searchScan(opts);
 };
 
-// Where does this package live according to a fresh scan of the checkout?
-const incomplete = (opts: VerifyOpts, reason: string): VerifyOutcome => ({
-  path: opts.configuredPath,
-  reason,
-  status: 'unverifiable',
-});
-
-const searchScan = async (opts: VerifyOpts): Promise<VerifyOutcome> => {
-  const scan = await detectWorkspacePackagesDetailed(opts.checkoutDir);
-  const lookup = lookupPackagePath(scan.packages, opts.packageName);
-  const reliable = scanIsReliable(scan);
-
-  // `ambiguous` is the one conclusion an incomplete scan can still support: seeing the name
-  // twice already proves it is not unique, and inspecting more could only have found more.
-  if (lookup.kind === 'ambiguous') {
-    return {
-      candidates: lookup.paths,
-      configuredPath: opts.configuredPath,
-      path: NO_PATH,
-      status: 'ambiguous',
-    };
-  }
-
-  // Both remaining answers claim something about EVERY path — "it is only here", "it is nowhere"
-  // — so neither survives a scan that skipped something. A second package of the same name could
-  // be sitting behind an unreadable manifest or an unsupported pattern, and picking the copy we
-  // happened to see is precisely the silent wrong-directory failure this exists to prevent.
-  if (!reliable) {
-    return incomplete(
-      opts,
-      lookup.kind === 'found'
-        ? 'workspace detection was incomplete, so the new location is not confirmed unique'
-        : 'workspace detection was incomplete',
-    );
-  }
-
-  return lookup.kind === 'found'
-    ? { configuredPath: opts.configuredPath, path: lookup.path, status: 'relocated' }
-    : absenceOutcome(opts, scan);
-};
-
-/** `missing` is the one answer a complete-but-EMPTY scan cannot support. A repo with no workspace
- * declaration yields exactly that: reliable, and derived from inspecting nothing. `add`'s npm
- * fallback registers packages in precisely those repos (`path: "."`, or the packument's
- * `directory`), so this is not a corner case — it is the ordinary shape of a single-package
- * upstream, and the one where a moved package would otherwise be declared gone on no evidence.
- *
- * `relocated` needs no such guard: a positive sighting stands on its own. */
-const absenceOutcome = (opts: VerifyOpts, scan: WorkspaceScan): VerifyOutcome =>
-  scanSearchedSomewhere(scan)
-    ? { configuredPath: opts.configuredPath, path: NO_PATH, status: 'missing' }
-    : incomplete(opts, 'this repo declares no workspaces, so there was nowhere to search');
+/** One fresh scan of the checkout, handed to the shared classifier in `package-location.ts` —
+ * which owns every rule about what a scan may and may not conclude. */
+const searchScan = async (opts: VerifyOpts): Promise<VerifyOutcome> =>
+  classifyAgainstScan(opts, await detectWorkspacePackagesDetailed(opts.checkoutDir));
 
 /** Wraps `rescanLocked` in the per-ref lock `sync` mutates behind. `withLock` REJECTS with a
  * conflict error when the lock cannot be acquired in time, so the failure has to be caught: an
@@ -185,4 +116,4 @@ const verifyPackageLocation = async (opts: VerifyOpts): Promise<VerifyOutcome> =
 };
 
 export { verifyPackageLocation };
-export type { PackageStatus, VerifyOutcome };
+export type { PackageStatus, VerifyOutcome } from './package-location.ts';

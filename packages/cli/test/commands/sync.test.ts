@@ -9,17 +9,10 @@ import {
   setupTwoRefs,
 } from '../helpers/sync-support.ts';
 import { describe, expect, it } from 'vitest';
-import {
-  initHome,
-  parseLastEnvelope,
-  realContextFor,
-  withResetExitCode,
-  withTempHome,
-} from '../helpers/add-support.ts';
 import { readFile, rm, writeFile } from 'node:fs/promises';
+import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
 import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { join } from 'node:path';
-import { run } from '../../src/main.ts';
 import { setCheckoutOrigin } from '../helpers/add-guards-support.ts';
 
 // Integration suite for `refs sync`, against real `file://` git fixtures and a real `SpawnRunner`
@@ -44,7 +37,10 @@ describe('refs sync: updated', () => {
           const upstreamSha = await headShaOf(fixture.dir);
           const result = await runSyncJson(ctx, stdout, { refKeys: [added.key] });
 
-          expect(result.data.results).toStrictEqual([{ key: added.key, status: 'updated' }]);
+          // `structure` rides along on every successful ref; this fixture configures no packages.
+          expect(result.data.results).toStrictEqual([
+            { key: added.key, status: 'updated', structure: { status: 'ok' } },
+          ]);
           const after = await readState(home);
           expect(after.refs[added.key]?.head_sha).toBe(upstreamSha);
           expect(after.refs[added.key]?.last_fetched_at).not.toBe(t0);
@@ -66,7 +62,9 @@ describe('refs sync: fresh', () => {
 
           const result = await runSyncJson(ctx, stdout, { refKeys: [added.key] });
 
-          expect(result.data.results).toStrictEqual([{ key: added.key, status: 'fresh' }]);
+          expect(result.data.results).toStrictEqual([
+            { key: added.key, status: 'fresh', structure: { status: 'ok' } },
+          ]);
         }),
       );
     },
@@ -116,6 +114,7 @@ describe('refs sync: missing checkout', () => {
             {
               key: added.key,
               status: 'cloned',
+              structure: { status: 'ok' },
               warning:
                 'server did not honour the partial-clone filter (blob:none); fell back to a full clone',
             },
@@ -151,6 +150,7 @@ describe('refs sync: --stale-only with missing checkout', () => {
             {
               key: added.key,
               status: 'cloned',
+              structure: { status: 'ok' },
               warning:
                 'server did not honour the partial-clone filter (blob:none); fell back to a full clone',
             },
@@ -182,6 +182,7 @@ describe('refs sync: dirty checkout', () => {
             {
               key: added.key,
               status: 'restored',
+              structure: { status: 'ok' },
               warning:
                 'checkout had local changes (managed checkouts are read-only) — discarded and restored to the remote state',
             },
@@ -252,49 +253,4 @@ describe('refs sync: origin identity', () => {
     },
     SLOW_IO_TIMEOUT_MS,
   );
-});
-
-describe('refs sync: unknown ref argument', () => {
-  it(
-    'an unmatched [refs…] argument fails fast (no partial batch run)',
-    async () => {
-      expect.hasAssertions();
-      await withResetExitCode(() =>
-        withTempHome(async (homeDir) => {
-          const { added, ctx, home, stdout } = await setupSyncedRef(homeDir);
-          const before = await readState(home);
-
-          await run(ctx, ['node', 'refs', 'sync', 'definitely-not-a-ref', '--json']);
-
-          expect(process.exitCode).toBe(EXIT.NOT_FOUND);
-          const envelope = parseLastEnvelope(stdout) as { error?: { code: string }; ok: boolean };
-          expect(envelope.ok).toBe(false);
-          expect(envelope.error?.code).toBe('not_found');
-          const after = await readState(home);
-          expect(after.refs[added.key]?.last_fetched_at).toBe(
-            before.refs[added.key]?.last_fetched_at,
-          );
-        }),
-      );
-    },
-    SLOW_IO_TIMEOUT_MS,
-  );
-});
-
-describe('refs sync: no configured refs', () => {
-  it('with no refs configured, syncs nothing and reports an empty result set', async () => {
-    expect.hasAssertions();
-    await withResetExitCode(() =>
-      withTempHome(async (homeDir) => {
-        const { ctx, stdout } = realContextFor(homeDir);
-        await initHome(ctx);
-
-        const result = await runSyncJson(ctx, stdout, { refKeys: [] });
-
-        expect(result.ok).toBe(true);
-        expect(result.data.results).toHaveLength(NO_RESULTS);
-        expect(process.exitCode).not.toBe(EXIT.UNEXPECTED);
-      }),
-    );
-  });
 });

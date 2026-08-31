@@ -18,8 +18,10 @@ import {
   resolveCheckoutHead,
 } from './add-checkout-guards.ts';
 import type { CliContext } from '../context.ts';
+import type { StructureReport } from './drift-probe.ts';
 import { dirname } from 'node:path';
 import { mkdir } from 'node:fs/promises';
+import { probeRefStructure } from './drift-probe.ts';
 
 // The per-ref git pipeline for `refs sync`. Owns the missing-checkout re-clone path, the
 // existing-checkout sync path (guarded by the same managed-checkout marker `add`'s reuse path
@@ -33,6 +35,7 @@ type RefSyncOutcome = {
   status: SyncStatus;
   branchRenamedTo?: string;
   effectiveCloneMode?: CloneMode;
+  structure?: StructureReport;
   warning?: string;
 };
 
@@ -142,21 +145,39 @@ const syncExistingCheckout = async (
   return outcome;
 };
 
+const gitOutcomeFor = (
+  ctx: CliContext,
+  rsc: RefSyncContext,
+  dest: string,
+): Promise<RefSyncOutcome> => {
+  // Containment check at the dispatch level so it covers BOTH branches before any git command
+  // or fs operation touches `dest`: an existing path segment under sources/ could be a symlink
+  // pointing outside the managed tree — `isGitCheckout`'s existsSync follows it, so without
+  // this the EXISTING branch would hard-reset/clean a checkout physically outside sources/,
+  // and the MISSING branch's `mkdir`+`cloneRepo` would write outside it.
+  assertInsideSources(rsc.home, dest);
+  if (!isGitCheckout(dest)) {
+    return syncMissingCheckout(ctx, rsc, dest);
+  }
+  return syncExistingCheckout(ctx, rsc, dest);
+};
+
 /** Runs the git side of one ref's sync under its per-ref lock only — no config/state write here,
- * see `sync-state.ts#applySyncSuccess` for the separate, sequential home-lock step. */
+ * see `sync-state.ts#applySyncSuccess` for the separate, sequential home-lock step.
+ *
+ * The drift probe runs INSIDE the lock, after clone/reset and before it is released: the whole
+ * point is to describe the tree this sync just produced, and a probe after the callback returns
+ * would race the next writer. It is also why it cannot go through `verifyPackageLocation` —
+ * that takes the same lock, and `withLock` is not reentrant.
+ *
+ * Every ref that reached this point gets a `structure`, `fresh` ones included. Drift is not
+ * caused by the fetch: a checkout that has been up to date for weeks is exactly where a stale
+ * locator survives longest, and skipping it would make the probe blind to its own best case. */
 const syncCheckout = (ctx: CliContext, rsc: RefSyncContext): Promise<RefSyncOutcome> =>
-  withLock(rsc.home, refLockName(rsc.key), () => {
+  withLock(rsc.home, refLockName(rsc.key), async () => {
     const dest = checkoutPath(rsc.home, rsc.key);
-    // Containment check at the dispatch level so it covers BOTH branches before any git command
-    // or fs operation touches `dest`: an existing path segment under sources/ could be a symlink
-    // pointing outside the managed tree — `isGitCheckout`'s existsSync follows it, so without
-    // this the EXISTING branch would hard-reset/clean a checkout physically outside sources/,
-    // and the MISSING branch's `mkdir`+`cloneRepo` would write outside it.
-    assertInsideSources(rsc.home, dest);
-    if (!isGitCheckout(dest)) {
-      return syncMissingCheckout(ctx, rsc, dest);
-    }
-    return syncExistingCheckout(ctx, rsc, dest);
+    const outcome = await gitOutcomeFor(ctx, rsc, dest);
+    return { ...outcome, structure: await probeRefStructure(dest, rsc.ref.packages) };
   });
 
 export { syncCheckout };
