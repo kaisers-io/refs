@@ -71,16 +71,32 @@ type LockDiagnosis = {
   stale: boolean;
 };
 
-/** Diagnosis for a lock whose `meta.json` could not be read as valid metadata. The directory's own
- * mtime stands in for the missing timestamp, against the short publication grace — a lock whose
- * metadata has not landed yet must not be stolen out from under an acquisition in progress. A
- * directory that is gone entirely yields no clock and is not stale: the next `mkdir` simply
- * succeeds. */
+/** Diagnosis for a lock whose `meta.json` could not be read as valid metadata.
+ *
+ * The three reasons are not equivalent, and treating them alike is how an unreadable path becomes
+ * a stolen lock:
+ *
+ *   - **`missing`** — no metadata has been published. The directory's own mtime stands in, against
+ *     the short publication grace, so an acquisition still mid-publish is protected while a holder
+ *     that died before publishing is reclaimable.
+ *   - **`malformed`** — the file was read and its contents are not valid metadata. Judged the same
+ *     way, and deliberately so: metadata is published atomically, so this means corruption, and a
+ *     lock nobody can interpret must not block its ref forever.
+ *   - **`unreadable`** — the file exists and could not be read at all (EACCES, EIO). That says
+ *     nothing whatever about the holder, who may be alive and renewing, so it gets NO clock and is
+ *     never stale. Sending it through the grace would let a five-second-old permissions fault hand
+ *     a live holder's lock to a waiter — the same unsafe fallback avoided for the lease sidecar.
+ *
+ * A directory that is gone entirely yields no clock either, and is not stale: the next `mkdir`
+ * simply succeeds. */
 const diagnoseWithoutMeta = async (
   lockPath: string,
   state: Exclude<MetaRead['state'], 'valid'>,
   observedAtMs: number,
 ): Promise<LockDiagnosis> => {
+  if (state === 'unreadable') {
+    return { meta: state, observedAtMs, pidState: 'unknown', policy: 'unknown', stale: false };
+  }
   const stamp = await statMtime(lockPath);
   if (stamp.state === 'gone') {
     return { meta: state, observedAtMs, pidState: 'unknown', policy: 'none', stale: false };

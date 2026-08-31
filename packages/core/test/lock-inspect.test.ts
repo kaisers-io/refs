@@ -205,7 +205,11 @@ describe('inspectLocks anomalous entries', () => {
     // how the acquisition path treats it: `stat` yields an mtime for a file too, so the metadata
     // grace applies and it is reclaimed once that elapses.
     expect(lock).toMatchObject({ isDirectory: false, name: 'home' });
-    expect(lock?.diagnosis).toMatchObject({ meta: 'unreadable', policy: 'grace' });
+    // ENOTDIR reads as `missing`, not `unreadable`: a path that is not a directory can never hold
+    // a `meta.json`, so this is a structural absence rather than a fault that might clear. That
+    // keeps it under the publication grace, and therefore reclaimable — treating it as unreadable
+    // would make a stray file block its lock name forever.
+    expect(lock?.diagnosis).toMatchObject({ meta: 'missing', policy: 'grace' });
   });
 
   it('sorts entries by name, since directory order is unspecified', async () => {

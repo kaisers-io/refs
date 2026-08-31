@@ -64,15 +64,24 @@ const readTextOrUndefined = async (path: string): Promise<string | undefined> =>
   }
 };
 
-// Same read, but keeping the reason: ENOENT is a lock that has not published its metadata yet (or
-// has just been released), anything else is a file that exists and could not be read.
+// Same read, but keeping the reason, because the reasons are not equivalent to whoever acts on
+// them. Two of them mean "there is no metadata here and there never will be under this path":
+// ENOENT (not published yet, or just released) and ENOTDIR (the lock name is occupied by something
+// that is not a directory, so it cannot contain a `meta.json` at all). Both are `missing`, which
+// puts them under the publication grace and lets an acquisition eventually reclaim the path.
+//
+// Everything else — EACCES, EIO — means the file is there and could not be read, which says nothing
+// about the holder. That is `unreadable`, and it must never lead to a steal.
+const NO_METADATA_CODES = new Set(['ENOENT', 'ENOTDIR']);
+
 const readTextDetailed = async (
   path: string,
 ): Promise<{ state: 'missing' | 'unreadable' } | { state: 'read'; text: string }> => {
   try {
     return { state: 'read', text: await readFile(path, 'utf8') };
   } catch (error) {
-    return { state: errnoCode(error) === 'ENOENT' ? 'missing' : 'unreadable' };
+    const code = errnoCode(error);
+    return { state: code !== undefined && NO_METADATA_CODES.has(code) ? 'missing' : 'unreadable' };
   }
 };
 

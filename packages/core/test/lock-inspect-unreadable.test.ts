@@ -1,11 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { readFile, stat } from 'node:fs/promises';
 import { inspectLocks } from '../src/lock-inspect.ts';
 import { join } from 'node:path';
 import { resolveHome } from '../src/home.ts';
-import { stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-
 // A locks directory that lists but cannot be searched — `readdir` succeeds, `stat` on its children
 // fails with EACCES — is a real configuration (a directory with the read bit but not the execute
 // bit). It must never read as an EMPTY locks directory: "no locks held" from a check that could not
@@ -20,7 +19,10 @@ vi.mock(import('node:fs/promises'), async (importOriginal) => {
   // cannot reproduce every overload — cast back to the original signature, as
   // `lock-steal-eperm.test.ts` does for `mkdir`.
   const statSpy = vi.fn<typeof actual.stat>(actual.stat as never) as unknown as typeof actual.stat;
-  return { ...actual, stat: statSpy };
+  const readFileSpy = vi.fn<typeof actual.readFile>(
+    actual.readFile as never,
+  ) as unknown as typeof actual.readFile;
+  return { ...actual, readFile: readFileSpy, stat: statSpy };
 });
 
 const ELEVEN_MINUTES_MS = 660_000;
@@ -65,6 +67,26 @@ describe('inspectLocks on an unreadable lease sidecar', () => {
     const locks = await inspectLocks(home);
 
     expect(locks[0]?.diagnosis).toMatchObject({ policy: 'unknown', stale: false });
+  });
+});
+
+describe('inspectLocks on unreadable metadata', () => {
+  it('gives an unreadable meta.json no clock, so it can never be stolen', async () => {
+    expect.hasAssertions();
+    // The lock is old enough that any window would have elapsed. Its metadata cannot be read —
+    // which says nothing at all about the holder, who may be alive and renewing. Sending this
+    // through the publication grace would let a five-second-old permissions fault hand a live
+    // holder's lock to a waiter.
+    const home = seedRenewableLock();
+    vi.mocked(readFile).mockRejectedValueOnce(eaccesError());
+
+    const locks = await inspectLocks(home);
+
+    expect(locks[0]?.diagnosis).toMatchObject({
+      meta: 'unreadable',
+      policy: 'unknown',
+      stale: false,
+    });
   });
 });
 
