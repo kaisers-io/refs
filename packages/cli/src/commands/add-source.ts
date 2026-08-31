@@ -10,6 +10,7 @@ import {
 } from '@kaisers-io/refs-core';
 import type { CliContext } from '../context.ts';
 import type { Dirent } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { progress } from '../output.ts';
 import { readdir } from 'node:fs/promises';
@@ -31,8 +32,22 @@ const ALLOW_FILE_URLS_FLAG = '1';
 
 // Escaped-form prefix. `HOST_SEGMENT` makes a ref key start with `[a-z0-9]`, so a plain name can
 // never begin `ref._` — which is what keeps the two forms below disjoint by construction rather
-// than by convention.
+// than by convention. The digest form takes `ref.__`, which for the same reason no escaped name
+// can begin either.
 const REF_LOCK_ESCAPE_PREFIX = `${REF_LOCK_PREFIX}_`;
+const REF_LOCK_DIGEST_PREFIX = `${REF_LOCK_ESCAPE_PREFIX}_`;
+// The single-component byte limit on ext4, APFS and NTFS alike. A lock name is one directory
+// entry under `locksDir`, so this is what it has to fit.
+const MAX_LOCK_NAME_BYTES = 255;
+
+/** The last resort for a key whose readable name does not fit a directory entry. Unreadable, and
+ * that is the trade: `doctor`'s `locks` check can no longer show which ref it is, but the
+ * alternative is `mkdir` failing with `ENAMETOOLONG` and every locking command for that ref
+ * erroring out — which is what the old scheme did past 251 characters, and what escaping would
+ * otherwise start doing a few bytes sooner. Reached only by a key of roughly 250 characters,
+ * which needs a self-hosted url: no forge allows a path that long. */
+const digestLockName = (key: RefKey): string =>
+  `${REF_LOCK_DIGEST_PREFIX}${createHash('sha256').update(key, 'utf8').digest('hex')}`;
 
 /** Per-ref advisory lock name for `key`. Lock names are joined verbatim onto `locksDir` (see
  * `lock.ts`'s allowlist), so `/` cannot survive — but `_` is legal inside a ref key, and simply
@@ -52,21 +67,18 @@ const REF_LOCK_ESCAPE_PREFIX = `${REF_LOCK_PREFIX}_`;
  * separators. Nothing decodes these names — `doctor`'s `locks` check prints them verbatim — so the
  * grammar is documented here rather than implemented twice.
  *
- * Two limits this does NOT close, both older than the encoding. The name becomes a single
- * directory component under `locksDir`, so the whole key has to fit one component's byte limit
- * (255 on the usual filesystems) — the escaped form spends one more byte per `/` and per `_`, plus
- * the namespace byte, so it reaches that ceiling marginally sooner than the old scheme did. And
- * `zRefKey` admits path characters `LOCK_NAME_PATTERN` rejects (`@` and a space among them), which
- * makes `withLock` reject the derived name outright. Neither is reachable from a key `refs add`
- * produces from a forge url; both are tracked separately.
+ * A name too long for a directory entry falls back to a third form, `ref.__` plus a digest — see
+ * `digestLockName`. `zRefKey` admits path characters `LOCK_NAME_PATTERN` rejects (`@` and a space
+ * among them), which this passes through and `withLock` then refuses; that predates the encoding
+ * and is tracked separately.
  *
  * Shared by the dry-run clone step and the finalize identity/head checks so both ever use the
  * exact same name for a given ref. */
 const refLockName = (key: RefKey): string => {
-  if (!key.includes('_')) {
-    return `${REF_LOCK_PREFIX}${key.replaceAll('/', '_')}`;
-  }
-  return `${REF_LOCK_ESCAPE_PREFIX}${key.replaceAll('_', '_u').replaceAll('/', '_s')}`;
+  const readable = key.includes('_')
+    ? `${REF_LOCK_ESCAPE_PREFIX}${key.replaceAll('_', '_u').replaceAll('/', '_s')}`
+    : `${REF_LOCK_PREFIX}${key.replaceAll('/', '_')}`;
+  return Buffer.byteLength(readable, 'utf8') > MAX_LOCK_NAME_BYTES ? digestLockName(key) : readable;
 };
 
 /** Whether `REFS_ALLOW_FILE_URLS=1` is set — the same escape hatch `canonicalizeGitUrl` itself

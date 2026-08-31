@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   form under `ref._`, where `_` becomes `_u` and `/` becomes `_s`. The two forms cannot collide,
   because a ref key always starts with `[a-z0-9]` and so a plain name never begins `ref._`.
 
+  A lock name is one directory entry, so a key long enough to overflow one now falls back to a
+  digest under `ref.__` rather than failing `mkdir` with `ENAMETOOLONG`. That also fixes the older
+  version of the same problem: past about 250 characters the previous scheme produced a name no
+  filesystem would take, and every locking command for that ref errored out. Reaching it needs a
+  self-hosted url — no forge allows a path that long.
+
   **One caveat if you run refs concurrently across an upgrade.** For a ref whose key contains `_`,
   a process from any earlier release — the old scheme dates to 0.1.1 — derives a different lock
   name from a new one, so for the length of that overlap the two would not exclude each other on

@@ -62,6 +62,36 @@ describe('refLockName: the encoding itself introduces nothing the allowlist reje
   });
 });
 
+const MAX_LOCK_NAME_BYTES = 255;
+// Codex's construction during review of this change: a valid key from
+// `https://a.com:1/g/<241-character-repo>`. Its OLD lock name was exactly 255 bytes — it worked —
+// and the escaped form is 259, so escaping alone would have broken a ref that used to be fine.
+const LONG_REPO_LENGTH = 241;
+const AT_THE_LIMIT_KEY = `a.com_1/g/${'r'.repeat(LONG_REPO_LENGTH)}`;
+
+describe('refLockName: names that do not fit a directory entry', () => {
+  it('keeps a key whose escaped name would overflow inside the byte limit', () => {
+    expect.hasAssertions();
+
+    const name = nameFor(AT_THE_LIMIT_KEY);
+
+    expect(Buffer.byteLength(name, 'utf8')).toBeLessThanOrEqual(MAX_LOCK_NAME_BYTES);
+    expect(name).toMatch(/^ref\.__[0-9a-f]{64}$/u);
+  });
+
+  it('still distinguishes two keys that both overflow', () => {
+    expect.hasAssertions();
+
+    expect(nameFor(AT_THE_LIMIT_KEY)).not.toBe(nameFor(`${AT_THE_LIMIT_KEY}x`));
+  });
+
+  it('leaves a name that fits alone', () => {
+    expect.hasAssertions();
+
+    expect(nameFor('github.com/vercel/next.js')).toBe('ref.github.com_vercel_next.js');
+  });
+});
+
 /** Every string over `alphabet` of length `length`, as an array. Small alphabets only — this is
  * exponential, and it is chosen to stress the escape characters rather than to be broad. */
 const wordsOf = (alphabet: string, length: number): string[] => {
