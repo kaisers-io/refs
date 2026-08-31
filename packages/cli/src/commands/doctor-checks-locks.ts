@@ -33,11 +33,19 @@ const isHealthy = (lock: InspectedLock): boolean => {
   if (diagnosis.meta === 'malformed' || diagnosis.meta === 'unreadable') {
     return false;
   }
+  if (diagnosis.policy === 'unknown') {
+    // Nothing could be established about this entry. Reporting it `ok` would be the one failure
+    // this check exists to avoid: a clean bill of health from a look that did not happen.
+    return false;
+  }
   return diagnosis.ageMs === undefined || diagnosis.ageMs >= 0;
 };
 
 const clockPhrase = (diagnosis: LockDiagnosis): string => {
-  const { ageMs, budgetMs } = diagnosis;
+  const { ageMs, budgetMs, policy } = diagnosis;
+  if (policy === 'unknown') {
+    return ', state could not be read';
+  }
   if (ageMs === undefined || budgetMs === undefined) {
     return '';
   }

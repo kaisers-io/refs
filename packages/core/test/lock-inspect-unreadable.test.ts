@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { mkdirSync, mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { inspectLocks } from '../src/lock-inspect.ts';
 import { join } from 'node:path';
 import { resolveHome } from '../src/home.ts';
@@ -23,11 +23,50 @@ vi.mock(import('node:fs/promises'), async (importOriginal) => {
   return { ...actual, stat: statSpy };
 });
 
+const ELEVEN_MINUTES_MS = 660_000;
+const TOKEN = '11111111-2222-4333-8444-555555555555';
+
+/** A lock directory carrying valid metadata plus a lease sidecar, acquired long enough ago that
+ * the legacy window would call it stale. Returns the home it lives in. */
+const seedRenewableLock = (): ReturnType<typeof resolveHome> => {
+  // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+  const dir = mkdtempSync(join(tmpdir(), 'refs-lock-sidecar-'));
+  const home = resolveHome({ REFS_HOME: dir });
+  const lockPath = join(home.locksDir, 'home');
+  // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+  mkdirSync(lockPath, { recursive: true });
+  const meta = {
+    acquired_at: new Date(Date.now() - ELEVEN_MINUTES_MS).toISOString(),
+    pid: process.pid,
+    token: TOKEN,
+  };
+  // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+  writeFileSync(join(lockPath, 'meta.json'), JSON.stringify(meta));
+  // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+  writeFileSync(join(lockPath, `lease-${TOKEN}`), '');
+  return home;
+};
+
 const eaccesError = (): NodeJS.ErrnoException => {
   const error = new Error('EACCES: permission denied') as NodeJS.ErrnoException;
   error.code = 'EACCES';
   return error;
 };
+
+describe('inspectLocks on an unreadable lease sidecar', () => {
+  it('does not fall back to the legacy window, which could steal a live holder', async () => {
+    expect.hasAssertions();
+    // Acquired well past the legacy window: if an unreadable sidecar fell through to that window,
+    // this lock would read as stale and a waiter would take it from a holder that is alive and
+    // renewing. That is the dispossession the lease exists to prevent, reached from the other side.
+    const home = seedRenewableLock();
+    vi.mocked(stat).mockRejectedValueOnce(eaccesError());
+
+    const locks = await inspectLocks(home);
+
+    expect(locks[0]?.diagnosis).toMatchObject({ policy: 'unknown', stale: false });
+  });
+});
 
 describe('inspectLocks on an unsearchable locks directory', () => {
   it('reports the entry as unknown rather than dropping it as gone', async () => {

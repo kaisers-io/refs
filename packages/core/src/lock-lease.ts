@@ -111,17 +111,25 @@ const clockFor = async (
   lockPath: string,
   meta: LockMeta,
   observedAtMs: number,
-): Promise<{ ageMs: number; budgetMs: number; policy: LockPolicy }> => {
-  const renewedAtMs =
-    meta.token === undefined ? undefined : await leaseMtimeMs(lockPath, meta.token);
-  if (renewedAtMs === undefined) {
+): Promise<{ ageMs?: number; budgetMs?: number; policy: LockPolicy }> => {
+  const lease =
+    meta.token === undefined
+      ? { state: 'absent' as const }
+      : await leaseMtimeMs(lockPath, meta.token);
+  if (lease.state === 'unreadable') {
+    // A sidecar that exists but cannot be read says nothing about the lease. It must NOT fall
+    // through to the legacy window, which is measured from acquisition and would mark a long-held
+    // — but actively renewing — lock stale on the strength of an I/O fault.
+    return { policy: 'unknown' };
+  }
+  if (lease.state === 'absent') {
     return {
       ageMs: observedAtMs - meta.acquiredAtMs,
       budgetMs: LEGACY_MAX_LOCK_AGE_MS,
       policy: 'legacy',
     };
   }
-  return { ageMs: observedAtMs - renewedAtMs, budgetMs: LEASE_MS, policy: 'lease' };
+  return { ageMs: observedAtMs - lease.mtimeMs, budgetMs: LEASE_MS, policy: 'lease' };
 };
 
 /** One observation of one lock. Every age derives from a single captured `observedAtMs`, so the
@@ -137,13 +145,17 @@ const diagnoseLock = async (lockPath: string, observedAtMs: number): Promise<Loc
   // out. The window below still applies to everyone else, regardless of liveness, which is what
   // keeps a recycled pid from holding a lock forever.
   const dead = !isPidAlive(meta.pid);
+  // No clock means nothing could be established about the window — a live holder in that state is
+  // never stale, because taking a lock on the strength of an unreadable path is acting on ignorance.
+  const expired =
+    clock.ageMs !== undefined && clock.budgetMs !== undefined && clock.ageMs > clock.budgetMs;
   return {
     ...clock,
     meta: 'valid',
     observedAtMs,
     pid: meta.pid,
     pidState: dead ? 'definitely-dead' : 'present-or-unknown',
-    stale: dead || clock.ageMs > clock.budgetMs,
+    stale: dead || expired,
   };
 };
 

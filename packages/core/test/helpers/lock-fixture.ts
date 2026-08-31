@@ -9,8 +9,10 @@ import { tmpdir } from 'node:os';
 
 type Home = ReturnType<typeof resolveHome>;
 
-// Above macOS/Linux default pid_max, so it can never name a live process.
-const DEAD_PID = 999_999;
+// The largest pid `process.kill` accepts, and far above any platform's `pid_max` (Linux tops out
+// at 4194304), so it can never name a live process however busy the machine is. 999999 was not
+// safe: Linux permits pids above it when `pid_max` is raised.
+const DEAD_PID = 2_147_483_647;
 
 // A token in the exact `randomUUID()` shape the implementation validates before building a sidecar
 // filename from it. Two of them, so a fixture can prove a sidecar belonging to one acquisition is

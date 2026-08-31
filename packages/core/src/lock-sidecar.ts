@@ -76,21 +76,27 @@ const touchLeaseSidecar = async (lockPath: string, token: string): Promise<'gone
   return 'renewed';
 };
 
-/** The lease timestamp for `token`'s acquisition, or `undefined` when no sidecar exists for it —
- * which is how `isLockStale` recognizes a lock written by a CLI that does not renew, and applies
- * the legacy policy to it instead of the short lease. */
-const leaseMtimeMs = async (lockPath: string, token: string): Promise<number | undefined> => {
+/** The lease timestamp for `token`'s acquisition.
+ *
+ * The three outcomes are kept apart on purpose. `'absent'` means this acquisition has no sidecar,
+ * which is what selects the legacy window — and that window is measured from acquisition, so it can
+ * mark a long-held lock stale. Collapsing an unreadable sidecar into the same answer would
+ * therefore let a permissions or I/O fault hand a live, renewing holder's lock to a waiter: exactly
+ * the dispossession the lease exists to prevent, arrived at from the other direction. */
+const leaseMtimeMs = async (
+  lockPath: string,
+  token: string,
+): Promise<{ mtimeMs: number; state: 'ok' } | { state: 'absent' } | { state: 'unreadable' }> => {
   const path = leaseSidecarPath(lockPath, token);
   if (path === undefined) {
-    // `path` IS undefined here — returned rather than written out as a literal, which the lint
-    // rule against a bare `undefined` return would otherwise reject.
-    return path;
+    // An unusable token has no sidecar it could name — genuinely absent, not unreadable.
+    return { state: 'absent' };
   }
   try {
     const info = await stat(path);
-    return info.mtimeMs;
-  } catch {
-    return undefined;
+    return { mtimeMs: info.mtimeMs, state: 'ok' };
+  } catch (error) {
+    return { state: isEnoent(error) ? 'absent' : 'unreadable' };
   }
 };
 

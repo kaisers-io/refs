@@ -15,8 +15,9 @@ import { join } from 'node:path';
 // message naming no owner, and `doctor` had no lock check at all — so the one command meant to
 // answer "is something stuck?" could not see the thing that was stuck.
 
-// Above macOS/Linux default pid_max, so it can never name a live process.
-const DEAD_PID = 999_999;
+// The largest pid `process.kill` accepts, and far above any platform's `pid_max`, so it can never
+// name a live process however busy the machine is.
+const DEAD_PID = 2_147_483_647;
 const TOKEN = '11111111-2222-4333-8444-555555555555';
 
 const seedLock = async (locksDir: string, name: string, pid: number): Promise<void> => {
@@ -62,6 +63,28 @@ describe('refs doctor: locks check with a healthy holder', () => {
           detailContains: `recorded pid ${process.pid} present`,
           status: 'ok',
         });
+      }),
+    );
+  });
+});
+
+describe('refs doctor: locks check on an entry it cannot read', () => {
+  it('warns rather than reporting ok when the entry could not be inspected', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, home, runner, stdout } = await setupInitializedHome(homeDir);
+        // A lock directory with no metadata and no readable timestamp: present, but nothing about
+        // it can be established.
+        await mkdir(join(home.locksDir, 'home'), { recursive: true });
+        await writeFile(join(home.locksDir, 'home', 'meta.json'), '{ not json');
+        expectGitVersion(runner);
+
+        const envelope = await runDoctorJson(ctx, stdout);
+
+        // Reporting `ok` here would be the one failure this check exists to avoid: a clean bill of
+        // health from a look that did not happen.
+        expectCheck(envelope, 'locks', { detailContains: 'owner unknown', status: 'warn' });
       }),
     );
   });
