@@ -85,10 +85,9 @@ Please do not add AI-assistant attribution trailers.
 
 ## Adding a command
 
-Every command module exports a `registerX(program, ctx)` function and gets one entry in a
-registrar list. There are two: `packages/cli/src/commands/registry.ts` holds the first few and
-spreads in `MORE_REGISTRARS` from `registrars-more.ts`, which is where the rest live and where a
-new one belongs. The split keeps either file under oxlint's per-file import cap.
+Every command module exports a `registerX(program, ctx)` function and gets one entry in the
+registrar list in `packages/cli/src/commands/registry.ts`. That file is the only place that wires
+commands into the program.
 
 Commands take their process environment (`cwd`, `env`), their output (`out`, `errLine`), their
 stdin, and their outbound calls (`runner`, `fetcher`) from `CliContext` instead of reaching for
