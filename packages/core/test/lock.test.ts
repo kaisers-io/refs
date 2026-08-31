@@ -141,7 +141,14 @@ describe('withLock timeout', () => {
       const attempt = withLock(home, 'home', () => Promise.resolve('unreachable'), {
         timeoutMs: 300,
       });
-      await expect(attempt).rejects.toThrow('lock home is held — another refs process is running');
+      // The message has to be usable, not just correct: it names the recorded owner, how long the
+      // lock has been held, and when it becomes reclaimable — without claiming the recorded pid IS
+      // the holder, which nothing here can establish. Seeded without a token, so this is a lock
+      // under the legacy window.
+      await expect(attempt).rejects.toThrow(
+        `recorded pid ${process.pid} is present (identity not verified)`,
+      );
+      await expect(attempt).rejects.toThrow('reclaimable 10m from acquisition');
       await expect(attempt).rejects.toMatchObject({ code: 'conflict', exitCode: EXIT.CONFLICT });
     } finally {
       // eslint-disable-next-line node/no-sync -- test cleanup, sync is fine

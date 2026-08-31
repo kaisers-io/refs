@@ -1,4 +1,10 @@
-import { HEARTBEAT_MS, isLockStale, renewLease } from './lock-lease.ts';
+import {
+  HEARTBEAT_MS,
+  describeHeldLock,
+  diagnoseLock,
+  isLockStale,
+  renewLease,
+} from './lock-lease.ts';
 import { conflictError, validationError } from './errors.ts';
 import { errnoCode, newLockToken, readLockToken, writeInitialMeta } from './lock-meta.ts';
 import { mkdir, rm } from 'node:fs/promises';
@@ -123,7 +129,12 @@ const stealOrWait = async (ctx: LockCtx, deadline: number): Promise<void> => {
     return;
   }
   if (Date.now() >= deadline) {
-    throw conflictError(`lock ${ctx.name} is held — another refs process is running`);
+    // Diagnosed fresh rather than reusing the staleness read above. The extra read costs one stat
+    // on a path that is already failing, and reusing the earlier one would not make the message
+    // authoritative anyway: the lock's identity can change between any observation and its
+    // reporting. Describing what is there NOW is the more useful of two non-authoritative answers.
+    const diagnosis = await diagnoseLock(ctx.lockPath, Date.now());
+    throw conflictError(describeHeldLock(ctx.name, diagnosis));
   }
   await delay(RETRY_INTERVAL_MS);
 };

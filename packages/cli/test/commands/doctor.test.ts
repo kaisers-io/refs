@@ -162,6 +162,7 @@ const NON_CRASHING_CHECK_NAMES = [
   'hooks-guard',
   'dirty-checkouts',
   'orphans',
+  'locks',
   'skill',
 ];
 

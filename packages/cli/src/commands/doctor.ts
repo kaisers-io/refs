@@ -1,3 +1,7 @@
+/* eslint-disable import/max-dependencies -- composition root: this module's whole job is to collect
+   every `doctor-checks-*` module and list its checks in reporting order, so its dependency count is
+   a count of checks, not of coupling. Capping it would only push checks into an overflow file (the
+   way `registrars-more.ts` does for commands, see #68) without reducing anything real. */
 import { EXIT, resolveHome } from '@kaisers-io/refs-core';
 import type { RefsHome, State } from '@kaisers-io/refs-core';
 import {
@@ -14,11 +18,12 @@ import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
 import type { ConfigLoad } from './doctor-checks-basic.ts';
 import type { RefsCommand } from './registry.ts';
+import { checkLocks } from './doctor-checks-locks.ts';
 import { checkSkill } from './doctor-checks-skill.ts';
 import { checkSshAuth } from './doctor-checks-ssh.ts';
 
-// `refs doctor [--json]` — the 9 environment/integrity checks: `git`, `node`,
-// `config`, `hooks-guard`, `dirty-checkouts`, `orphans`, `skill`, `cli-update`, `ssh-auth` (the
+// `refs doctor [--json]` — the 10 environment/integrity checks: `git`, `node`,
+// `config`, `hooks-guard`, `dirty-checkouts`, `orphans`, `locks`, `skill`, `cli-update`, `ssh-auth` (the
 // last one only ever appears when a configured ref uses an ssh transport url). Every check runs to completion
 // before anything is reported — a failing `config` check must never prevent `orphans`/
 // `dirty-checkouts`/etc. from still running against whatever they can determine — so the actual
@@ -79,6 +84,7 @@ const buildCheckSteps = (load: DoctorLoad): CheckStep[] => {
     { name: 'hooks-guard', run: () => checkHooksGuard(ctx, home, configLoad.config) },
     { name: 'dirty-checkouts', run: () => checkDirtyCheckouts(ctx, home, configLoad.config) },
     { name: 'orphans', run: () => checkOrphans(home, configLoad.config, state) },
+    { name: 'locks', run: () => checkLocks(home) },
     { name: 'skill', run: () => checkSkill(ctx) },
     { name: 'cli-update', run: () => checkCliUpdate(ctx, configLoad.config) },
     { name: 'ssh-auth', run: () => checkSshAuth(ctx, configLoad.config) },
@@ -107,7 +113,9 @@ const hasFailure = (checks: readonly CheckResult[]): boolean =>
 const registerDoctor = (program: RefsCommand, ctx: CliContext): void => {
   program
     .command('doctor')
-    .description('Run environment/integrity checks (git, node, config, hooks, checkouts, ssh).')
+    .description(
+      'Run environment/integrity checks (git, node, config, hooks, checkouts, locks, ssh).',
+    )
     .action((_localOpts, command) => {
       const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
