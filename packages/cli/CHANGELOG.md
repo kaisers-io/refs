@@ -65,6 +65,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `unverifiable` — read straight out of `.git/config` without spawning git, so the hot path stays
   subprocess-free. The origin URL is never echoed back in `reason`; it can carry credentials.
 
+  `managed` requires the `core.hooksPath` marker to be **this home's** hooks directory, not merely
+  present — the comparison `add` already makes — so a manual clone that sets it for its own purposes
+  does not pass. A config git itself would reject (an unterminated quote, an undefined escape, a
+  line that is neither a section nor an assignment) is `unverifiable` rather than partially read: a
+  file git would not accept is not evidence of identity.
+
   **Package verification is gated on it.** A manifest read inside an unrelated checkout can answer
   `verified` for a package that has nothing to do with the query, so anything other than `managed`
   or `missing` now yields `package.status: "unverifiable"` instead of a confident location.

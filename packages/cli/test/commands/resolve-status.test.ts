@@ -79,7 +79,10 @@ describe('refs resolve: fresh (recently fetched) and present (checkout exists)',
         await seedState(home, {
           [NEXT_KEY]: { last_fetched_at: minutesAgoIso(FRESH_MINUTES_AGO) },
         });
-        await markCheckoutPresent(checkoutPath(home, zRefKey.parse(NEXT_KEY)), NEXT_ENTRY.url);
+        await markCheckoutPresent(checkoutPath(home, zRefKey.parse(NEXT_KEY)), {
+          hooksDir: home.hooksDir,
+          url: NEXT_ENTRY.url,
+        });
 
         await run(ctx, ['node', 'refs', 'resolve', 'next', '--json']);
 

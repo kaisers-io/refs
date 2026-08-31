@@ -202,6 +202,7 @@ const describeTarget = async (
     allowFileUrls: allowFileUrlsFrom(ctx.env),
     dest,
     expectedUrl: entry.url,
+    hooksDir: home.hooksDir,
     sourcesDir: home.sourcesDir,
   });
   const installed = await installedFor(match, opts.project);

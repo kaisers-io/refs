@@ -18,9 +18,17 @@
 //
 // Every value seen is returned, not the last one, so the caller can fail closed on a duplicate
 // rather than guess at first-versus-last precedence.
+//
+// And it is strict about what it accepts. Anything git itself would reject — an unterminated quote,
+// an escape git does not define, a line that is neither a section header nor an assignment — makes
+// the whole read fail rather than being skipped. A lenient parser would let a corrupt or crafted
+// config still yield the marker and origin, and so still be reported as a managed checkout; the
+// point of reading this file is to establish identity, and a file git would not accept is not
+// evidence of anything.
 
 const SECTION_LINE = /^\[\s*(?<section>[\w.-]+)\s*(?:"(?<subsection>(?:[^"\\]|\\.)*)")?\s*\]$/u;
 const VARIABLE_LINE = /^(?<name>[A-Za-z][\w-]*)\s*(?:=\s*(?<value>.*))?$/u;
+// The only escapes git defines inside a config value. Anything else is a malformed file.
 // eslint-disable-next-line id-length -- keys are the literal escape characters git defines (b/n/t)
 const ESCAPES: Record<string, string> = { '"': '"', '\\': '\\', b: '\b', n: '\n', t: '\t' };
 const LAST = -1;
@@ -43,20 +51,24 @@ const joinContinuations = (text: string): string[] => {
 
 /** Strips comments and resolves escapes in one pass, because whether a `#` starts a comment depends
  * on whether it is inside quotes — which a separate comment-stripping step could not know. */
-// A backslash escapes the next character; git defines `\"`, `\\`, `\n`, `\t` and `\b`, and anything
-// else stands for itself.
-const unescape = (next: string | undefined): string =>
-  next === undefined ? '' : (ESCAPES[next] ?? next);
+const MALFORMED = Symbol('malformed git config');
+type Decoded = string | typeof MALFORMED;
 
 // eslint-disable-next-line max-statements -- one pass over the characters, where each branch depends on the quoting state the others maintain; splitting it would need that state threaded through helpers and read worse
-const decodeValue = (raw: string): string => {
+const decodeValue = (raw: string): Decoded => {
   let out = '';
   let quoted = false;
   for (let index = 0; index < raw.length; index += 1) {
     const char = raw[index];
     if (char === '\\') {
       index += 1;
-      out += unescape(raw[index]);
+      // Git defines exactly five escapes; anything else makes the file invalid rather than
+      // standing for itself.
+      const escaped = ESCAPES[raw[index] ?? ''];
+      if (escaped === undefined) {
+        return MALFORMED;
+      }
+      out += escaped;
     } else if (char === '"') {
       quoted = !quoted;
     } else if (!quoted && (char === '#' || char === ';')) {
@@ -65,7 +77,8 @@ const decodeValue = (raw: string): string => {
       out += char;
     }
   }
-  return out.trim();
+  // An unterminated quote is not a value with a stray character in it; git rejects the file.
+  return quoted ? MALFORMED : out.trim();
 };
 
 type Section = { name: string; subsection?: string };
@@ -78,7 +91,7 @@ const qualify = (section: Section, name: string): string =>
     ? `${section.name}.${name.toLowerCase()}`
     : `${section.name}.${section.subsection}.${name.toLowerCase()}`;
 
-const parseSection = (line: string): Section | undefined => {
+const parseSection = (line: string): Section | typeof MALFORMED | undefined => {
   const match = SECTION_LINE.exec(line);
   if (match?.groups === undefined) {
     return undefined;
@@ -87,10 +100,11 @@ const parseSection = (line: string): Section | undefined => {
   if (section === undefined) {
     return undefined;
   }
-  return {
-    name: section.toLowerCase(),
-    ...(subsection === undefined ? {} : { subsection: decodeValue(`"${subsection}"`) }),
-  };
+  if (subsection === undefined) {
+    return { name: section.toLowerCase() };
+  }
+  const decoded = decodeValue(`"${subsection}"`);
+  return decoded === MALFORMED ? MALFORMED : { name: section.toLowerCase(), subsection: decoded };
 };
 
 const isSkippable = (line: string): boolean =>
@@ -100,21 +114,45 @@ const isSkippable = (line: string): boolean =>
  *
  * A bare `name` with no `=` is git's boolean true; it is recorded as an empty string, which no
  * caller here accepts as a usable value. */
-const recordVariable = (
-  found: Map<string, string[]>,
-  opts: { line: string; section: Section; wanted: readonly string[] },
-): void => {
-  const { line, section, wanted } = opts;
+/** The `name = value` an assignment line carries, or `MALFORMED` for a line git would reject —
+ * which includes one that is neither a section header nor an assignment at all. */
+const parseAssignment = (line: string): { name: string; value: string } | typeof MALFORMED => {
   const variable = VARIABLE_LINE.exec(line);
   const name = variable?.groups?.['name'];
   if (name === undefined) {
-    return;
+    return MALFORMED;
   }
-  const key = qualify(section, name);
-  if (!wanted.includes(key)) {
-    return;
+  const value = decodeValue(variable?.groups?.['value'] ?? '');
+  return value === MALFORMED ? MALFORMED : { name, value };
+};
+
+const recordVariable = (
+  found: Map<string, string[]>,
+  opts: { line: string; section: Section; wanted: readonly string[] },
+): 'malformed' | 'ok' => {
+  const assignment = parseAssignment(opts.line);
+  if (assignment === MALFORMED) {
+    return 'malformed';
   }
-  found.set(key, [...(found.get(key) ?? []), decodeValue(variable?.groups?.['value'] ?? '')]);
+  const key = qualify(opts.section, assignment.name);
+  if (opts.wanted.includes(key)) {
+    found.set(key, [...(found.get(key) ?? []), assignment.value]);
+  }
+  return 'ok';
+};
+
+/** Applies one non-blank line: either it opens a section, or it assigns a variable within the
+ * current one. Returns the section in effect afterwards, or `MALFORMED` for a line git would
+ * reject. */
+const consumeLine = (
+  found: Map<string, string[]>,
+  opts: { line: string; section: Section; wanted: readonly string[] },
+): Section | typeof MALFORMED => {
+  const parsed = parseSection(opts.line);
+  if (parsed !== undefined) {
+    return parsed;
+  }
+  return recordVariable(found, opts) === 'malformed' ? MALFORMED : opts.section;
 };
 
 // Stands in for "no section has been opened yet". A variable before the first section header is not
@@ -122,22 +160,26 @@ const recordVariable = (
 // without needing a nullable to carry that state.
 const NO_SECTION: Section = { name: '' };
 
-/** Every value in `text` for each requested key, in file order. A key with no entry was not present;
- * a key with more than one was set more than once, which callers treat as reason to fail closed. */
+/** Every value in `text` for each requested key, in file order — or `undefined` when the file is
+ * not one git would accept.
+ *
+ * A key with no entry was not present; a key with more than one was set more than once, which
+ * callers treat as reason to fail closed. */
 const readGitConfigValues = (
   text: string,
   wanted: readonly string[],
-): ReadonlyMap<string, string[]> => {
+): ReadonlyMap<string, string[]> | undefined => {
   const found = new Map<string, string[]>();
   let section = NO_SECTION;
   for (const line of joinContinuations(text)) {
     const trimmed = line.trim();
-    const parsed = isSkippable(trimmed) ? undefined : parseSection(trimmed);
-    if (parsed !== undefined) {
-      section = parsed;
-    } else if (!isSkippable(trimmed)) {
-      recordVariable(found, { line: trimmed, section, wanted });
+    const next = isSkippable(trimmed)
+      ? section
+      : consumeLine(found, { line: trimmed, section, wanted });
+    if (next === MALFORMED) {
+      return undefined;
     }
+    section = next;
   }
   return found;
 };

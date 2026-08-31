@@ -42,9 +42,9 @@ const seedNextFixture = async (
   await seedConfig(home, { [NEXT_KEY]: NEXT_ENTRY });
   await seedState(home, { [NEXT_KEY]: { last_fetched_at: lastFetchedAt } });
   const dest = checkoutPath(home, zRefKey.parse(NEXT_KEY));
-  // The url has to match the configured entry: `resolve` now establishes that the checkout at
-  // this path really is the one this ref names, so a fixture standing in for one must look like it.
-  await markCheckoutPresent(dest, NEXT_ENTRY.url);
+  // Both values have to match: `resolve` now establishes that the checkout at this path really is
+  // the one this ref names, so a fixture standing in for one must look like it.
+  await markCheckoutPresent(dest, { hooksDir: home.hooksDir, url: NEXT_ENTRY.url });
   await writeNextManifests(dest);
   return { dest, lastFetchedAt };
 };

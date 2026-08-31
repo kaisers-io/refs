@@ -1,4 +1,4 @@
-import { NEXT_KEY, seedNextFixture } from '../helpers/next-fixture.ts';
+import { NEXT_ENTRY, NEXT_KEY, seedNextFixture } from '../helpers/next-fixture.ts';
 import { checkoutPath, resolveHome, zRefKey } from '@kaisers-io/refs-core';
 import { describe, expect, it } from 'vitest';
 import { minutesAgoIso, seedConfig, seedState } from '../helpers/ref-fixtures.ts';
@@ -138,7 +138,7 @@ describe('refs resolve: checkout identity, wrong repository', () => {
         const dest = checkoutPath(home, zRefKey.parse(NEXT_KEY));
         await writeFile(
           join(dest, '.git', 'config'),
-          '[core]\n\thooksPath = /fixture/hooks\n[remote "origin"]\n\turl = https://github.com/acme/elsewhere\n',
+          `[core]\n\thooksPath = ${home.hooksDir}\n[remote "origin"]\n\turl = https://github.com/acme/elsewhere\n`,
         );
 
         const envelope = await resolveJson(homeDir, ['next']);
@@ -169,6 +169,57 @@ describe('refs resolve: checkout identity, unusable .git', () => {
         expect(envelope.data['checkout']).toStrictEqual({
           reason: 'git_is_file',
           status: 'unmanaged',
+        });
+      }),
+    );
+  });
+});
+
+describe("refs resolve: a checkout whose hooks marker is somebody else's", () => {
+  it('does not accept an arbitrary core.hooksPath as the refs marker', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        await seedNextFixture({ REFS_HOME: homeDir });
+        const home = resolveHome({ REFS_HOME: homeDir });
+        const dest = checkoutPath(home, zRefKey.parse(NEXT_KEY));
+        // A manual clone of the right repository that sets `core.hooksPath` for its own purposes —
+        // Husky, say. Merely HAVING the setting is not the marker; it has to be this home's hooks
+        // directory, which is what `add` compares against before it will reuse a checkout.
+        await writeFile(
+          join(dest, '.git', 'config'),
+          `[core]\n\thooksPath = .husky\n[remote "origin"]\n\turl = ${NEXT_ENTRY.url}\n`,
+        );
+
+        const envelope = await resolveJson(homeDir, ['next']);
+
+        expect(envelope.data['checkout']).toStrictEqual({
+          reason: 'no_refs_marker',
+          status: 'unmanaged',
+        });
+      }),
+    );
+  });
+
+  it('refuses a config git itself would reject', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        await seedNextFixture({ REFS_HOME: homeDir });
+        const home = resolveHome({ REFS_HOME: homeDir });
+        const dest = checkoutPath(home, zRefKey.parse(NEXT_KEY));
+        // An unterminated quote. Skipping the bad line and keeping the rest would let a corrupt
+        // config still produce the marker and origin, and so still read as managed.
+        await writeFile(
+          join(dest, '.git', 'config'),
+          `[core]\n\thooksPath = "${home.hooksDir}\n[remote "origin"]\n\turl = ${NEXT_ENTRY.url}\n`,
+        );
+
+        const envelope = await resolveJson(homeDir, ['next']);
+
+        expect(envelope.data['checkout']).toStrictEqual({
+          reason: 'config_malformed',
+          status: 'unverifiable',
         });
       }),
     );

@@ -39,23 +39,26 @@ const seedState = async (home: RefsHome, refs: Record<string, unknown>): Promise
   return state;
 };
 
-/** Marks `dest` as an existing, refs-MANAGED checkout: a `.git` directory carrying the two values
- * that identify one — the `core.hooksPath` marker `cloneRepo` stamps, and an origin url.
+/** Marks `dest` as an existing git checkout.
+ *
+ * With `managed`, it carries the two values that identify a refs-managed one: the `core.hooksPath`
+ * marker `cloneRepo` stamps — which must be THIS home's hooks directory, not merely present — and
+ * the ref's configured origin url. Without it, the checkout is present but not recognisably this
+ * ref's, which is a case worth testing on its own.
  *
  * A bare `mkdir .git` used to be enough, because presence was decided by `existsSync`. It is not
- * any more, and deliberately so: a directory with a `.git` in it is not evidence that this is the
- * checkout a ref names. Fixtures that want to stand in for a real checkout have to look like one.
- *
- * Pass `url` matching the ref's configured url; omit it to build a checkout that is present but
- * NOT recognisably this ref's, which is the case worth testing on its own. */
-const markCheckoutPresent = async (dest: string, url?: string): Promise<void> => {
+ * any more, and deliberately so: a directory with a `.git` in it is not evidence of identity, so a
+ * fixture standing in for a real checkout has to look like one. */
+const markCheckoutPresent = async (
+  dest: string,
+  managed?: { hooksDir: string; url: string },
+): Promise<void> => {
   await mkdir(join(dest, '.git'), { recursive: true });
-  const origin = url === undefined ? '' : `[remote "origin"]\n\turl = ${url}\n`;
-  await writeFile(
-    join(dest, '.git', 'config'),
-    `[core]\n\thooksPath = /fixture/hooks\n${origin}`,
-    'utf8',
-  );
+  const config =
+    managed === undefined
+      ? ''
+      : `[core]\n\thooksPath = ${managed.hooksDir}\n[remote "origin"]\n\turl = ${managed.url}\n`;
+  await writeFile(join(dest, '.git', 'config'), config, 'utf8');
 };
 
 const MS_PER_MINUTE = 60_000;

@@ -10,29 +10,36 @@ const ORIGIN = 'remote.origin.url';
 const WANTED = [MARKER, ORIGIN];
 const BOTH_DUPLICATES = 2;
 
+/** The reader returns `undefined` for a file git would reject; these cases are about what it
+ * ACCEPTS, so they assert on a successful read. */
+const read = (config: string): ReadonlyMap<string, string[]> => {
+  const found = readGitConfigValues(config, WANTED);
+  if (found === undefined) {
+    throw new Error('expected this config to parse');
+  }
+  return found;
+};
+
 describe('reading a value git would honour', () => {
   it('matches section and variable names case-insensitively', () => {
     expect.hasAssertions();
     // Git compares both case-insensitively, so `[CORE] HooksPath` is the same setting as
     // `[core] hooksPath`. A grep for the literal spelling would miss it.
-    const found = readGitConfigValues('[CORE]\n\tHooksPath = /hooks\n', WANTED);
+    const found = read('[CORE]\n\tHooksPath = /hooks\n');
 
     expect(found.get(MARKER)).toStrictEqual(['/hooks']);
   });
 
   it('ignores a comment that mentions the setting', () => {
     expect.hasAssertions();
-    const found = readGitConfigValues(
-      '# hooksPath = /decoy\n[core]\n\thooksPath = /real\n',
-      WANTED,
-    );
+    const found = read('# hooksPath = /decoy\n[core]\n\thooksPath = /real\n');
 
     expect(found.get(MARKER)).toStrictEqual(['/real']);
   });
 
   it('strips a trailing comment from a value', () => {
     expect.hasAssertions();
-    const found = readGitConfigValues('[core]\n\thooksPath = /real ; and a note\n', WANTED);
+    const found = read('[core]\n\thooksPath = /real ; and a note\n');
 
     expect(found.get(MARKER)).toStrictEqual(['/real']);
   });
@@ -41,14 +48,14 @@ describe('reading a value git would honour', () => {
     expect.hasAssertions();
     // Whether a `#` starts a comment depends on the quoting state, which is why comment stripping
     // and unquoting have to happen in one pass.
-    const found = readGitConfigValues('[core]\n\thooksPath = "/ho#oks"\n', WANTED);
+    const found = read('[core]\n\thooksPath = "/ho#oks"\n');
 
     expect(found.get(MARKER)).toStrictEqual(['/ho#oks']);
   });
 
   it('joins a value continued onto the next line', () => {
     expect.hasAssertions();
-    const found = readGitConfigValues('[core]\n\thooksPath = /ho\\\noks\n', WANTED);
+    const found = read('[core]\n\thooksPath = /ho\\\noks\n');
 
     expect(found.get(MARKER)).toStrictEqual(['/hooks']);
   });
@@ -69,7 +76,7 @@ describe('telling one remote from another', () => {
       '',
     ].join('\n');
 
-    const found = readGitConfigValues(config, WANTED);
+    const found = read(config);
 
     expect(found.get(ORIGIN)).toStrictEqual(['https://example.com/real.git']);
   });
@@ -87,12 +94,27 @@ describe('telling one remote from another', () => {
       '',
     ].join('\n');
 
-    expect(readGitConfigValues(config, WANTED).get(ORIGIN)).toHaveLength(BOTH_DUPLICATES);
+    expect(read(config).get(ORIGIN)).toHaveLength(BOTH_DUPLICATES);
   });
 
   it('reports nothing for a key that is absent', () => {
     expect.hasAssertions();
 
-    expect(readGitConfigValues('[core]\n\trepositoryformatversion = 0\n', WANTED).size).toBe(0);
+    expect(read('[core]\n\trepositoryformatversion = 0\n').size).toBe(0);
+  });
+});
+
+describe('refusing a config git would reject', () => {
+  it.each([
+    ['an unterminated quote', '[core]\n\thooksPath = "/hooks\n'],
+    ['an escape git does not define', '[core]\n\thooksPath = /ho\\qoks\n'],
+    ['a line that is neither a section nor an assignment', '[core]\nnot a setting!\n'],
+  ])('returns nothing for %s', (_label, config) => {
+    expect.hasAssertions();
+
+    // Skipping the bad line instead would let a corrupt or crafted config still yield the marker
+    // and origin, and so still be reported as a managed checkout. The whole reason for reading this
+    // file is to establish identity; a file git would not accept is not evidence of any.
+    expect(readGitConfigValues(config, WANTED)).toBeUndefined();
   });
 });

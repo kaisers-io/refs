@@ -39,6 +39,8 @@ type InspectOpts = {
   allowFileUrls: boolean;
   dest: string;
   expectedUrl: string;
+  /** This home's hooks directory — the exact value `cloneRepo` stamps into a checkout it creates. */
+  hooksDir: string;
   sourcesDir: string;
 };
 
@@ -47,12 +49,23 @@ type InspectOpts = {
  * A `.git` FILE is how git records a worktree or submodule, and a symlink is not something refs
  * ever creates — neither can hold the config this check needs, and neither is a checkout refs
  * produced. Both are reported rather than followed. */
-const pathExists = async (path: string): Promise<boolean> => {
+// Absence and "could not look" are different answers, and only the first is evidence. Collapsing
+// them lets a permissions fault read as an empty home — and, worse, lets `--sync-if-stale` past the
+// preflight that exists to refuse a path whose state is unknown.
+const NOT_THERE = new Set(['ENOENT', 'ENOTDIR']);
+
+const errorCode = (error: unknown): string | undefined =>
+  typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
+    ? error.code
+    : undefined;
+
+const probe = async (path: string): Promise<'absent' | 'present' | 'unreadable'> => {
   try {
     await lstat(path);
-    return true;
-  } catch {
-    return false;
+    return 'present';
+  } catch (error) {
+    const code = errorCode(error);
+    return code !== undefined && NOT_THERE.has(code) ? 'absent' : 'unreadable';
   }
 };
 
@@ -66,10 +79,12 @@ const gitDirVerdict = async (dest: string): Promise<CheckoutInfo | undefined> =>
       return unmanaged('git_is_file');
     }
     return undefined;
-  } catch {
+  } catch (error) {
     // The containment check above already established the checkout directory itself resolves, so a
-    // failure here is about `.git` specifically: absent (never cloned, or removed) either way.
-    return missing;
+    // failure here is about `.git` specifically. Only ENOENT/ENOTDIR mean it is not there; a
+    // permissions or I/O fault means we could not tell, which is not the same claim.
+    const code = errorCode(error);
+    return code !== undefined && NOT_THERE.has(code) ? missing : unverifiable('git_unreadable');
   }
 };
 
@@ -103,15 +118,31 @@ const sameRepository = (actual: string, expected: string, allowFileUrls: boolean
   }
 };
 
+const hasDuplicates = (values: ReadonlyMap<string, string[]>): boolean =>
+  (values.get(MARKER_KEY)?.length ?? 0) > ONE || (values.get(ORIGIN_KEY)?.length ?? 0) > ONE;
+
 const verdictFromConfig = (text: string, opts: InspectOpts): CheckoutInfo => {
   const values = readGitConfigValues(text, WANTED);
-  if ((values.get(MARKER_KEY)?.length ?? 0) > ONE || (values.get(ORIGIN_KEY)?.length ?? 0) > ONE) {
-    return unverifiable('duplicate_config_values');
+  if (values === undefined) {
+    // A file git itself would reject is not evidence of anything, least of all identity. Accepting
+    // it would let a corrupt or crafted config still produce the marker and origin, and so still be
+    // reported as a managed checkout.
+    return unverifiable('config_malformed');
   }
-  if (singleValue(values, MARKER_KEY) === undefined) {
-    // The marker `cloneRepo` stamps on every checkout it creates. Its presence is what separates a
-    // refs-managed checkout from a manual `git clone` of the same repository at the same path —
-    // which `sync` would hard-reset, destroying whatever that clone carried.
+  return hasDuplicates(values)
+    ? unverifiable('duplicate_config_values')
+    : verdictFromValues(values, opts);
+};
+
+/** The identity decision itself, once the config has been read and accepted. */
+const verdictFromValues = (
+  values: ReadonlyMap<string, string[]>,
+  opts: InspectOpts,
+): CheckoutInfo => {
+  // The marker must be THIS home's hooks directory, not merely present. `add` compares it exactly
+  // for the same reason: a manual clone that sets `core.hooksPath` for its own purposes (Husky,
+  // say) would otherwise pass as refs-managed, and `sync` would hard-reset it.
+  if (singleValue(values, MARKER_KEY) !== opts.hooksDir) {
     return unmanaged('no_refs_marker');
   }
   const origin = singleValue(values, ORIGIN_KEY);
@@ -145,8 +176,11 @@ const containmentVerdict = async (opts: InspectOpts): Promise<CheckoutInfo | und
   if (contained.kind === 'inside') {
     return undefined;
   }
-  if (contained.kind === 'unreadable' && !(await pathExists(opts.sourcesDir))) {
-    return missing;
+  if (contained.kind === 'unreadable') {
+    // `resolveInside` cannot tell an absent root from an unreadable one, and the difference matters:
+    // a sources directory that does not exist yet is a home nothing has been cloned into, while one
+    // that cannot be read is a fault we must not report as emptiness.
+    return (await probe(opts.sourcesDir)) === 'absent' ? missing : CONTAINMENT_VERDICT.unreadable;
   }
   return CONTAINMENT_VERDICT[contained.kind];
 };
