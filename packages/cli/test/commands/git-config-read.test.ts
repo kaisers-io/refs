@@ -61,6 +61,18 @@ describe('reading a value git would honour', () => {
 
     expect(found.get(MARKER)).toStrictEqual(['/hooks']);
   });
+});
+
+describe('accepting the layouts git accepts', () => {
+  it('accepts an assignment on the same line as its section header', () => {
+    expect.hasAssertions();
+    // Git reads `[core] hooksPath = /hooks` as a section plus an assignment. Rejecting the line
+    // would condemn a valid config as malformed and leave a working checkout `unverifiable`, which
+    // would then make `--sync-if-stale` refuse to update it.
+    const found = read('[core] hooksPath = /hooks\n');
+
+    expect(found.get(MARKER)).toStrictEqual(['/hooks']);
+  });
 
   it('joins a value continued onto the next line', () => {
     expect.hasAssertions();

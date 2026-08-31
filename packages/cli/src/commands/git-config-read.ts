@@ -1,3 +1,4 @@
+import { MALFORMED, decodeSubsection, decodeValue, trimConfig } from './git-config-value.ts';
 // A read-only, subset parser for `.git/config`, used to establish a checkout's identity without
 // spawning `git`.
 //
@@ -30,19 +31,14 @@
 
 // Git allows only alphanumerics, `-` and `.` in a section name, and only alphanumerics and `-`
 // in a variable name — notably no underscore, which `\w` would have admitted.
-// A trailing comment after the closing bracket is valid: `[core] # local settings`.
+// Matches only the header, not the whole line: git allows a comment (`[core] # note`) AND an
+// assignment (`[core] hooksPath = /hooks`) to follow one on the same line.
+//
 // Git's config whitespace is space and horizontal tab only — JavaScript's `\s` additionally covers
 // unicode spaces and vertical whitespace, which git would not strip.
-const SECTION_LINE =
-  /^\[[ \t]*(?<section>[A-Za-z0-9.-]+)[ \t]*(?:"(?<subsection>(?:[^"\\]|\\.)*)")?[ \t]*\][ \t]*(?:[#;].*)?$/u;
+const SECTION_PREFIX =
+  /^\[[ \t]*(?<section>[A-Za-z0-9.-]+)[ \t]*(?:"(?<subsection>(?:[^"\\]|\\.)*)")?[ \t]*\]/u;
 const VARIABLE_LINE = /^(?<name>[A-Za-z][A-Za-z0-9-]*)[ \t]*(?:=[ \t]*(?<value>.*))?$/u;
-// The only escapes git defines inside a config VALUE. Anything else is a malformed file.
-// eslint-disable-next-line id-length -- keys are the literal escape characters git defines (b/n/t)
-const ESCAPES: Record<string, string> = { '"': '"', '\\': '\\', b: '\b', n: '\n', t: '\t' };
-// Inside a SUBSECTION name git recognises only these two; the rest are not escapes there.
-const SUBSECTION_ESCAPES: Record<string, string> = { '"': '"', '\\': '\\' };
-// Git treats only space and horizontal tab as trimmable config whitespace.
-const CONFIG_SPACE = new Set([' ', '\t']);
 const CRLF = 2;
 
 /** Splits `text` into git's LOGICAL lines, honouring the one thing a lexical split cannot: whether
@@ -102,63 +98,6 @@ const logicalLines = function* logicalLines(text: string): Generator<string> {
   }
 };
 
-const MALFORMED = Symbol('malformed git config');
-type Decoded = string | typeof MALFORMED;
-
-type DecodedChar = { char: string; quoted: boolean };
-
-const isTrimmable = (entry: DecodedChar | undefined): boolean =>
-  entry !== undefined && !entry.quoted && CONFIG_SPACE.has(entry.char);
-
-/** Drops leading and trailing whitespace that was NOT inside quotes.
- *
- * A plain `trim()` would be wrong in a way that matters: git treats `[remote " origin "]` as a
- * subsection distinct from `origin`, so trimming quoted space would let a config declaring only
- * `" origin "` satisfy a check for `origin` — and a checkout with no origin remote at all would
- * read as managed. Quoted whitespace is part of the value; unquoted whitespace is layout. */
-const trimUnquoted = (chars: readonly DecodedChar[]): string => {
-  let start = 0;
-  let end = chars.length;
-  while (start < end && isTrimmable(chars[start])) {
-    start += 1;
-  }
-  while (end > start && isTrimmable(chars[end - 1])) {
-    end -= 1;
-  }
-  return chars
-    .slice(start, end)
-    .map((entry) => entry.char)
-    .join('');
-};
-
-// eslint-disable-next-line max-statements -- one pass over the characters, where each branch depends on the quoting state the others maintain; splitting it would need that state threaded through helpers and read worse
-const decodeValue = (raw: string): Decoded => {
-  const chars: DecodedChar[] = [];
-  let quoted = false;
-  for (let index = 0; index < raw.length; index += 1) {
-    const char = raw[index];
-    if (char === '\\') {
-      index += 1;
-      // Git defines exactly five escapes; anything else makes the file invalid rather than
-      // standing for itself.
-      const escaped = ESCAPES[raw[index] ?? ''];
-      if (escaped === undefined) {
-        return MALFORMED;
-      }
-      // An escaped character is literal wherever it appears, so it is never trimmable.
-      chars.push({ char: escaped, quoted: true });
-    } else if (char === '"') {
-      quoted = !quoted;
-    } else if (!quoted && (char === '#' || char === ';')) {
-      return trimUnquoted(chars);
-    } else {
-      chars.push({ char: char ?? '', quoted });
-    }
-  }
-  // An unterminated quote is not a value with a stray character in it; git rejects the file.
-  return quoted ? MALFORMED : trimUnquoted(chars);
-};
-
 type Section = { name: string; subsection?: string };
 
 /** The fully-qualified key a variable in `section` is recorded under: `core.hookspath`,
@@ -169,48 +108,33 @@ const qualify = (section: Section, name: string): string =>
     ? `${section.name}.${name.toLowerCase()}`
     : `${section.name}.${section.subsection}.${name.toLowerCase()}`;
 
-/** Subsection names are taken verbatim apart from `\"` and `\\`; git does not apply the value
- * escapes (`\n`, `\t`, `\b`) there, and neither does trimming — the quotes delimit exactly. */
-// eslint-disable-next-line max-statements -- the same character-at-a-time shape as `decodeValue`, with its own narrower escape set
-const decodeSubsection = (raw: string): Decoded => {
-  let out = '';
-  for (let index = 0; index < raw.length; index += 1) {
-    const char = raw[index];
-    if (char === '\\') {
-      index += 1;
-      const escaped = SUBSECTION_ESCAPES[raw[index] ?? ''];
-      if (escaped === undefined) {
-        return MALFORMED;
-      }
-      out += escaped;
-    } else {
-      out += char ?? '';
-    }
+const namedSection = (
+  section: string,
+  subsection: string | undefined,
+): Section | typeof MALFORMED => {
+  const name = section.toLowerCase();
+  if (subsection === undefined) {
+    return { name };
   }
-  return out;
+  const decoded = decodeSubsection(subsection);
+  return decoded === MALFORMED ? MALFORMED : { name, subsection: decoded };
 };
 
-const parseSection = (line: string): Section | typeof MALFORMED | undefined => {
-  const match = SECTION_LINE.exec(line);
-  if (match?.groups === undefined) {
-    return undefined;
-  }
-  const { section, subsection } = match.groups;
+/** The section a line opens, plus whatever follows the header on that same line — git allows an
+ * assignment there, and rejecting the line outright would condemn a valid config as malformed and
+ * leave a perfectly good checkout `unverifiable`. */
+const parseSection = (
+  line: string,
+): { rest: string; section: Section } | typeof MALFORMED | undefined => {
+  const match = SECTION_PREFIX.exec(line);
+  const section = match?.groups?.['section'];
   if (section === undefined) {
     return undefined;
   }
-  if (subsection === undefined) {
-    return { name: section.toLowerCase() };
-  }
-  const decoded = decodeSubsection(subsection);
-  return decoded === MALFORMED ? MALFORMED : { name: section.toLowerCase(), subsection: decoded };
+  const rest = trimConfig(line.slice(match?.[0].length ?? 0));
+  const named = namedSection(section, match?.groups?.['subsection']);
+  return named === MALFORMED ? MALFORMED : { rest, section: named };
 };
-
-// `String.trim()` would be wrong here for the same reason `\s` is: it strips unicode whitespace,
-// which git keeps. Only leading/trailing space and tab are layout.
-const CONFIG_SPACE_EDGES = /^[ \t]+|[ \t]+$/gu;
-
-const trimConfig = (line: string): string => line.replace(CONFIG_SPACE_EDGES, '');
 
 const isSkippable = (line: string): boolean =>
   line === '' || line.startsWith('#') || line.startsWith(';');
@@ -249,13 +173,30 @@ const recordVariable = (
 /** Applies one non-blank line: either it opens a section, or it assigns a variable within the
  * current one. Returns the section in effect afterwards, or `MALFORMED` for a line git would
  * reject. */
+/** Whatever followed a section header on its own line: nothing, a comment, or an assignment that
+ * belongs to the section just opened. */
+const consumeInline = (
+  found: Map<string, string[]>,
+  parsed: { rest: string; section: Section },
+  wanted: readonly string[],
+): Section | typeof MALFORMED => {
+  if (parsed.rest === '' || isSkippable(parsed.rest)) {
+    return parsed.section;
+  }
+  const inline = recordVariable(found, { line: parsed.rest, section: parsed.section, wanted });
+  return inline === 'malformed' ? MALFORMED : parsed.section;
+};
+
 const consumeLine = (
   found: Map<string, string[]>,
   opts: { line: string; section: Section; wanted: readonly string[] },
 ): Section | typeof MALFORMED => {
   const parsed = parseSection(opts.line);
+  if (parsed === MALFORMED) {
+    return MALFORMED;
+  }
   if (parsed !== undefined) {
-    return parsed;
+    return consumeInline(found, parsed, opts.wanted);
   }
   if (opts.section === NO_SECTION) {
     // An assignment before any section header. Git rejects the file; skipping the line would let
