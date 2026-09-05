@@ -127,13 +127,16 @@ const buildFinalPackages = (
 const isMissingDescription = (pkg: ProposalPackageEntry): boolean =>
   pkg.description === undefined || pkg.description === '';
 
-/** The name of the detected workspace root, if the repository's root manifest declares one.
+/** The name under which the repository root is actually REGISTERED, if it is.
  *
- * Identified by NAME rather than by path, and that distinction is load-bearing: the `npm:` fallback
- * also registers at `.`, for a published single-package repo whose own description is its own
- * business. Only an entry that workspace detection found at the root is the repository itself. */
+ * Two conditions, and both are load-bearing. The entry must be one workspace detection found at
+ * the root — the `npm:` fallback also registers at `.`, for a published single-package repo whose
+ * description is its own business, and an existing test pins that it must supply one. And the root
+ * must have survived `rootEntryUnlessClaimed`: where a member claims the same name the root is
+ * dropped, and returning it here would hand its description exemption to that MEMBER, which would
+ * then silently take the repository's description in place of the one it is required to declare. */
 const rootPackageNameOf = (detected: readonly WorkspacePackage[]): string | undefined =>
-  detected.find((pkg) => pkg.path === ROOT_PACKAGE_PATH)?.name;
+  Object.keys(rootEntryUnlessClaimed(detected))[0];
 
 /** The root package's description falls back to the REF's, and only the root's.
  *

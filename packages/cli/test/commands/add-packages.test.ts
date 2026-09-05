@@ -3,6 +3,7 @@ import {
   buildProposalPackages,
   packagesMissingDescription,
   requireAllDescribed,
+  rootPackageNameOf,
 } from '../../src/commands/add-packages.ts';
 import { describe, expect, it } from 'vitest';
 import type { WorkspacePackage } from '@kaisers-io/refs-core';
@@ -204,6 +205,33 @@ describe('a root whose name a member already claims', () => {
     // were looked at at all — so a collision costs this repository nothing it used to have.
     expect(packages['@acme/toolkit']?.path).toBe('packages/toolkit');
     expect(Object.keys(packages)).toHaveLength(ONE_PACKAGE);
+  });
+
+  it('does not let the dropped root lend the member its description exemption', () => {
+    expect.hasAssertions();
+    // The member has no description of its own. Only the ROOT may take the ref's description, and
+    // the root here was dropped — so the surviving entry is an ordinary child package and must
+    // still be rejected, rather than quietly receiving text written about the repository.
+    const detected: WorkspacePackage[] = [
+      { description: 'The monorepo', name: '@acme/toolkit', path: '.' },
+      { description: undefined, name: '@acme/toolkit', path: 'packages/toolkit' },
+    ];
+    const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
+
+    expect(packagesMissingDescription(packages, rootPackageNameOf(detected))).toStrictEqual([
+      '@acme/toolkit',
+    ]);
+  });
+
+  it('still exempts a root that survives', () => {
+    expect.hasAssertions();
+    const detected: WorkspacePackage[] = [
+      { description: undefined, name: '@acme/toolkit', path: '.' },
+      { description: 'A package', name: '@acme/a', path: 'packages/a' },
+    ];
+    const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
+
+    expect(packagesMissingDescription(packages, rootPackageNameOf(detected))).toStrictEqual([]);
   });
 });
 
