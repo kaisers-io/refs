@@ -86,6 +86,46 @@ describe('which directories a sync range added a manifest to', () => {
   );
 });
 
+describe('paths git would quote', () => {
+  it(
+    'finds a package directory holding a non-ASCII character',
+    async () => {
+      expect.hasAssertions();
+      const dir = await freshGitRepo();
+      writeManifest(dir, 'packages/a', '@x/a');
+      const from = commitAll(dir, 'one');
+      writeManifest(dir, 'packages/café', '@x/cafe');
+      const to = commitAll(dir, 'two');
+
+      // Without `-z`, git's default `core.quotePath` prints this as
+      // `"packages/caf\303\251/package.json"` — basename `package.json"`, quote included — so
+      // the manifest check drops it and the arrival is missed. HEAD has moved by then, so it is
+      // missed permanently, not merely once.
+      await expect(addedPackageDirs(runner, { dir, from, to })).resolves.toStrictEqual([
+        'packages/café',
+      ]);
+    },
+    SLOW_IO_TIMEOUT_MS,
+  );
+
+  it(
+    'finds a package directory whose name contains a space',
+    async () => {
+      expect.hasAssertions();
+      const dir = await freshGitRepo();
+      writeManifest(dir, 'packages/a', '@x/a');
+      const from = commitAll(dir, 'one');
+      writeManifest(dir, 'packages/with space', '@x/spaced');
+      const to = commitAll(dir, 'two');
+
+      await expect(addedPackageDirs(runner, { dir, from, to })).resolves.toStrictEqual([
+        'packages/with space',
+      ]);
+    },
+    SLOW_IO_TIMEOUT_MS,
+  );
+});
+
 describe('a range with nothing to report', () => {
   it(
     'reports nothing when the range is empty',

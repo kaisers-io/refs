@@ -51,7 +51,7 @@ describe('probeRefStructure: unregistered members, doctor', () => {
     // was "hand-edit config.toml", because `add` refuses a tracked ref and a field edit needs an
     // entry to edit.
     expect(driftLines(report).join('\n')).toContain(
-      'refs edit <ref> --package @fixture/b --create --path packages/b',
+      "refs edit <ref> --package '@fixture/b' --create --path 'packages/b'",
     );
   });
 
@@ -170,6 +170,45 @@ describe('probeRefStructure: the root is not a member', () => {
     // it. Letting member discovery see `.` as well would report the same name twice.
     expect(report.packages).toStrictEqual([
       { name: '@fixture/toolkit', path: '.', status: 'unregistered' },
+    ]);
+  });
+});
+
+describe('probeRefStructure: values that reach a shell', () => {
+  it('quotes the name and path it puts into the repair command', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/*'] });
+    addPackage(repo, 'packages/a', { name: '@fixture/a', version: '1.0.0' });
+    // Both values come from the checkout. `zPackagePath` rejects only separators, dot segments,
+    // percent escapes and colons, so `$()` is a legal path; a manifest `name` is checked only for
+    // being non-empty. The line exists to be pasted into a shell.
+    addPackage(repo, 'packages/$(id)', { name: '@evil/; rm -rf /tmp/x', version: '1.0.0' });
+
+    const line = driftLines(await probeRefStructure(repo, CONFIGURED, ALL)).join('\n');
+
+    expect(line).toContain("--package '@evil/; rm -rf /tmp/x' --create --path 'packages/$(id)'");
+  });
+});
+
+describe('probeRefStructure: a member claiming the root name', () => {
+  it('reports that name once, not once per discovery pass', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    writeJson(join(repo, 'package.json'), {
+      name: '@fixture/toolkit',
+      workspaces: ['packages/*'],
+    });
+    addPackage(repo, 'packages/a', { name: '@fixture/a', version: '1.0.0' });
+    // Detection drops a root whose name a member claims, so `unregisteredRoot` resolves the name
+    // to the MEMBER's path — the same entry member discovery sees. Excluding `.` from the members
+    // does not separate them, because the root's finding is not at `.` here.
+    addPackage(repo, 'packages/toolkit', { name: '@fixture/toolkit', version: '1.0.0' });
+
+    const report = await probeRefStructure(repo, CONFIGURED, ALL);
+
+    expect(report.packages).toStrictEqual([
+      { name: '@fixture/toolkit', path: 'packages/toolkit', status: 'unregistered' },
     ]);
   });
 });

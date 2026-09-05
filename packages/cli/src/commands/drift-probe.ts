@@ -102,6 +102,24 @@ const toIssue = (settled: Settled): StructureIssue[] => {
   ];
 };
 
+/** The two discovery passes, merged so a name reported by both appears once.
+ *
+ * They overlap in exactly one shape, and it is not a rare one: when a workspace member declares
+ * the repository root's own name, `detectWorkspacePackagesDetailed` drops the root and keeps the
+ * member, so `unregisteredRoot` resolves that name to the MEMBER's path — the very entry
+ * `unregisteredMembers` also sees as unregistered. Filtering `.` out of the members is therefore
+ * not enough to keep the root's finding unique.
+ *
+ * The root wins, because it applies the stricter rules: it refuses an unreliable scan outright
+ * and reports `candidates` where the members pass would have to pick. */
+const discovered = (
+  rootIssues: readonly StructureIssue[],
+  memberIssues: readonly StructureIssue[],
+): StructureIssue[] => {
+  const claimed = new Set(rootIssues.map((issue) => issue.name));
+  return [...rootIssues, ...memberIssues.filter((issue) => !claimed.has(issue.name))];
+};
+
 /** Probes every package `packages` configures against `checkoutDir`. LOCK-FREE by contract: the
  * caller holds the ref's lock. (`withLock` is not reentrant — taking it here would deadlock
  * `sync`, which is already holding it when it calls this.) An unexpected throw becomes a
@@ -124,7 +142,10 @@ const probeRefStructure = async (
       unregisteredRoot(checkoutDir, queries, scanOnce),
       unregisteredMembers(queries, discovery, scanOnce),
     ]);
-    return rollUp([...settled.flatMap((item) => toIssue(item)), ...rootIssue, ...memberIssues]);
+    return rollUp([
+      ...settled.flatMap((item) => toIssue(item)),
+      ...discovered(rootIssue, memberIssues),
+    ]);
   } catch (error) {
     return { reason: errorMessageOf(error), status: 'unknown' };
   }

@@ -25,26 +25,43 @@ type ArrivalsOpts = {
 };
 
 /** `*package.json` narrows what git prints; `basename` is what makes it exact — the pathspec
- * would also match `mypackage.json`. */
+ * would also match `mypackage.json`. Verified against git 2.50: it prints both. */
 const isPackageManifest = (path: string): boolean => basename(path) === PACKAGE_MANIFEST;
 
 const addedPackageDirs = async (runner: Runner, opts: ArrivalsOpts): Promise<string[]> => {
   if (opts.from === opts.to) {
     return [];
   }
+  // `-z` is not optional here. Under its default `core.quotePath`, git wraps any path holding a
+  // non-ASCII byte in double quotes and C-escapes it: `packages/café/package.json` prints as
+  // `"packages/caf\303\251/package.json"`, whose basename is `package.json"` — quote included —
+  // so the manifest check below rejects it and the package is never reported. HEAD has moved on by
+  // then, so the arrival is missed permanently rather than merely once. NUL delimiters suppress
+  // that quoting and carry the path bytes through unchanged, which is also what makes a path
+  // containing a newline safe to split on.
+  //
   // `--` for the same reason `cloneRepo` and `git remote set-url` use it: end option parsing so
   // the pathspec can only be read as a pathspec.
   const result = await runner.run(
     'git',
-    ['diff', '--name-only', '--diff-filter=A', `${opts.from}..${opts.to}`, '--', '*package.json'],
+    [
+      'diff',
+      '--name-only',
+      '-z',
+      '--diff-filter=A',
+      `${opts.from}..${opts.to}`,
+      '--',
+      '*package.json',
+    ],
     { cwd: opts.dir },
   );
   if (result.exitCode !== SUCCESS_EXIT_CODE) {
     return [];
   }
+  // No trimming: with `-z` the delimiter is the only separator, and a path may legitimately begin
+  // or end with a space.
   const dirs = result.stdout
-    .split('\n')
-    .map((line) => line.trim())
+    .split('\0')
     .filter((line) => line.length > 0 && isPackageManifest(line))
     .map((line) => dirname(line))
     // The repository root is never a workspace member — `unregisteredRoot` owns that case, and it

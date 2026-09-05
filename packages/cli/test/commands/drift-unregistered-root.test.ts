@@ -98,7 +98,7 @@ describe('drift lines: an unregistered root', () => {
     // edit — which is what `--create` was added for. Before it, the only instruction this line
     // could give was a `config.toml` fragment to type in by hand.
     expect(line).toContain('not registered');
-    expect(line).toContain('refs edit <ref> --package @acme/toolkit --create --path .');
+    expect(line).toContain("refs edit <ref> --package '@acme/toolkit' --create --path '.'");
   });
 });
 
@@ -133,7 +133,7 @@ describe('probeRefStructure: a root whose name a member also claims', () => {
       status: 'drift',
     });
 
-    expect(line).toContain('--create --path packages/toolkit');
+    expect(line).toContain("--create --path 'packages/toolkit'");
   });
 });
 

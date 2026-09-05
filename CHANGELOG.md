@@ -31,8 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   It is a distinct mode, not an upsert — an ordinary field edit naming an unregistered package
   still fails with `not_found`, so a typo in `--package` can never become a new entry. The
-  finding carries `name` and `path`, both verified against the checkout, and deliberately no
-  description: a manifest description is untrusted third-party content, and copying it moves it
+  finding carries `name` and `path`, both verified against the checkout and both shell-quoted
+  (being verified makes a value true, not shell-safe: `zPackagePath` permits `$()` and a manifest
+  `name` is checked only for being non-empty), and deliberately no description: a manifest description is untrusted third-party content, and copying it moves it
   into a file refs later reads as its own configuration. The skill instructs agents to propose the
   registration and wait for the user to agree, rather than run it on their own initiative.
 

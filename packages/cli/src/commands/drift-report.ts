@@ -1,4 +1,5 @@
 import type { PackageStatus } from './package-location.ts';
+import { shellQuote } from '../shell-quote.ts';
 
 // What a config-drift probe can find, and how each finding reads to a human.
 //
@@ -91,7 +92,14 @@ const UNKNOWN_PATH = '(unknown)';
  * whole reason for existing: this was the one finding no command could repair, so the only honest
  * instruction was "hand-edit the config". The description is deliberately left for the caller to
  * write and not filled in from the manifest — see SKILL.md on what a checkout's own text may and
- * may not be used for. */
+ * may not be used for.
+ *
+ * Both interpolated values are shell-quoted, for the reason `shell-quote.ts` was written down:
+ * a package NAME comes from a tracked repository's own manifest and is checked only for being
+ * non-empty, and `zPackagePath` rejects only separators, dot segments, percent escapes and colons
+ * — `$()`, backticks, semicolons and spaces all pass. This line exists to be pasted into a shell,
+ * so an unquoted value here is an execution primitive handed to whoever runs it. Being verified
+ * against the checkout makes a value TRUE, not shell-safe. */
 const unregisteredLine = (issue: StructureIssue): string => {
   const head = `${issue.name}: declared in this checkout but not registered — it cannot be resolved by name until it is`;
   if (issue.path === undefined) {
@@ -100,8 +108,8 @@ const unregisteredLine = (issue: StructureIssue): string => {
     return `${head}. Declared at several paths (${(issue.candidates ?? []).join(', ')}) — pick one`;
   }
   return (
-    `${head}. To register it: refs edit <ref> --package ${issue.name} --create ` +
-    `--path ${issue.path} --description "<what it is>"`
+    `${head}. To register it: refs edit <ref> --package ${shellQuote(issue.name)} --create ` +
+    `--path ${shellQuote(issue.path)} --description "<what it is>"`
   );
 };
 
