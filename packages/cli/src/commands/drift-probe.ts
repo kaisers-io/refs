@@ -58,8 +58,6 @@ type Settled = {
 // `unmaterialized` cannot occur here (the caller holds the lock on a checkout that exists) and
 // `verified` is the silent case, so neither is reportable — stated as a type so a future status
 // cannot be added without deciding how it reads.
-const ROOT_PACKAGE_PATH = '.';
-
 /** Narrows a `resolve` verdict to the ones this file reports. `unregistered` is not among them —
  * it is this file's own status and never comes back from a package location check. */
 const isIssueStatus = (
@@ -180,11 +178,21 @@ const unregisteredRoot = async (
   configured: readonly LocationQuery[],
 ): Promise<StructureIssue[]> => {
   const root = await readRootPackage(checkoutDir);
-  if (root === undefined) {
+  if (root === undefined || configured.some((query) => query.packageName === root.name)) {
     return [];
   }
-  const known = configured.some((query) => query.packageName === root.name);
-  return known ? [] : [{ name: root.name, path: ROOT_PACKAGE_PATH, status: 'unregistered' }];
+  // Only now, and only because there is something to report: the cheap read says a name is
+  // missing, but not where registering it would put it. A workspace member may declare the same
+  // name, in which case detection drops the root and selects the member — so prescribing `.` from
+  // the raw read would send someone to register the repository root where `refs add` would have
+  // registered `packages/<member>`. The scan is what applies that rule, so the scan supplies the
+  // path.
+  const scan = await detectWorkspacePackagesDetailed(checkoutDir);
+  const found = scan.packages.find((pkg) => pkg.name === root.name);
+  // Nothing to prescribe if the scan cannot see it — better silent than pointing somewhere.
+  return found === undefined
+    ? []
+    : [{ name: found.name, path: found.path, status: 'unregistered' }];
 };
 
 /** Probes every package `packages` configures against `checkoutDir`. LOCK-FREE by contract: the
@@ -230,7 +238,7 @@ const UNKNOWN_PATH = '(unknown)';
 const unregisteredLine = (issue: StructureIssue): string =>
   `${issue.name}: declared by the repository root but not registered — the repository cannot be ` +
   `resolved by its own name until it is. Add under [refs."<ref>".packages."${issue.name}"]: ` +
-  `path = "." and a description`;
+  `path = "${issue.path ?? UNKNOWN_PATH}" and a description`;
 
 /** The three findings about an entry that IS configured — each naming the repair it needs, and the
  * configured path it needs repairing from. */

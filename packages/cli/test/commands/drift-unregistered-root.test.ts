@@ -84,3 +84,38 @@ describe('drift lines: an unregistered root', () => {
     expect(line).toContain('path = "."');
   });
 });
+
+describe('probeRefStructure: a root whose name a member also claims', () => {
+  it('prescribes the member path, which is where registration would put it', async () => {
+    expect.hasAssertions();
+    const repo = monorepo();
+    writeJson(join(repo, 'package.json'), {
+      name: '@fixture/toolkit',
+      private: true,
+      workspaces: ['packages/*'],
+    });
+    // A member declares the same name. Detection drops the root and selects the member, so
+    // prescribing `.` from the raw root read would tell someone to register the repository root
+    // where `refs add` would have registered `packages/toolkit`.
+    addPackage(repo, 'packages/toolkit', { name: '@fixture/toolkit', version: '1.0.0' });
+
+    const report = await probeRefStructure(repo, { '@fixture/a': entry('packages/a') });
+
+    expect(report.packages).toContainEqual({
+      name: '@fixture/toolkit',
+      path: 'packages/toolkit',
+      status: 'unregistered',
+    });
+  });
+
+  it('carries that path into the line it prints', () => {
+    expect.hasAssertions();
+
+    const [line] = driftLines({
+      packages: [{ name: '@acme/toolkit', path: 'packages/toolkit', status: 'unregistered' }],
+      status: 'drift',
+    });
+
+    expect(line).toContain('path = "packages/toolkit"');
+  });
+});
