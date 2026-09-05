@@ -127,16 +127,30 @@ const buildFinalPackages = (
 const isMissingDescription = (pkg: ProposalPackageEntry): boolean =>
   pkg.description === undefined || pkg.description === '';
 
-/** The name under which the repository root is actually REGISTERED, if it is.
+/** The name under which the repository root is actually REGISTERED, if it is — read from the
+ * record that was BUILT, not from raw detection.
  *
- * Two conditions, and both are load-bearing. The entry must be one workspace detection found at
- * the root — the `npm:` fallback also registers at `.`, for a published single-package repo whose
- * description is its own business, and an existing test pins that it must supply one. And the root
- * must have survived `rootEntryUnlessClaimed`: where a member claims the same name the root is
- * dropped, and returning it here would hand its description exemption to that MEMBER, which would
- * then silently take the repository's description in place of the one it is required to declare. */
-const rootPackageNameOf = (detected: readonly WorkspacePackage[]): string | undefined =>
-  Object.keys(rootEntryUnlessClaimed(detected))[0];
+ * That distinction is the whole point. Three different defects came from answering this question
+ * out of `detected`: a root dropped because a member claimed its name, a root displaced by the
+ * `npm:` fallback carrying the packument's own directory, and a root that was never registered at
+ * all. Each one kept handing the root's description exemption to whatever entry ended up under
+ * that name — so a child package with no description of its own silently received text written
+ * about the repository, which is exactly the substitution `buildDescriptionRef`'s rule exists to
+ * prevent.
+ *
+ * Checking the registered path settles all three at once, and the one case it deliberately still
+ * exempts is right: an `npm:` entry that landed at `.` under the root's own name is that root —
+ * same directory, same manifest, same package. */
+const registeredRootName = (
+  detected: readonly WorkspacePackage[],
+  packages: Record<string, ProposalPackageEntry>,
+): string | undefined => {
+  const [rootName] = Object.keys(rootEntryUnlessClaimed(detected));
+  if (rootName === undefined) {
+    return undefined;
+  }
+  return packages[rootName]?.path === ROOT_PACKAGE_PATH ? rootName : undefined;
+};
 
 /** The root package's description falls back to the REF's, and only the root's.
  *
@@ -234,7 +248,7 @@ export {
   buildRefEntry,
   finalProposalPackages,
   packagesMissingDescription,
+  registeredRootName,
   requireAllDescribed,
-  rootPackageNameOf,
 };
 export type { FinalizedRefInput };

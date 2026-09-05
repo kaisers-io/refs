@@ -2,8 +2,8 @@ import {
   buildFinalPackages,
   buildProposalPackages,
   packagesMissingDescription,
+  registeredRootName,
   requireAllDescribed,
-  rootPackageNameOf,
 } from '../../src/commands/add-packages.ts';
 import { describe, expect, it } from 'vitest';
 import type { WorkspacePackage } from '@kaisers-io/refs-core';
@@ -218,9 +218,9 @@ describe('a root whose name a member already claims', () => {
     ];
     const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
 
-    expect(packagesMissingDescription(packages, rootPackageNameOf(detected))).toStrictEqual([
-      '@acme/toolkit',
-    ]);
+    expect(
+      packagesMissingDescription(packages, registeredRootName(detected, packages)),
+    ).toStrictEqual(['@acme/toolkit']);
   });
 
   it('still exempts a root that survives', () => {
@@ -231,7 +231,40 @@ describe('a root whose name a member already claims', () => {
     ];
     const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
 
-    expect(packagesMissingDescription(packages, rootPackageNameOf(detected))).toStrictEqual([]);
+    expect(
+      packagesMissingDescription(packages, registeredRootName(detected, packages)),
+    ).toStrictEqual([]);
+  });
+});
+
+describe('an npm fallback that lands on the root name', () => {
+  it('does not exempt it when the packument points somewhere other than the root', () => {
+    expect.hasAssertions();
+    // No member selected, and the requested npm package happens to carry the root's own name — but
+    // the packument places it in `packages/toolkit`. What survives under that name is an ordinary
+    // package in a subdirectory, so it must declare its own description like any other.
+    const detected: WorkspacePackage[] = [
+      { description: 'The monorepo', name: '@acme/toolkit', path: '.' },
+    ];
+    const packages = buildProposalPackages(detected, 'packages/toolkit', '@acme/toolkit');
+
+    expect(packages['@acme/toolkit']?.path).toBe('packages/toolkit');
+    expect(
+      packagesMissingDescription(packages, registeredRootName(detected, packages)),
+    ).toStrictEqual(['@acme/toolkit']);
+  });
+
+  it('does exempt it when the packument points at the root itself', () => {
+    expect.hasAssertions();
+    // Same name, same directory, same manifest: this IS the root, however it was reached.
+    const detected: WorkspacePackage[] = [
+      { description: undefined, name: '@acme/toolkit', path: '.' },
+    ];
+    const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, '@acme/toolkit');
+
+    expect(
+      packagesMissingDescription(packages, registeredRootName(detected, packages)),
+    ).toStrictEqual([]);
   });
 });
 

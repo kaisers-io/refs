@@ -14,7 +14,7 @@ import {
   refLockName,
   resolveAddSource,
 } from './add-source.ts';
-import { buildProposalPackages, rootPackageNameOf } from './add-packages.ts';
+import { buildProposalPackages, registeredRootName } from './add-packages.ts';
 import {
   checkoutPath,
   detectDefaultBranch,
@@ -68,7 +68,7 @@ const detectProposalFields = async (
   progress(ctx, 'detecting workspace packages…');
   const detected = await detectWorkspacePackages(dest);
   const packages = buildProposalPackages(detected, resolved.npmDirectory, resolved.npmPkgName);
-  const rootPackageName = rootPackageNameOf(detected);
+  const rootPackageName = registeredRootName(detected, packages);
   return {
     defaultBranch,
     packages,
