@@ -187,33 +187,39 @@ describe('the workspace root entry', () => {
   });
 });
 
-describe('one name claimed at two paths', () => {
-  it('refuses rather than silently keeping one of them', () => {
+describe('a root whose name a member already claims', () => {
+  it('keeps the member and drops the root, rather than losing one silently', () => {
     expect.hasAssertions();
-    // Not hypothetical since the root joined detection: `@remix-run/react-router` is a real root
-    // name in a repository that also publishes `react-router` from `packages/`. A root sharing a
-    // member's name would otherwise vanish from the record, which is keyed by name.
+    // Real shape: `@remix-run/react-router` is a root name in a repository that also publishes
+    // `react-router` from `packages/`. Detection dedupes by path, so both arrive here; the record
+    // is keyed by name and would otherwise keep whichever came last.
     const detected: WorkspacePackage[] = [
       { description: 'The monorepo', name: '@acme/toolkit', path: '.' },
       { description: 'A package', name: '@acme/toolkit', path: 'packages/toolkit' },
     ];
 
-    expect(() => buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME)).toThrow(
-      'more than one path',
-    );
-  });
+    const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
 
-  it('names every collision and the paths claiming it', () => {
+    // The member wins: it is the more specific thing, and it is what was registered before roots
+    // were looked at at all — so a collision costs this repository nothing it used to have.
+    expect(packages['@acme/toolkit']?.path).toBe('packages/toolkit');
+    expect(Object.keys(packages)).toHaveLength(ONE_PACKAGE);
+  });
+});
+
+describe('a workspace declaration that selects nothing', () => {
+  it('keeps the npm package that was asked for, and the root alongside it', () => {
     expect.hasAssertions();
+    // A repository declaring `packages/**`, which the pattern classifier does not support: the
+    // root is found by looking, no member is selected. Seeding only the root would silently drop
+    // the package named in `npm:<pkg>` — the entire reason that source was given.
     const detected: WorkspacePackage[] = [
-      { description: 'Root', name: 'dup', path: '.' },
-      { description: 'Member', name: 'dup', path: 'packages/dup' },
+      { description: 'The monorepo', name: '@acme/toolkit', path: '.' },
     ];
 
-    // Naming both paths is the whole value: refs cannot tell which directory was meant, so the
-    // reader has to, and they need to see the candidates to do it.
-    expect(() => buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME)).toThrow(
-      'dup (., packages/dup)',
-    );
+    const packages = buildProposalPackages(detected, 'packages/widget', '@acme/widget');
+
+    expect(packages['@acme/widget']?.path).toBe('packages/widget');
+    expect(packages['@acme/toolkit']?.path).toBe('.');
   });
 });

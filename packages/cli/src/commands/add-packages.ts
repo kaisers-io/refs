@@ -28,39 +28,34 @@ const toProposalEntry = (pkg: WorkspacePackage): ProposalPackageEntry => {
  * otherwise, for an `npm:<pkg>` source, seeds a single entry for the package itself — at its
  * packument-declared `directory` when known, else `path: '.'` (a single-package repo); a plain git
  * url with no detected packages gets an empty record (→ no packages table at finalize time). */
-/** Names that more than one detected package claims, with the paths claiming them.
+/** Detection minus the repository root — the packages a workspace declaration actually selected.
  *
- * Detection deduplicates by PATH, so two directories declaring one name both survive — and the
- * record built below is keyed by name, which would silently keep whichever came last. Since the
- * repository root joined that list (#88) this stopped being hypothetical: `@remix-run/react-router`
- * is a real root name whose repository also publishes `react-router` from `packages/`, and a root
- * that happens to share a member's name would make one of them vanish from the proposal with
- * nothing said. */
-const duplicateNames = (detected: readonly WorkspacePackage[]): string[] => {
-  const paths = new Map<string, string[]>();
-  for (const pkg of detected) {
-    paths.set(pkg.name, [...(paths.get(pkg.name) ?? []), pkg.path]);
-  }
-  return [...paths.entries()]
-    .filter(([, claimed]) => claimed.length > 1)
-    .map(([name, claimed]) => `${name} (${claimed.toSorted().join(', ')})`)
-    .toSorted();
-};
+ * The distinction matters in one place and matters a lot there: a root is found by looking, not by
+ * being declared, so "detection found something" must not become true merely because a repository
+ * names its own root. */
+const workspaceMembersOf = (detected: readonly WorkspacePackage[]): WorkspacePackage[] =>
+  detected.filter((pkg) => pkg.path !== ROOT_PACKAGE_PATH);
 
-/** Fails closed when one name is claimed twice. Refusing is the only honest answer: nothing here
- * can tell which directory the caller meant, and `resolve`'s own cross-ref ambiguity rule already
- * refuses rather than picking. Names every collision and the paths involved, so the reader can
- * decide in one look. */
-const requireDistinctNames = (detected: readonly WorkspacePackage[]): void => {
-  const duplicates = duplicateNames(detected);
-  if (duplicates.length === 0) {
-    return;
+const rootOf = (detected: readonly WorkspacePackage[]): WorkspacePackage | undefined =>
+  detected.find((pkg) => pkg.path === ROOT_PACKAGE_PATH);
+
+/** The root, dropped when a workspace member already claims its name.
+ *
+ * Detection deduplicates by path, so both survive it; the record below is keyed by name and would
+ * keep whichever came last. Not hypothetical — `@remix-run/react-router` is a real root name in a
+ * repository that also publishes `react-router` from `packages/`. The member wins because it is
+ * the more specific thing and because it is what was registered before roots were looked at: a
+ * collision costs that repository nothing it had, rather than turning `refs add` into an error for
+ * a shape that used to work. */
+const rootEntryUnlessClaimed = (
+  detected: readonly WorkspacePackage[],
+): Record<string, ProposalPackageEntry> => {
+  const root = rootOf(detected);
+  if (root === undefined) {
+    return {};
   }
-  throw validationError(
-    `this repository declares one package name at more than one path: ${duplicates.join('; ')} ` +
-      '— refs cannot tell which directory a query for that name means. Register it by hand with ' +
-      'the two-phase flow: refs add <source> --dry-run --json > proposal.json',
-  );
+  const claimed = workspaceMembersOf(detected).some((pkg) => pkg.name === root.name);
+  return claimed ? {} : { [root.name]: toProposalEntry(root) };
 };
 
 const buildProposalPackages = (
@@ -68,14 +63,22 @@ const buildProposalPackages = (
   npmDirectory: string | undefined,
   npmPkgName: string | undefined,
 ): Record<string, ProposalPackageEntry> => {
-  if (detected.length > 0) {
-    requireDistinctNames(detected);
-    return Object.fromEntries(detected.map((pkg) => [pkg.name, toProposalEntry(pkg)]));
+  const members = workspaceMembersOf(detected);
+  const rootEntry = rootEntryUnlessClaimed(detected);
+  if (members.length > 0) {
+    return {
+      ...rootEntry,
+      ...Object.fromEntries(members.map((pkg) => [pkg.name, toProposalEntry(pkg)])),
+    };
   }
+  // No member was selected — an empty `packages/*`, or a pattern the classifier does not support.
+  // The npm locator is what the caller asked for and must survive that: seeding only the root
+  // here would silently drop the package named in `npm:<pkg>`, which is the whole reason the
+  // source was given. The root rides along when it named itself.
   if (npmPkgName !== undefined) {
-    return { [npmPkgName]: { path: npmDirectory ?? ROOT_PACKAGE_PATH } };
+    return { ...rootEntry, [npmPkgName]: { path: npmDirectory ?? ROOT_PACKAGE_PATH } };
   }
-  return {};
+  return rootEntry;
 };
 
 /** Only called once `requireAllDescribed` has already guaranteed every package carries a detected

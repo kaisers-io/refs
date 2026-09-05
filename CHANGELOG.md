@@ -24,9 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   Two things this deliberately does not do. A repository that declares no workspaces is untouched:
   `refs add`'s npm fallback owns that shape, and probing the root there would displace a locator it
-  did not choose. And one name claimed at two paths — a root sharing a member's name, which
-  happens — is now refused outright rather than silently keeping whichever came last, naming both
-  paths so a person can decide.
+  did not choose — as it also would where a workspace declaration selects nothing, so the package
+  named in an `npm:<pkg>` source survives there too. And where a workspace member already claims the
+  root's name — `@remix-run/react-router` is a real example, in a repository that also publishes
+  `react-router` — the member wins and the root is simply not registered, which costs that
+  repository nothing it had before.
 
   The root package takes the ref's own description when its manifest carries none, which is the
   ordinary case for a private workspace root. That is not the per-package fallback `refs add`
