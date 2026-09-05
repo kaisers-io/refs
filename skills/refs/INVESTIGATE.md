@@ -111,9 +111,9 @@ the two are easy to confuse into a false statement. `error.reason` says which:
 
 | `reason`                 | Established                                      | Do                                  |
 | ------------------------ | ------------------------------------------------ | ----------------------------------- |
-| `unmatched_query`        | nothing matched, by any route                    | keep looking — see below            |
+| `unmatched_query`        | the identifier resolved to nothing               | keep looking — see below            |
 | `package_not_registered` | the ref is tracked; it registers no such package | `refs show <ref> --packages --json` |
-| `ref_not_registered`     | that exact ref is not configured                 | `ADD.md`                            |
+| `ref_not_registered`     | a canonical git url named an absent ref          | `ADD.md`                            |
 
 On `unmatched_query`, before concluding anything: check `refs list --packages --json`. A repository
 is commonly registered under a name other than the one you were handed — a monorepo root's own

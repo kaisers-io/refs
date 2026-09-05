@@ -15,13 +15,16 @@ type ErrorCode = 'usage' | 'validation' | 'not_found' | 'conflict' | 'unexpected
  * thing does not exist" — and an agent that reads it as the latter reports something untrue and
  * stops. These name the scope that was searched instead:
  *
- *   - `unmatched_query` — nothing in the configuration matched the query, by any route. The
- *     intended repository is unknown; it may well be tracked under another identifier.
+ *   - `unmatched_query` — the identifier resolved to nothing. The intended repository is unknown
+ *     and may well be tracked under another identifier: a key suffix that happens not to match, a
+ *     package name that was never registered. Never evidence of absence.
  *   - `package_not_registered` — the ref was identified, and it registers no package under that
  *     name. A fact about that ref's package map, not about the repository.
- *   - `ref_not_registered` — a query that names a ref outright (a canonical git url, an explicit
- *     `--ref`) named one the active configuration does not have. This is the only one of the three
- *     that supports "add it".
+ *   - `ref_not_registered` — a CANONICAL git url named a ref the configuration does not have.
+ *     Canonical is the whole of it: only a url that `canonicalizeGitUrl` resolved to an exact key
+ *     establishes which ref was meant, so this is the only one of the three that supports "add
+ *     it". A `--ref` suffix that fails to match is `unmatched_query`, not this — the repository
+ *     may be configured under a key that identifier simply does not reach.
  *
  * Kept deliberately small. Every value must be something the code can actually establish; there is
  * no value for "the repository does not exist", because nothing here can determine that.

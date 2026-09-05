@@ -19,8 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The message now states what was searched and points at evidence rather than prescribing a fix, and
   `--json` carries a `reason` on `resolve`'s routing misses: `unmatched_query` (nothing matched, by
   any route), `package_not_registered` (the ref is tracked and registers no such package), or
-  `ref_not_registered` (that exact ref is absent — the one case where adding it is the right
-  answer). There is deliberately no reason meaning "this repository does not exist", because nothing
+  `ref_not_registered` (a canonical git url named an absent ref — the one case where adding it is
+  the right answer, since only a canonical url establishes which ref was meant). There is deliberately no reason meaning "this repository does not exist", because nothing
   refs can observe establishes that; and `reason` is absent on every other `not_found`, where its
   absence means no narrowing is available rather than being a fourth value.
 

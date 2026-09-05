@@ -24,9 +24,10 @@ success.
 invites a false conclusion: it says a lookup came back EMPTY, never that the thing is absent.
 Absent on every other `not_found` (missing config, absent checkout, unknown ref for `show`) —
 absence is not a fourth value, it means no narrowing is available.
-`unmatched_query` (nothing matched, by any route — the repository may still be tracked under
+`unmatched_query` (the identifier resolved to nothing — the repository may still be tracked under
 another name) | `package_not_registered` (the ref is tracked and registers no such package) |
-`ref_not_registered` (that exact ref is not configured — the one case where adding it is right).
+`ref_not_registered` (a canonical git url named a ref that is not configured — the one case where
+adding it is right; a `--ref` suffix that misses is `unmatched_query`, not this).
 
 Global flags: `--json` (always pass it) and `--verbose` (stack traces on error — omitted
 from the per-command lists below; you never need it). `-h`/`--help` and `-V`/`--version`

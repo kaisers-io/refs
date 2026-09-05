@@ -41,9 +41,9 @@ while the repository is perfectly well tracked under another identifier. In `--j
 
 | `reason` | What it establishes |
 | --- | --- |
-| `unmatched_query` | Nothing in the configuration matched, by any route. The intended repository is unknown — it may still be tracked under a different name. |
+| `unmatched_query` | The identifier resolved to nothing. The intended repository is unknown and may still be tracked under a different name — a key suffix that happens not to match, a package name that was never registered. |
 | `package_not_registered` | The ref was identified and registers no package under that name. A fact about that ref's package map, not about the repository. |
-| `ref_not_registered` | A query naming a ref outright — a canonical git url, an explicit `--ref` — named one the configuration does not have. The only one of the three where adding it is the right answer. |
+| `ref_not_registered` | A **canonical git url** named a ref the configuration does not have. Canonical is the whole of it: only a url resolved to an exact key establishes which ref was meant, so this is the only one of the three where adding it is the right answer. A `--ref` suffix that fails to match is `unmatched_query` — the repository may be configured under a key that identifier does not reach. |
 
 There is deliberately no reason meaning "this repository does not exist": nothing refs can observe
 establishes that. `reason` is also **absent** on every other `not_found` — a missing config, an

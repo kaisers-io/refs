@@ -4,37 +4,15 @@ import { describe, expect, it } from 'vitest';
 import { rm, writeFile } from 'node:fs/promises';
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
 import { join } from 'node:path';
-import { run } from '../../src/main.ts';
+import { resolveJson } from '../helpers/resolve-support.ts';
 import { seedConfig } from '../helpers/ref-fixtures.ts';
-import { testContext } from '../helpers/context.ts';
 
 // `refs resolve`'s flags, at the CLI boundary. Between them they replace the three-call sequence
 // the skill used to mandate — resolve, sync, resolve AGAIN — with one call, and close the gap where
 // resolve reported a path without establishing that the path was this ref's checkout.
 
-type JsonEnvelope = {
-  data: Record<string, unknown>;
-  error?: { code: string; message: string; reason?: string };
-  ok: boolean;
-};
-
 // Git stores a backslash in a config value as `\\`; a Windows hooks path is full of them.
 const escapeGitValue = (value: string): string => value.replaceAll('\\', String.raw`\\`);
-
-const soleEnvelope = (stdout: readonly string[]): JsonEnvelope => {
-  const [line] = stdout;
-  if (line === undefined) {
-    throw new Error('expected exactly one json envelope line, got none');
-  }
-  return JSON.parse(line) as JsonEnvelope;
-};
-
-const resolveJson = async (homeDir: string, args: readonly string[]): Promise<JsonEnvelope> => {
-  const { ctx, stdout } = testContext();
-  ctx.env['REFS_HOME'] = homeDir;
-  await run(ctx, ['node', 'refs', 'resolve', ...args, '--json']);
-  return soleEnvelope(stdout);
-};
 
 describe('refs resolve --ref: scoping a package name to one ref', () => {
   it('resolves the package within the named ref', async () => {
@@ -84,27 +62,6 @@ describe('refs resolve --ref: a package the named ref does not register', () => 
           // `unmatched_query` here would say every route was searched when only this ref's package
           // map was.
           reason: 'package_not_registered',
-        });
-      }),
-    );
-  });
-});
-
-describe('refs resolve --ref: an unconfigured ref', () => {
-  it('reports it as an absent ref, not as an unmatched query', async () => {
-    expect.hasAssertions();
-    await withResetExitCode(() =>
-      withTempHome(async (homeDir) => {
-        await seedNextFixture({ REFS_HOME: homeDir });
-
-        const envelope = await resolveJson(homeDir, ['next', '--ref', 'nosuch-ref-anywhere']);
-
-        // `--ref` names one ref and nothing else is tried, so a miss establishes that this ref is
-        // not configured — a stronger and actionable fact, and the one miss where suggesting
-        // `refs add` is sound.
-        expect(envelope.error).toMatchObject({
-          code: 'not_found',
-          reason: 'ref_not_registered',
         });
       }),
     );

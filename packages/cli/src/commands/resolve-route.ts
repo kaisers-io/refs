@@ -1,4 +1,4 @@
-import type { Config, NotFoundReason, PackageEntry, RefKey } from '@kaisers-io/refs-core';
+import type { Config, PackageEntry, RefKey } from '@kaisers-io/refs-core';
 import {
   RefsError,
   canonicalizeGitUrl,
@@ -50,8 +50,15 @@ const notFoundMessage = (query: string): string =>
   `no registered package or ref matches '${query}' — this does not establish that the ` +
   `repository is untracked; it may be registered under a different identifier. Run: refs list --json`;
 
-const refNotRegisteredMessage = (key: string): string =>
+const refNotRegisteredMessage = (key: RefKey): string =>
   `ref '${key}' is not in the active refs configuration — to track it: refs add <url>`;
+
+// `--ref` takes a full key or a unique suffix of one, so a miss says the identifier did not
+// resolve — never that the repository is absent. It names the shapes that DO work instead of
+// prescribing anything.
+const refUnresolvedMessage = (ref: string): string =>
+  `--ref '${ref}' matched no configured ref — pass a full ref key or a unique suffix of one. ` +
+  `Run: refs list --json`;
 
 // A query that plainly LOOKS like a git url — either a `scheme://...` form (scheme anchored at
 // the very start of the string, so an unrelated import path that merely CONTAINS "://" further in,
@@ -193,23 +200,23 @@ const findPackageByPrefix = (config: Config, query: string): PackageMatch | unde
 
 // Suffix match via `list.ts`'s `matchRefKey`. Its ambiguity `usageError` (more than one candidate)
 // passes through unchanged, but its plain not_found ("no ref matches '<query>'", no call-to-action)
-// is replaced with resolve's own.
+// is replaced with a message the caller supplies, because the same lookup fails for two different
+// reasons — unscoped step 4, and resolving an explicit `--ref`.
 //
-// The caller supplies the reason because the same lookup means two different things. As step 4 of
-// unscoped routing it is the LAST thing tried, so a miss says nothing matched by any route
-// (`unmatched_query`). As the resolution of an explicit `--ref` it is the ONLY thing tried, and a
-// miss establishes that this ref is not configured (`ref_not_registered`) — a stronger, and
-// actionable, fact. Assigning `unmatched_query` to both would tell a caller that every route was
-// searched when only ref keys were.
-const matchSuffixOrThrow = (config: Config, query: string, reason: NotFoundReason): RefKey => {
+// The REASON is `unmatched_query` either way, and deliberately not the stronger
+// `ref_not_registered`. `matchRefKey` compares full keys and key suffixes; a miss means the
+// identifier resolved to nothing, NOT that the ref is absent. With
+// `github.com/vercel/next.js` configured, `--ref next` misses and `--ref next.js` succeeds — the
+// same repository, one identifier that happens not to be a suffix. Calling that "not registered"
+// and suggesting `refs add` would recreate, one flag over, exactly the false conclusion this
+// module was changed to stop. Only a canonical git url establishes an exact identity, and only
+// `tryUrlRoute` uses the stronger reason.
+const matchSuffixOrThrow = (config: Config, query: string, message: string): RefKey => {
   try {
     return matchRefKey(config, query);
   } catch (error) {
     if (error instanceof RefsError && error.code === 'not_found') {
-      throw notFoundError(
-        reason === 'ref_not_registered' ? refNotRegisteredMessage(query) : notFoundMessage(query),
-        reason,
-      );
+      throw notFoundError(message, 'unmatched_query');
     }
     throw error;
   }
@@ -240,7 +247,7 @@ const packageWithin = (
 };
 
 const routeWithinRef = (config: Config, query: string, ref: string): RouteMatch => {
-  const key = matchSuffixOrThrow(config, ref, 'ref_not_registered');
+  const key = matchSuffixOrThrow(config, ref, refUnresolvedMessage(ref));
   const found = packageWithin(config.refs[key]?.packages ?? {}, query);
   if (found === undefined) {
     // A url-shaped query is never echoed: it can carry credentials, which is the same reason the
@@ -270,7 +277,7 @@ const routeUnscoped = (config: Config, query: string, options: RouteOptions): Ro
   if (prefixed !== undefined) {
     return { key: prefixed.key, packageMatch: prefixed };
   }
-  return { key: matchSuffixOrThrow(config, query, 'unmatched_query') };
+  return { key: matchSuffixOrThrow(config, query, notFoundMessage(query)) };
 };
 
 /** The one entry point: `--ref` switches to package-only routing within that ref, everything else
