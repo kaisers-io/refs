@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`refs sync` now reports a package that arrived upstream, and `refs edit --create` registers
+  it.** The drift probe checked the packages the configuration already had, so a package added
+  upstream after `refs add` stayed invisible — and there was no command to register one either:
+  `refs add` refuses an already-tracked ref, and every `refs edit` mode needs an entry to edit. The
+  only instruction anyone could give was "hand-edit `config.toml`".
+
+  `refs sync` answers "did upstream gain a package?" from the range it just fetched
+  (`git diff --diff-filter=A`), not by comparing a scan against the configuration. That
+  distinction is the whole design: a scan cannot tell a package that just arrived from one the
+  ref's owner deliberately never tracked, because there is no inventory of what was there before —
+  the fetch range is that inventory. A ref whose owner tracks 3 packages out of 140 hears about the
+  other 137 exactly never. `refs doctor` lists every unregistered member instead, because it was
+  asked to.
+
+  The repair is a command now rather than a config fragment:
+
+  ```
+  refs edit <ref> --package <name> --create --path <path> --description "<what it is>"
+  ```
+
+  It is a distinct mode, not an upsert — an ordinary field edit naming an unregistered package
+  still fails with `not_found`, so a typo in `--package` can never become a new entry. The
+  finding carries `name` and `path`, both verified against the checkout, and deliberately no
+  description: a manifest description is untrusted third-party content, and copying it moves it
+  into a file refs later reads as its own configuration. The skill instructs agents to propose the
+  registration and wait for the user to agree, rather than run it on their own initiative.
+
 ### Fixed
 
 - **A monorepo can now be resolved by the name in its own root manifest.** Workspace detection

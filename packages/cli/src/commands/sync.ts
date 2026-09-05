@@ -19,7 +19,7 @@ import { cliOptsOf, emit, wrapAction } from '../output.ts';
 import type { CliContext } from '../context.ts';
 import type { RefSyncContext } from './sync-checkout.ts';
 import type { RefsCommand } from './registry.ts';
-import { driftLines } from './drift-probe.ts';
+import { driftLines } from './drift-report.ts';
 import { isStale } from './ref-status.ts';
 import { matchRefKey } from './list.ts';
 import { requireEntry } from './ref-context.ts';

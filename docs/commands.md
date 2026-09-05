@@ -233,9 +233,10 @@ a source whose checkout is missing), `5` (the ref is already configured).
 ```
 refs edit settings <key> <value>
 refs edit <ref> <field> <value> [--package <name>]
+refs edit <ref> --package <name> --create --path <path> --description <text>
 ```
 
-Mutates exactly one field, in one of three modes:
+Mutates exactly one field, in one of three modes — or, with `--create`, registers a package:
 
 - `refs edit settings <key> <value>` — a global setting (`clone_mode`, `git_transport`,
   `sync_ttl`).
@@ -243,10 +244,18 @@ Mutates exactly one field, in one of three modes:
   `default_branch`, `tag_format`, or a per-ref settings override).
 - `refs edit <ref> <field> <value> --package <name>` — a field on one of the ref's
   registered packages (`description`, `path`, `tag_format`).
+- `refs edit <ref> --package <name> --create --path <p> --description <d>` — adds a package
+  the ref does not have. Both fields are required, the whole entry is validated, and an
+  already-registered name is refused rather than overwritten.
 
 Editing `url` re-canonicalizes the value and rejects it if it would derive a _different_
 ref key (use `refs remove` + `refs add` to re-key a ref); if a checkout already exists, its
 `origin` remote is rewritten to match.
+
+`--create` is a distinct mode, not an upsert: an ordinary field edit naming a package that is
+not registered still fails with `not_found`, so a typo in `--package` can never turn into a new
+entry. It is the repair for a `config-drift` `unregistered` finding — before it, that finding was
+the one no command could fix (`refs add` refuses an already-tracked ref).
 
 ### Examples
 
@@ -255,6 +264,7 @@ refs edit settings sync_ttl 2h --json
 refs edit zod description "TypeScript-first schema validation" --json
 refs edit zod clone_mode full --json          # per-ref settings override
 refs edit zod description "..." --package zod --json
+refs edit zod --package zod/v4 --create --path packages/v4 --description "Zod v4 core" --json
 ```
 
 ### `--json` data shape
@@ -263,6 +273,23 @@ refs edit zod description "..." --package zod --json
 {
   "ok": true,
   "data": { "key": "settings", "field": "sync_ttl", "old": "1h", "new": "2h" },
+  "warnings": []
+}
+```
+
+A `--create` carries `created: true`, `field: "packages"`, a `null` `old`, and the whole new
+entry as `new`:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "created": true,
+    "field": "packages",
+    "key": "github.com/colinhacks/zod",
+    "new": { "description": "Zod v4 core", "name": "zod/v4", "path": "packages/v4" },
+    "old": null
+  },
   "warnings": []
 }
 ```

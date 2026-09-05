@@ -89,10 +89,15 @@ lock:
 Never delete a lock directory by hand on the strength of this check alone — the recorded pid is not
 proof of identity, only of absence when it says "not running".
 
-A `warn` on `config-drift` means a configured package path no longer matches the checkout.
-The `detail` names each affected ref and package and says which repair it needs — remove the
-entry (the package is gone from the repo's workspaces) or change its path (it moved within
-them). Both are `refs edit` work, and neither is urgent. A `detail` saying another refs
+A `warn` on `config-drift` means the configuration and the checkout disagree. The `detail` names
+each affected ref and package and says which repair it needs — remove the entry (the package is
+gone from the repo's workspaces), change its path (it moved within them), or register a package
+the checkout declares and the config never had (`unregistered`). All three are `refs edit` work,
+and none is urgent. `doctor` lists every unregistered member; `refs sync` mentions only the ones
+a fetch just brought in.
+
+Registering is the one repair that adds something rather than correcting it, so it is also the
+one that needs the user's agreement first — see COMMANDS.md on `unregistered`. A `detail` saying another refs
 process holds the ref is not a finding at all: that ref's lock was busy, so it was not
 inspected. The same probe runs on every `refs sync`, so drift usually surfaces there first.
 
