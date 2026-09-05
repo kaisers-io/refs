@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { driftLines, probeRefStructure } from '../../src/commands/drift-probe.ts';
 import type { PackageEntry } from '@kaisers-io/refs-core';
 import { join } from 'node:path';
+import { writeFileSync } from 'node:fs';
 
 // The migration half of #88: a ref added before roots were registered keeps the package map it was
 // given, and no command adds one entry to an existing ref. The drift probe already holds both the
@@ -117,5 +118,68 @@ describe('probeRefStructure: a root whose name a member also claims', () => {
     });
 
     expect(line).toContain('path = "packages/toolkit"');
+  });
+});
+
+describe('probeRefStructure: an unregistered root the scan cannot settle', () => {
+  it('says nothing while an unreadable manifest could still change the answer', async () => {
+    expect.hasAssertions();
+    const repo = monorepo();
+    writeJson(join(repo, 'package.json'), {
+      name: '@fixture/toolkit',
+      workspaces: ['packages/*'],
+    });
+    // A member sharing this name could be sitting behind that unreadable manifest, and it would
+    // win once readable. Prescribing `.` now would be advice a later sync contradicts.
+    addPackage(repo, 'packages/broken', { name: '@fixture/broken', version: '1.0.0' });
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    writeFileSync(join(repo, 'packages/broken/package.json'), '{ not json');
+
+    const report = await probeRefStructure(repo, { '@fixture/a': entry('packages/a') });
+
+    // Silent entirely: the configured package verified, and the root question could not be
+    // settled, so there is nothing this run may claim.
+    expect(report).toStrictEqual({ status: 'ok' });
+  });
+});
+
+describe('probeRefStructure: a root name several paths declare', () => {
+  it('names the candidates rather than picking one', async () => {
+    expect.hasAssertions();
+    const repo = monorepo();
+    writeJson(join(repo, 'package.json'), {
+      name: '@fixture/toolkit',
+      workspaces: ['packages/*'],
+    });
+    // Two members claim it. Which to register is a decision, and `refs add` itself keeps the last
+    // — so picking the first here would prescribe something registration does not do.
+    addPackage(repo, 'packages/one', { name: '@fixture/toolkit', version: '1.0.0' });
+    addPackage(repo, 'packages/two', { name: '@fixture/toolkit', version: '1.0.0' });
+
+    const report = await probeRefStructure(repo, { '@fixture/a': entry('packages/a') });
+
+    expect(report.packages).toContainEqual({
+      candidates: ['packages/one', 'packages/two'],
+      name: '@fixture/toolkit',
+      status: 'unregistered',
+    });
+  });
+
+  it('names them in the line it prints, instead of a path', () => {
+    expect.hasAssertions();
+
+    const [line] = driftLines({
+      packages: [
+        {
+          candidates: ['packages/one', 'packages/two'],
+          name: '@acme/toolkit',
+          status: 'unregistered',
+        },
+      ],
+      status: 'drift',
+    });
+
+    expect(line).toContain('packages/one, packages/two');
+    expect(line).not.toContain('path = ');
   });
 });

@@ -2,8 +2,10 @@ import type { LocationQuery, PackageStatus, VerifyOutcome } from './package-loca
 import type { PackageEntry, WorkspaceScan } from '@kaisers-io/refs-core';
 import {
   detectWorkspacePackagesDetailed,
+  lookupPackagePath,
   probePackageIdentity,
   readRootPackage,
+  scanIsReliable,
 } from '@kaisers-io/refs-core';
 import { classifyAgainstScan } from './package-location.ts';
 import { errorMessageOf } from '../output.ts';
@@ -188,11 +190,22 @@ const unregisteredRoot = async (
   // registered `packages/<member>`. The scan is what applies that rule, so the scan supplies the
   // path.
   const scan = await detectWorkspacePackagesDetailed(checkoutDir);
-  const found = scan.packages.find((pkg) => pkg.name === root.name);
-  // Nothing to prescribe if the scan cannot see it — better silent than pointing somewhere.
-  return found === undefined
-    ? []
-    : [{ name: found.name, path: found.path, status: 'unregistered' }];
+  // The same two conservatisms `classifyAgainstScan` applies, for the same reason. An incomplete
+  // scan cannot support a definite path: a member sharing this name could be sitting behind the
+  // unreadable manifest that made it incomplete, and it would win once readable — so prescribing
+  // `.` now would be advice that a later sync contradicts. And more than one claimant is a real
+  // ambiguity, not something to resolve by taking the first: `refs add` itself keeps the LAST,
+  // so picking either here would be prescribing something registration does not do.
+  if (!scanIsReliable(scan)) {
+    return [];
+  }
+  const lookup = lookupPackagePath(scan.packages, root.name);
+  if (lookup.kind === 'ambiguous') {
+    return [{ candidates: lookup.paths, name: root.name, status: 'unregistered' }];
+  }
+  return lookup.kind === 'found'
+    ? [{ name: root.name, path: lookup.path, status: 'unregistered' }]
+    : [];
 };
 
 /** Probes every package `packages` configures against `checkoutDir`. LOCK-FREE by contract: the
@@ -235,10 +248,20 @@ const UNKNOWN_PATH = '(unknown)';
  * one whose repair no command performs. `refs add` refuses an already-tracked ref and
  * `refs edit --package` needs an entry to edit, so the honest instruction is the entry itself, in
  * the shape `config.toml` takes it. */
-const unregisteredLine = (issue: StructureIssue): string =>
-  `${issue.name}: declared by the repository root but not registered — the repository cannot be ` +
-  `resolved by its own name until it is. Add under [refs."<ref>".packages."${issue.name}"]: ` +
-  `path = "${issue.path ?? UNKNOWN_PATH}" and a description`;
+const unregisteredLine = (issue: StructureIssue): string => {
+  const head =
+    `${issue.name}: declared by the repository root but not registered — the repository cannot ` +
+    `be resolved by its own name until it is`;
+  if (issue.path === undefined) {
+    // More than one directory declares this name, so which one to register is a decision, not a
+    // lookup. Naming the candidates is the most this can honestly do.
+    return `${head}. Declared at several paths (${(issue.candidates ?? []).join(', ')}) — pick one`;
+  }
+  return (
+    `${head}. Add under [refs."<ref>".packages."${issue.name}"]: ` +
+    `path = "${issue.path}" and a description`
+  );
+};
 
 /** The three findings about an entry that IS configured — each naming the repair it needs, and the
  * configured path it needs repairing from. */
