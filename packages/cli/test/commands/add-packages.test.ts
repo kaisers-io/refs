@@ -266,6 +266,20 @@ describe('an npm fallback that lands on the root name', () => {
       packagesMissingDescription(packages, registeredRootName(detected, packages)),
     ).toStrictEqual([]);
   });
+
+  it('keeps the manifest description detection already read', () => {
+    expect.hasAssertions();
+    // The packument names the package detection found, at the same path. Replacing that entry with
+    // the bare locator would drop the manifest's own words and let the ref's description stand in
+    // for them — the opposite of the rule that a package describing itself keeps its own.
+    const detected: WorkspacePackage[] = [
+      { description: 'What the manifest says', name: '@acme/toolkit', path: '.' },
+    ];
+
+    const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, '@acme/toolkit');
+
+    expect(packages['@acme/toolkit']?.description).toBe('What the manifest says');
+  });
 });
 
 describe('a workspace declaration that selects nothing', () => {

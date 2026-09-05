@@ -76,7 +76,16 @@ const buildProposalPackages = (
   // here would silently drop the package named in `npm:<pkg>`, which is the whole reason the
   // source was given. The root rides along when it named itself.
   if (npmPkgName !== undefined) {
-    return { ...rootEntry, [npmPkgName]: { path: npmDirectory ?? ROOT_PACKAGE_PATH } };
+    const npmEntry = { path: npmDirectory ?? ROOT_PACKAGE_PATH };
+    const detectedAtSamePath = rootEntry[npmPkgName];
+    // Same name AND same path: the packument is naming the very package detection already read.
+    // Overwriting with the bare locator would throw away the manifest's own description and let
+    // the ref's stand in for it — the opposite of the rule that a package describing itself keeps
+    // its own words. A DIFFERENT path is a different package, and the locator wins there.
+    return {
+      ...rootEntry,
+      [npmPkgName]: detectedAtSamePath?.path === npmEntry.path ? detectedAtSamePath : npmEntry,
+    };
   }
   return rootEntry;
 };
