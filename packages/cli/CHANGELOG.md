@@ -28,7 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   named in an `npm:<pkg>` source survives there too. And where a workspace member already claims the
   root's name — `@remix-run/react-router` is a real example, in a repository that also publishes
   `react-router` — the member wins and the root is simply not registered, which costs that
-  repository nothing it had before.
+  repository nothing it had before. That rule lives in detection itself rather than in `refs add`,
+  so relocation agrees with registration: a member that moves is still found uniquely, instead of
+  becoming ambiguous against a same-named root and leaving `resolve` with no path for a package
+  that is plainly there.
 
   The root package takes the ref's own description when its manifest carries none, which is the
   ordinary case for a private workspace root. That is not the per-package fallback `refs add`

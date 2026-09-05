@@ -39,23 +39,16 @@ const workspaceMembersOf = (detected: readonly WorkspacePackage[]): WorkspacePac
 const rootOf = (detected: readonly WorkspacePackage[]): WorkspacePackage | undefined =>
   detected.find((pkg) => pkg.path === ROOT_PACKAGE_PATH);
 
-/** The root, dropped when a workspace member already claims its name.
+/** The repository root as a proposal entry, if detection found a named one.
  *
- * Detection deduplicates by path, so both survive it; the record below is keyed by name and would
- * keep whichever came last. Not hypothetical — `@remix-run/react-router` is a real root name in a
- * repository that also publishes `react-router` from `packages/`. The member wins because it is
- * the more specific thing and because it is what was registered before roots were looked at: a
- * collision costs that repository nothing it had, rather than turning `refs add` into an error for
- * a shape that used to work. */
-const rootEntryUnlessClaimed = (
+ * No collision handling here: `detectWorkspacePackagesDetailed` already drops a root whose name a
+ * member claims, so that a MOVED member still resolves against the same scan. Repeating the rule
+ * at this layer would be a second place for it to drift. */
+const rootEntryOf = (
   detected: readonly WorkspacePackage[],
 ): Record<string, ProposalPackageEntry> => {
   const root = rootOf(detected);
-  if (root === undefined) {
-    return {};
-  }
-  const claimed = workspaceMembersOf(detected).some((pkg) => pkg.name === root.name);
-  return claimed ? {} : { [root.name]: toProposalEntry(root) };
+  return root === undefined ? {} : { [root.name]: toProposalEntry(root) };
 };
 
 const buildProposalPackages = (
@@ -64,7 +57,7 @@ const buildProposalPackages = (
   npmPkgName: string | undefined,
 ): Record<string, ProposalPackageEntry> => {
   const members = workspaceMembersOf(detected);
-  const rootEntry = rootEntryUnlessClaimed(detected);
+  const rootEntry = rootEntryOf(detected);
   if (members.length > 0) {
     return {
       ...rootEntry,
@@ -154,7 +147,7 @@ const registeredRootName = (
   detected: readonly WorkspacePackage[],
   packages: Record<string, ProposalPackageEntry>,
 ): string | undefined => {
-  const [rootName] = Object.keys(rootEntryUnlessClaimed(detected));
+  const [rootName] = Object.keys(rootEntryOf(detected));
   if (rootName === undefined) {
     return undefined;
   }

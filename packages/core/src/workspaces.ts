@@ -228,6 +228,24 @@ const probeRootPackage = async (repoDir: string): Promise<ProbedDir[]> => {
   return 'pkg' in probed ? [probed] : [];
 };
 
+/** The root, dropped when a workspace member already claims its name — the member wins.
+ *
+ * Applied here rather than at any one consumer, because every consumer has to agree: `refs add`
+ * must not silently keep whichever entry came last, and relocation must still find a member that
+ * MOVED — against a scan holding both, that lookup returns `ambiguous` and leaves `resolve` with
+ * no path for a package that is plainly there. The member wins because it is the more specific
+ * thing, and because it is what was registered before roots were looked at at all. */
+const withoutClaimedRoot = (packages: readonly WorkspacePackage[]): WorkspacePackage[] => {
+  const root = packages.find((pkg) => pkg.path === CURRENT_DIR_SEGMENT);
+  if (root === undefined) {
+    return [...packages];
+  }
+  const claimed = packages.some(
+    (pkg) => pkg.path !== CURRENT_DIR_SEGMENT && pkg.name === root.name,
+  );
+  return claimed ? packages.filter((pkg) => pkg !== root) : [...packages];
+};
+
 const detectWorkspacePackagesDetailed = async (repoDir: string): Promise<WorkspaceScan> => {
   const declared = await readDeclarations(repoDir);
   if (declared.patterns.size === 0) {
@@ -255,7 +273,7 @@ const detectWorkspacePackagesDetailed = async (repoDir: string): Promise<Workspa
       ...expansion.diagnostics,
       ...partitioned.diagnostics,
     ]),
-    packages: deduplicateAndSort(partitioned.packages),
+    packages: withoutClaimedRoot(deduplicateAndSort(partitioned.packages)),
   };
 };
 
