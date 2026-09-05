@@ -916,6 +916,7 @@ on, each with its own `status`:
 | `relocated` | it is now declared at `path`, a different directory | update the entry's `path` |
 | `ambiguous` | several paths (`candidates`) now declare that name | point the entry at the right one |
 | `unverifiable` | the location could not be checked (`reason` says why) | nothing — look again later |
+| `unregistered` | the repository root declares a name the configuration does not have | add the entry, so the repo resolves by its own name |
 
 Drift never turns a successful sync into a failed one, and never changes the exit code: the
 configuration has fallen behind its upstream, which is a thing to fix, not a thing that

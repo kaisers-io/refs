@@ -37,7 +37,9 @@ const seedCheckout = async (home: RefsHome, packagePath: string): Promise<string
   await seedConfig(home, { [ALPHA_KEY]: refEntry(packagePath) });
   const dest = checkoutPath(home, zRefKey.parse(ALPHA_KEY));
   await markCheckoutPresent(dest, { hooksDir: home.hooksDir, url: ALPHA_URL });
-  writeJson(join(dest, 'package.json'), { name: 'root', workspaces: ['packages/*'] });
+  // Unnamed: these cases are about configured entries, and a named root would add an
+  // `unregistered` finding of its own to every one of them.
+  writeJson(join(dest, 'package.json'), { workspaces: ['packages/*'] });
   addPackage(dest, 'packages/a', { name: '@acme/a', version: '1.0.0' });
   return dest;
 };

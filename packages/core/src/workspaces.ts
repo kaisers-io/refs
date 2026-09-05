@@ -15,9 +15,9 @@ import type {
 } from './workspaces-patterns.ts';
 import { join, posix } from 'node:path';
 import { partitionProbes, probePackageDir } from './workspaces-probe.ts';
+import { probeRootPackage, withoutClaimedRoot } from './workspaces-root.ts';
 import { readFile, readdir } from 'node:fs/promises';
 import type { Dirent } from 'node:fs';
-import type { ProbedDir } from './workspaces-probe.ts';
 import { readDeclarations } from './workspaces-declarations.ts';
 import { resolveInside } from './fs-containment.ts';
 
@@ -206,46 +206,6 @@ const expandPatterns = async (repoDir: string, patterns: Set<string>): Promise<E
   return { diagnostics, dirs: [...dirs] };
 };
 
-/** The repository's own root manifest, when it declares a name.
- *
- * A workspace root is not one of its own glob targets, so expansion never reaches it — and a root
- * that names itself is then registered nowhere, which is why resolving a monorepo by the name in
- * its own `package.json` used to come back empty (#88). Both pnpm and Yarn address the root by
- * that name (`pnpm --filter <root-name>`, `yarn workspace <root-name>`); npm and Turborepo use a
- * positional handle instead. Registering it costs nothing where the name is a throwaway — nobody
- * resolves `"root"` or `"monorepo-root"` — and answers the question where it is not.
- *
- * Deliberately its own probe rather than a `.` pattern smuggled into the expansion: no declaration
- * selected the root, and pretending one did would misreport what the repo actually declares.
- *
- * Contributes a package or nothing — never a diagnostic. A diagnostic here would say "a candidate
- * could not be inspected", and there is no candidate: nothing declared the root, this probe went
- * looking on its own. A root that names nothing is the ordinary case (most workspace roots are
- * private and carry `root` or no name at all), and reporting it on every scan of every repository
- * would bury the diagnostics that do mean something. */
-const probeRootPackage = async (repoDir: string): Promise<ProbedDir[]> => {
-  const probed = await probePackageDir(repoDir, CURRENT_DIR_SEGMENT);
-  return 'pkg' in probed ? [probed] : [];
-};
-
-/** The root, dropped when a workspace member already claims its name — the member wins.
- *
- * Applied here rather than at any one consumer, because every consumer has to agree: `refs add`
- * must not silently keep whichever entry came last, and relocation must still find a member that
- * MOVED — against a scan holding both, that lookup returns `ambiguous` and leaves `resolve` with
- * no path for a package that is plainly there. The member wins because it is the more specific
- * thing, and because it is what was registered before roots were looked at at all. */
-const withoutClaimedRoot = (packages: readonly WorkspacePackage[]): WorkspacePackage[] => {
-  const root = packages.find((pkg) => pkg.path === CURRENT_DIR_SEGMENT);
-  if (root === undefined) {
-    return [...packages];
-  }
-  const claimed = packages.some(
-    (pkg) => pkg.path !== CURRENT_DIR_SEGMENT && pkg.name === root.name,
-  );
-  return claimed ? packages.filter((pkg) => pkg !== root) : [...packages];
-};
-
 const detectWorkspacePackagesDetailed = async (repoDir: string): Promise<WorkspaceScan> => {
   const declared = await readDeclarations(repoDir);
   if (declared.patterns.size === 0) {
@@ -286,6 +246,7 @@ const detectWorkspacePackages = async (repoDir: string): Promise<WorkspacePackag
 };
 
 export { detectWorkspacePackages, detectWorkspacePackagesDetailed };
+export { readRootPackage, withoutClaimedRoot } from './workspaces-root.ts';
 // Re-exported here rather than from `workspaces-patterns.ts` directly: a consumer that gets a
 // scan from this module needs the predicate that says whether it may be trusted, and the two
 // belong together in the public surface.

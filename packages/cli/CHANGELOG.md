@@ -36,6 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   having moved to the repository root — which would have sent a caller to the wrong directory and
   described a move that never happened.
 
+  Refs tracked before this change keep the package map they were given, and no command adds one
+  entry to an existing ref — `refs add` refuses a tracked ref, `refs edit --package` needs an entry
+  to edit. So `refs sync` and `refs doctor`'s `config-drift` check now report a root the
+  configuration does not register, with the entry to add — including the path registration would
+  actually use, which is the member's rather than the root's where a workspace member declares the
+  same name. That costs one manifest read per ref, and a workspace scan only where there is
+  something to report; it is asked only of refs that already register packages, since a plain
+  reference repository registers none on purpose and is left alone.
+
   The root package takes the ref's own description when its manifest carries none, which is the
   ordinary case for a private workspace root. That is not the per-package fallback `refs add`
   otherwise refuses: the root is not a package beside the repository, it is that repository.
