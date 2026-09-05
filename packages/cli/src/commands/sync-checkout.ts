@@ -1,6 +1,6 @@
 import type { CloneMode, RefEntry, RefKey, RefsHome, Settings } from '@kaisers-io/refs-core';
-import { allowFileUrlsFrom, refLockName } from './add-source.ts';
 import {
+  addedPackageDirs,
   assertInsideSources,
   checkoutPath,
   cloneRepo,
@@ -12,13 +12,15 @@ import {
   withLock,
   zRefState,
 } from '@kaisers-io/refs-core';
+import { allowFileUrlsFrom, refLockName } from './add-source.ts';
 import {
   ensureCheckoutOrigin,
   ensureManagedCheckout,
   resolveCheckoutHead,
 } from './add-checkout-guards.ts';
 import type { CliContext } from '../context.ts';
-import type { StructureReport } from './drift-probe.ts';
+import type { MemberDiscovery } from './drift-discovery.ts';
+import type { StructureReport } from './drift-report.ts';
 import { dirname } from 'node:path';
 import { mkdir } from 'node:fs/promises';
 import { probeRefStructure } from './drift-probe.ts';
@@ -33,6 +35,9 @@ type SyncStatus = 'cloned' | 'fresh' | 'restored' | 'updated';
 type RefSyncOutcome = {
   headSha: string;
   status: SyncStatus;
+  /** The sha the checkout was on BEFORE this sync — absent on a clone, which has no "before".
+   * Only `arrivalsFor` reads it, and only to ask git what appeared in between. */
+  previousSha?: string;
   branchRenamedTo?: string;
   effectiveCloneMode?: CloneMode;
   structure?: StructureReport;
@@ -135,7 +140,7 @@ const syncExistingCheckout = async (
   });
   const result = await syncRef(ctx.runner, { defaultBranch: rsc.ref.default_branch, dir: dest });
   const headSha = validateHeadSha(rsc.key, dest, result.newSha);
-  const outcome: RefSyncOutcome = { headSha, status: result.status };
+  const outcome: RefSyncOutcome = { headSha, previousSha: result.oldSha, status: result.status };
   if (result.branchRenamedTo !== undefined) {
     outcome.branchRenamedTo = result.branchRenamedTo;
   }
@@ -162,6 +167,31 @@ const gitOutcomeFor = (
   return syncExistingCheckout(ctx, rsc, dest);
 };
 
+/** Which unregistered workspace members this sync is allowed to report.
+ *
+ * `sync` runs unattended and on every ref, so it reports only what THIS fetch added — a ref whose
+ * owner tracks 3 packages out of 140 must not be told about the other 137 on every run. A fresh
+ * clone reports nothing at all: `add` registered it moments ago, and everything in it would be an
+ * "arrival". `doctor` asks for `{kind: 'all'}` instead, because there the complete list is what
+ * was requested.
+ *
+ * Best-effort, like `addedPackageDirs` itself: no diff, no arrivals, never a failed sync. */
+const arrivalsFor = async (
+  ctx: CliContext,
+  dest: string,
+  outcome: RefSyncOutcome,
+): Promise<MemberDiscovery> => {
+  if (outcome.previousSha === undefined) {
+    return { kind: 'arrivals', paths: [] };
+  }
+  const paths = await addedPackageDirs(ctx.runner, {
+    dir: dest,
+    from: outcome.previousSha,
+    to: outcome.headSha,
+  });
+  return { kind: 'arrivals', paths };
+};
+
 /** Runs the git side of one ref's sync under its per-ref lock only — no config/state write here,
  * see `sync-state.ts#applySyncSuccess` for the separate, sequential home-lock step.
  *
@@ -177,7 +207,8 @@ const syncCheckout = (ctx: CliContext, rsc: RefSyncContext): Promise<RefSyncOutc
   withLock(rsc.home, refLockName(rsc.key), async () => {
     const dest = checkoutPath(rsc.home, rsc.key);
     const outcome = await gitOutcomeFor(ctx, rsc, dest);
-    return { ...outcome, structure: await probeRefStructure(dest, rsc.ref.packages) };
+    const discovery = await arrivalsFor(ctx, dest, outcome);
+    return { ...outcome, structure: await probeRefStructure(dest, rsc.ref.packages, discovery) };
   });
 
 export { syncCheckout };

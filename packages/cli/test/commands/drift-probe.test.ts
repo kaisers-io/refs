@@ -1,13 +1,27 @@
 import { addPackage, freshRepo, writeJson } from '../helpers/workspace-fixture.ts';
 import { describe, expect, it } from 'vitest';
-import { driftLines, probeRefStructure } from '../../src/commands/drift-probe.ts';
+import type { MemberDiscovery } from '../../src/commands/drift-discovery.ts';
 import type { PackageEntry } from '@kaisers-io/refs-core';
+import { driftLines } from '../../src/commands/drift-report.ts';
 import { join } from 'node:path';
+import { probeRefStructure } from '../../src/commands/drift-probe.ts';
 import { writeFileSync } from 'node:fs';
 
 // `drift-probe.ts` against real directories — the probe is pure filesystem reading, so a plain
 // temp tree is the whole fixture; no git repo, no lock, no CLI. `sync-drift.test.ts` covers the
 // same code through the real command, and `doctor-drift.test.ts` through `refs doctor`.
+
+// Member discovery off: these cases are about configured entries and the repository root, and
+// `sync` only ever discovers members this fetch ADDED. `drift-unregistered-members.test.ts`
+// covers both discovery modes.
+const ARRIVALS_NONE: MemberDiscovery = { kind: 'arrivals', paths: [] };
+
+/** `probeRefStructure` with member discovery off — the shape `sync` uses on a ref whose fetch
+ * added nothing, and the only one these cases are about. */
+const probe = (
+  checkoutDir: string,
+  packages: Parameters<typeof probeRefStructure>[1],
+): ReturnType<typeof probeRefStructure> => probeRefStructure(checkoutDir, packages, ARRIVALS_NONE);
 
 const ONE_ISSUE = 1;
 const TWO_ISSUES = 2;
@@ -30,7 +44,7 @@ describe('probeRefStructure: nothing to report', () => {
   it('reports ok without a packages key when the ref configures no packages', async () => {
     expect.hasAssertions();
 
-    await expect(probeRefStructure(monorepo(), NO_PACKAGES)).resolves.toStrictEqual({
+    await expect(probe(monorepo(), NO_PACKAGES)).resolves.toStrictEqual({
       status: 'ok',
     });
   });
@@ -38,7 +52,7 @@ describe('probeRefStructure: nothing to report', () => {
   it('reports ok when every configured path still declares its package', async () => {
     expect.hasAssertions();
 
-    const report = await probeRefStructure(monorepo(), { '@fixture/a': entry('packages/a') });
+    const report = await probe(monorepo(), { '@fixture/a': entry('packages/a') });
 
     expect(report).toStrictEqual({ status: 'ok' });
   });
@@ -48,7 +62,7 @@ describe('probeRefStructure: removal vs relocation', () => {
   it('reports a package the upstream repo no longer declares as missing', async () => {
     expect.hasAssertions();
 
-    const report = await probeRefStructure(monorepo(), { '@fixture/b': entry('packages/b') });
+    const report = await probe(monorepo(), { '@fixture/b': entry('packages/b') });
 
     expect(report.status).toBe('drift');
     expect(report.packages).toStrictEqual([
@@ -61,7 +75,7 @@ describe('probeRefStructure: removal vs relocation', () => {
     const repo = monorepo();
     addPackage(repo, 'packages/moved', { name: '@fixture/b', version: '1.0.0' });
 
-    const report = await probeRefStructure(repo, { '@fixture/b': entry('packages/b') });
+    const report = await probe(repo, { '@fixture/b': entry('packages/b') });
 
     expect(report.status).toBe('drift');
     expect(report.packages).toStrictEqual([
@@ -80,7 +94,7 @@ describe('probeRefStructure: removal vs relocation', () => {
     addPackage(repo, 'packages/one', { name: '@fixture/b', version: '1.0.0' });
     addPackage(repo, 'packages/two', { name: '@fixture/b', version: '1.0.0' });
 
-    const report = await probeRefStructure(repo, { '@fixture/b': entry('packages/b') });
+    const report = await probe(repo, { '@fixture/b': entry('packages/b') });
 
     expect(report.status).toBe('drift');
     expect(report.packages?.[0]).toStrictEqual({
@@ -100,7 +114,7 @@ describe('probeRefStructure: a failure to look is never a drift claim', () => {
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     writeFileSync(join(repo, 'packages/broken/package.json'), '{ not json');
 
-    const report = await probeRefStructure(repo, {
+    const report = await probe(repo, {
       '@fixture/broken': entry('packages/broken'),
     });
 
@@ -113,7 +127,7 @@ describe('probeRefStructure: a failure to look is never a drift claim', () => {
     const repo = freshRepo();
     writeJson(join(repo, 'package.json'), {});
 
-    const report = await probeRefStructure(repo, { '@fixture/b': entry('packages/b') });
+    const report = await probe(repo, { '@fixture/b': entry('packages/b') });
 
     expect(report.status).toBe('unknown');
     expect(report.packages?.[0]?.reason).toContain('declares no workspaces');
@@ -128,7 +142,7 @@ describe('probeRefStructure: a failure to look is never a drift claim', () => {
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     writeFileSync(join(repo, 'packages/a/package.json'), '{ not json');
 
-    const report = await probeRefStructure(repo, { '@fixture/b': entry('packages/b') });
+    const report = await probe(repo, { '@fixture/b': entry('packages/b') });
 
     expect(report.status).toBe('unknown');
     expect(report.packages?.[0]?.reason).toContain('incomplete');
@@ -146,7 +160,7 @@ describe('probeRefStructure: mixed findings', () => {
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     writeFileSync(join(repo, 'vendor/broken/package.json'), '{ not json');
 
-    const report = await probeRefStructure(repo, {
+    const report = await probe(repo, {
       '@fixture/b': entry('packages/b'),
       '@fixture/vendored': entry('vendor/broken'),
     });
@@ -223,7 +237,7 @@ describe('probeRefStructure: a root that shares a package name', () => {
     });
     addPackage(repo, 'packages/other', { name: '@fixture/other', version: '1.0.0' });
 
-    const report = await probeRefStructure(repo, {
+    const report = await probe(repo, {
       '@fixture/toolkit': entry('packages/toolkit'),
     });
 
@@ -233,7 +247,9 @@ describe('probeRefStructure: a root that shares a package name', () => {
       status: 'missing',
     });
   });
+});
 
+describe('probeRefStructure: a move that really happened', () => {
   it('still reports a real move between two subdirectories', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
@@ -244,7 +260,7 @@ describe('probeRefStructure: a root that shares a package name', () => {
     // The member moved rather than vanished, and the same-named root must not obscure that.
     addPackage(repo, 'packages/new-toolkit', { name: '@fixture/toolkit', version: '1.0.0' });
 
-    const report = await probeRefStructure(repo, {
+    const report = await probe(repo, {
       '@fixture/toolkit': entry('packages/toolkit'),
     });
 

@@ -1,10 +1,12 @@
 import type { Config, RefsHome } from '@kaisers-io/refs-core';
 import { RefsError, withLock } from '@kaisers-io/refs-core';
-import { driftLines, probeRefStructure } from './drift-probe.ts';
 import type { CheckResult } from './doctor-types.ts';
 import type { ExistingCheckout } from './doctor-checks-checkouts.ts';
-import type { StructureReport } from './drift-probe.ts';
+import type { StructureReport } from './drift-report.ts';
+// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
+import { driftLines } from './drift-report.ts';
 import { existingCheckouts } from './doctor-checks-checkouts.ts';
+import { probeRefStructure } from './drift-probe.ts';
 import { refLockName } from './add-source.ts';
 
 // The `config-drift` check: does every configured package still live where the config says it
@@ -44,7 +46,7 @@ const probeUnderLock = async (
     return await withLock(
       home,
       refLockName(item.key),
-      () => probeRefStructure(item.dest, config.refs[item.key]?.packages),
+      () => probeRefStructure(item.dest, config.refs[item.key]?.packages, { kind: 'all' }),
       { timeoutMs: DOCTOR_LOCK_TIMEOUT_MS },
     );
   } catch (error) {
