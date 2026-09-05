@@ -9,6 +9,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A monorepo can now be resolved by the name in its own root manifest.** Workspace detection
+  expands the globs a repository declares, and a workspace root is not one of its own targets — so a
+  root that names itself was registered nowhere, and `refs resolve @acme/toolkit` came back empty
+  for a repository that was tracked all along. `refs add` now registers a named root at `path: "."`
+  alongside the workspace members.
+
+  Both pnpm and Yarn address a workspace root by that name (`pnpm --filter <root-name>`,
+  `yarn workspace <root-name>`); npm and Turborepo use a positional handle instead. Of eighteen
+  well-known monorepos surveyed, eight carry a name someone would plausibly use for the repository
+  and ten carry a throwaway like `root` or `monorepo-root` — which is what settles it: registering
+  the name costs nothing where it is a throwaway, since nobody resolves `"root"`, and answers the
+  question where it is not.
+
+  Two things this deliberately does not do. A repository that declares no workspaces is untouched:
+  `refs add`'s npm fallback owns that shape, and probing the root there would displace a locator it
+  did not choose — as it also would where a workspace declaration selects nothing, so the package
+  named in an `npm:<pkg>` source survives there too. And where a workspace member already claims the
+  root's name — `@remix-run/react-router` is a real example, in a repository that also publishes
+  `react-router` — the member wins and the root is simply not registered, which costs that
+  repository nothing it had before. That rule lives in detection itself rather than in `refs add`,
+  so relocation agrees with registration: a member that moves is still found uniquely, instead of
+  becoming ambiguous against a same-named root and leaving `resolve` with no path for a package
+  that is plainly there. And a root is never reported as a package's new location: its name is an
+  alias for the repository, so a member that upstream deletes is reported as gone rather than as
+  having moved to the repository root — which would have sent a caller to the wrong directory and
+  described a move that never happened.
+
+  The root package takes the ref's own description when its manifest carries none, which is the
+  ordinary case for a private workspace root. That is not the per-package fallback `refs add`
+  otherwise refuses: the root is not a package beside the repository, it is that repository.
+
+- **A failed lookup no longer reads as an absent repository.** `refs resolve` exits `4` when a query
+  matches nothing, and the message ended "run refs list, or add it: `refs add <url>`". That second
+  half is a guess: a query can miss every route while the repository is tracked perfectly well under
+  another identifier — a monorepo root whose own package name was never registered, for instance.
+  An agent read the suggestion as confirmation and told someone a repository they had tracked was
+  not tracked, then stopped.
+
+  The message now states what was searched and points at evidence rather than prescribing a fix, and
+  `--json` carries a `reason` on `resolve`'s routing misses: `unmatched_query` (nothing matched, by
+  any route), `package_not_registered` (the ref is tracked and registers no such package), or
+  `ref_not_registered` (a canonical git url named an absent ref — the one case where adding it is
+  the right answer, since only a canonical url establishes which ref was meant). There is deliberately no reason meaning "this repository does not exist", because nothing
+  refs can observe establishes that; and `reason` is absent on every other `not_found`, where its
+  absence means no narrowing is available rather than being a fourth value.
+
+  The skill's instruction changed with it. It used to say exit `4` means the ref is not tracked; it
+  now says exit `4` means the query matched no route, and requires a second lookup before any
+  conclusion. `refs resolve --ref <ref>`'s own miss also stopped suggesting a bare `refs show`,
+  which reports a package count and no names — it now suggests `--packages`, which actually shows
+  the map the reader was sent to inspect.
+
 - **A stale-lock reclaim could delete a lock another process was using.** refs reclaims a lock left
   behind by a crashed process. The check that decided a lock was abandoned and the removal that
   acted on it were two separate steps, and in the gap between them the lock could legitimately

@@ -12,13 +12,22 @@ skill fetches, tracks, or suggests. Real ones come from the user's own config, v
 
 ```
 {"ok":true,"data":<command-specific>,"warnings":[<string>]}
-{"ok":false,"error":{"code":"<code>","message":"<string>"}}
+{"ok":false,"error":{"code":"<code>","message":"<string>","reason":"<reason>"}}
 ```
 
 In `--json` mode **both** envelopes go to stdout as one line — parse stdout only. (stderr
 carries nothing but `refs add`'s progress lines.) `error.code` is `unexpected` | `usage` |
 `validation` | `not_found` | `conflict`, matching exit `1` | `2` | `3` | `4` | `5`. `0` is
 success.
+
+`reason` appears on `refs resolve`'s routing misses only, and exists because the code alone
+invites a false conclusion: it says a lookup came back EMPTY, never that the thing is absent.
+Absent on every other `not_found` (missing config, absent checkout, unknown ref for `show`) —
+absence is not a fourth value, it means no narrowing is available.
+`unmatched_query` (the identifier resolved to nothing — the repository may still be tracked under
+another name) | `package_not_registered` (the ref is tracked and registers no such package) |
+`ref_not_registered` (a canonical git url named a ref that is not configured — the one case where
+adding it is right; a `--ref` suffix that misses is `unmatched_query`, not this).
 
 Global flags: `--json` (always pass it) and `--verbose` (stack traces on error — omitted
 from the per-command lists below; you never need it). `-h`/`--help` and `-V`/`--version`

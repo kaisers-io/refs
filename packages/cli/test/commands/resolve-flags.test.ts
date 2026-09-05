@@ -4,37 +4,15 @@ import { describe, expect, it } from 'vitest';
 import { rm, writeFile } from 'node:fs/promises';
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
 import { join } from 'node:path';
-import { run } from '../../src/main.ts';
+import { resolveJson } from '../helpers/resolve-support.ts';
 import { seedConfig } from '../helpers/ref-fixtures.ts';
-import { testContext } from '../helpers/context.ts';
 
 // `refs resolve`'s flags, at the CLI boundary. Between them they replace the three-call sequence
 // the skill used to mandate — resolve, sync, resolve AGAIN — with one call, and close the gap where
 // resolve reported a path without establishing that the path was this ref's checkout.
 
-type JsonEnvelope = {
-  data: Record<string, unknown>;
-  error?: { code: string; message: string };
-  ok: boolean;
-};
-
 // Git stores a backslash in a config value as `\\`; a Windows hooks path is full of them.
 const escapeGitValue = (value: string): string => value.replaceAll('\\', String.raw`\\`);
-
-const soleEnvelope = (stdout: readonly string[]): JsonEnvelope => {
-  const [line] = stdout;
-  if (line === undefined) {
-    throw new Error('expected exactly one json envelope line, got none');
-  }
-  return JSON.parse(line) as JsonEnvelope;
-};
-
-const resolveJson = async (homeDir: string, args: readonly string[]): Promise<JsonEnvelope> => {
-  const { ctx, stdout } = testContext();
-  ctx.env['REFS_HOME'] = homeDir;
-  await run(ctx, ['node', 'refs', 'resolve', ...args, '--json']);
-  return soleEnvelope(stdout);
-};
 
 describe('refs resolve --ref: scoping a package name to one ref', () => {
   it('resolves the package within the named ref', async () => {
@@ -64,8 +42,10 @@ describe('refs resolve --ref: scoping a package name to one ref', () => {
       }),
     );
   });
+});
 
-  it('reports a package the named ref does not register, instead of falling back to the ref', async () => {
+describe('refs resolve --ref: a package the named ref does not register', () => {
+  it('reports the miss instead of falling back to the ref itself', async () => {
     expect.hasAssertions();
     await withResetExitCode(() =>
       withTempHome(async (homeDir) => {
@@ -76,7 +56,13 @@ describe('refs resolve --ref: scoping a package name to one ref', () => {
         // Falling through to ref routing would hand back the ref with `package: null` — a success
         // envelope answering a question nobody asked. The caller named the ref; a query that
         // matches nothing in it is a mistake worth reporting.
-        expect(envelope.error?.code).toBe('not_found');
+        expect(envelope.error).toMatchObject({
+          code: 'not_found',
+          // The ref WAS identified; only the package lookup inside it failed. Reporting
+          // `unmatched_query` here would say every route was searched when only this ref's package
+          // map was.
+          reason: 'package_not_registered',
+        });
       }),
     );
   });

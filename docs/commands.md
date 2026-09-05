@@ -32,8 +32,23 @@ read one stream. In human mode, output goes to stdout, warnings go to stderr as
 | `1`  | Unexpected error (including: a `sync`/`doctor` batch with per-item failures — see below) |
 | `2`  | Usage error (bad arguments/flags)                                                        |
 | `3`  | Validation error (bad input value, malformed config)                                     |
-| `4`  | Not found (no matching ref/package/checkout)                                             |
+| `4`  | Not found — the query matched nothing, which is not the same as the thing not existing   |
 | `5`  | Conflict (e.g. `refs add` on an already-configured ref)                                  |
+
+**`4` says a lookup came back empty, not that the thing is absent.** A query can miss every route
+while the repository is perfectly well tracked under another identifier. In `--json` mode,
+`refs resolve`'s routing misses therefore carry a `reason` naming the scope that was searched:
+
+| `reason` | What it establishes |
+| --- | --- |
+| `unmatched_query` | The identifier resolved to nothing. The intended repository is unknown and may still be tracked under a different name — a key suffix that happens not to match, a package name that was never registered. |
+| `package_not_registered` | The ref was identified and registers no package under that name. A fact about that ref's package map, not about the repository. |
+| `ref_not_registered` | A **canonical git url** named a ref the configuration does not have. Canonical is the whole of it: only a url resolved to an exact key establishes which ref was meant, so this is the only one of the three where adding it is the right answer. A `--ref` suffix that fails to match is `unmatched_query` — the repository may be configured under a key that identifier does not reach. |
+
+There is deliberately no reason meaning "this repository does not exist": nothing refs can observe
+establishes that. `reason` is also **absent** on every other `not_found` — a missing config, an
+absent checkout, an unknown ref passed to `show`. Its absence is not a fourth value: it means no
+narrowing is available, and the code still says only that a lookup came back empty.
 
 **`sync` and `doctor` are special.** Both run a batch of independent checks/operations
 that are individually allowed to fail without aborting the rest — a per-item failure is

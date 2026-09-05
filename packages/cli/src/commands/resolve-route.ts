@@ -36,8 +36,29 @@ type RouteOptions = {
   ref?: string;
 };
 
+// Describes what was searched; does NOT prescribe adding the repository.
+//
+// It used to end "run refs list, or add it: refs add <url>", and the second half was a guess: a
+// query can miss every route while the repository is perfectly well tracked under another
+// identifier — a monorepo root whose own package name was never registered, say. An agent read
+// that suggestion as confirmation and told a user their tracked repo was untracked.
+//
+// So the remedy is now evidence rather than instruction: `refs list` shows what IS configured,
+// which is true regardless of which scope failed. `refs add` appears only where the query named a
+// ref outright and that ref really is absent — the one case where adding is the right advice.
 const notFoundMessage = (query: string): string =>
-  `no ref matches '${query}' — run refs list, or add it: refs add <url>`;
+  `no registered package or ref matches '${query}' — this does not establish that the ` +
+  `repository is untracked; it may be registered under a different identifier. Run: refs list --json`;
+
+const refNotRegisteredMessage = (key: RefKey): string =>
+  `ref '${key}' is not in the active refs configuration — to track it: refs add <url>`;
+
+// `--ref` takes a full key or a unique suffix of one, so a miss says the identifier did not
+// resolve — never that the repository is absent. It names the shapes that DO work instead of
+// prescribing anything.
+const refUnresolvedMessage = (ref: string): string =>
+  `--ref '${ref}' matched no configured ref — pass a full ref key or a unique suffix of one. ` +
+  `Run: refs list --json`;
 
 // A query that plainly LOOKS like a git url — either a `scheme://...` form (scheme anchored at
 // the very start of the string, so an unrelated import path that merely CONTAINS "://" further in,
@@ -95,7 +116,10 @@ const tryUrlRoute = (
   if (Object.hasOwn(config.refs, canonical.key)) {
     return { key: canonical.key };
   }
-  throw notFoundError(notFoundMessage(query));
+  // A canonical git url names one ref and nothing else, so this genuinely IS "that ref is not
+  // configured" — the only miss in this file where suggesting `refs add` is sound. The key is
+  // named rather than the raw query: a url can carry credentials, the canonical key cannot.
+  throw notFoundError(refNotRegisteredMessage(canonical.key), 'ref_not_registered');
 };
 
 type PackageEntryMatch = {
@@ -174,15 +198,25 @@ const findPackageByPrefix = (config: Config, query: string): PackageMatch | unde
   return undefined;
 };
 
-// Step 4: suffix match via `list.ts`'s `matchRefKey`. Its ambiguity `usageError` (more than one
-// candidate) passes through unchanged, but its plain not_found ("no ref matches '<query>'", no
-// call-to-action) is replaced with resolve's own — the message every no-match path here ends on.
-const matchSuffixOrThrow = (config: Config, query: string): RefKey => {
+// Suffix match via `list.ts`'s `matchRefKey`. Its ambiguity `usageError` (more than one candidate)
+// passes through unchanged, but its plain not_found ("no ref matches '<query>'", no call-to-action)
+// is replaced with a message the caller supplies, because the same lookup fails for two different
+// reasons — unscoped step 4, and resolving an explicit `--ref`.
+//
+// The REASON is `unmatched_query` either way, and deliberately not the stronger
+// `ref_not_registered`. `matchRefKey` compares full keys and key suffixes; a miss means the
+// identifier resolved to nothing, NOT that the ref is absent. With
+// `github.com/vercel/next.js` configured, `--ref next` misses and `--ref next.js` succeeds — the
+// same repository, one identifier that happens not to be a suffix. Calling that "not registered"
+// and suggesting `refs add` would recreate, one flag over, exactly the false conclusion this
+// module was changed to stop. Only a canonical git url establishes an exact identity, and only
+// `tryUrlRoute` uses the stronger reason.
+const matchSuffixOrThrow = (config: Config, query: string, message: string): RefKey => {
   try {
     return matchRefKey(config, query);
   } catch (error) {
     if (error instanceof RefsError && error.code === 'not_found') {
-      throw notFoundError(notFoundMessage(query));
+      throw notFoundError(message, 'unmatched_query');
     }
     throw error;
   }
@@ -213,15 +247,18 @@ const packageWithin = (
 };
 
 const routeWithinRef = (config: Config, query: string, ref: string): RouteMatch => {
-  const key = matchSuffixOrThrow(config, ref);
+  const key = matchSuffixOrThrow(config, ref, refUnresolvedMessage(ref));
   const found = packageWithin(config.refs[key]?.packages ?? {}, query);
   if (found === undefined) {
     // A url-shaped query is never echoed: it can carry credentials, which is the same reason the
     // unscoped path raises a message that does not mention the query at all.
+    // `--packages`, not a bare `show`: without it the output carries a package COUNT and no
+    // names, so a reader following this advice still cannot see what the ref does register.
     throw notFoundError(
       looksLikeGitUrl(query)
-        ? `ref '${key}' registers no package matching that query — run: refs show ${key} --json`
-        : `ref '${key}' registers no package matching '${query}' — run: refs show ${key} --json`,
+        ? `ref '${key}' is tracked but registers no package matching that query — inspect: refs show ${key} --packages --json`
+        : `ref '${key}' is tracked but registers no package matching '${query}' — inspect: refs show ${key} --packages --json`,
+      'package_not_registered',
     );
   }
   return { key, packageMatch: { ...found, key } };
@@ -240,7 +277,7 @@ const routeUnscoped = (config: Config, query: string, options: RouteOptions): Ro
   if (prefixed !== undefined) {
     return { key: prefixed.key, packageMatch: prefixed };
   }
-  return { key: matchSuffixOrThrow(config, query) };
+  return { key: matchSuffixOrThrow(config, query, notFoundMessage(query)) };
 };
 
 /** The one entry point: `--ref` switches to package-only routing within that ref, everything else

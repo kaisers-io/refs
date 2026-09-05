@@ -78,11 +78,13 @@ const runAddProposal = async (ctx: CliContext, location: string): Promise<AddOut
 };
 
 // `requireAllDescribed` runs FIRST, before anything else here and before `finalizeRef` is ever
-// reached — the one-shot `--description` text is only ever the top-level ref's own description,
-// never a per-package fallback (see that function's own doc comment), so any package still missing
-// a detected description must fail closed here, with no config/state write having happened yet.
+// reached — the one-shot `--description` text is the top-level ref's own description and not a
+// fallback for any CHILD package, so any of those still missing a detected description must fail
+// closed here, with no config/state write having happened yet. The root package registered at `.`
+// is the single exception, and not really an exception at all: it is this repository, so the ref's
+// description describes it exactly (see `withRootDescription`).
 const buildDescriptionRef = (outcome: DryRunOutcome, description: string): FinalizedRefInput => {
-  requireAllDescribed(outcome.proposal.packages);
+  requireAllDescribed(outcome.proposal.packages, outcome.rootPackageName);
   const ref: FinalizedRefInput = {
     default_branch: outcome.proposal.default_branch,
     description,
@@ -92,7 +94,10 @@ const buildDescriptionRef = (outcome: DryRunOutcome, description: string): Final
   if (outcome.proposal.tag_format_candidate !== null) {
     ref.tag_format = outcome.proposal.tag_format_candidate;
   }
-  const packages = buildFinalPackages(outcome.proposal.packages);
+  const packages = buildFinalPackages(outcome.proposal.packages, {
+    refDescription: description,
+    ...(outcome.rootPackageName === undefined ? {} : { rootPackageName: outcome.rootPackageName }),
+  });
   if (packages !== undefined) {
     ref.packages = packages;
   }

@@ -14,6 +14,7 @@ import {
   refLockName,
   resolveAddSource,
 } from './add-source.ts';
+import { buildProposalPackages, registeredRootName } from './add-packages.ts';
 import {
   checkoutPath,
   detectDefaultBranch,
@@ -29,7 +30,6 @@ import {
 } from '@kaisers-io/refs-core';
 import type { CliContext } from '../context.ts';
 import type { ResolvedSource } from './add-source.ts';
-import { buildProposalPackages } from './add-packages.ts';
 import { ensureClonedCheckout } from './add-checkout-guards.ts';
 import { progress } from '../output.ts';
 
@@ -41,12 +41,19 @@ type DryRunOutcome = {
   dest: string;
   effectiveCloneMode?: CloneMode;
   proposal: Proposal;
+  /** The detected workspace root's package name, when its manifest declares one. Carried on the
+   * in-process outcome rather than in the serialized `Proposal`: only the one-shot `--description`
+   * flow needs it (to know which entry the ref's own description may describe), and the two-phase
+   * flow gets its descriptions from a human instead. Adding it to the proposal file would change a
+   * published format for a fact nobody reading that file needs. */
+  rootPackageName?: string;
   warning?: string;
 };
 
 type DetectedFields = {
   defaultBranch: string;
   packages: Proposal['packages'];
+  rootPackageName?: string;
   tagFormatCandidate: TagFormat | null;
 };
 
@@ -61,7 +68,13 @@ const detectProposalFields = async (
   progress(ctx, 'detecting workspace packages…');
   const detected = await detectWorkspacePackages(dest);
   const packages = buildProposalPackages(detected, resolved.npmDirectory, resolved.npmPkgName);
-  return { defaultBranch, packages, tagFormatCandidate };
+  const rootPackageName = registeredRootName(detected, packages);
+  return {
+    defaultBranch,
+    packages,
+    ...(rootPackageName === undefined ? {} : { rootPackageName }),
+    tagFormatCandidate,
+  };
 };
 
 type CloneAndDetectOpts = {
@@ -117,6 +130,9 @@ const buildDryRunOutcome = (opts: BuildDryRunOutcomeOpts): DryRunOutcome => {
     url: opts.resolved.cloneUrl,
   };
   const outcome: DryRunOutcome = { dest: opts.dest, proposal };
+  if (opts.cloneResult.fields.rootPackageName !== undefined) {
+    outcome.rootPackageName = opts.cloneResult.fields.rootPackageName;
+  }
   if (opts.cloneResult.effectiveMode !== undefined) {
     outcome.effectiveCloneMode = opts.cloneResult.effectiveMode;
   }

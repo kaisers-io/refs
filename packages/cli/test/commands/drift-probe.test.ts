@@ -209,3 +209,50 @@ describe('drift lines: removal reads differently from relocation', () => {
     expect(lines.join(' ')).not.toContain('undefined');
   });
 });
+
+describe('probeRefStructure: a root that shares a package name', () => {
+  it('does not report a deleted member as having moved to the repository root', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // The root declares the same name as a member that upstream has since deleted. The root is
+    // then the only thing carrying that name — and calling it a relocation would send a caller to
+    // the repository root for a package that was removed, describing a move that never happened.
+    writeJson(join(repo, 'package.json'), {
+      name: '@fixture/toolkit',
+      workspaces: ['packages/*'],
+    });
+    addPackage(repo, 'packages/other', { name: '@fixture/other', version: '1.0.0' });
+
+    const report = await probeRefStructure(repo, {
+      '@fixture/toolkit': entry('packages/toolkit'),
+    });
+
+    expect(report.packages?.[0]).toStrictEqual({
+      configured_path: 'packages/toolkit',
+      name: '@fixture/toolkit',
+      status: 'missing',
+    });
+  });
+
+  it('still reports a real move between two subdirectories', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    writeJson(join(repo, 'package.json'), {
+      name: '@fixture/toolkit',
+      workspaces: ['packages/*'],
+    });
+    // The member moved rather than vanished, and the same-named root must not obscure that.
+    addPackage(repo, 'packages/new-toolkit', { name: '@fixture/toolkit', version: '1.0.0' });
+
+    const report = await probeRefStructure(repo, {
+      '@fixture/toolkit': entry('packages/toolkit'),
+    });
+
+    expect(report.packages?.[0]).toStrictEqual({
+      configured_path: 'packages/toolkit',
+      name: '@fixture/toolkit',
+      path: 'packages/new-toolkit',
+      status: 'relocated',
+    });
+  });
+});

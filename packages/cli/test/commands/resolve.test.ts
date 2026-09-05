@@ -22,9 +22,13 @@ const WIDGET_ENTRY = {
 
 type JsonEnvelope = {
   data: unknown;
-  error?: { code: string; message: string };
+  error?: { code: string; message: string; reason?: string };
   ok: boolean;
 };
+
+/** The error message, or an empty string. Hoisted out of the test bodies because the fallback is a
+ * conditional, which `vitest/no-conditional-in-test` disallows inside `it()`. */
+const messageOf = (envelope: JsonEnvelope): string => envelope.error?.message ?? '';
 
 const parseSoleEnvelope = (stdout: readonly string[]): JsonEnvelope => {
   const [line] = stdout;
@@ -184,7 +188,7 @@ describe('refs resolve: ref-key suffix match (step 4)', () => {
 });
 
 describe('refs resolve: no match at all', () => {
-  it('exits not_found with the resolve not-found envelope', async () => {
+  it('exits not_found and says which scope was searched', async () => {
     expect.hasAssertions();
     await withResetExitCode(() =>
       withTempHome(async (homeDir) => {
@@ -194,18 +198,38 @@ describe('refs resolve: no match at all', () => {
 
         await run(ctx, ['node', 'refs', 'resolve', 'totally-unknown-thing', '--json']);
 
-        const envelope = parseSoleEnvelope(stdout);
-        expect(envelope.ok).toBe(false);
-        expect(envelope.error?.code).toBe('not_found');
-        expect(envelope.error?.message).toBe(
-          "no ref matches 'totally-unknown-thing' — run refs list, or add it: refs add <url>",
-        );
+        // `reason` is what stops a caller over-reading the code: `not_found` alone says a lookup
+        // came back empty, `unmatched_query` says which scope was searched.
+        expect(parseSoleEnvelope(stdout).error).toMatchObject({
+          code: 'not_found',
+          reason: 'unmatched_query',
+        });
         expect(process.exitCode).toBe(EXIT.NOT_FOUND);
       }),
     );
   });
-});
 
+  it('states the limit of the finding instead of prescribing refs add', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, stdout } = testContext();
+        ctx.env['REFS_HOME'] = homeDir;
+        await seedNextFixture(ctx.env);
+
+        await run(ctx, ['node', 'refs', 'resolve', 'totally-unknown-thing', '--json']);
+
+        // The repository may be tracked under another identifier — a monorepo root whose own name
+        // was never registered, say. Suggesting `refs add` there is how an agent came to report a
+        // tracked repository as untracked.
+        const message = messageOf(parseSoleEnvelope(stdout));
+        expect(message).toContain('does not establish that the repository is untracked');
+        expect(message).toContain('refs list --json');
+        expect(message).not.toContain('refs add');
+      }),
+    );
+  });
+});
 describe('refs resolve: ambiguous suffix passes matchRefKey usageError through unchanged', () => {
   it('exits usage rather than not_found for an ambiguous suffix', async () => {
     expect.hasAssertions();

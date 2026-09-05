@@ -28,18 +28,59 @@ const toProposalEntry = (pkg: WorkspacePackage): ProposalPackageEntry => {
  * otherwise, for an `npm:<pkg>` source, seeds a single entry for the package itself — at its
  * packument-declared `directory` when known, else `path: '.'` (a single-package repo); a plain git
  * url with no detected packages gets an empty record (→ no packages table at finalize time). */
+/** Detection minus the repository root — the packages a workspace declaration actually selected.
+ *
+ * The distinction matters in one place and matters a lot there: a root is found by looking, not by
+ * being declared, so "detection found something" must not become true merely because a repository
+ * names its own root. */
+const workspaceMembersOf = (detected: readonly WorkspacePackage[]): WorkspacePackage[] =>
+  detected.filter((pkg) => pkg.path !== ROOT_PACKAGE_PATH);
+
+const rootOf = (detected: readonly WorkspacePackage[]): WorkspacePackage | undefined =>
+  detected.find((pkg) => pkg.path === ROOT_PACKAGE_PATH);
+
+/** The repository root as a proposal entry, if detection found a named one.
+ *
+ * No collision handling here: `detectWorkspacePackagesDetailed` already drops a root whose name a
+ * member claims, so that a MOVED member still resolves against the same scan. Repeating the rule
+ * at this layer would be a second place for it to drift. */
+const rootEntryOf = (
+  detected: readonly WorkspacePackage[],
+): Record<string, ProposalPackageEntry> => {
+  const root = rootOf(detected);
+  return root === undefined ? {} : { [root.name]: toProposalEntry(root) };
+};
+
 const buildProposalPackages = (
   detected: readonly WorkspacePackage[],
   npmDirectory: string | undefined,
   npmPkgName: string | undefined,
 ): Record<string, ProposalPackageEntry> => {
-  if (detected.length > 0) {
-    return Object.fromEntries(detected.map((pkg) => [pkg.name, toProposalEntry(pkg)]));
+  const members = workspaceMembersOf(detected);
+  const rootEntry = rootEntryOf(detected);
+  if (members.length > 0) {
+    return {
+      ...rootEntry,
+      ...Object.fromEntries(members.map((pkg) => [pkg.name, toProposalEntry(pkg)])),
+    };
   }
+  // No member was selected — an empty `packages/*`, or a pattern the classifier does not support.
+  // The npm locator is what the caller asked for and must survive that: seeding only the root
+  // here would silently drop the package named in `npm:<pkg>`, which is the whole reason the
+  // source was given. The root rides along when it named itself.
   if (npmPkgName !== undefined) {
-    return { [npmPkgName]: { path: npmDirectory ?? ROOT_PACKAGE_PATH } };
+    const npmEntry = { path: npmDirectory ?? ROOT_PACKAGE_PATH };
+    const detectedAtSamePath = rootEntry[npmPkgName];
+    // Same name AND same path: the packument is naming the very package detection already read.
+    // Overwriting with the bare locator would throw away the manifest's own description and let
+    // the ref's stand in for it — the opposite of the rule that a package describing itself keeps
+    // its own words. A DIFFERENT path is a different package, and the locator wins there.
+    return {
+      ...rootEntry,
+      [npmPkgName]: detectedAtSamePath?.path === npmEntry.path ? detectedAtSamePath : npmEntry,
+    };
   }
-  return {};
+  return rootEntry;
 };
 
 /** Only called once `requireAllDescribed` has already guaranteed every package carries a detected
@@ -63,12 +104,20 @@ const toFinalPackageEntry = (pkg: ProposalPackageEntry): PackageEntry => {
  * description string. */
 const buildFinalPackages = (
   proposalPackages: Record<string, ProposalPackageEntry>,
+  opts: { refDescription: string; rootPackageName?: string },
 ): Record<string, PackageEntry> | undefined => {
   const entries = Object.entries(proposalPackages);
   if (entries.length === 0) {
     return undefined;
   }
-  return Object.fromEntries(entries.map(([name, pkg]) => [name, toFinalPackageEntry(pkg)]));
+  return Object.fromEntries(
+    entries.map(([name, pkg]) => [
+      name,
+      toFinalPackageEntry(
+        name === opts.rootPackageName ? withRootDescription(pkg, opts.refDescription) : pkg,
+      ),
+    ]),
+  );
 };
 
 /** An absent description AND an empty-string one both count as missing, mirroring
@@ -80,14 +129,55 @@ const buildFinalPackages = (
 const isMissingDescription = (pkg: ProposalPackageEntry): boolean =>
   pkg.description === undefined || pkg.description === '';
 
+/** The name under which the repository root is actually REGISTERED, if it is — read from the
+ * record that was BUILT, not from raw detection.
+ *
+ * That distinction is the whole point. Three different defects came from answering this question
+ * out of `detected`: a root dropped because a member claimed its name, a root displaced by the
+ * `npm:` fallback carrying the packument's own directory, and a root that was never registered at
+ * all. Each one kept handing the root's description exemption to whatever entry ended up under
+ * that name — so a child package with no description of its own silently received text written
+ * about the repository, which is exactly the substitution `buildDescriptionRef`'s rule exists to
+ * prevent.
+ *
+ * Checking the registered path settles all three at once, and the one case it deliberately still
+ * exempts is right: an `npm:` entry that landed at `.` under the root's own name is that root —
+ * same directory, same manifest, same package. */
+const registeredRootName = (
+  detected: readonly WorkspacePackage[],
+  packages: Record<string, ProposalPackageEntry>,
+): string | undefined => {
+  const [rootName] = Object.keys(rootEntryOf(detected));
+  if (rootName === undefined) {
+    return undefined;
+  }
+  return packages[rootName]?.path === ROOT_PACKAGE_PATH ? rootName : undefined;
+};
+
+/** The root package's description falls back to the REF's, and only the root's.
+ *
+ * `buildDescriptionRef`'s rule — the one-shot `--description` is the ref's own text, never a
+ * per-package fallback — exists because a child package is a different thing from the repository
+ * and deserves its own words. The root is not a different thing: it is that repository, at that
+ * path. Almost no workspace root carries a `description` (they are private and unpublished), so
+ * without this the one-shot flow would start refusing nearly every monorepo and forcing the
+ * two-phase proposal on it — a regression on the common path in exchange for asking someone to
+ * restate what they had just typed. A manifest that DOES describe itself keeps its own text. */
+const withRootDescription = (
+  pkg: ProposalPackageEntry,
+  refDescription: string,
+): ProposalPackageEntry =>
+  isMissingDescription(pkg) ? { ...pkg, description: refDescription } : pkg;
+
 /** Lists package names (sorted) missing a detected description — the `--description` one-shot has
  * no per-package description input (unlike the two-phase `--proposal` flow's human review step),
  * so it cannot silently fill these in; see `requireAllDescribed`. */
 const packagesMissingDescription = (
   proposalPackages: Record<string, ProposalPackageEntry>,
+  rootPackageName: string | undefined,
 ): string[] =>
   Object.entries(proposalPackages)
-    .filter(([, pkg]) => isMissingDescription(pkg))
+    .filter(([name, pkg]) => isMissingDescription(pkg) && name !== rootPackageName)
     .map(([name]) => name)
     .toSorted();
 
@@ -96,8 +186,11 @@ const packagesMissingDescription = (
  * precedent — see `resolve.ts`'s multi-ref ambiguity message) rather than just the first. Validates
  * before finalize: called from `add.ts#buildDescriptionRef` before `finalizeRef` ever runs, so a
  * rejection here writes nothing to config or state. */
-const requireAllDescribed = (proposalPackages: Record<string, ProposalPackageEntry>): void => {
-  const missing = packagesMissingDescription(proposalPackages);
+const requireAllDescribed = (
+  proposalPackages: Record<string, ProposalPackageEntry>,
+  rootPackageName?: string,
+): void => {
+  const missing = packagesMissingDescription(proposalPackages, rootPackageName);
   if (missing.length === 0) {
     return;
   }
@@ -157,6 +250,7 @@ export {
   buildRefEntry,
   finalProposalPackages,
   packagesMissingDescription,
+  registeredRootName,
   requireAllDescribed,
 };
 export type { FinalizedRefInput };

@@ -33,7 +33,7 @@ describe('symlink containment', () => {
     expect.hasAssertions();
     const repo = freshRepo();
     const outside = freshRepo();
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['packages/*'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/*'] });
     addPackage(repo, 'packages/a', { description: 'Package A', name: '@mono/a' });
     writeJson(join(outside, 'package.json'), { description: 'Outside', name: '@outside/pkg' });
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
@@ -48,7 +48,7 @@ describe('symlink containment', () => {
     const repo = freshRepo();
     const outside = freshRepo();
     const linkedBaseDir = join(repo, 'packages');
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['packages/*'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/*'] });
     addPackage(outside, 'nested', { name: '@outside/nested', version: '1.0.0' });
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     symlinkSync(outside, linkedBaseDir);
@@ -65,7 +65,7 @@ describe('symlink containment', () => {
     const repo = freshRepo();
     const outside = freshRepo();
     const linkedDir = join(repo, 'linked');
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['linked'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['linked'] });
     writeJson(join(outside, 'package.json'), { description: 'Outside', name: '@outside/pkg' });
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     symlinkSync(outside, linkedDir);
@@ -82,7 +82,7 @@ describe('containment fixes (round 3)', () => {
     expect.hasAssertions();
     const repo = freshRepo();
     const outside = freshRepo();
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['packages/*'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/*'] });
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     mkdirSync(join(repo, 'packages', 'a'), { recursive: true });
     const externalManifest = join(outside, 'external-package.json');
@@ -99,7 +99,7 @@ describe('containment fixes (round 3)', () => {
   it('detects a package in a directory literally named "..packages" (not a parent escape)', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['..packages'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['..packages'] });
     addPackage(repo, '..packages', { description: 'Dotdot-prefixed dir', name: '@mono/dotdot' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
       { description: 'Dotdot-prefixed dir', name: '@mono/dotdot', path: '..packages' },

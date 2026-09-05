@@ -24,7 +24,7 @@ describe('npm workspaces', () => {
   it('reads the array form, sorts by path, missing description → undefined', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['packages/*'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/*'] });
     addPackage(repo, 'packages/b', { name: '@mono/b', version: '1.0.0' });
     addPackage(repo, 'packages/a', { description: 'Package A', name: '@mono/a' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
@@ -37,7 +37,6 @@ describe('npm workspaces', () => {
     expect.hasAssertions();
     const repo = freshRepo();
     writeJson(join(repo, 'package.json'), {
-      name: 'monorepo',
       workspaces: { packages: ['packages/*'] },
     });
     addPackage(repo, 'packages/a', { description: 'Package A', name: '@mono/a' });
@@ -51,7 +50,6 @@ describe('npm workspaces', () => {
     const repo = freshRepo();
     const nonStringWorkspaceEntry = 123;
     writeJson(join(repo, 'package.json'), {
-      name: 'monorepo',
       workspaces: [nonStringWorkspaceEntry, 'packages/*'],
     });
     addPackage(repo, 'packages/a', { name: '@mono/a', version: '1.0.0' });
@@ -143,7 +141,7 @@ describe('glob expansion', () => {
   it('ignores deeper glob patterns like ** (v1 simplification)', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['src/**/pkg'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['src/**/pkg'] });
     addPackage(repo, 'src/deep/pkg', { name: '@deep/pkg', version: '1.0.0' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([]);
   });
@@ -151,7 +149,7 @@ describe('glob expansion', () => {
   it('resolves non-glob paths like docs/site directly', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['docs/site'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['docs/site'] });
     addPackage(repo, 'docs/site', { description: 'Documentation site', name: 'docs' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
       { description: 'Documentation site', name: 'docs', path: 'docs/site' },
@@ -161,7 +159,7 @@ describe('glob expansion', () => {
   it('detects direct child packages for a bare `*` pattern (flat layout)', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['*'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['*'] });
     addPackage(repo, 'pkg-b', { name: '@flat/b', version: '1.0.0' });
     addPackage(repo, 'pkg-a', { description: 'Package A', name: '@flat/a' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
@@ -175,7 +173,7 @@ describe('package validation', () => {
   it('silently skips workspace dirs whose package.json has no name', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['packages/*'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/*'] });
     addPackage(repo, 'packages/a', { name: '@mono/a', version: '1.0.0' });
     addPackage(repo, 'packages/b', { version: '1.0.0' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
@@ -189,7 +187,6 @@ describe('deduplication', () => {
     expect.hasAssertions();
     const repo = freshRepo();
     writeJson(join(repo, 'package.json'), {
-      name: 'monorepo',
       workspaces: ['packages/a', 'packages/*'],
     });
     addPackage(repo, 'packages/a', { name: '@mono/a', version: '1.0.0' });
@@ -208,7 +205,7 @@ describe('untrusted pattern rejection', () => {
     const repo = join(outerDir, 'repo');
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     mkdirSync(repo);
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['../*'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['../*'] });
     addPackage(outerDir, 'secret-pkg', { name: '@outside/secret', version: '1.0.0' });
 
     const callsBefore = readdirMock.mock.calls.length;
@@ -223,7 +220,6 @@ describe('untrusted pattern rejection', () => {
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     mkdirSync(repo);
     writeJson(join(repo, 'package.json'), {
-      name: 'monorepo',
       workspaces: ['packages/../../etc/*'],
     });
     addPackage(repo, 'packages/a', { name: '@mono/a', version: '1.0.0' });
@@ -237,7 +233,7 @@ describe('untrusted pattern rejection', () => {
   it('ignores an absolute pattern', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['/etc/*'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['/etc/*'] });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([]);
   });
 });

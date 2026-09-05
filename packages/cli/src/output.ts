@@ -11,7 +11,7 @@ type SuccessEnvelope = {
 };
 
 type ErrorEnvelope = {
-  error: { code: string; message: string };
+  error: { code: string; message: string; reason?: string };
   ok: false;
 };
 
@@ -77,11 +77,18 @@ const emit = (
 const emitError = (
   ctx: CliContext,
   opts: { json: boolean },
-  rendered: { code: string; message: string },
+  rendered: { code: string; message: string; reason?: string },
 ): void => {
   if (opts.json) {
     const envelope: ErrorEnvelope = {
-      error: { code: rendered.code, message: rendered.message },
+      error: {
+        code: rendered.code,
+        message: rendered.message,
+        // Only where the code alone would be over-read: a `not_found` says a lookup came back
+        // empty, and `reason` says which scope was searched. Absent everywhere else rather than
+        // filled with a placeholder, so its presence itself carries meaning.
+        ...(rendered.reason === undefined ? {} : { reason: rendered.reason }),
+      },
       ok: false,
     };
     ctx.out(JSON.stringify(envelope));

@@ -33,7 +33,7 @@ describe('scans with nothing wrong', () => {
   it('reports nothing at all for a clean monorepo', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['packages/*'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/*'] });
     addPackage(repo, 'packages/a', { name: '@mono/a' });
     const scan = await detectWorkspacePackagesDetailed(repo);
     expect(scan.diagnostics).toStrictEqual([]);
@@ -44,7 +44,7 @@ describe('scans with nothing wrong', () => {
     expect.hasAssertions();
     const repo = freshRepo();
     // `packages/*` before `packages/` is created is ordinary, not a failure.
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['packages/*'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/*'] });
     const scan = await detectWorkspacePackagesDetailed(repo);
     expect(scan.diagnostics).toStrictEqual([]);
     expect(scanIsReliable(scan)).toBe(true);
@@ -124,7 +124,7 @@ describe('incomplete expansion', () => {
     // the branch collapsed "no package here" and "refused to look" into the same empty result,
     // so an unreadable literal directory left the scan looking complete and `missing` could be
     // concluded from it.
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['docs/site'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['docs/site'] });
     addPackage(repo, 'docs/site', { name: '@mono/site' });
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     writeFileSync(join(repo, 'docs', 'site', 'package.json'), '{ broken');
@@ -137,7 +137,7 @@ describe('incomplete expansion', () => {
     expect.hasAssertions();
     const repo = freshRepo();
     // Absence is not failure: a declared directory that has not been created is ordinary.
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['docs/site'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['docs/site'] });
     const scan = await detectWorkspacePackagesDetailed(repo);
     expect(scan.diagnostics).toStrictEqual([]);
     expect(scanIsReliable(scan)).toBe(true);
@@ -147,7 +147,6 @@ describe('incomplete expansion', () => {
     expect.hasAssertions();
     const repo = freshRepo();
     writeJson(join(repo, 'package.json'), {
-      name: 'monorepo',
       workspaces: ['packages/*', 'libs/**/deep'],
     });
     addPackage(repo, 'packages/a', { name: '@mono/a' });
@@ -167,7 +166,7 @@ describe('unusable package candidates', () => {
   it('reports manifest_unreadable for a candidate whose package.json is malformed', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['packages/*'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/*'] });
     addPackage(repo, 'packages/good', { name: '@mono/good' });
     addPackage(repo, 'packages/bad', { name: '@mono/bad' });
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
@@ -183,7 +182,7 @@ describe('unusable package candidates', () => {
   it('reports manifest_missing_name for a nameless manifest, and stays reliable', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['packages/*'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/*'] });
     addPackage(repo, 'packages/nameless', { private: true, version: '1.0.0' });
     const scan = await detectWorkspacePackagesDetailed(repo);
     // The manifest read fine — it just is not a package. Saying "unreadable" would tell an agent
@@ -201,7 +200,7 @@ describe('unusable package candidates', () => {
 const seedMonorepoWithOutside = (): { outside: string; repo: string } => {
   const repo = freshRepo();
   const outside = freshRepo();
-  writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['packages/*'] });
+  writeJson(join(repo, 'package.json'), { workspaces: ['packages/*'] });
   addPackage(repo, 'packages/a', { name: '@mono/a' });
   writeJson(join(outside, 'package.json'), { name: '@outside/pkg' });
   return { outside, repo };
@@ -266,7 +265,7 @@ describe('the plain wrapper add consumes', () => {
   it('still returns a bare array, dropping diagnostics', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['packages/*'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/*'] });
     addPackage(repo, 'packages/a', { name: '@mono/a' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
       { description: undefined, name: '@mono/a', path: 'packages/a' },

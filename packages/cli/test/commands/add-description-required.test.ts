@@ -24,7 +24,7 @@ import { run } from '../../src/main.ts';
 // no way to resolve an `npm:<pkg>` source to a local `file://` fixture end-to-end. Kept out of
 // `add-guards.test.ts` purely to keep both files under the repo's 300-line oxlint cap.
 
-const TWO_PACKAGES = 2;
+const MONOREPO_PACKAGES = 3;
 const NO_REFS = 0;
 
 type ErrorEnvelope = {
@@ -166,7 +166,10 @@ describe('refs add --description: succeeds when every detected package already h
 
           const envelope = parseLastEnvelope(stdout) as FinalizeEnvelope;
           const packages = packagesOf(envelope.data.entry);
-          expect(Object.keys(packages)).toHaveLength(TWO_PACKAGES);
+          // Two members plus the named root. Each member keeps its own manifest description; the
+          // root, which declares none, takes the ref's — it is that repository, not a package
+          // beside it (`withRootDescription`).
+          expect(Object.keys(packages)).toHaveLength(MONOREPO_PACKAGES);
           expect(packages['@fixture/a']?.description).toBe('Fixture package A');
           expect(packages['@fixture/b']?.description).toBe('Fixture package B');
         }),

@@ -1,6 +1,6 @@
-import { lookupPackagePath, scanIsReliable, scanSearchedSomewhere } from '@kaisers-io/refs-core';
+import type { WorkspacePackage, WorkspaceScan } from '@kaisers-io/refs-core';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
-import type { WorkspaceScan } from '@kaisers-io/refs-core';
+import { lookupPackagePath, scanIsReliable, scanSearchedSomewhere } from '@kaisers-io/refs-core';
 
 // What one workspace scan is allowed to conclude about ONE configured package location.
 //
@@ -67,8 +67,28 @@ const isSelfRelocation = (query: LocationQuery, path: string): boolean =>
 
 /** Where does this package live according to `scan`, given that its configured path no longer
  * identifies it? */
+const ROOT_PACKAGE_PATH = '.';
+
+/** The scan, minus the repository root.
+ *
+ * A root's name is an alias for the REPOSITORY, not evidence of where a package lives, and the two
+ * must not be confused when answering "where did this package go?". Take a repo declaring
+ * `@acme/toolkit` at both `.` and `packages/toolkit`: the member is what gets registered, and if
+ * upstream then deletes it, the root is suddenly the only thing carrying that name. Reporting
+ * `relocated` to `.` would send a caller to the repository root for a package that was removed,
+ * and tell them about a move that never happened — the confidently-wrong answer this whole module
+ * exists to prevent.
+ *
+ * A package genuinely moving INTO the root is indistinguishable from that alias, so it is given up
+ * deliberately: the cost is one rare case reported as `missing` instead of `relocated`, against a
+ * wrong directory handed out as if it were verified. The root is still verified directly when it
+ * is the configured package itself — that path matches on its own manifest and never reaches
+ * here. */
+const withoutRoot = (scan: WorkspaceScan): WorkspacePackage[] =>
+  scan.packages.filter((pkg) => pkg.path !== ROOT_PACKAGE_PATH);
+
 const classifyAgainstScan = (query: LocationQuery, scan: WorkspaceScan): VerifyOutcome => {
-  const lookup = lookupPackagePath(scan.packages, query.packageName);
+  const lookup = lookupPackagePath(withoutRoot(scan), query.packageName);
 
   // `ambiguous` is the one conclusion an incomplete scan can still support: seeing the name
   // twice already proves it is not unique, and inspecting more could only have found more.
