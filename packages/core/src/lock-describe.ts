@@ -1,4 +1,5 @@
 import type { LockDiagnosis, LockPolicy } from './lock-lease.ts';
+import { isAutoReclaimable } from './lock-lease.ts';
 
 // How a lock observation reads to a human. Split out of `lock-lease.ts`, which owns the policy —
 // what a lock's window is and when it may be taken — so that file stays about the decision and
@@ -69,7 +70,11 @@ const windowPhrase = (diagnosis: LockDiagnosis): string => {
   if (ageMs < 0) {
     return `, but its recorded time is in the future — check the system clock`;
   }
-  return `, ${POLICY_CLOCK[policy]} ${formatDuration(ageMs)} ago; reclaimable ${formatDuration(budgetMs)} ${POLICY_WINDOW[policy]}`;
+  // States the clock and nothing else. It used to say "reclaimable 10m from acquisition", which
+  // read as a promise that waiting would eventually free the lock — and since #70 the window is
+  // not what authorizes taking one. Whether refs will act is a separate sentence, added by the
+  // caller, because it depends on the recorded process rather than on any elapsed time.
+  return `, ${POLICY_CLOCK[policy]} ${formatDuration(ageMs)} ago; its window is ${formatDuration(budgetMs)} ${POLICY_WINDOW[policy]}`;
 };
 
 /** The message a waiter reports when it gives up. Deliberately observational: nothing releases a
@@ -88,8 +93,14 @@ const describeHeldLock = (name: string, diagnosis: LockDiagnosis): string => {
     return `lock ${name} could not be acquired before the timeout, but it was released while the failure was being diagnosed. Retry the operation.`;
   }
   const head = `lock ${name} is held: ${ownerPhrase(diagnosis)}`;
+  if (isAutoReclaimable(diagnosis)) {
+    return `${head}, and refs is entitled to reclaim it — it could not do so before the timeout. Retry; if it persists, run refs doctor.`;
+  }
   if (diagnosis.stale) {
-    return `${head}, and the lock is already reclaimable — refs could not reclaim it before the timeout. Retry; if it persists, run refs doctor.`;
+    // Past its window, and refs will NOT take it: the recorded process still answers, or the
+    // metadata carries nothing to identify the acquisition by. Telling anyone to retry here would
+    // be advice that can never come true — nothing in refs will ever reclaim this one.
+    return `${head}${windowPhrase(diagnosis)}. refs does not reclaim this automatically: only a recorded process the operating system reports as gone is reclaimed, and this one is not. Run refs doctor for what to do about it.`;
   }
   return `${head}${windowPhrase(diagnosis)}. Retry once the other refs command finishes.`;
 };

@@ -37,10 +37,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `foo`, and with it the name-shape guessing `refs doctor` needed to tell the two apart.
 
   **What this costs.** Three situations no longer recover on their own and need one explicit
-  command, which `refs doctor` prints: a crash after the operating system has reused the process
-  id, a crash before the lock finished writing its metadata, and a crash while a reclaim was
-  starting. `refs doctor`'s `locks` check now reports all three, and distinguishes a lock refs will
-  reclaim by itself from one it will not.
+  command, which `refs doctor` prints along with the condition for running it safely — stop every
+  refs process on that home first, suspended ones included: a crash after the operating system has
+  reused the process id, a crash before the lock finished writing its metadata, and a crash while a
+  reclaim was starting.
+
+  The messages changed to match. `refs doctor`'s `locks` check separates a lock refs will reclaim
+  by itself from one it will not, and the failure message when a lock cannot be acquired no longer
+  says "already reclaimable — retry" for a lock nothing will ever reclaim. It also stopped
+  describing the window as the thing that frees a lock: waiting does not, and only a recorded
+  process the operating system reports as gone does.
 
   **What it does not fix.** A refs process running an _older_ version follows none of this and
   reclaims on its own terms. And no lock protocol can help when refs is hard-killed while its `git`

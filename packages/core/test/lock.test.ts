@@ -174,7 +174,7 @@ describe('withLock timeout', () => {
       await expect(attempt).rejects.toThrow(
         `recorded pid ${process.pid} is present (identity not verified)`,
       );
-      await expect(attempt).rejects.toThrow('reclaimable 10m from acquisition');
+      await expect(attempt).rejects.toThrow('its window is 10m from acquisition');
       await expect(attempt).rejects.toMatchObject({ code: 'conflict', exitCode: EXIT.CONFLICT });
     } finally {
       // eslint-disable-next-line node/no-sync -- test cleanup, sync is fine

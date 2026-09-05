@@ -5,9 +5,9 @@ import {
   isAutoReclaimable,
 } from '@kaisers-io/refs-core';
 import type { InspectedLock, LockDiagnosis, RefsHome } from '@kaisers-io/refs-core';
+import { rmCommand, rmdirCommand } from '../shell-quote.ts';
 import type { CheckResult } from './doctor-types.ts';
 import { join } from 'node:path';
-import { rmdirCommand } from '../shell-quote.ts';
 
 // The `locks` check: what is currently in the refs home's locks directory, and whether any of it
 // looks wrong. Read-only and lock-free — it observes a snapshot and changes nothing.
@@ -86,24 +86,39 @@ const claimLine = (home: RefsHome, lock: InspectedLock): string => {
     lock.diagnosis.ageMs === undefined ? '' : ` for ${formatDuration(lock.diagnosis.ageMs)}`;
   return (
     `steal claim on ${lock.name}: present${age}. Stealing this lock is blocked while it is here. ` +
-    `A steal in progress clears it within a moment; if it stays, stop every refs process using ` +
-    `this home — including suspended ones — and then run: ${rmdirCommand(path)}`
+    `A reclaim in progress clears it within a moment; if it stays, ${STOP_FIRST}: ` +
+    `${rmdirCommand(path)}`
   );
 };
 
 /** One line per observed lock. Says "recorded pid … present", never "held by pid …": only `ESRCH`
  * establishes absence, so a pid that answers may equally be an unrelated process that reused the
  * number. */
-const reclaimPhrase = (diagnosis: LockDiagnosis): string => {
+/** The quiescence condition every repair command here depends on, and the reason for it: refs
+ * cannot tell a crashed process from a suspended one, so neither can a person acting on a single
+ * observation. Removing a live holder's lock is the failure the whole protocol exists to avoid,
+ * and doing it by hand is no safer than doing it automatically. */
+const STOP_FIRST =
+  'stop every refs process using this home — including suspended ones — and then run';
+
+/** What the reader can act on, if anything. Three states, deliberately worded apart: refs will take
+ * this one itself; refs will never take this one and here is the command; or nothing is wrong. */
+const reclaimPhrase = (home: RefsHome, lock: InspectedLock): string => {
+  const { diagnosis } = lock;
   if (isAutoReclaimable(diagnosis)) {
     return ', reclaimable now';
   }
-  return diagnosis.stale
-    ? ', past its window but not automatically reclaimable — see refs doctor'
-    : '';
+  if (!diagnosis.stale && lock.isDirectory) {
+    return '';
+  }
+  // Past its window with a live-or-unknown owner, no usable identity, or something that is not a
+  // lock at all sitting on a lock name. refs will not touch any of them, so the command is the
+  // only way out — and `rm -rf`, not `rmdir`, because a real lock holds metadata and a sidecar.
+  const path = join(home.locksDir, lock.name);
+  return `, not automatically reclaimable — if it is genuinely abandoned, ${STOP_FIRST}: ${rmCommand(path)}`;
 };
 
-const lockLine = (lock: InspectedLock): string => {
+const lockLine = (home: RefsHome, lock: InspectedLock): string => {
   const { diagnosis } = lock;
   // Named, but not overstated: a non-directory does block `mkdir`, yet it is reclaimed on the same
   // terms as any entry whose metadata never landed. Saying it blocks acquisition outright would
@@ -112,7 +127,7 @@ const lockLine = (lock: InspectedLock): string => {
   // Two different facts, and collapsing them is how a lock nobody will ever reclaim reads as one
   // that is about to be. `stale` says the window has run out; only `isAutoReclaimable` says refs
   // will act on it without being asked.
-  const reclaimable = reclaimPhrase(diagnosis);
+  const reclaimable = reclaimPhrase(home, lock);
   return `${lock.name}: ${kind}${ownerPhrase(diagnosis)}${clockPhrase(diagnosis)}${reclaimable}`;
 };
 
@@ -126,7 +141,7 @@ const checkLocks = async (home: RefsHome): Promise<CheckResult> => {
     return { detail: 'no locks held', name: 'locks', status: 'ok' };
   }
   const detail = locks
-    .map((lock) => (lock.kind === 'claim' ? claimLine(home, lock) : lockLine(lock)))
+    .map((lock) => (lock.kind === 'claim' ? claimLine(home, lock) : lockLine(home, lock)))
     .join(SEPARATOR);
   const healthy = locks.every((lock) => isHealthy(lock));
   return { detail, name: 'locks', status: healthy ? 'ok' : 'warn' };

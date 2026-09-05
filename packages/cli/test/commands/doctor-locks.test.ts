@@ -171,6 +171,12 @@ describe('refs doctor: locks check with a dead holder', () => {
   });
 });
 
+/** The `locks` check's detail text, or an empty string if the check is somehow absent. Hoisted out
+ * of the test bodies because the fallback is a conditional, which `vitest/no-conditional-in-test`
+ * disallows inside `it()`. */
+const locksDetailOf = (envelope: Awaited<ReturnType<typeof runDoctorJson>>): string =>
+  envelope.data.checks.find((check) => check.name === 'locks')?.detail ?? '';
+
 /** An aged claim marker, and the `locks` detail it produces. Hoisted out of the test body: the
  * lookup needs a fallback, and `vitest/no-conditional-in-test` disallows branching inside `it()`. */
 const seedAgedClaimAndReport = async (
@@ -181,8 +187,7 @@ const seedAgedClaimAndReport = async (
   const aged = new Date(Date.now() - AN_HOUR_MS);
   await utimes(claimPath, aged, aged);
   expectGitVersion(setup.runner);
-  const envelope = await runDoctorJson(setup.ctx, setup.stdout);
-  return envelope.data.checks.find((check) => check.name === 'locks')?.detail ?? '';
+  return locksDetailOf(await runDoctorJson(setup.ctx, setup.stdout));
 };
 
 describe('refs doctor: steal claims', () => {
@@ -217,6 +222,34 @@ describe('refs doctor: steal claims', () => {
         expect(detail).not.toMatch(/crashed|abandoned|dead/u);
         expect(detail).toContain('stop every refs process');
         expect(detail).toContain('rmdir');
+      }),
+    );
+  });
+});
+
+describe('refs doctor: locks refs will not reclaim', () => {
+  it('prints the repair command and its precondition, not a pointer back to doctor', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, home, runner, stdout } = await setupInitializedHome(homeDir);
+        // A crash before the metadata was published. Nothing identifies the acquisition, so refs
+        // will never reclaim it on its own — which makes this exactly the case that has to carry
+        // its own way out.
+        await mkdir(join(home.locksDir, 'home'), { recursive: true });
+        const aged = new Date(Date.now() - AN_HOUR_MS);
+        await utimes(join(home.locksDir, 'home'), aged, aged);
+        expectGitVersion(runner);
+
+        const envelope = await runDoctorJson(ctx, stdout);
+
+        expectCheck(envelope, 'locks', {
+          detailContains: 'not automatically reclaimable',
+          status: 'warn',
+        });
+        const detail = locksDetailOf(envelope);
+        expect(detail).toContain('rm -rf');
+        expect(detail).toContain('stop every refs process');
       }),
     );
   });
