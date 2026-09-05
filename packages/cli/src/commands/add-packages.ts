@@ -28,12 +28,48 @@ const toProposalEntry = (pkg: WorkspacePackage): ProposalPackageEntry => {
  * otherwise, for an `npm:<pkg>` source, seeds a single entry for the package itself — at its
  * packument-declared `directory` when known, else `path: '.'` (a single-package repo); a plain git
  * url with no detected packages gets an empty record (→ no packages table at finalize time). */
+/** Names that more than one detected package claims, with the paths claiming them.
+ *
+ * Detection deduplicates by PATH, so two directories declaring one name both survive — and the
+ * record built below is keyed by name, which would silently keep whichever came last. Since the
+ * repository root joined that list (#88) this stopped being hypothetical: `@remix-run/react-router`
+ * is a real root name whose repository also publishes `react-router` from `packages/`, and a root
+ * that happens to share a member's name would make one of them vanish from the proposal with
+ * nothing said. */
+const duplicateNames = (detected: readonly WorkspacePackage[]): string[] => {
+  const paths = new Map<string, string[]>();
+  for (const pkg of detected) {
+    paths.set(pkg.name, [...(paths.get(pkg.name) ?? []), pkg.path]);
+  }
+  return [...paths.entries()]
+    .filter(([, claimed]) => claimed.length > 1)
+    .map(([name, claimed]) => `${name} (${claimed.toSorted().join(', ')})`)
+    .toSorted();
+};
+
+/** Fails closed when one name is claimed twice. Refusing is the only honest answer: nothing here
+ * can tell which directory the caller meant, and `resolve`'s own cross-ref ambiguity rule already
+ * refuses rather than picking. Names every collision and the paths involved, so the reader can
+ * decide in one look. */
+const requireDistinctNames = (detected: readonly WorkspacePackage[]): void => {
+  const duplicates = duplicateNames(detected);
+  if (duplicates.length === 0) {
+    return;
+  }
+  throw validationError(
+    `this repository declares one package name at more than one path: ${duplicates.join('; ')} ` +
+      '— refs cannot tell which directory a query for that name means. Register it by hand with ' +
+      'the two-phase flow: refs add <source> --dry-run --json > proposal.json',
+  );
+};
+
 const buildProposalPackages = (
   detected: readonly WorkspacePackage[],
   npmDirectory: string | undefined,
   npmPkgName: string | undefined,
 ): Record<string, ProposalPackageEntry> => {
   if (detected.length > 0) {
+    requireDistinctNames(detected);
     return Object.fromEntries(detected.map((pkg) => [pkg.name, toProposalEntry(pkg)]));
   }
   if (npmPkgName !== undefined) {
@@ -63,12 +99,20 @@ const toFinalPackageEntry = (pkg: ProposalPackageEntry): PackageEntry => {
  * description string. */
 const buildFinalPackages = (
   proposalPackages: Record<string, ProposalPackageEntry>,
+  opts: { refDescription: string; rootPackageName?: string },
 ): Record<string, PackageEntry> | undefined => {
   const entries = Object.entries(proposalPackages);
   if (entries.length === 0) {
     return undefined;
   }
-  return Object.fromEntries(entries.map(([name, pkg]) => [name, toFinalPackageEntry(pkg)]));
+  return Object.fromEntries(
+    entries.map(([name, pkg]) => [
+      name,
+      toFinalPackageEntry(
+        name === opts.rootPackageName ? withRootDescription(pkg, opts.refDescription) : pkg,
+      ),
+    ]),
+  );
 };
 
 /** An absent description AND an empty-string one both count as missing, mirroring
@@ -80,14 +124,38 @@ const buildFinalPackages = (
 const isMissingDescription = (pkg: ProposalPackageEntry): boolean =>
   pkg.description === undefined || pkg.description === '';
 
+/** The name of the detected workspace root, if the repository's root manifest declares one.
+ *
+ * Identified by NAME rather than by path, and that distinction is load-bearing: the `npm:` fallback
+ * also registers at `.`, for a published single-package repo whose own description is its own
+ * business. Only an entry that workspace detection found at the root is the repository itself. */
+const rootPackageNameOf = (detected: readonly WorkspacePackage[]): string | undefined =>
+  detected.find((pkg) => pkg.path === ROOT_PACKAGE_PATH)?.name;
+
+/** The root package's description falls back to the REF's, and only the root's.
+ *
+ * `buildDescriptionRef`'s rule — the one-shot `--description` is the ref's own text, never a
+ * per-package fallback — exists because a child package is a different thing from the repository
+ * and deserves its own words. The root is not a different thing: it is that repository, at that
+ * path. Almost no workspace root carries a `description` (they are private and unpublished), so
+ * without this the one-shot flow would start refusing nearly every monorepo and forcing the
+ * two-phase proposal on it — a regression on the common path in exchange for asking someone to
+ * restate what they had just typed. A manifest that DOES describe itself keeps its own text. */
+const withRootDescription = (
+  pkg: ProposalPackageEntry,
+  refDescription: string,
+): ProposalPackageEntry =>
+  isMissingDescription(pkg) ? { ...pkg, description: refDescription } : pkg;
+
 /** Lists package names (sorted) missing a detected description — the `--description` one-shot has
  * no per-package description input (unlike the two-phase `--proposal` flow's human review step),
  * so it cannot silently fill these in; see `requireAllDescribed`. */
 const packagesMissingDescription = (
   proposalPackages: Record<string, ProposalPackageEntry>,
+  rootPackageName: string | undefined,
 ): string[] =>
   Object.entries(proposalPackages)
-    .filter(([, pkg]) => isMissingDescription(pkg))
+    .filter(([name, pkg]) => isMissingDescription(pkg) && name !== rootPackageName)
     .map(([name]) => name)
     .toSorted();
 
@@ -96,8 +164,11 @@ const packagesMissingDescription = (
  * precedent — see `resolve.ts`'s multi-ref ambiguity message) rather than just the first. Validates
  * before finalize: called from `add.ts#buildDescriptionRef` before `finalizeRef` ever runs, so a
  * rejection here writes nothing to config or state. */
-const requireAllDescribed = (proposalPackages: Record<string, ProposalPackageEntry>): void => {
-  const missing = packagesMissingDescription(proposalPackages);
+const requireAllDescribed = (
+  proposalPackages: Record<string, ProposalPackageEntry>,
+  rootPackageName?: string,
+): void => {
+  const missing = packagesMissingDescription(proposalPackages, rootPackageName);
   if (missing.length === 0) {
     return;
   }
@@ -158,5 +229,6 @@ export {
   finalProposalPackages,
   packagesMissingDescription,
   requireAllDescribed,
+  rootPackageNameOf,
 };
 export type { FinalizedRefInput };

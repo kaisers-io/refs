@@ -29,7 +29,10 @@ import type { zProposal } from '@kaisers-io/refs-core';
 // helpers live in `test/helpers/add-support.ts`, split out purely to keep both files under the
 // repo's 300-line oxlint cap and each individual test under its max-statements cap.
 
-const TWO_PACKAGES = 2;
+// The monorepo fixture's two workspace members, PLUS its named root: a root that declares its own
+// name is registered at `.` since #88, so a repository can be resolved by the name it gives
+// itself. `fixture-root` is exactly the private-named-root shape the bug was reported against.
+const MONOREPO_PACKAGES = 3;
 const HTTP_STATUS_OK = 200;
 
 type FinalizeEnvelope = {
@@ -81,7 +84,8 @@ describe('refs add --dry-run', () => {
           const proposal = await runAddDryRunJson(ctx, stdout, fixture.url);
 
           expect(proposal.tag_format_candidate).toBe('v{version}');
-          expect(Object.keys(proposal.packages)).toHaveLength(TWO_PACKAGES);
+          expect(Object.keys(proposal.packages)).toHaveLength(MONOREPO_PACKAGES);
+          expect(proposal.packages['fixture-root']?.path).toBe('.');
           const home = resolveHome(ctx.env);
           await expectPendingProposal(home, proposal.key);
           await expect(access(checkoutPath(home, proposal.key))).resolves.toBeUndefined();
@@ -107,7 +111,7 @@ describe('refs add --proposal', () => {
           await finalizeViaProposalFile(ctx, homeDir, completeProposal(proposal));
 
           const home = resolveHome(ctx.env);
-          await expectPackagesWithDescriptions(home, proposal.key, TWO_PACKAGES);
+          await expectPackagesWithDescriptions(home, proposal.key, MONOREPO_PACKAGES);
           await expectFinalizedState(home, proposal.key);
         }),
       );

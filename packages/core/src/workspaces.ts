@@ -17,6 +17,7 @@ import { join, posix } from 'node:path';
 import { partitionProbes, probePackageDir } from './workspaces-probe.ts';
 import { readFile, readdir } from 'node:fs/promises';
 import type { Dirent } from 'node:fs';
+import type { ProbedDir } from './workspaces-probe.ts';
 import { readDeclarations } from './workspaces-declarations.ts';
 import { resolveInside } from './fs-containment.ts';
 
@@ -205,9 +206,36 @@ const expandPatterns = async (repoDir: string, patterns: Set<string>): Promise<E
   return { diagnostics, dirs: [...dirs] };
 };
 
+/** The repository's own root manifest, when it declares a name.
+ *
+ * A workspace root is not one of its own glob targets, so expansion never reaches it — and a root
+ * that names itself is then registered nowhere, which is why resolving a monorepo by the name in
+ * its own `package.json` used to come back empty (#88). Both pnpm and Yarn address the root by
+ * that name (`pnpm --filter <root-name>`, `yarn workspace <root-name>`); npm and Turborepo use a
+ * positional handle instead. Registering it costs nothing where the name is a throwaway — nobody
+ * resolves `"root"` or `"monorepo-root"` — and answers the question where it is not.
+ *
+ * Deliberately its own probe rather than a `.` pattern smuggled into the expansion: no declaration
+ * selected the root, and pretending one did would misreport what the repo actually declares.
+ *
+ * Contributes a package or nothing — never a diagnostic. A diagnostic here would say "a candidate
+ * could not be inspected", and there is no candidate: nothing declared the root, this probe went
+ * looking on its own. A root that names nothing is the ordinary case (most workspace roots are
+ * private and carry `root` or no name at all), and reporting it on every scan of every repository
+ * would bury the diagnostics that do mean something. */
+const probeRootPackage = async (repoDir: string): Promise<ProbedDir[]> => {
+  const probed = await probePackageDir(repoDir, CURRENT_DIR_SEGMENT);
+  return 'pkg' in probed ? [probed] : [];
+};
+
 const detectWorkspacePackagesDetailed = async (repoDir: string): Promise<WorkspaceScan> => {
   const declared = await readDeclarations(repoDir);
   if (declared.patterns.size === 0) {
+    // No workspaces declared: an ordinary single-package repo, whose empty scan is the correct
+    // answer and whose `no_workspace_declaration` diagnostic is what stops a caller concluding
+    // anything from it. The root is deliberately NOT probed here — `refs add`'s npm fallback owns
+    // this shape, registering the package at the packument's directory or `.`, and a root probe
+    // would suppress that fallback with a locator it did not choose.
     return {
       diagnostics: sortDiagnostics([...declared.diagnostics, { kind: 'no_workspace_declaration' }]),
       packages: [],
@@ -215,8 +243,11 @@ const detectWorkspacePackagesDetailed = async (repoDir: string): Promise<Workspa
   }
 
   const expansion = await expandPatterns(repoDir, declared.patterns);
-  const probed = await Promise.all(expansion.dirs.map((dir) => probePackageDir(repoDir, dir)));
-  const partitioned = partitionProbes(probed);
+  const [root, expanded] = await Promise.all([
+    probeRootPackage(repoDir),
+    Promise.all(expansion.dirs.map((dir) => probePackageDir(repoDir, dir))),
+  ]);
+  const partitioned = partitionProbes([...root, ...expanded]);
 
   return {
     diagnostics: sortDiagnostics([

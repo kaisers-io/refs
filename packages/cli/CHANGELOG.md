@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A monorepo can now be resolved by the name in its own root manifest.** Workspace detection
+  expands the globs a repository declares, and a workspace root is not one of its own targets — so a
+  root that names itself was registered nowhere, and `refs resolve @acme/toolkit` came back empty
+  for a repository that was tracked all along. `refs add` now registers a named root at `path: "."`
+  alongside the workspace members.
+
+  Both pnpm and Yarn address a workspace root by that name (`pnpm --filter <root-name>`,
+  `yarn workspace <root-name>`); npm and Turborepo use a positional handle instead. Of eighteen
+  well-known monorepos surveyed, eight carry a name someone would plausibly use for the repository
+  and ten carry a throwaway like `root` or `monorepo-root` — which is what settles it: registering
+  the name costs nothing where it is a throwaway, since nobody resolves `"root"`, and answers the
+  question where it is not.
+
+  Two things this deliberately does not do. A repository that declares no workspaces is untouched:
+  `refs add`'s npm fallback owns that shape, and probing the root there would displace a locator it
+  did not choose. And one name claimed at two paths — a root sharing a member's name, which
+  happens — is now refused outright rather than silently keeping whichever came last, naming both
+  paths so a person can decide.
+
+  The root package takes the ref's own description when its manifest carries none, which is the
+  ordinary case for a private workspace root. That is not the per-package fallback `refs add`
+  otherwise refuses: the root is not a package beside the repository, it is that repository.
+
 - **A failed lookup no longer reads as an absent repository.** `refs resolve` exits `4` when a query
   matches nothing, and the message ended "run refs list, or add it: `refs add <url>`". That second
   half is a guess: a query can miss every route while the repository is tracked perfectly well under

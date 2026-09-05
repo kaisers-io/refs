@@ -1,9 +1,10 @@
 import { addPackage, freshRepo, writeJson } from './helpers/workspace-fixture.ts';
 import { describe, expect, it, vi } from 'vitest';
+import { detectWorkspacePackages, detectWorkspacePackagesDetailed } from '../src/workspaces.ts';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { detectWorkspacePackages } from '../src/workspaces.ts';
 import { join } from 'node:path';
 import { readdir } from 'node:fs/promises';
+import { scanIsReliable } from '../src/workspaces-patterns.ts';
 
 // Wraps the real `readdir` in a spy so tests can assert no directory read is attempted for
 // untrusted patterns, while all other tests keep the real behavior. Symlink-containment
@@ -24,7 +25,7 @@ describe('npm workspaces', () => {
   it('reads the array form, sorts by path, missing description → undefined', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['packages/*'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/*'] });
     addPackage(repo, 'packages/b', { name: '@mono/b', version: '1.0.0' });
     addPackage(repo, 'packages/a', { description: 'Package A', name: '@mono/a' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
@@ -37,7 +38,6 @@ describe('npm workspaces', () => {
     expect.hasAssertions();
     const repo = freshRepo();
     writeJson(join(repo, 'package.json'), {
-      name: 'monorepo',
       workspaces: { packages: ['packages/*'] },
     });
     addPackage(repo, 'packages/a', { description: 'Package A', name: '@mono/a' });
@@ -51,7 +51,6 @@ describe('npm workspaces', () => {
     const repo = freshRepo();
     const nonStringWorkspaceEntry = 123;
     writeJson(join(repo, 'package.json'), {
-      name: 'monorepo',
       workspaces: [nonStringWorkspaceEntry, 'packages/*'],
     });
     addPackage(repo, 'packages/a', { name: '@mono/a', version: '1.0.0' });
@@ -143,7 +142,7 @@ describe('glob expansion', () => {
   it('ignores deeper glob patterns like ** (v1 simplification)', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['src/**/pkg'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['src/**/pkg'] });
     addPackage(repo, 'src/deep/pkg', { name: '@deep/pkg', version: '1.0.0' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([]);
   });
@@ -151,7 +150,7 @@ describe('glob expansion', () => {
   it('resolves non-glob paths like docs/site directly', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['docs/site'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['docs/site'] });
     addPackage(repo, 'docs/site', { description: 'Documentation site', name: 'docs' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
       { description: 'Documentation site', name: 'docs', path: 'docs/site' },
@@ -161,7 +160,7 @@ describe('glob expansion', () => {
   it('detects direct child packages for a bare `*` pattern (flat layout)', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['*'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['*'] });
     addPackage(repo, 'pkg-b', { name: '@flat/b', version: '1.0.0' });
     addPackage(repo, 'pkg-a', { description: 'Package A', name: '@flat/a' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
@@ -175,7 +174,7 @@ describe('package validation', () => {
   it('silently skips workspace dirs whose package.json has no name', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['packages/*'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/*'] });
     addPackage(repo, 'packages/a', { name: '@mono/a', version: '1.0.0' });
     addPackage(repo, 'packages/b', { version: '1.0.0' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
@@ -189,7 +188,6 @@ describe('deduplication', () => {
     expect.hasAssertions();
     const repo = freshRepo();
     writeJson(join(repo, 'package.json'), {
-      name: 'monorepo',
       workspaces: ['packages/a', 'packages/*'],
     });
     addPackage(repo, 'packages/a', { name: '@mono/a', version: '1.0.0' });
@@ -208,7 +206,7 @@ describe('untrusted pattern rejection', () => {
     const repo = join(outerDir, 'repo');
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     mkdirSync(repo);
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['../*'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['../*'] });
     addPackage(outerDir, 'secret-pkg', { name: '@outside/secret', version: '1.0.0' });
 
     const callsBefore = readdirMock.mock.calls.length;
@@ -223,7 +221,6 @@ describe('untrusted pattern rejection', () => {
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     mkdirSync(repo);
     writeJson(join(repo, 'package.json'), {
-      name: 'monorepo',
       workspaces: ['packages/../../etc/*'],
     });
     addPackage(repo, 'packages/a', { name: '@mono/a', version: '1.0.0' });
@@ -237,7 +234,65 @@ describe('untrusted pattern rejection', () => {
   it('ignores an absolute pattern', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
-    writeJson(join(repo, 'package.json'), { name: 'monorepo', workspaces: ['/etc/*'] });
+    writeJson(join(repo, 'package.json'), { workspaces: ['/etc/*'] });
+    await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([]);
+  });
+});
+
+describe('the workspace root itself', () => {
+  it('registers the root under its own name, at path "."', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // The shape the bug was reported against: a private root that names itself, and whose name is
+    // therefore not one of its own glob targets. Expansion alone never reaches it.
+    writeJson(join(repo, 'package.json'), {
+      name: '@acme/toolkit',
+      private: true,
+      workspaces: ['packages/*'],
+    });
+    addPackage(repo, 'packages/a', { name: '@acme/a', version: '1.0.0' });
+
+    await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
+      { description: undefined, name: '@acme/toolkit', path: '.' },
+      { description: undefined, name: '@acme/a', path: 'packages/a' },
+    ]);
+  });
+
+  it('says nothing about a root that names nothing', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/*'] });
+    addPackage(repo, 'packages/a', { name: '@acme/a', version: '1.0.0' });
+
+    await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
+      { description: undefined, name: '@acme/a', path: 'packages/a' },
+    ]);
+  });
+
+  it('leaves a scan reliable when the root has no name', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/*'] });
+    addPackage(repo, 'packages/a', { name: '@acme/a', version: '1.0.0' });
+
+    // An unnamed root is the common case, and `manifest_missing_name` must stay out of the kinds
+    // that make a scan unreliable — otherwise every drift verdict built on this scan would be
+    // suppressed for most repositories.
+    const scan = await detectWorkspacePackagesDetailed(repo);
+
+    expect(scanIsReliable(scan)).toBe(true);
+  });
+});
+
+describe('the workspace root in a repo without workspaces', () => {
+  it('is not probed at all', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // A single-package repo. `refs add`'s npm fallback owns this shape — it registers the package
+    // at the packument's own directory — and a root probe here would suppress that fallback with
+    // a locator it did not choose.
+    writeJson(join(repo, 'package.json'), { name: 'single-package', version: '1.0.0' });
+
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([]);
   });
 });
