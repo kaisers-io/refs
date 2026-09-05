@@ -31,7 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repository nothing it had before. That rule lives in detection itself rather than in `refs add`,
   so relocation agrees with registration: a member that moves is still found uniquely, instead of
   becoming ambiguous against a same-named root and leaving `resolve` with no path for a package
-  that is plainly there.
+  that is plainly there. And a root is never reported as a package's new location: its name is an
+  alias for the repository, so a member that upstream deletes is reported as gone rather than as
+  having moved to the repository root — which would have sent a caller to the wrong directory and
+  described a move that never happened.
 
   The root package takes the ref's own description when its manifest carries none, which is the
   ordinary case for a private workspace root. That is not the per-package fallback `refs add`
