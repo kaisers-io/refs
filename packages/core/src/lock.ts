@@ -1,22 +1,15 @@
-import {
-  HEARTBEAT_MS,
-  describeHeldLock,
-  diagnoseLock,
-  isLockStale,
-  renewLease,
-} from './lock-lease.ts';
+import { HEARTBEAT_MS, diagnoseLock, renewLease } from './lock-lease.ts';
 import { conflictError, validationError } from './errors.ts';
 import { errnoCode, newLockToken, readLockToken, writeInitialMeta } from './lock-meta.ts';
+import { lockCtxFor, stealStaleLock } from './lock-steal.ts';
 import { mkdir, rm } from 'node:fs/promises';
 import type { Heartbeat } from './lock-heartbeat.ts';
 import type { LockCtx } from './lock-steal.ts';
 import type { RefsHome } from './home.ts';
 import { setTimeout as delay } from 'node:timers/promises';
-import { join } from 'node:path';
+import { describeHeldLock } from './lock-describe.ts';
 import { startHeartbeat } from './lock-heartbeat.ts';
-import { stealStaleLock } from './lock-steal.ts';
 import { tryExclusiveMkdir } from './lock-fs.ts';
-
 // Advisory cross-process locking for the refs home directory. meta.json read/write/parse
 // primitives live in `lock-meta.ts`; this file is the acquire/steal/release orchestration.
 //
@@ -34,32 +27,27 @@ import { tryExclusiveMkdir } from './lock-fs.ts';
 // gone OR its lease has expired, never merely because the work has taken a long time. The policy
 // and its rationale live in `lock-lease.ts`; the scheduler that stamps it, in `lock-heartbeat.ts`.
 //
-// Stale-lock stealing is claim-gated, not just rename-fenced: a plain staleness read
-// (`isLockStale`) is separated from any destructive step by an await, and in that gap another
-// waiter can legitimately recycle `lockPath` into a brand-new, live lock — acting on the stale
-// read directly would then destroy a live holder's lock. So a waiter first wins an exclusive
-// steal claim (a separate `mkdir`-gated marker, same primitive as acquisition itself), and only
-// the claim holder re-diagnoses staleness fresh, in place, with no move. That excludes every OTHER
-// stealer, which is what closes the double-steal race; `lock.test.ts` exercises it with a 12-waiter
-// stress test.
+// Stealing an abandoned lock is claim-gated, death-gated and identity-fenced. `lock-steal.ts`
+// carries the full argument; the short form is that no single one of the three is sufficient. An
+// exclusive, never-expiring claim excludes other stealers; only a holder the OS reports as gone
+// (`ESRCH`) is taken from automatically, because a live one can release at any instant; and the
+// acquisition token is re-read AFTER the death probe, because the metadata read and the probe are
+// two observations with an await between them and the path can change hands in that gap.
 //
-// It does not, however, fence the re-diagnosis against the lock's own identity changing — see
-// caveat (3). The heartbeat deliberately stays out of the claim protocol, and does not need to be
-// in it for its own sake: it renews a sidecar named after its own acquisition token, so a delayed
-// renewal aimed at a directory a successor has since recreated finds no file of that name and
-// changes nothing (`leaseSidecarPath` in `lock-meta.ts`).
+// The heartbeat deliberately stays out of the claim protocol, and does not need to be in it for
+// its own sake: it renews a sidecar named after its own acquisition token, so a delayed renewal
+// aimed at a directory a successor has since recreated finds no file of that name and changes
+// nothing (`leaseSidecarPath` in `lock-meta.ts`).
 //
-// Remaining caveats (accepted for a local, single-user CLI, as in `home.ts`'s TOCTOU note): (1)
-// release is read-then-delete — `finishHold` only removes the lock dir when its token still
-// matches, but a steal could interleave between that read and the `rm`; (2) a stealer crashing
-// mid-steal leaks a tombstone or claim marker under `locksDir` — both inert or self-healing
-// (`acquireStealClaim`), just harmless disk garbage; (3) the claim holder's re-diagnosis and its
-// rename are not identity-fenced, so between the two the lock can legitimately become a different,
-// live one — the holder releases and a waiter acquires, or a long-delayed renewal lands — and the
-// stealer then removes that live lock. The claim excludes other stealers only; ordinary
-// acquisition and renewal do not consult it. This predates the lease and is tracked separately;
-// reaching it through renewal additionally requires every renewal in a full lease to have already
-// been missed.
+// What that buys, stated as a contract among CONFORMING processes: a lock is never removed while
+// the acquisition occupying its path is one whose owner has not been proven dead. What it does not
+// buy: (1) release is still read-then-delete — `finishHold` only removes the lock dir when its
+// token still matches, but a steal could interleave between that read and the `rm`; (2) a stealer
+// crashing mid-steal leaves a claim behind, which now blocks stealing of that one name until it is
+// removed by hand — `refs doctor` reports it with the command; (3) an OLDER refs binary follows
+// none of this and steals on its own terms; (4) a hard-killed refs can leave a git child still
+// writing to the checkout, which no lock protocol can prevent — the successor's lock is honest
+// about the lock, not about the directory.
 
 // How often a waiter re-attempts acquisition while the lock is held by someone else.
 const RETRY_INTERVAL_MS = 100;
@@ -143,14 +131,17 @@ const tryAcquire = async (lockPath: string, deadline: number): Promise<string | 
 // stuck on: each spin re-reads `meta.json` inside the lock directory, and an open handle in there
 // is exactly what makes the tombstone rename fail with a sharing violation.
 const stealOrWait = async (ctx: LockCtx, deadline: number): Promise<void> => {
-  if ((await isLockStale(ctx.lockPath)) && (await stealStaleLock(ctx))) {
+  // `stealStaleLock` does its own diagnosis under its own claim; there is deliberately no
+  // pre-check here. A cheap "looks stale" read before taking the claim would be a third
+  // observation to keep consistent with the two that matter, and its verdict would be discarded
+  // anyway — the only diagnosis a steal may act on is the one taken while the claim is held.
+  if (await stealStaleLock(ctx)) {
     return;
   }
   if (Date.now() >= deadline) {
-    // Diagnosed fresh rather than reusing the staleness read above. The extra read costs one stat
-    // on a path that is already failing, and reusing the earlier one would not make the message
-    // authoritative anyway: the lock's identity can change between any observation and its
-    // reporting. Describing what is there NOW is the more useful of two non-authoritative answers.
+    // Diagnosed fresh at the moment of failure. The lock's identity can change between any
+    // observation and its reporting, so describing what is there NOW is the more useful of two
+    // non-authoritative answers.
     const diagnosis = await diagnoseLock(ctx.lockPath, Date.now());
     throw conflictError(describeHeldLock(ctx.name, diagnosis));
   }
@@ -260,7 +251,7 @@ const withLock = async <TResult>(
   opts?: { timeoutMs?: number },
 ): Promise<TResult> => {
   validateLockName(name);
-  const ctx: LockCtx = { lockPath: join(home.locksDir, name), locksDir: home.locksDir, name };
+  const ctx = lockCtxFor(home.locksDir, name);
   await mkdir(home.locksDir, { recursive: true });
   const deadline = Date.now() + (opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   const token = await acquireWithRetry(ctx, deadline);

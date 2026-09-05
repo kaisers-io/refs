@@ -412,6 +412,26 @@ Each check's `status` is `ok`, `warn`, or `fail`. As with `sync` (see
 reports `fail`
 — but the process exits `1` in that case.
 
+### The `locks` check
+
+Lists what is in the locks directory and whether any of it needs attention. A held lock is not a
+problem — that is what a concurrent `refs sync` looks like — so an ordinary one reports `ok` and is
+merely listed.
+
+Two things it reports need a person, and they are deliberately worded apart:
+
+| `detail` says | Means | Do |
+| --- | --- | --- |
+| `reclaimable now` | the recorded process is gone and the acquisition is identifiable | nothing — re-run the command that wants the lock, which takes it |
+| `past its window but not automatically reclaimable` | the lock is stale but its process still answers, or its metadata carries no usable identity | decide; refs will not take this one on its own |
+| `steal claim on <name>` | a marker left where a reclaim was starting | wait a moment; if it persists, stop every refs process on this home — **including suspended ones** — and run the printed `rmdir` |
+
+The distinction is the point. refs reclaims a lock automatically only when the operating system
+reports its process gone, because a process that still answers can release at any instant — and a
+reclaim that acted on that could delete a lock which had legitimately become another process's in
+between. A steal claim never expires for the same reason: age is not evidence that its holder
+crashed, only that it has been slow, and a suspended one looks identical.
+
 ### The `config-drift` check
 
 Takes each existing checkout's own ref lock and asks the same question `refs sync` asks after

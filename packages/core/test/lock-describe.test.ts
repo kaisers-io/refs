@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LockDiagnosis } from '../src/lock-lease.ts';
-import { describeHeldLock } from '../src/lock-lease.ts';
+import { describeHeldLock } from '../src/lock-describe.ts';
 
 // The message a waiter prints when it gives up. It is the only thing most people will ever see
 // about the locking protocol, so what it may and may not claim is pinned here rather than left to
@@ -49,7 +49,7 @@ describe('describeHeldLock on a healthy holder', () => {
     );
 
     // Getting this wrong would be actively misleading: a healthy renewable lock can be hours old.
-    expect(message).toContain('lease renewed 18s ago; reclaimable 2m from the last renewal');
+    expect(message).toContain('lease renewed 18s ago; its window is 2m from the last renewal');
   });
 
   it('never promises that a lock is released on its own', () => {
@@ -76,7 +76,7 @@ describe('describeHeldLock on a legacy lock', () => {
       }),
     );
 
-    expect(message).toContain('acquired 3m ago; reclaimable 10m from acquisition');
+    expect(message).toContain('acquired 3m ago; its window is 10m from acquisition');
   });
 });
 
@@ -94,17 +94,52 @@ describe('describeHeldLock on an unpublished lock', () => {
 });
 
 describe('describeHeldLock on a reclaimable lock', () => {
-  it('says the lock should already have been taken, not that it is still ticking', () => {
+  it('says refs was entitled to take it, not that it is still ticking', () => {
     expect.hasAssertions();
+    const message = describeHeldLock(
+      'home',
+      diagnosis({
+        pid: PID,
+        pidState: 'definitely-dead',
+        stale: true,
+        token: '11111111-2222-4333-8444-555555555555',
+      }),
+    );
+
+    // Reaching the timeout does not prove the lock was healthy: it can equally mean the steal
+    // claim or the rename kept failing. "Wait a bit longer" would be the wrong advice.
+    expect(message).toContain('entitled to reclaim it');
+    expect(message).toContain(`recorded pid ${PID} is not running`);
+  });
+});
+
+describe('describeHeldLock on a lock refs will not reclaim', () => {
+  it('does not tell the reader to retry something that can never succeed', () => {
+    expect.hasAssertions();
+    // Past its window, but the recorded process still answers — so nothing in refs will ever take
+    // this lock. The old message said "already reclaimable … Retry", which was advice that could
+    // not come true, and the whole point of separating the two states is that this sentence
+    // changes with it.
+    const message = describeHeldLock(
+      'home',
+      diagnosis({ pid: PID, pidState: 'present-or-unknown', stale: true }),
+    );
+
+    expect(message).not.toContain('Retry');
+    expect(message).toContain('does not reclaim this automatically');
+    expect(message).toContain('refs doctor');
+  });
+
+  it('says the same for a dead owner whose acquisition carries no identity', () => {
+    expect.hasAssertions();
+    // Dead, so it looks reclaimable — but with no token there is nothing to re-check the
+    // acquisition against after the death probe, which is what the fence needs.
     const message = describeHeldLock(
       'home',
       diagnosis({ pid: PID, pidState: 'definitely-dead', stale: true }),
     );
 
-    // Reaching the timeout does not prove the lock was healthy: it can equally mean the steal
-    // claim or the rename kept failing. "Wait a bit longer" would be the wrong advice.
-    expect(message).toContain('already reclaimable');
-    expect(message).toContain(`recorded pid ${PID} is not running`);
+    expect(message).toContain('does not reclaim this automatically');
   });
 });
 
@@ -141,6 +176,6 @@ describe('describeHeldLock duration rendering', () => {
     );
 
     // "1h 3m", not "1h 3m 0s"; "10m", not "10m 0s".
-    expect(message).toContain('acquired 1h 3m ago; reclaimable 10m from acquisition');
+    expect(message).toContain('acquired 1h 3m ago; its window is 10m from acquisition');
   });
 });

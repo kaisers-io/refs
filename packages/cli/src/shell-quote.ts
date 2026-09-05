@@ -16,4 +16,9 @@ const shellQuote = (value: string): string => `'${value.replaceAll("'", String.r
  * `-` is treated as a path rather than parsed as flags. */
 const rmCommand = (path: string): string => `rm -rf -- ${shellQuote(path)}`;
 
-export { rmCommand, shellQuote };
+/** Non-recursive, for a directory that is only ever legitimately empty (a steal claim). If
+ * something else has taken that path, `rmdir` refusing is the right outcome — a recursive remove
+ * would erase it without anyone finding out. */
+const rmdirCommand = (path: string): string => `rmdir -- ${shellQuote(path)}`;
+
+export { rmCommand, rmdirCommand, shellQuote };

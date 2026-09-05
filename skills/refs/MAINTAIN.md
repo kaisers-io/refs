@@ -70,8 +70,22 @@ A `warn` on `locks` means an entry in the locks directory will not resolve on it
 process is gone, the lock is past its window and still there, its metadata is unreadable, or
 something that is not a lock at all is occupying a lock name. A held lock by itself is **not** a
 warning — that is what a concurrent `refs sync` looks like, and it reports `ok` with the holder
-listed. Nothing releases a lock in the background: "reclaimable" means the next acquisition attempt
-is entitled to take it, so the fix for a stuck lock is usually to re-run the command that wants it.
+listed. Nothing releases a lock in the background: `reclaimable now` means the next acquisition
+attempt is entitled to take it, so re-running the command that wants it is usually the fix.
+
+Two `detail` phrasings need different handling, and confusing them is how a live process loses its
+lock:
+
+- **`past its window but not automatically reclaimable`** — refs will not take this one. Only a
+  recorded process the OS reports as gone is reclaimed automatically; a process that still answers
+  may be mid-operation, and a suspended machine looks exactly like a hung one. Report it and let
+  the user decide.
+- **`steal claim on <name>`** — a marker left where a reclaim was starting. It blocks reclaiming
+  that one lock and nothing else, and it does not expire. A reclaim in progress clears it within a
+  moment. If it persists, the `detail` carries the exact `rmdir` to run — but only after every
+  refs process using that home has stopped, **including suspended ones**. Clearing it while a
+  process is merely paused is precisely what it exists to prevent.
+
 Never delete a lock directory by hand on the strength of this check alone — the recorded pid is not
 proof of identity, only of absence when it says "not running".
 

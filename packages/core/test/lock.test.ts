@@ -1,4 +1,4 @@
-import { DEAD_PID, makeHome, writeLockDir } from './helpers/lock-fixture.ts';
+import { DEAD_PID, TOKEN_A, makeHome, writeLockDir } from './helpers/lock-fixture.ts';
 import { describe, expect, it } from 'vitest';
 import {
   existsSync,
@@ -81,13 +81,44 @@ describe('withLock serialization', () => {
 });
 
 describe('withLock stale locks', () => {
-  it('steals an age-stale lock (old timestamp, alive pid) and acquires within the timeout', async () => {
+  it('refuses to steal an age-stale lock whose pid is alive, and times out instead', async () => {
     expect.hasAssertions();
     const home = makeHome();
-    // `pid` is this very test process — alive — so only the age check can make this stale.
+    // `pid` is this very test process — alive — so only the age check could make this stealable.
+    // It no longer does: a live process can release at any instant, and a release is what lets the
+    // path become somebody else's lock underneath a stealer (#70).
     writeLockDir(home.locksDir, 'home', {
       acquired_at: new Date(Date.now() - STALE_AGE_MS).toISOString(),
       pid: process.pid,
+      token: TOKEN_A,
+    });
+
+    let ran = false;
+    const attempt = withLock(
+      home,
+      'home',
+      () => {
+        ran = true;
+        return Promise.resolve();
+      },
+      { timeoutMs: 300 },
+    );
+
+    await expect(attempt).rejects.toThrow('is held');
+    expect(ran).toBe(false);
+  });
+});
+
+describe('withLock locks it will take', () => {
+  it('steals a lock whose recorded pid is gone and whose identity still matches', async () => {
+    expect.hasAssertions();
+    const home = makeHome();
+    // `acquired_at` is "now" — only the dead-pid ground can make this stealable, which is the one
+    // ground that survives: a process the OS does not know cannot run a release.
+    writeLockDir(home.locksDir, 'home', {
+      acquired_at: new Date().toISOString(),
+      pid: DEAD_PID,
+      token: TOKEN_A,
     });
 
     let ran = false;
@@ -103,28 +134,23 @@ describe('withLock stale locks', () => {
 
     expect(ran).toBe(true);
   });
+});
 
-  it('steals a dead-pid-stale lock (fresh timestamp, dead pid) and acquires within the timeout', async () => {
+describe('withLock locks it will not take', () => {
+  it('refuses to steal a dead holder whose metadata carries no token', async () => {
     expect.hasAssertions();
     const home = makeHome();
-    // `acquired_at` is "now" — only the dead-pid check can make this stale.
+    // Written by a CLI old enough to predate ownership tokens. The owner is provably gone, but
+    // there is nothing to re-identify the acquisition by after the death probe, so the steal has
+    // no fence to stand on and refs leaves it for `refs doctor` and a human.
     writeLockDir(home.locksDir, 'home', {
-      acquired_at: new Date().toISOString(),
+      acquired_at: new Date(Date.now() - STALE_AGE_MS).toISOString(),
       pid: DEAD_PID,
     });
 
-    let ran = false;
-    await withLock(
-      home,
-      'home',
-      () => {
-        ran = true;
-        return Promise.resolve();
-      },
-      { timeoutMs: 2000 },
-    );
+    const attempt = withLock(home, 'home', () => Promise.resolve(), { timeoutMs: 300 });
 
-    expect(ran).toBe(true);
+    await expect(attempt).rejects.toThrow('is held');
   });
 });
 
@@ -148,7 +174,7 @@ describe('withLock timeout', () => {
       await expect(attempt).rejects.toThrow(
         `recorded pid ${process.pid} is present (identity not verified)`,
       );
-      await expect(attempt).rejects.toThrow('reclaimable 10m from acquisition');
+      await expect(attempt).rejects.toThrow('its window is 10m from acquisition');
       await expect(attempt).rejects.toMatchObject({ code: 'conflict', exitCode: EXIT.CONFLICT });
     } finally {
       // eslint-disable-next-line node/no-sync -- test cleanup, sync is fine

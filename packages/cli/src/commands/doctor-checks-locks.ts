@@ -1,6 +1,13 @@
+import {
+  CLAIMS_DIRNAME,
+  formatDuration,
+  inspectLocks,
+  isAutoReclaimable,
+} from '@kaisers-io/refs-core';
 import type { InspectedLock, LockDiagnosis, RefsHome } from '@kaisers-io/refs-core';
-import { formatDuration, inspectLocks } from '@kaisers-io/refs-core';
+import { rmCommand, rmdirCommand } from '../shell-quote.ts';
 import type { CheckResult } from './doctor-types.ts';
+import { join } from 'node:path';
 
 // The `locks` check: what is currently in the refs home's locks directory, and whether any of it
 // looks wrong. Read-only and lock-free — it observes a snapshot and changes nothing.
@@ -19,10 +26,14 @@ const SEPARATOR = '; ';
  * release itself; one past its window should already have been reclaimed and has not been; metadata
  * that is unreadable or malformed cannot be acted on at all; and a clock running backwards makes
  * every age here meaningless. Everything else — including a perfectly ordinary lock held by a live
- * process inside its window — is healthy. */
+ * process inside its window — is healthy.
+ *
+ * A steal claim is never healthy in that sense: it is either part of a steal happening right now,
+ * which is over in a few filesystem calls, or it is left over from a stealer that died — and
+ * nothing observable tells those apart. Surfacing it is the point; deciding is the reader's. */
 const isHealthy = (lock: InspectedLock): boolean => {
   const { diagnosis } = lock;
-  if (!lock.isDirectory) {
+  if (lock.kind === 'claim' || !lock.isDirectory) {
     // It resolves on its own once the metadata grace elapses, but nothing legitimate ever puts a
     // file where a lock belongs — worth a look even though it is not permanent.
     return false;
@@ -65,16 +76,58 @@ const ownerPhrase = (diagnosis: LockDiagnosis): string => {
   return `recorded pid ${diagnosis.pid} present`;
 };
 
-/** One line per observed entry. Says "recorded pid … present", never "held by pid …": only `ESRCH`
+/** What a claim's presence means, and the one command that clears it. Deliberately does NOT say
+ * the stealer crashed: age is not evidence of abandonment, which is exactly why claims stopped
+ * being reclaimed by age. `rmdir` rather than a recursive remove, because a claim is always an
+ * empty directory — if something else is at that path, the command failing is the right outcome. */
+const claimLine = (home: RefsHome, lock: InspectedLock): string => {
+  const path = join(home.locksDir, CLAIMS_DIRNAME, lock.name);
+  const age =
+    lock.diagnosis.ageMs === undefined ? '' : ` for ${formatDuration(lock.diagnosis.ageMs)}`;
+  return (
+    `steal claim on ${lock.name}: present${age}. Stealing this lock is blocked while it is here. ` +
+    `A reclaim in progress clears it within a moment; if it stays, ${STOP_FIRST}: ` +
+    `${rmdirCommand(path)}`
+  );
+};
+
+/** One line per observed lock. Says "recorded pid … present", never "held by pid …": only `ESRCH`
  * establishes absence, so a pid that answers may equally be an unrelated process that reused the
  * number. */
-const lockLine = (lock: InspectedLock): string => {
+/** The quiescence condition every repair command here depends on, and the reason for it: refs
+ * cannot tell a crashed process from a suspended one, so neither can a person acting on a single
+ * observation. Removing a live holder's lock is the failure the whole protocol exists to avoid,
+ * and doing it by hand is no safer than doing it automatically. */
+const STOP_FIRST =
+  'stop every refs process using this home — including suspended ones — and then run';
+
+/** What the reader can act on, if anything. Three states, deliberately worded apart: refs will take
+ * this one itself; refs will never take this one and here is the command; or nothing is wrong. */
+const reclaimPhrase = (home: RefsHome, lock: InspectedLock): string => {
+  const { diagnosis } = lock;
+  if (isAutoReclaimable(diagnosis)) {
+    return ', reclaimable now';
+  }
+  if (!diagnosis.stale && lock.isDirectory) {
+    return '';
+  }
+  // Past its window with a live-or-unknown owner, no usable identity, or something that is not a
+  // lock at all sitting on a lock name. refs will not touch any of them, so the command is the
+  // only way out — and `rm -rf`, not `rmdir`, because a real lock holds metadata and a sidecar.
+  const path = join(home.locksDir, lock.name);
+  return `, not automatically reclaimable — if it is genuinely abandoned, ${STOP_FIRST}: ${rmCommand(path)}`;
+};
+
+const lockLine = (home: RefsHome, lock: InspectedLock): string => {
   const { diagnosis } = lock;
   // Named, but not overstated: a non-directory does block `mkdir`, yet it is reclaimed on the same
   // terms as any entry whose metadata never landed. Saying it blocks acquisition outright would
   // send someone deleting files by hand for a condition that clears itself.
   const kind = lock.isDirectory ? '' : 'not a directory, ';
-  const reclaimable = diagnosis.stale ? ', reclaimable now' : '';
+  // Two different facts, and collapsing them is how a lock nobody will ever reclaim reads as one
+  // that is about to be. `stale` says the window has run out; only `isAutoReclaimable` says refs
+  // will act on it without being asked.
+  const reclaimable = reclaimPhrase(home, lock);
   return `${lock.name}: ${kind}${ownerPhrase(diagnosis)}${clockPhrase(diagnosis)}${reclaimable}`;
 };
 
@@ -87,7 +140,9 @@ const checkLocks = async (home: RefsHome): Promise<CheckResult> => {
   if (first === undefined) {
     return { detail: 'no locks held', name: 'locks', status: 'ok' };
   }
-  const detail = locks.map((lock) => lockLine(lock)).join(SEPARATOR);
+  const detail = locks
+    .map((lock) => (lock.kind === 'claim' ? claimLine(home, lock) : lockLine(home, lock)))
+    .join(SEPARATOR);
   const healthy = locks.every((lock) => isHealthy(lock));
   return { detail, name: 'locks', status: healthy ? 'ok' : 'warn' };
 };

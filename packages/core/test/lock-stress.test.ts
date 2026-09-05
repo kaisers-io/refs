@@ -1,4 +1,4 @@
-import { DEAD_PID, makeHome, writeLockDir } from './helpers/lock-fixture.ts';
+import { DEAD_PID, TOKEN_A, makeHome, writeLockDir } from './helpers/lock-fixture.ts';
 import { describe, expect, it } from 'vitest';
 import type { Home } from './helpers/lock-fixture.ts';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -74,10 +74,13 @@ describe('withLock stress regression', () => {
     async () => {
       expect.hasAssertions();
       const home = makeHome();
-      // Dead pid + fresh timestamp: only the dead-pid check makes this one stealable.
+      // Dead pid, fresh timestamp, real token: the one shape that is still automatically
+      // stealable. Exactly one of the waiters may win the steal, and the rest must queue behind
+      // it rather than each deciding independently that the lock is theirs to take.
       writeLockDir(home.locksDir, 'home', {
         acquired_at: new Date().toISOString(),
         pid: DEAD_PID,
+        token: TOKEN_A,
       });
 
       const { entered, exited, maxConcurrent } = await runConcurrencyStress(home);
