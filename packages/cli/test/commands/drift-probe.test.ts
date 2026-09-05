@@ -21,7 +21,7 @@ const NO_PACKAGES: Record<string, PackageEntry> | undefined = undefined;
 /** A monorepo declaring `packages/*` with `@fixture/a` present at `packages/a`. */
 const monorepo = (): string => {
   const repo = freshRepo();
-  writeJson(join(repo, 'package.json'), { name: 'root', workspaces: ['packages/*'] });
+  writeJson(join(repo, 'package.json'), { workspaces: ['packages/*'] });
   addPackage(repo, 'packages/a', { name: '@fixture/a', version: '1.0.0' });
   return repo;
 };
@@ -111,7 +111,7 @@ describe('probeRefStructure: a failure to look is never a drift claim', () => {
   it('refuses to call a package missing in a repo that declares no workspaces', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
-    writeJson(join(repo, 'package.json'), { name: 'single-package-repo' });
+    writeJson(join(repo, 'package.json'), {});
 
     const report = await probeRefStructure(repo, { '@fixture/b': entry('packages/b') });
 

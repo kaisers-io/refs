@@ -1,6 +1,10 @@
 import type { LocationQuery, PackageStatus, VerifyOutcome } from './package-location.ts';
 import type { PackageEntry, WorkspaceScan } from '@kaisers-io/refs-core';
-import { detectWorkspacePackagesDetailed, probePackageIdentity } from '@kaisers-io/refs-core';
+import {
+  detectWorkspacePackagesDetailed,
+  probePackageIdentity,
+  readRootPackage,
+} from '@kaisers-io/refs-core';
 import { classifyAgainstScan } from './package-location.ts';
 import { errorMessageOf } from '../output.ts';
 
@@ -21,11 +25,15 @@ import { errorMessageOf } from '../output.ts';
 //      never a drift claim and never a failed sync.
 
 type DriftStatus = 'drift' | 'ok' | 'unknown';
-type IssueStatus = Exclude<PackageStatus, 'unmaterialized' | 'verified'>;
+/** `unregistered` is this file's own, and the only status here that is not about a configured
+ * entry: the checkout declares a package the configuration does not have. Everything else answers
+ * "is this entry still right?"; that one answers "is anything missing from the list?". */
+type IssueStatus = Exclude<PackageStatus, 'unmaterialized' | 'verified'> | 'unregistered';
 
 type StructureIssue = {
   candidates?: string[];
-  configured_path: string;
+  /** Absent on `unregistered` — there is no configured entry, which is the finding. */
+  configured_path?: string;
   name: string;
   path?: string;
   reason?: string;
@@ -50,13 +58,20 @@ type Settled = {
 // `unmaterialized` cannot occur here (the caller holds the lock on a checkout that exists) and
 // `verified` is the silent case, so neither is reportable — stated as a type so a future status
 // cannot be added without deciding how it reads.
-const isIssueStatus = (status: PackageStatus): status is IssueStatus =>
+const ROOT_PACKAGE_PATH = '.';
+
+/** Narrows a `resolve` verdict to the ones this file reports. `unregistered` is not among them —
+ * it is this file's own status and never comes back from a package location check. */
+const isIssueStatus = (
+  status: PackageStatus,
+): status is Exclude<PackageStatus, 'unmaterialized' | 'verified'> =>
   status !== 'unmaterialized' && status !== 'verified';
 
 const DRIFT_STATUSES: ReadonlySet<IssueStatus> = new Set<IssueStatus>([
   'ambiguous',
   'missing',
   'relocated',
+  'unregistered',
 ]);
 
 /** Sorted by package name so two runs over the same config report in the same order — `Map` keys
@@ -148,6 +163,30 @@ const rollUp = (issues: readonly StructureIssue[]): StructureReport => {
   };
 };
 
+/** The repository's own root package, when it declares a name the configuration does not register.
+ *
+ * This is the migration half of #88. `refs add` registers a named root now, but a ref added before
+ * that keeps the package map it was given, and there is no command that adds one entry to an
+ * existing ref — so without this the fix would only ever reach repositories tracked from scratch.
+ * The drift probe already runs on every sync and holds both the checkout and the configuration, so
+ * "the config has fallen behind the checkout" is exactly its question.
+ *
+ * Only asked of a ref that already registers packages. A plain reference repository registers none
+ * on purpose, and nagging it about a root nobody asked to resolve would be noise on every sync.
+ *
+ * One manifest read, never a scan: the clean path must stay cheap. */
+const unregisteredRoot = async (
+  checkoutDir: string,
+  configured: readonly LocationQuery[],
+): Promise<StructureIssue[]> => {
+  const root = await readRootPackage(checkoutDir);
+  if (root === undefined) {
+    return [];
+  }
+  const known = configured.some((query) => query.packageName === root.name);
+  return known ? [] : [{ name: root.name, path: ROOT_PACKAGE_PATH, status: 'unregistered' }];
+};
+
 /** Probes every package `packages` configures against `checkoutDir`. LOCK-FREE by contract: the
  * caller holds the ref's lock. (`withLock` is not reentrant — taking it here would deadlock
  * `sync`, which is already holding it when it calls this.) An unexpected throw becomes a
@@ -163,8 +202,11 @@ const probeRefStructure = async (
     return { status: 'ok' };
   }
   try {
-    const settled = await classifyAll(checkoutDir, queries);
-    return rollUp(settled.flatMap((item) => toIssue(item)));
+    const [settled, rootIssue] = await Promise.all([
+      classifyAll(checkoutDir, queries),
+      unregisteredRoot(checkoutDir, queries),
+    ]);
+    return rollUp([...settled.flatMap((item) => toIssue(item)), ...rootIssue]);
   } catch (error) {
     return { reason: errorMessageOf(error), status: 'unknown' };
   }
@@ -181,8 +223,19 @@ const UNKNOWN_PATH = '(unknown)';
  * indistinguishable here from one that was deleted. Naming that possibility costs six words and
  * keeps the line from prescribing the removal of an entry that only needs a new path — while the
  * primary repair still comes first, because deletion is by far the commoner cause. */
-const issueLine = (issue: StructureIssue): string => {
-  const at = `configured: ${issue.configured_path}`;
+/** The one finding with no configured entry, so it carries no "configured:" tail — and the only
+ * one whose repair no command performs. `refs add` refuses an already-tracked ref and
+ * `refs edit --package` needs an entry to edit, so the honest instruction is the entry itself, in
+ * the shape `config.toml` takes it. */
+const unregisteredLine = (issue: StructureIssue): string =>
+  `${issue.name}: declared by the repository root but not registered — the repository cannot be ` +
+  `resolved by its own name until it is. Add under [refs."<ref>".packages."${issue.name}"]: ` +
+  `path = "." and a description`;
+
+/** The three findings about an entry that IS configured — each naming the repair it needs, and the
+ * configured path it needs repairing from. */
+const configuredIssueLine = (issue: StructureIssue): string => {
+  const at = `configured: ${issue.configured_path ?? UNKNOWN_PATH}`;
   if (issue.status === 'relocated') {
     return `${issue.name}: moved to ${issue.path ?? UNKNOWN_PATH} — update the entry's path (${at})`;
   }
@@ -198,6 +251,9 @@ const issueLine = (issue: StructureIssue): string => {
   }
   return `${issue.name}: could not be checked — ${issue.reason ?? UNKNOWN_REASON} (${at})`;
 };
+
+const issueLine = (issue: StructureIssue): string =>
+  issue.status === 'unregistered' ? unregisteredLine(issue) : configuredIssueLine(issue);
 
 /** One line per thing worth saying, and EMPTY for a clean ref — so a caller can append the result
  * unconditionally and stay silent by construction rather than by remembering to check. */
