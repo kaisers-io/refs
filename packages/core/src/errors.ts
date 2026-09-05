@@ -24,7 +24,14 @@ type ErrorCode = 'usage' | 'validation' | 'not_found' | 'conflict' | 'unexpected
  *     that supports "add it".
  *
  * Kept deliberately small. Every value must be something the code can actually establish; there is
- * no value for "the repository does not exist", because nothing here can determine that. */
+ * no value for "the repository does not exist", because nothing here can determine that.
+ *
+ * ABSENT on most `not_found` errors, and that is the honest default rather than an oversight. These
+ * three narrow one thing — `resolve`'s routing of a query onto a ref or package. A missing config,
+ * an absent checkout, a `show` on an unknown ref are different failures, and inventing a reason for
+ * each would grow this union past the point where a caller can branch on it usefully. A caller that
+ * sees no reason has learned exactly what `code: 'not_found'` already told it: a lookup came back
+ * empty. It must not read more into that. */
 type NotFoundReason = 'package_not_registered' | 'ref_not_registered' | 'unmatched_query';
 
 class RefsError extends Error {

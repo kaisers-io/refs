@@ -20,8 +20,10 @@ carries nothing but `refs add`'s progress lines.) `error.code` is `unexpected` |
 `validation` | `not_found` | `conflict`, matching exit `1` | `2` | `3` | `4` | `5`. `0` is
 success.
 
-`reason` appears on `not_found` only, and exists because the code alone invites a false
-conclusion: it says a lookup came back EMPTY, never that the thing is absent.
+`reason` appears on `refs resolve`'s routing misses only, and exists because the code alone
+invites a false conclusion: it says a lookup came back EMPTY, never that the thing is absent.
+Absent on every other `not_found` (missing config, absent checkout, unknown ref for `show`) —
+absence is not a fourth value, it means no narrowing is available.
 `unmatched_query` (nothing matched, by any route — the repository may still be tracked under
 another name) | `package_not_registered` (the ref is tracked and registers no such package) |
 `ref_not_registered` (that exact ref is not configured — the one case where adding it is right).

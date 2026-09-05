@@ -17,11 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not tracked, then stopped.
 
   The message now states what was searched and points at evidence rather than prescribing a fix, and
-  `--json` carries a `reason` on every `not_found`: `unmatched_query` (nothing matched, by any
-  route), `package_not_registered` (the ref is tracked and registers no such package), or
+  `--json` carries a `reason` on `resolve`'s routing misses: `unmatched_query` (nothing matched, by
+  any route), `package_not_registered` (the ref is tracked and registers no such package), or
   `ref_not_registered` (that exact ref is absent — the one case where adding it is the right
   answer). There is deliberately no reason meaning "this repository does not exist", because nothing
-  refs can observe establishes that.
+  refs can observe establishes that; and `reason` is absent on every other `not_found`, where its
+  absence means no narrowing is available rather than being a fourth value.
 
   The skill's instruction changed with it. It used to say exit `4` means the ref is not tracked; it
   now says exit `4` means the query matched no route, and requires a second lookup before any

@@ -36,8 +36,8 @@ read one stream. In human mode, output goes to stdout, warnings go to stderr as
 | `5`  | Conflict (e.g. `refs add` on an already-configured ref)                                  |
 
 **`4` says a lookup came back empty, not that the thing is absent.** A query can miss every route
-while the repository is perfectly well tracked under another identifier. In `--json` mode a
-`not_found` error therefore carries a `reason` naming the scope that was searched:
+while the repository is perfectly well tracked under another identifier. In `--json` mode,
+`refs resolve`'s routing misses therefore carry a `reason` naming the scope that was searched:
 
 | `reason` | What it establishes |
 | --- | --- |
@@ -46,7 +46,9 @@ while the repository is perfectly well tracked under another identifier. In `--j
 | `ref_not_registered` | A query naming a ref outright — a canonical git url, an explicit `--ref` — named one the configuration does not have. The only one of the three where adding it is the right answer. |
 
 There is deliberately no reason meaning "this repository does not exist": nothing refs can observe
-establishes that.
+establishes that. `reason` is also **absent** on every other `not_found` — a missing config, an
+absent checkout, an unknown ref passed to `show`. Its absence is not a fourth value: it means no
+narrowing is available, and the code still says only that a lookup came back empty.
 
 **`sync` and `doctor` are special.** Both run a batch of independent checks/operations
 that are individually allowed to fail without aborting the rest — a per-item failure is

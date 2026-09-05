@@ -14,7 +14,7 @@ import { testContext } from '../helpers/context.ts';
 
 type JsonEnvelope = {
   data: Record<string, unknown>;
-  error?: { code: string; message: string };
+  error?: { code: string; message: string; reason?: string };
   ok: boolean;
 };
 
@@ -64,8 +64,10 @@ describe('refs resolve --ref: scoping a package name to one ref', () => {
       }),
     );
   });
+});
 
-  it('reports a package the named ref does not register, instead of falling back to the ref', async () => {
+describe('refs resolve --ref: a package the named ref does not register', () => {
+  it('reports the miss instead of falling back to the ref itself', async () => {
     expect.hasAssertions();
     await withResetExitCode(() =>
       withTempHome(async (homeDir) => {
@@ -76,7 +78,34 @@ describe('refs resolve --ref: scoping a package name to one ref', () => {
         // Falling through to ref routing would hand back the ref with `package: null` — a success
         // envelope answering a question nobody asked. The caller named the ref; a query that
         // matches nothing in it is a mistake worth reporting.
-        expect(envelope.error?.code).toBe('not_found');
+        expect(envelope.error).toMatchObject({
+          code: 'not_found',
+          // The ref WAS identified; only the package lookup inside it failed. Reporting
+          // `unmatched_query` here would say every route was searched when only this ref's package
+          // map was.
+          reason: 'package_not_registered',
+        });
+      }),
+    );
+  });
+});
+
+describe('refs resolve --ref: an unconfigured ref', () => {
+  it('reports it as an absent ref, not as an unmatched query', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        await seedNextFixture({ REFS_HOME: homeDir });
+
+        const envelope = await resolveJson(homeDir, ['next', '--ref', 'nosuch-ref-anywhere']);
+
+        // `--ref` names one ref and nothing else is tried, so a miss establishes that this ref is
+        // not configured — a stronger and actionable fact, and the one miss where suggesting
+        // `refs add` is sound.
+        expect(envelope.error).toMatchObject({
+          code: 'not_found',
+          reason: 'ref_not_registered',
+        });
       }),
     );
   });
