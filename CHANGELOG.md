@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A failed lookup no longer reads as an absent repository.** `refs resolve` exits `4` when a query
+  matches nothing, and the message ended "run refs list, or add it: `refs add <url>`". That second
+  half is a guess: a query can miss every route while the repository is tracked perfectly well under
+  another identifier — a monorepo root whose own package name was never registered, for instance.
+  An agent read the suggestion as confirmation and told someone a repository they had tracked was
+  not tracked, then stopped.
+
+  The message now states what was searched and points at evidence rather than prescribing a fix, and
+  `--json` carries a `reason` on every `not_found`: `unmatched_query` (nothing matched, by any
+  route), `package_not_registered` (the ref is tracked and registers no such package), or
+  `ref_not_registered` (that exact ref is absent — the one case where adding it is the right
+  answer). There is deliberately no reason meaning "this repository does not exist", because nothing
+  refs can observe establishes that.
+
+  The skill's instruction changed with it. It used to say exit `4` means the ref is not tracked; it
+  now says exit `4` means the query matched no route, and requires a second lookup before any
+  conclusion. `refs resolve --ref <ref>`'s own miss also stopped suggesting a bare `refs show`,
+  which reports a package count and no names — it now suggests `--packages`, which actually shows
+  the map the reader was sent to inspect.
+
 - **A stale-lock reclaim could delete a lock another process was using.** refs reclaims a lock left
   behind by a crashed process. The check that decided a lock was abandoned and the removal that
   acted on it were two separate steps, and in the gap between them the lock could legitimately

@@ -12,13 +12,19 @@ skill fetches, tracks, or suggests. Real ones come from the user's own config, v
 
 ```
 {"ok":true,"data":<command-specific>,"warnings":[<string>]}
-{"ok":false,"error":{"code":"<code>","message":"<string>"}}
+{"ok":false,"error":{"code":"<code>","message":"<string>","reason":"<reason>"}}
 ```
 
 In `--json` mode **both** envelopes go to stdout as one line — parse stdout only. (stderr
 carries nothing but `refs add`'s progress lines.) `error.code` is `unexpected` | `usage` |
 `validation` | `not_found` | `conflict`, matching exit `1` | `2` | `3` | `4` | `5`. `0` is
 success.
+
+`reason` appears on `not_found` only, and exists because the code alone invites a false
+conclusion: it says a lookup came back EMPTY, never that the thing is absent.
+`unmatched_query` (nothing matched, by any route — the repository may still be tracked under
+another name) | `package_not_registered` (the ref is tracked and registers no such package) |
+`ref_not_registered` (that exact ref is not configured — the one case where adding it is right).
 
 Global flags: `--json` (always pass it) and `--verbose` (stack traces on error — omitted
 from the per-command lists below; you never need it). `-h`/`--help` and `-V`/`--version`

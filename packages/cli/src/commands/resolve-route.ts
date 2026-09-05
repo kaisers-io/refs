@@ -36,8 +36,22 @@ type RouteOptions = {
   ref?: string;
 };
 
+// Describes what was searched; does NOT prescribe adding the repository.
+//
+// It used to end "run refs list, or add it: refs add <url>", and the second half was a guess: a
+// query can miss every route while the repository is perfectly well tracked under another
+// identifier — a monorepo root whose own package name was never registered, say. An agent read
+// that suggestion as confirmation and told a user their tracked repo was untracked.
+//
+// So the remedy is now evidence rather than instruction: `refs list` shows what IS configured,
+// which is true regardless of which scope failed. `refs add` appears only where the query named a
+// ref outright and that ref really is absent — the one case where adding is the right advice.
 const notFoundMessage = (query: string): string =>
-  `no ref matches '${query}' — run refs list, or add it: refs add <url>`;
+  `no registered package or ref matches '${query}' — this does not establish that the ` +
+  `repository is untracked; it may be registered under a different identifier. Run: refs list --json`;
+
+const refNotRegisteredMessage = (key: RefKey): string =>
+  `ref '${key}' is not in the active refs configuration — to track it: refs add <url>`;
 
 // A query that plainly LOOKS like a git url — either a `scheme://...` form (scheme anchored at
 // the very start of the string, so an unrelated import path that merely CONTAINS "://" further in,
@@ -95,7 +109,10 @@ const tryUrlRoute = (
   if (Object.hasOwn(config.refs, canonical.key)) {
     return { key: canonical.key };
   }
-  throw notFoundError(notFoundMessage(query));
+  // A canonical git url names one ref and nothing else, so this genuinely IS "that ref is not
+  // configured" — the only miss in this file where suggesting `refs add` is sound. The key is
+  // named rather than the raw query: a url can carry credentials, the canonical key cannot.
+  throw notFoundError(refNotRegisteredMessage(canonical.key), 'ref_not_registered');
 };
 
 type PackageEntryMatch = {
@@ -182,7 +199,7 @@ const matchSuffixOrThrow = (config: Config, query: string): RefKey => {
     return matchRefKey(config, query);
   } catch (error) {
     if (error instanceof RefsError && error.code === 'not_found') {
-      throw notFoundError(notFoundMessage(query));
+      throw notFoundError(notFoundMessage(query), 'unmatched_query');
     }
     throw error;
   }
@@ -218,10 +235,13 @@ const routeWithinRef = (config: Config, query: string, ref: string): RouteMatch 
   if (found === undefined) {
     // A url-shaped query is never echoed: it can carry credentials, which is the same reason the
     // unscoped path raises a message that does not mention the query at all.
+    // `--packages`, not a bare `show`: without it the output carries a package COUNT and no
+    // names, so a reader following this advice still cannot see what the ref does register.
     throw notFoundError(
       looksLikeGitUrl(query)
-        ? `ref '${key}' registers no package matching that query — run: refs show ${key} --json`
-        : `ref '${key}' registers no package matching '${query}' — run: refs show ${key} --json`,
+        ? `ref '${key}' is tracked but registers no package matching that query — inspect: refs show ${key} --packages --json`
+        : `ref '${key}' is tracked but registers no package matching '${query}' — inspect: refs show ${key} --packages --json`,
+      'package_not_registered',
     );
   }
   return { key, packageMatch: { ...found, key } };
