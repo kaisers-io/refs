@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+import { join, sep } from 'node:path';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { CLAIMS_DIRNAME } from '../src/lock-steal.ts';
 import { mkdtempSync } from 'node:fs';
 import { resolveHome } from '../src/home.ts';
 import { tmpdir } from 'node:os';
@@ -28,8 +29,16 @@ vi.mock(import('node:fs/promises'), async (importOriginal) => {
   return { ...actual, mkdir: mkdirSpy, rename: vi.fn<typeof actual.rename>(actual.rename) };
 });
 
-// Pre-seeds an abandoned lock: meta.json with a long-dead timestamp (well past the 10-minute
-// staleness threshold), so the acquire loop goes down the steal path immediately.
+// The largest pid `process.kill` accepts, far above any platform's `pid_max`, so it can never name
+// a live process. Mirrors `helpers/lock-fixture.ts`.
+const DEAD_PID = 2_147_483_647;
+// A token in the shape a real acquisition writes. Its presence matters: since #70 a lock with no
+// usable identity is not automatically stolen, because there would be nothing to re-check against
+// after the death probe.
+const STALE_TOKEN = '11111111-2222-4333-8444-555555555555';
+
+// Pre-seeds an abandoned lock: a recorded pid that cannot be running, which is the one ground that
+// still permits an automatic steal, so the acquire loop goes down the steal path immediately.
 const seedStaleHomeLock = async (): Promise<ReturnType<typeof resolveHome>> => {
   const tmpPrefix = join(tmpdir(), 'refs-lock-eperm-');
   // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
@@ -37,14 +46,18 @@ const seedStaleHomeLock = async (): Promise<ReturnType<typeof resolveHome>> => {
   await mkdir(join(home.locksDir, 'home'), { recursive: true });
   await writeFile(
     join(home.locksDir, 'home', 'meta.json'),
-    JSON.stringify({ acquired_at: new Date(0).toISOString(), pid: process.pid, token: 'stale' }),
+    JSON.stringify({
+      acquired_at: new Date(0).toISOString(),
+      pid: DEAD_PID,
+      token: STALE_TOKEN,
+    }),
     'utf8',
   );
   return home;
 };
 
-// Arms a one-shot EPERM for the next `.steal-claim` mkdir; every other mkdir (the locks dir, the
-// recycled lock) stays real so the retry can actually win. Returns a probe reporting whether the
+// Arms a one-shot EPERM for the next steal-claim mkdir; every other mkdir (the locks dir, the
+// protocol directories, the recycled lock) stays real so the retry can actually win. Returns a probe reporting whether the
 // simulated failure fired. The conditionals live here, outside any `it()` body
 // (vitest/no-conditional-in-test). `getMockImplementation()` is the wrapped ORIGINAL mkdir —
 // `mkdir` itself is the spy; calling it from inside the replacement would recurse forever.
@@ -55,7 +68,7 @@ const armClaimMkdirEperm = (): (() => boolean) => {
   }
   let fired = false;
   vi.mocked(mkdir).mockImplementation((path, options) => {
-    if (!fired && String(path).endsWith('.steal-claim')) {
+    if (!fired && String(path).includes(`${CLAIMS_DIRNAME}${sep}`)) {
       fired = true;
       eperm();
     }

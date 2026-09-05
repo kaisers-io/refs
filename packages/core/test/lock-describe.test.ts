@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LockDiagnosis } from '../src/lock-lease.ts';
-import { describeHeldLock } from '../src/lock-lease.ts';
+import { describeHeldLock } from '../src/lock-describe.ts';
 
 // The message a waiter prints when it gives up. It is the only thing most people will ever see
 // about the locking protocol, so what it may and may not claim is pinned here rather than left to

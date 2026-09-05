@@ -1,3 +1,4 @@
+import { CLAIMS_DIRNAME, TOMBSTONES_DIRNAME } from '../src/lock-steal.ts';
 import {
   DEAD_PID,
   TOKEN_A,
@@ -41,28 +42,44 @@ describe('inspectLocks empty cases', () => {
     await expect(inspectLocks(home)).resolves.toStrictEqual([]);
   });
 
-  it('ignores steal claims and tombstones, which are not held locks', async () => {
+  it('ignores tombstones, which live in a directory of their own', async () => {
     expect.hasAssertions();
     const home = makeHome();
-    // Both are normal, short-lived protocol artifacts. Reporting them would make the check flap on
-    // healthy concurrent activity — a claim exists for a couple of filesystem operations.
+    // A tombstone is the transient name a lock wears for the moment between rename and removal.
+    // It lives under `.tombstones/`, which no lock name can reach — lock names must start with an
+    // alphanumeric — so it is skipped by position rather than by guessing at its shape.
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
-    mkdirSync(join(home.locksDir, 'home.steal-claim'), { recursive: true });
-    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
-    mkdirSync(join(home.locksDir, 'home.steal.11111111-2222-4333-8444-555555555555'), {
+    mkdirSync(join(home.locksDir, TOMBSTONES_DIRNAME, '11111111-2222-4333-8444-555555555555'), {
       recursive: true,
     });
 
     await expect(inspectLocks(home)).resolves.toStrictEqual([]);
   });
 
-  it('still reports a real lock whose name collides with the claim suffix', async () => {
+  it('reports a steal claim, because one left behind needs a human', async () => {
+    expect.hasAssertions();
+    const home = makeHome();
+    // A claim is normal during a healthy steal and gone within a few filesystem calls. But claims
+    // stopped being reclaimed by age, so one left by a crashed stealer blocks stealing of that
+    // lock name until somebody removes it — and a thing that needs a human is a thing a
+    // diagnostic must show.
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    mkdirSync(join(home.locksDir, CLAIMS_DIRNAME, 'home'), { recursive: true });
+
+    const [claim] = await inspectLocks(home);
+
+    expect(claim?.kind).toBe('claim');
+    expect(claim?.name).toBe('home');
+  });
+});
+
+describe('inspectLocks protocol namespaces', () => {
+  it('reports a lock whose name ends in the old claim suffix as the lock it is', async () => {
     expect.hasAssertions();
     const home = makeHome();
     // Lock names permit `.` and `-`, so a repository named `foo.steal-claim` produces a genuine
-    // lock ending in the claim suffix. Filtering on the suffix alone would hide it for its whole
-    // life and let doctor report "no locks held" while one is held. A real claim is a bare `mkdir`
-    // and always empty; this one carries metadata.
+    // lock ending in what used to be the claim suffix. It used to take an emptiness heuristic to
+    // tell those apart; with claims in their own directory the question no longer arises.
     seedLock(home.locksDir, 'ref.github.com_acme_foo.steal-claim', {
       acquired_at: nowMinus(FRESH_MS),
       pid: process.pid,
@@ -71,6 +88,7 @@ describe('inspectLocks empty cases', () => {
 
     const [lock] = await inspectLocks(home);
 
+    expect(lock?.kind).toBe('lock');
     expect(lock?.name).toBe('ref.github.com_acme_foo.steal-claim');
   });
 });

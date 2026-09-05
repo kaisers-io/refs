@@ -9,6 +9,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A stale-lock reclaim could delete a lock another process was using.** refs reclaims a lock left
+  behind by a crashed process. The check that decided a lock was abandoned and the removal that
+  acted on it were two separate steps, and in the gap between them the lock could legitimately
+  become somebody else's: the original holder releases, a waiting process takes the same path, and
+  the reclaim then deletes a lock that is actively in use. Both processes go on to `reset --hard`
+  the same checkout.
+
+  Three changes close it for processes running this version:
+
+  - **Only a process the operating system reports as gone is reclaimed from automatically.** A lock
+    whose lease has run out but whose process still answers is now reported rather than taken — a
+    live process can release at any instant, and that release is what opened the gap. Same for a
+    lock whose metadata never finished being written, or carries no usable identity.
+  - **The acquisition is re-identified after the death check.** Proving the recorded process gone is
+    not enough on its own: the metadata is read first and the process probed after, so the path can
+    change hands in between and the probe then answers about the departed owner. Re-reading the
+    identity immediately before the removal is what ties the two together.
+  - **The marker that stops two reclaims colliding no longer expires.** It used to be taken over
+    after two seconds, so it only excluded a reclaim fast enough to finish inside that window; a
+    suspended one lost its marker mid-work and a second reclaim started on the same lock. Age is
+    not evidence of abandonment.
+
+  The protocol's own markers also moved into `locks/.claims/` and `locks/.tombstones/`, which no
+  lock name can reach — lock names must start with a letter or digit. That removes a collision
+  where a repository literally named `foo.steal-claim` produced the marker path of the lock for
+  `foo`, and with it the name-shape guessing `refs doctor` needed to tell the two apart.
+
+  **What this costs.** Three situations no longer recover on their own and need one explicit
+  command, which `refs doctor` prints: a crash after the operating system has reused the process
+  id, a crash before the lock finished writing its metadata, and a crash while a reclaim was
+  starting. `refs doctor`'s `locks` check now reports all three, and distinguishes a lock refs will
+  reclaim by itself from one it will not.
+
+  **What it does not fix.** A refs process running an _older_ version follows none of this and
+  reclaims on its own terms. And no lock protocol can help when refs is hard-killed while its `git`
+  child survives: the successor's lock is honest about the lock, not about the directory.
+
 - **Two unrelated refs could share one lock.** The per-ref lock name replaced `/` with `_`, and `_`
   is legal inside a ref key — so `github.com/acme_tools/widget` and `github.com/acme/tools_widget`
   both derived `ref.github.com_acme_tools_widget`. The two then serialized against each other:

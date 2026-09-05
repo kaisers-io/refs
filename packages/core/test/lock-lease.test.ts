@@ -6,6 +6,7 @@ import {
   writeLockDir,
 } from './helpers/lock-fixture.ts';
 import { describe, expect, it } from 'vitest';
+import { diagnoseLock, isAutoReclaimable } from '../src/lock-lease.ts';
 import { readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { EXIT } from '../src/errors.ts';
 import { join } from 'node:path';
@@ -50,11 +51,13 @@ describe('withLock lease vs acquisition age', () => {
 });
 
 describe('withLock expired lease', () => {
-  it('steals a holder whose lease expired, even though its pid is alive', async () => {
+  it('reports an expired lease as past its window, but will not steal it from a live pid', async () => {
     expect.hasAssertions();
     const home = makeHome();
-    // The mirror image: `acquired_at` is fresh, so only the expired lease can make this stale.
-    // Together with the test above this pins that the LEASE decides, not the acquisition time.
+    // `acquired_at` is fresh, so only the expired lease speaks here — and since #70 an expired
+    // lease is a diagnosis, not permission. The recorded pid is this test process, very much
+    // alive, and a live holder can release at any instant; that release is exactly what let a
+    // stealer delete a lock that had legitimately become somebody else's.
     const lockPath = writeLockDir(home.locksDir, 'home', {
       acquired_at: new Date().toISOString(),
       pid: process.pid,
@@ -62,18 +65,13 @@ describe('withLock expired lease', () => {
     });
     writeLeaseSidecar(lockPath, TOKEN_A, EXPIRED_LEASE_AGE_MS);
 
-    let ran = false;
-    await withLock(
-      home,
-      'home',
-      () => {
-        ran = true;
-        return Promise.resolve();
-      },
-      { timeoutMs: STEAL_TIMEOUT_MS },
-    );
+    const diagnosis = await diagnoseLock(lockPath, Date.now());
 
-    expect(ran).toBe(true);
+    expect(diagnosis.stale).toBe(true);
+    expect(isAutoReclaimable(diagnosis)).toBe(false);
+    await expect(
+      withLock(home, 'home', () => Promise.resolve(), { timeoutMs: STEAL_TIMEOUT_MS }),
+    ).rejects.toThrow('is held');
   });
 });
 
@@ -112,18 +110,14 @@ describe('withLock sidecar identity', () => {
     });
     writeLeaseSidecar(lockPath, TOKEN_B, FRESH_MS);
 
-    let ran = false;
-    await withLock(
-      home,
-      'home',
-      () => {
-        ran = true;
-        return Promise.resolve();
-      },
-      { timeoutMs: STEAL_TIMEOUT_MS },
-    );
+    const diagnosis = await diagnoseLock(lockPath, Date.now());
 
-    expect(ran).toBe(true);
+    // The point of the test: B's sidecar is fresh, and it buys A nothing. A is judged by the
+    // legacy budget instead, and at this age that is past its window. Asserted on the diagnosis
+    // rather than by watching a steal succeed — the recorded pid is alive, and since #70 a live
+    // holder is not stolen from whatever its window says.
+    expect(diagnosis.policy).toBe('legacy');
+    expect(diagnosis.stale).toBe(true);
   });
 });
 
