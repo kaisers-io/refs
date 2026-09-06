@@ -215,3 +215,39 @@ describe("npm's re-inclusion rule", () => {
     expect(scan.map((pkg) => pkg.name).toSorted()).toStrictEqual(expected);
   });
 });
+
+describe("pnpm's rule, which is not npm's", () => {
+  it('keeps an exclusion a later identical pattern would cancel under npm', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // Verified against pnpm itself: it reports only `@mono/core` for this declaration, where npm
+    // reports both. pnpm hands its list to tinyglobby, where a negation is an ignore and nothing
+    // takes it back; npm walks the list and lets a later pattern cancel an earlier negation.
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    writeFileSync(
+      join(repo, 'pnpm-workspace.yaml'),
+      "packages:\n  - packages/*\n  - '!packages/cli'\n  - packages/cli\n",
+    );
+    addPackage(repo, 'packages/cli', { name: '@mono/cli', version: '1.0.0' });
+    addPackage(repo, 'packages/core', { name: '@mono/core', version: '1.0.0' });
+
+    await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
+      { description: undefined, name: '@mono/core', path: 'packages/core' },
+    ]);
+  });
+
+  it('applies a wildcard exclusion written with a repeated separator', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // `!packages//*` names what `!packages/*` names. A repeated separator must not decide whether
+    // the exclusion has any effect.
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    writeFileSync(
+      join(repo, 'pnpm-workspace.yaml'),
+      "packages:\n  - packages/*\n  - '!packages//*'\n",
+    );
+    addPackage(repo, 'packages/cli', { name: '@mono/cli', version: '1.0.0' });
+
+    await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([]);
+  });
+});

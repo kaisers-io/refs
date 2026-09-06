@@ -156,7 +156,13 @@ const planMatchesPath = (plan: WorkspacePatternPlan, path: string): boolean => {
   const cut = path.lastIndexOf('/');
   const base = cut === NOT_FOUND ? CURRENT_DIR_SEGMENT : path.slice(0, cut);
   const name = cut === NOT_FOUND ? path : path.slice(cut + 1);
-  return plan.baseDir === base && (plan.match === undefined || matchesSegment(name, plan.match));
+  // Normalized on both sides, for the same reason `probe-dir` is: `!packages//*` names the same
+  // directories as `!packages/*`, and a repeated separator must not decide whether an exclusion
+  // has any effect at all.
+  return (
+    normalizeSeparators(plan.baseDir) === base &&
+    (plan.match === undefined || matchesSegment(name, plan.match))
+  );
 };
 
 export {

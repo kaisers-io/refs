@@ -34,6 +34,17 @@ const cancels = (pattern: string, negation: string): boolean =>
 
 type Selection = { negations: string[]; patterns: string[] };
 
+/** pnpm's rule: a negation is an ignore, and nothing takes it back.
+ *
+ * `find-packages` hands the declaration to tinyglobby, where `!packages/cli` filters the results
+ * and a later `packages/cli` does not reinstate it. Verified against pnpm itself: for
+ * `['packages/*', '!packages/cli', 'packages/cli']` it reports only the other package, where npm
+ * reports both. */
+const selectPnpmPatterns = (declared: readonly string[]): Selection => ({
+  negations: declared.filter((pattern) => isNegatedPattern(pattern)),
+  patterns: declared.filter((pattern) => !isNegatedPattern(pattern)),
+});
+
 /** npm's `appendNegatedPatterns`, for the shapes this scanner supports.
  *
  * Walk the declaration in order. A negation is remembered. A positive pattern first CANCELS every
@@ -84,11 +95,9 @@ const collect = (results: readonly ExpandResult[]): ExpandResult => {
   return { diagnostics, dirs: [...dirs] };
 };
 
-const expandPatterns = async (
-  repoDir: string,
-  declared: readonly string[],
-): Promise<ExpandResult> => {
-  const { negations, patterns } = selectPatterns(declared);
+/** One declaration's patterns, under its own resolver's rules. */
+const expandSelection = async (repoDir: string, selection: Selection): Promise<ExpandResult> => {
+  const { negations, patterns } = selection;
   const excluded = { has: (dir: string): boolean => excludedBy(negations, dir) };
   const chosen = collect(
     await Promise.all(
@@ -103,9 +112,25 @@ const expandPatterns = async (
   };
 };
 
+/** Both declarations, each under its own rules, unioned — which is how the scanner has always
+ * treated them: neither file takes precedence, they simply add up. What changed is that each one's
+ * negations now apply to its own patterns rather than to the merged list. */
+const expandPatterns = async (
+  repoDir: string,
+  declared: { npm: readonly string[]; pnpm: readonly string[] },
+): Promise<ExpandResult> => {
+  const fromNpm = selectPatterns(declared.npm);
+  const fromPnpm = selectPnpmPatterns(declared.pnpm);
+  const expanded = await Promise.all([
+    expandSelection(repoDir, fromNpm),
+    expandSelection(repoDir, fromPnpm),
+  ]);
+  return collect(expanded);
+};
+
 const detectWorkspacePackagesDetailed = async (repoDir: string): Promise<WorkspaceScan> => {
   const declared = await readDeclarations(repoDir);
-  if (declared.patterns.length === 0) {
+  if (declared.npm.length === 0 && declared.pnpm.length === 0) {
     // No workspaces declared: an ordinary single-package repo, whose empty scan is the correct
     // answer and whose `no_workspace_declaration` diagnostic is what stops a caller concluding
     // anything from it. The root is deliberately NOT probed here — `refs add`'s npm fallback owns
@@ -117,7 +142,7 @@ const detectWorkspacePackagesDetailed = async (repoDir: string): Promise<Workspa
     };
   }
 
-  const expansion = await expandPatterns(repoDir, declared.patterns);
+  const expansion = await expandPatterns(repoDir, declared);
   const [root, expanded] = await Promise.all([
     probeRootPackage(repoDir),
     Promise.all(expansion.dirs.map((dir) => probePackageDir(repoDir, dir))),

@@ -108,11 +108,11 @@ const collectPnpmPatternsChecked = async (
   };
 };
 
-// Both workspace declarations, merged. Each contributes a diagnostic only when it EXISTS and is
-// unusable — an absent declaration is the normal state for most repos.
+// Both workspace declarations, kept separate. Each contributes a diagnostic only when it EXISTS
+// and is unusable — an absent declaration is the normal state for most repos.
 const readDeclarations = async (
   repoDir: string,
-): Promise<{ diagnostics: WorkspaceDiagnostic[]; patterns: string[] }> => {
+): Promise<{ diagnostics: WorkspaceDiagnostic[]; npm: string[]; pnpm: string[] }> => {
   const [npmRead, pnpmRead] = await Promise.all([
     collectNpmPatternsChecked(repoDir, join(repoDir, 'package.json')),
     collectPnpmPatternsChecked(repoDir, join(repoDir, 'pnpm-workspace.yaml')),
@@ -127,9 +127,11 @@ const readDeclarations = async (
   if (pnpmRead.unparsed === true) {
     diagnostics.push({ file: 'pnpm-workspace.yaml', kind: 'workspace_declaration_unparsed' });
   }
-  // An ORDERED list, duplicates kept: npm's resolver walks the declaration in order and a repeated
-  // pattern can re-include what an earlier negation removed, so neither may be discarded here.
-  return { diagnostics, patterns: [...npmRead.patterns, ...pnpmRead.patterns] };
+  // Kept APART, and each an ordered list with duplicates: the two resolvers do not agree. npm
+  // walks its declaration in order and lets a later pattern cancel an earlier negation; pnpm hands
+  // its list to tinyglobby, where a negation is an ignore and nothing takes it back. Merging them
+  // applied one repository's rules to the other's declaration.
+  return { diagnostics, npm: npmRead.patterns, pnpm: pnpmRead.patterns };
 };
 
 export { declaresUnreadably, readDeclarations };
