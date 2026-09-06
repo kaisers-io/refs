@@ -1,5 +1,6 @@
 import { collectPnpmPatterns, parseNpmWorkspaces } from '../workspaces-parse.ts';
 import type { Runner } from '../proc/runner.ts';
+import { declaresUnreadably } from '../workspaces-declarations.ts';
 
 // Did the repository's workspace DECLARATION change across a range?
 //
@@ -27,6 +28,10 @@ import type { Runner } from '../proc/runner.ts';
 // GAINED means a member may have left the scan with its manifest untouched.
 
 const ROOT_MANIFEST = 'package.json';
+
+/** Stands in for a declaration this reader could not parse. Deliberately unmatchable, so it never
+ * compares equal to a real pattern or to an absent declaration. */
+const UNREADABLE = '\0unreadable';
 const PNPM_WORKSPACE_FILE = 'pnpm-workspace.yaml';
 const SUCCESS_EXIT_CODE = 0;
 
@@ -62,13 +67,20 @@ const npmPatternsAt = async (runner: Runner, opts: RangeOpts, rev: string): Prom
     // a range starting from a manifest we cannot read counts as narrowing and gives up — we cannot
     // rule out that it declared something now gone. An unparsable manifest at the new end is the
     // scan's problem rather than this one's, and it reports its own diagnostic.
-    return ['\0unparsable'];
+    return [UNREADABLE];
   }
 };
 
 const pnpmPatternsAt = async (runner: Runner, opts: RangeOpts, rev: string): Promise<string[]> => {
   const contents = await showFile(runner, { dir: opts.dir, path: PNPM_WORKSPACE_FILE, rev });
-  return contents === undefined ? [] : collectPnpmPatterns(contents.split('\n'));
+  if (contents === undefined) {
+    return [];
+  }
+  const patterns = collectPnpmPatterns(contents.split('\n'));
+  // A `packages:` key this parser cannot read — flow style, most often — is not a declaration of
+  // nothing. Reading it as empty makes any later narrowing invisible: the old declaration compares
+  // as a subset of everything, so a member that left the scan looks like it was never there.
+  return declaresUnreadably(contents, patterns) ? [UNREADABLE] : patterns;
 };
 
 /** Both declarations at one revision, merged into one order-insensitive set — which is exactly

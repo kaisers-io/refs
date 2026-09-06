@@ -1,3 +1,4 @@
+import { isRegistrablePackageName, zPackagePath } from '@kaisers-io/refs-core';
 import type { PackageStatus } from './package-location.ts';
 import { shellQuote } from '../shell-quote.ts';
 
@@ -104,12 +105,26 @@ const UNKNOWN_PATH = '(unknown)';
  * — `$()`, backticks, semicolons and spaces all pass. This line exists to be pasted into a shell,
  * so an unquoted value here is an execution primitive handed to whoever runs it. Being verified
  * against the checkout makes a value TRUE, not shell-safe. */
+/** Whether the configuration could actually hold this package. Detection and registration answer
+ * different questions: a workspace member may legitimately be named `constructor` or sit at
+ * `packages/100%`, and the scan reports it correctly, while `zRefEntry` rejects both. Printing a
+ * command that fails validation is worse than printing none — the finding is still true, so it is
+ * reported with the reason instead. */
+const registrable = (issue: StructureIssue): boolean =>
+  isRegistrablePackageName(issue.name) && zPackagePath.safeParse(issue.path).success;
+
 const unregisteredLine = (issue: StructureIssue, key: string): string => {
   const head = `${issue.name}: declared in this checkout but not registered — it cannot be resolved by name until it is`;
   if (issue.path === undefined) {
     // More than one directory declares this name, so which one to register is a decision, not a
     // lookup. Naming the candidates is the most this can honestly do.
     return `${head}. Declared at several paths (${(issue.candidates ?? []).join(', ')}) — pick one`;
+  }
+  if (!registrable(issue)) {
+    return (
+      `${head}. Its name or path is one the configuration cannot hold, so there is no command ` +
+      `for it — report it and leave it unregistered`
+    );
   }
   return (
     `${head}. To register it: refs edit ${shellQuote(key)} --package ${shellQuote(issue.name)} ` +

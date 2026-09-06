@@ -143,3 +143,4 @@ export {
   zUpdates,
 };
 export type { Config, PackageEntry, RefEntry, Settings, Updates };
+export { isRegistrablePackageName } from './record-keys.ts';

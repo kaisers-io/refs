@@ -73,3 +73,52 @@ describe.skipIf(posixOnly)('the printed repair command, through a shell', () => 
     expect(argv).not.toContain('packages/pwned');
   });
 });
+
+describe('a package the configuration cannot hold', () => {
+  it('prints no command for a prototype-shaped name', () => {
+    expect.hasAssertions();
+
+    // A workspace member may legitimately be named `constructor`; the record schema rejects it as
+    // a key. Printing a command that fails validation is worse than printing none.
+    const [line] = driftLines(
+      {
+        packages: [{ name: 'constructor', path: 'packages/x', status: 'unregistered' }],
+        status: 'drift',
+      },
+      'github.com/acme/alpha',
+    );
+
+    expect(line).toContain('cannot hold');
+    expect(line).not.toContain('refs edit');
+  });
+
+  it('prints no command for a path the schema rejects', () => {
+    expect.hasAssertions();
+
+    // `zPackagePath` rejects percent escapes; detection reports the directory correctly.
+    const [line] = driftLines(
+      {
+        packages: [{ name: '@acme/ok', path: 'packages/100%', status: 'unregistered' }],
+        status: 'drift',
+      },
+      'github.com/acme/alpha',
+    );
+
+    expect(line).toContain('cannot hold');
+    expect(line).not.toContain('refs edit');
+  });
+
+  it('still prints one when both are registrable', () => {
+    expect.hasAssertions();
+
+    const [line] = driftLines(
+      {
+        packages: [{ name: '@acme/ok', path: 'packages/ok', status: 'unregistered' }],
+        status: 'drift',
+      },
+      'github.com/acme/alpha',
+    );
+
+    expect(line).toContain('refs edit');
+  });
+});

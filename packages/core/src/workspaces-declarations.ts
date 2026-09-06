@@ -80,6 +80,14 @@ const parseNpmDeclaration = (content: string): CheckedPatterns => {
 // `packages: ["a/*"]`, which is perfectly valid.
 const PNPM_PACKAGES_KEY = /^packages:/mu;
 
+/** A `packages:` key that yielded no patterns — the file says something this parser cannot read.
+ * Flow style (`packages: [a, b]`) is the ordinary case. Distinct from a file that genuinely
+ * declares nothing, which the scanner reports as `workspace_declaration_unparsed` rather than as
+ * an empty declaration; `declarations.ts` needs the same distinction when reading history, where
+ * treating it as empty hides a narrowing. */
+const declaresUnreadably = (content: string, patterns: readonly string[]): boolean =>
+  patterns.length === 0 && PNPM_PACKAGES_KEY.test(content);
+
 const collectPnpmPatternsChecked = async (
   repoDir: string,
   pnpmWorkspacePath: string,
@@ -125,5 +133,5 @@ const readDeclarations = async (
   return { diagnostics, patterns: new Set<string>([...npmRead.patterns, ...pnpmRead.patterns]) };
 };
 
-export { readDeclarations };
+export { declaresUnreadably, readDeclarations };
 export type { CheckedPatterns };

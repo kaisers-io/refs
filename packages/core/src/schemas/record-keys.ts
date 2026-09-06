@@ -45,4 +45,19 @@ const zSafePackagesRecord = <Value extends z.ZodType>(valueSchema: Value) =>
     z.record(z.string().min(1), valueSchema),
   );
 
-export { DANGEROUS_RECORD_KEYS, PACKAGE_KEY_ISSUE_MESSAGE, withValidatedKeys, zSafePackagesRecord };
+/** Whether a detected package could be REGISTERED under this name — the record-key rule, which
+ * lives here rather than in `zPackageEntry` because it constrains the key rather than the value.
+ *
+ * Detection answers a different question than registration: a workspace member may legitimately be
+ * named `constructor`, and the scan reports it correctly, but the configuration cannot hold it.
+ * Anything printing a `refs edit --create` command has to ask this first — a command that fails
+ * validation is worse than no command. */
+const isRegistrablePackageName = (name: string): boolean => isSafePackageKey(name);
+
+export {
+  DANGEROUS_RECORD_KEYS,
+  PACKAGE_KEY_ISSUE_MESSAGE,
+  isRegistrablePackageName,
+  withValidatedKeys,
+  zSafePackagesRecord,
+};

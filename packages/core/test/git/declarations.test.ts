@@ -98,6 +98,27 @@ describe('a range that changed which directories are declared', () => {
   );
 });
 
+describe('a declaration this reader cannot parse', () => {
+  it(
+    'counts as narrowing rather than as declaring nothing',
+    async () => {
+      expect.hasAssertions();
+      const dir = await declaredRepo();
+      // Flow style. `collectPnpmPatterns` reads block sequences only and returns `[]` — which, read
+      // as "declared nothing", makes the old declaration a subset of everything and hides the
+      // narrowing below it.
+      write(dir, 'pnpm-workspace.yaml', 'packages: [packages/a, packages/b]\n');
+      const from = commitAll(dir, 'one');
+      write(dir, 'pnpm-workspace.yaml', 'packages:\n  - packages/a\n');
+      write(dir, 'packages/new/package.json', { name: '@x/b', version: '2.0.0' });
+      const to = commitAll(dir, 'narrow');
+
+      await expect(packagesBefore(runner, { dir, from, to })).resolves.toBeUndefined();
+    },
+    SLOW_IO_TIMEOUT_MS,
+  );
+});
+
 describe('a range that added a negation', () => {
   it(
     'counts as narrowing, because a negation removes members',
