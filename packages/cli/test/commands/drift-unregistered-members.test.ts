@@ -1,10 +1,10 @@
 import { addPackage, freshRepo, writeJson } from '../helpers/workspace-fixture.ts';
 import { describe, expect, it } from 'vitest';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import type { MemberDiscovery } from '../../src/commands/drift-discovery.ts';
 import type { PackageEntry } from '@kaisers-io/refs-core';
 import { driftLines } from '../../src/commands/drift-report.ts';
 import { join } from 'node:path';
-import { mkdirSync, writeFileSync } from 'node:fs';
 import { probeRefStructure } from '../../src/commands/drift-probe.ts';
 
 // Workspace members the checkout declares and the configuration does not have.
@@ -222,6 +222,7 @@ describe('probeRefStructure: a scan that could not inspect everything', () => {
     // directory anyway — so `@fixture/excluded` IS in the scan despite the repository having said
     // not to treat it as a member. Recommending its registration would be advice contradicting
     // the repository's own declaration, derived from a pattern the scanner admits it cannot read.
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     writeFileSync(
       join(repo, 'pnpm-workspace.yaml'),
       "packages:\n  - packages/*\n  - '!packages/excluded'\n",
@@ -243,7 +244,9 @@ describe('probeRefStructure: a scan that could not inspect everything', () => {
     // A second declaration of `@fixture/b` could be sitting behind this. `refs add` keeps the
     // LAST of a duplicate pair, so naming `packages/b` from a partial view would prescribe
     // something registration might not do.
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     mkdirSync(join(repo, 'packages/broken'), { recursive: true });
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     writeFileSync(join(repo, 'packages/broken/package.json'), '{ not json');
 
     const report = await probeRefStructure(repo, CONFIGURED, ALL);
