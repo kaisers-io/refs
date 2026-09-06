@@ -81,17 +81,65 @@ describe('a range that changed which directories are declared', () => {
   );
 
   it(
-    'gives up when a pnpm workspace file appears',
+    'gives up when a pnpm workspace file loses a pattern',
+    async () => {
+      expect.hasAssertions();
+      const dir = await declaredRepo();
+      write(dir, 'pnpm-workspace.yaml', 'packages:\n  - packages/a\n  - tools/*\n');
+      const from = commitAll(dir, 'one');
+      write(dir, 'pnpm-workspace.yaml', 'packages:\n  - packages/a\n');
+      const to = commitAll(dir, 'drop tools');
+
+      // The pathspec covers this file for exactly this reason: it is not a manifest, so nothing
+      // else in the range would reveal that membership narrowed.
+      await expect(packagesBefore(runner, { dir, from, to })).resolves.toBeUndefined();
+    },
+    SLOW_IO_TIMEOUT_MS,
+  );
+});
+
+describe('a range that only added declarations', () => {
+  it(
+    'is untroubled by a pnpm workspace file appearing beside the manifest',
     async () => {
       expect.hasAssertions();
       const dir = await declaredRepo();
       const from = commitAll(dir, 'one');
-      write(dir, 'pnpm-workspace.yaml', 'packages:\n  - packages/*\n');
+      write(dir, 'pnpm-workspace.yaml', 'packages:\n  - tools/*\n');
+      write(dir, 'tools/new/package.json', { name: '@x/new', version: '1.0.0' });
       const to = commitAll(dir, 'add pnpm workspaces');
 
-      // The pathspec covers this file for exactly this reason: it is not a manifest, so nothing
-      // else in the range would have revealed that membership changed.
-      await expect(packagesBefore(runner, { dir, from, to })).resolves.toBeUndefined();
+      // The scanner unions both declarations with no precedence between them, so a second file
+      // can only widen membership — and the package that arrived with it is still reported.
+      await expect(packagesBefore(runner, { dir, from, to })).resolves.toStrictEqual({
+        changedDirs: ['tools/new'],
+        namesBefore: [],
+      });
+    },
+    SLOW_IO_TIMEOUT_MS,
+  );
+
+  it(
+    'still reports the arrival, since nothing left the scan',
+    async () => {
+      expect.hasAssertions();
+      const dir = await declaredRepo();
+      const from = commitAll(dir, 'one');
+      // The commonest arrival there is in a repository that lists its members explicitly: the
+      // package is added and declared in the same commit. Pattern expansion is monotone, so every
+      // previously visible member is still visible and the reconstruction holds.
+      write(dir, 'packages/new/package.json', { name: '@x/new', version: '1.0.0' });
+      write(dir, 'package.json', {
+        name: 'root',
+        version: '1.0.0',
+        workspaces: ['packages/a', 'packages/b', 'packages/new'],
+      });
+      const to = commitAll(dir, 'add and declare');
+
+      await expect(packagesBefore(runner, { dir, from, to })).resolves.toStrictEqual({
+        changedDirs: ['packages/new'],
+        namesBefore: ['root'],
+      });
     },
     SLOW_IO_TIMEOUT_MS,
   );

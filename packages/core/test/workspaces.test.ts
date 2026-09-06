@@ -145,7 +145,9 @@ describe('glob expansion', () => {
     addPackage(repo, 'src/deep/pkg', { name: '@deep/pkg', version: '1.0.0' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([]);
   });
+});
 
+describe('literal pattern normalization', () => {
   it('trims a trailing slash from a literal pattern', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
@@ -159,6 +161,21 @@ describe('glob expansion', () => {
     ]);
   });
 
+  it('collapses repeated separators in a literal pattern', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // `packages//new/` selects the same directory as `packages/new` for npm and pnpm alike, but
+    // yields a path with an empty segment — which `zPackagePath` rejects, so the repair command
+    // printed for it would not run.
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages//new/'] });
+    addPackage(repo, 'packages/new', { name: '@mono/new', version: '1.0.0' });
+    await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
+      { description: undefined, name: '@mono/new', path: 'packages/new' },
+    ]);
+  });
+});
+
+describe('glob expansion, continued', () => {
   it('resolves non-glob paths like docs/site directly', async () => {
     expect.hasAssertions();
     const repo = freshRepo();

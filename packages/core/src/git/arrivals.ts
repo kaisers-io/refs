@@ -1,4 +1,4 @@
-import { PNPM_WORKSPACE_FILE, ROOT_MANIFEST, declarationChanged } from './declarations.ts';
+import { PNPM_WORKSPACE_FILE, ROOT_MANIFEST, membershipNarrowed } from './declarations.ts';
 import { basename, dirname } from 'node:path';
 import type { Runner } from '../proc/runner.ts';
 import { extractPackageName } from '../workspaces-parse.ts';
@@ -19,7 +19,8 @@ import { extractPackageName } from '../workspaces-parse.ts';
 // byte-identical at both ends, so its current name is also the name it had before — which is what
 // keeps this to a handful of reads on a monorepo with a hundred packages. That shortcut assumes
 // the caller can still SEE those members, so a range that changed the workspace declaration
-// itself gives up rather than guessing (`declarations.ts`).
+// itself NARROWED gives up rather than guessing (`declarations.ts`); one that only added
+// declarations keeps every previously visible member visible, so it does not have to.
 //
 // Best-effort throughout. Every failure resolves to `undefined`, meaning "nothing can be said",
 // and the caller reports no arrivals: this only ever adds a finding to a sync that already
@@ -170,15 +171,15 @@ const namesAtFrom = async (
 
 const NOTHING_BEFORE: PackagesBefore = { changedDirs: [], namesBefore: [] };
 
-/** Whether the range changed which directories count as workspace members — which invalidates the
- * "an untouched member kept its name" half of the reconstruction. The declaring files are compared
+/** Whether the range dropped a workspace declaration — the one change that invalidates the "an
+ * untouched member kept its name" half of the reconstruction. The declaring files are compared
  * only when the range actually touched one, so the ordinary sync pays nothing for the check. */
 const membershipMoved = (
   runner: Runner,
   opts: ArrivalsOpts,
   touched: readonly string[],
 ): Promise<boolean> =>
-  declarationChanged(runner, {
+  membershipNarrowed(runner, {
     ...opts,
     touched: touched.some((path) => path === PNPM_WORKSPACE_FILE || path === ROOT_MANIFEST),
   });

@@ -178,13 +178,18 @@ const expandGlobPattern = (repoDir: string, pattern: string): Promise<ExpandResu
 };
 
 /** A package path is an identifier, not a filesystem string: it is compared against configured
- * entries, against paths git reports, and printed into commands that `zPackagePath` must accept —
- * and `zPackagePath` rejects a trailing slash outright. A literal declaration keeps whatever the
- * repository wrote (`packages/new/` is legal in both npm and pnpm), so the one shape that reaches
- * here unnormalized is trimmed at the point the pattern becomes a path.
+ * entries, against the paths git reports, and printed into commands `zPackagePath` must accept —
+ * and `zPackagePath` rejects both a trailing slash and an empty segment. A literal declaration
+ * keeps whatever the repository wrote, and `packages//new/` is as legal to npm and pnpm as
+ * `packages/new`, so separators are collapsed and trimmed where the pattern becomes a path.
+ *
+ * Written out rather than delegated to `posix.normalize`, which also resolves `.` and `..`
+ * segments — a traversal-shaped pattern is rejected upstream as unsafe, and quietly resolving one
+ * here would be a second, weaker answer to a question already decided.
  *
  * The glob branch needs no equivalent: it builds its paths with `posix.join`, which normalizes. */
-const trimTrailingSlashes = (dir: string): string => dir.replace(/\/+$/u, '');
+const normalizeSeparators = (dir: string): string =>
+  dir.replaceAll(/\/+/gu, '/').replace(/\/$/u, '');
 
 // A wildcard-free pattern names one directory. Same three-way probe the glob branch uses: the
 // old boolean pair collapsed "no package here" (normal) with "refused to look" (a hole in the
@@ -193,7 +198,7 @@ const trimTrailingSlashes = (dir: string): string => dir.replace(/\/+$/u, '');
 const expandLiteralDir = async (repoDir: string, dir: string): Promise<ExpandResult> => {
   const probe = await probeCandidateDir(repoDir, join(repoDir, dir));
   if (probe === 'manifest') {
-    return { diagnostics: [], dirs: [trimTrailingSlashes(dir)] };
+    return { diagnostics: [], dirs: [normalizeSeparators(dir)] };
   }
   if (probe === 'rejected') {
     return { diagnostics: [{ kind: 'manifest_unreadable', path: dir }], dirs: [] };

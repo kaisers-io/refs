@@ -15,6 +15,13 @@ import type { Runner } from '../proc/runner.ts';
 // manifest changes constantly (a version bump, a dependency edit) while its `workspaces` field
 // almost never does, and suppressing arrivals on every root commit would silence the feature in
 // most repositories.
+//
+// And what matters is specifically whether the declaration NARROWED. Pattern expansion is
+// monotone in the pattern set, so a purely additive change leaves every previously visible member
+// visible and the inference intact — which is exactly the shape of the commonest arrival there
+// is in a repository that lists its members explicitly: the package is added and declared in the
+// same commit. Only a pattern that went away can take a member out of the scan without touching
+// its manifest.
 
 const ROOT_MANIFEST = 'package.json';
 const PNPM_WORKSPACE_FILE = 'pnpm-workspace.yaml';
@@ -48,8 +55,10 @@ const npmPatternsAt = async (runner: Runner, opts: RangeOpts, rev: string): Prom
     const data = JSON.parse(contents) as Record<string, unknown>;
     return parseNpmWorkspaces(data['workspaces']);
   } catch {
-    // Unparsable is not "declares nothing": a sentinel keeps it from comparing equal to an absent
-    // or empty declaration, so the range is treated as one whose membership cannot be established.
+    // Unparsable is not "declares nothing". The sentinel makes the OLD declaration unmatchable, so
+    // a range starting from a manifest we cannot read counts as narrowing and gives up — we cannot
+    // rule out that it declared something now gone. An unparsable manifest at the new end is the
+    // scan's problem rather than this one's, and it reports its own diagnostic.
     return ['\0unparsable'];
   }
 };
@@ -59,9 +68,11 @@ const pnpmPatternsAt = async (runner: Runner, opts: RangeOpts, rev: string): Pro
   return contents === undefined ? [] : collectPnpmPatterns(contents.split('\n'));
 };
 
-/** Both declarations at one revision, as one order-insensitive set — reordering patterns does not
- * change which directories they select. The two are namespaced apart so the same pattern written
- * in `package.json` and in `pnpm-workspace.yaml` is not mistaken for one moving between them. */
+/** Both declarations at one revision, merged into one order-insensitive set — which is exactly
+ * how the scanner reads them (`readDeclarations` unions the two with no precedence between them).
+ * Modelling them the same way here matters: keeping the files apart would call a pattern MOVED
+ * from `package.json` into `pnpm-workspace.yaml` a narrowing, when it selects the same directories
+ * either way. Order is dropped for the same reason. */
 const declarationAt = async (
   runner: Runner,
   opts: RangeOpts,
@@ -71,20 +82,18 @@ const declarationAt = async (
     npmPatternsAt(runner, opts, rev),
     pnpmPatternsAt(runner, opts, rev),
   ]);
-  return new Set([
-    ...npm.map((pattern) => `npm:${pattern}`),
-    ...pnpm.map((pattern) => `pnpm:${pattern}`),
-  ]);
+  return new Set([...npm, ...pnpm]);
 };
 
-const sameSet = (left: ReadonlySet<string>, right: ReadonlySet<string>): boolean =>
-  left.size === right.size && [...left].every((value) => right.has(value));
+const lostAny = (before: ReadonlySet<string>, after: ReadonlySet<string>): boolean =>
+  [...before].some((pattern) => !after.has(pattern));
 
-/** Whether the range changed which directories the repository declares as workspace members.
+/** Whether the range dropped a workspace declaration, so a member could have left the scan with
+ * its manifest untouched.
  *
  * Only asked when one of the declaring files was touched at all; callers pass `touched: false` to
  * skip the reads entirely, which is the ordinary case. */
-const declarationChanged = async (
+const membershipNarrowed = async (
   runner: Runner,
   opts: RangeOpts & { touched: boolean },
 ): Promise<boolean> => {
@@ -95,7 +104,7 @@ const declarationChanged = async (
     declarationAt(runner, opts, opts.from),
     declarationAt(runner, opts, opts.to),
   ]);
-  return !sameSet(before, after);
+  return lostAny(before, after);
 };
 
-export { PNPM_WORKSPACE_FILE, ROOT_MANIFEST, declarationChanged };
+export { PNPM_WORKSPACE_FILE, ROOT_MANIFEST, membershipNarrowed };
