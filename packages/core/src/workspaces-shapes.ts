@@ -48,13 +48,15 @@ const isNegatedPattern = (pattern: string): boolean => pattern.startsWith(NEGATI
 /** The pattern a negation negates. Classification only ever sees this, never the `!`. */
 const negatedBody = (pattern: string): string => pattern.slice(NEGATION_PREFIX.length);
 
-/** Glob syntax this expander does not implement. Left unrecognized, `packages/{a,b}` reads as a
- * directory literally named `{a,b}`: the probe finds nothing, and — with no diagnostic — the scan
- * looks complete. Harmless while a pattern only ADDS (a match nobody found is a package nobody
+/** Glob syntax this expander does not implement — character classes, braces, and the extglob forms
+ * `@(a|b)`, `+(a)`, `!(a)`, `?(a)`, `*(a)`, every one of which is a character followed by `(`.
+ *
+ * Left unrecognized, `packages/{a,b}` reads as a directory literally named `{a,b}`: the probe finds
+ * nothing, and — with no diagnostic — the scan looks complete. Harmless while a pattern only ADDS (a match nobody found is a package nobody
  * registers), but a negation that silently expands to nothing leaves the scan holding directories
  * the repository excluded, with nothing to say so. Reporting the shape is what makes that
  * visible. */
-const UNSUPPORTED_GLOB_SYNTAX = /[?[\]{}]/u;
+const UNSUPPORTED_GLOB_SYNTAX = /[?[\]{}()]/u;
 
 // A pattern is supported only when it is safe, uses no syntax beyond a single `*`, and stays
 // within the wildcard budget (v1 simplification). The check order preserves the original
@@ -124,6 +126,22 @@ const classifyWorkspacePattern = (pattern: string): WorkspacePatternPlan => {
   return pattern.includes('*') ? partialSegmentPlan(pattern) : { dir: pattern, kind: 'probe-dir' };
 };
 
+/** Whether an already-classified inclusive pattern selects `path` — decided from the plan alone,
+ * with no filesystem access, so an exclusion can be tested against later patterns before anything
+ * is probed. */
+const planMatchesPath = (plan: WorkspacePatternPlan, path: string): boolean => {
+  if (plan.kind === 'probe-dir') {
+    return plan.dir === path;
+  }
+  if (plan.kind !== 'expand-children') {
+    return false;
+  }
+  const cut = path.lastIndexOf('/');
+  const base = cut === NOT_FOUND ? CURRENT_DIR_SEGMENT : path.slice(0, cut);
+  const name = cut === NOT_FOUND ? path : path.slice(cut + 1);
+  return plan.baseDir === base && (plan.match === undefined || matchesSegment(name, plan.match));
+};
+
 export {
   CURRENT_DIR_SEGMENT,
   PARENT_DIR_SEGMENT,
@@ -132,5 +150,6 @@ export {
   isSafeWorkspacePattern,
   matchesSegment,
   negatedBody,
+  planMatchesPath,
 };
 export type { WorkspacePatternPlan };

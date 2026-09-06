@@ -1,4 +1,4 @@
-import { addPackage, freshRepo } from './helpers/workspace-fixture.ts';
+import { addPackage, freshRepo, writeJson } from './helpers/workspace-fixture.ts';
 import { describe, expect, it } from 'vitest';
 import { detectWorkspacePackages, detectWorkspacePackagesDetailed } from '../src/workspaces.ts';
 import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -114,6 +114,57 @@ describe('negation patterns nobody can expand', () => {
     expect(scan.packages).toHaveLength(1);
     expect(scan.diagnostics).toStrictEqual([
       { kind: 'unsupported_pattern', pattern: '!packages/{a,b}' },
+    ]);
+  });
+});
+
+describe('negation patterns and declaration order', () => {
+  it('lets a later inclusive pattern win over an earlier exclusion', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // Verified against npm's own resolver (`@npmcli/map-workspaces`): this declaration yields BOTH
+    // packages. Subtracting every negation at the end would drop `cli` permanently.
+    writeJson(join(repo, 'package.json'), {
+      workspaces: ['packages/*', '!packages/cli', 'packages/cli'],
+    });
+    addPackage(repo, 'packages/cli', { name: '@mono/cli', version: '1.0.0' });
+    addPackage(repo, 'packages/core', { name: '@mono/core', version: '1.0.0' });
+
+    await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
+      { description: undefined, name: '@mono/cli', path: 'packages/cli' },
+      { description: undefined, name: '@mono/core', path: 'packages/core' },
+    ]);
+  });
+
+  it('keeps the exclusion when nothing names it again afterwards', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/*', '!packages/cli'] });
+    addPackage(repo, 'packages/cli', { name: '@mono/cli', version: '1.0.0' });
+    addPackage(repo, 'packages/core', { name: '@mono/core', version: '1.0.0' });
+
+    await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
+      { description: undefined, name: '@mono/core', path: 'packages/core' },
+    ]);
+  });
+});
+
+describe('extglob exclusions', () => {
+  it('reports them rather than reading them as a literal directory', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // npm expands this and excludes both packages. Unrecognized, `packages/@(core|cli)` names a
+    // directory that does not exist, so the exclusion silently does nothing — and doctor would go
+    // on to recommend registering packages the repository ruled out.
+    writeJson(join(repo, 'package.json'), {
+      workspaces: ['packages/*', '!packages/@(core|cli)'],
+    });
+    addPackage(repo, 'packages/cli', { name: '@mono/cli', version: '1.0.0' });
+
+    const scan = await detectWorkspacePackagesDetailed(repo);
+
+    expect(scan.diagnostics).toStrictEqual([
+      { kind: 'unsupported_pattern', pattern: '!packages/@(core|cli)' },
     ]);
   });
 });
