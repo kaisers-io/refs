@@ -1,6 +1,7 @@
 import type { CliContext } from '../../src/context.ts';
 import { SpawnRunner } from '@kaisers-io/refs-core';
 import type { StructureReport } from '../../src/commands/drift-report.ts';
+import { access } from 'node:fs/promises';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { driftLines } from '../../src/commands/drift-report.ts';
 import { expect } from 'vitest';
@@ -39,26 +40,54 @@ const repairLineFor = (report: StructureReport | undefined, key: string, name: s
   return line;
 };
 
-/** The CLI entry a shell can invoke without a build step. The bundle at `bin/refs.mjs` needs
- * `pnpm build`, which `pnpm test` does not run; what matters here is the SHELL boundary, and this
- * is the same argument handling behind it. */
-const CLI_ENTRY = fileURLToPath(new URL('../../src/index.ts', import.meta.url));
+const BUNDLE = fileURLToPath(new URL('../../dist/refs.mjs', import.meta.url));
+
+/** The built bundle, built on demand.
+ *
+ * A shell cannot run the TypeScript entry: it resolves `@kaisers-io/refs-core` through the
+ * workspace symlink under `node_modules`, and Node does not strip types there — the process exits
+ * with no output, which is how this first failed on the floor interpreter while passing locally.
+ * The bundle has no such imports, and is what actually ships.
+ *
+ * Built here rather than assumed, because `pnpm check` does not build: skipping the test when the
+ * bundle is absent would make it silently vacuous, which is the failure mode this whole helper
+ * exists to avoid. One build, memoized across the suite. */
+// eslint-disable-next-line init-declarations -- the point is that it is unset until first use
+let building: Promise<string> | undefined;
+
+const buildBundle = async (): Promise<string> => {
+  try {
+    await access(BUNDLE);
+    return BUNDLE;
+  } catch {
+    const built = await new SpawnRunner().run('pnpm', ['--filter', '@kaisers-io/refs', 'build'], {
+      cwd: fileURLToPath(new URL('../../../..', import.meta.url)),
+    });
+    expect(built.exitCode, `pnpm build failed: ${built.stderr}`).toBe(SUCCESS);
+    return BUNDLE;
+  }
+};
+
+const cliBundle = (): Promise<string> => {
+  building ??= buildBundle();
+  return building;
+};
 
 /** The full `sh -c` line: the environment as a prefix (which is what a person pasting the command
  * would type, and what the runner cannot pass otherwise), `refs` pointed at the CLI entry, and the
  * description substituted into the placeholder's own quotes. */
 const shellLine = (
   printed: string,
-  description: string,
-  env: Record<string, string | undefined>,
+  args: { bundle: string; description: string; env: Record<string, string | undefined> },
 ): string => {
+  const { bundle, description, env } = args;
   const prefix = Object.entries(env)
     .filter(([, value]) => value !== undefined)
     .map(([name, value]) => `${name}=${shellQuote(value ?? '')}`)
     .join(' ');
   const command = printed
     .replace(`"${PLACEHOLDER}"`, shellQuote(description))
-    .replace(/^refs /u, `node --experimental-strip-types ${shellQuote(CLI_ENTRY)} `);
+    .replace(/^refs /u, `node ${shellQuote(bundle)} `);
   return `${prefix} ${command} --json`;
 };
 
@@ -77,7 +106,11 @@ const runPrintedRepair = async (args: {
   expect(printed).toContain(`"${PLACEHOLDER}"`);
   const result = await new SpawnRunner().run('sh', [
     '-c',
-    shellLine(printed, args.description, args.env),
+    shellLine(printed, {
+      bundle: await cliBundle(),
+      description: args.description,
+      env: args.env,
+    }),
   ]);
   // The command has to have SUCCEEDED. Without this the test passed while the CLI rejected the
   // arguments outright, because the assertion that followed held either way.
