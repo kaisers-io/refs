@@ -1,6 +1,6 @@
-// IO orchestration for workspace package detection: expansion order, root handling, and result
-// shaping. Turning one pattern into directories lives in `workspaces-expand.ts`; which shapes
-// exist at all, in `workspaces-shapes.ts`.
+// IO orchestration for workspace package detection: which patterns survive a declaration's
+// negations, and shaping the result. Turning one pattern into directories lives in
+// `workspaces-expand.ts`; which shapes exist at all, in `workspaces-shapes.ts`.
 import type {
   WorkspaceDiagnostic,
   WorkspacePackage,
@@ -9,54 +9,70 @@ import type {
 import {
   classifyWorkspacePattern,
   isNegatedPattern,
+  negatedBody,
   normalizeSeparators,
   planMatchesPath,
 } from './workspaces-shapes.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { deduplicateAndSort, sortDiagnostics } from './workspaces-patterns.ts';
-import { excludedDirs, expandGlobSingleLevel, expandLiteralDir } from './workspaces-expand.ts';
 import { partitionProbes, probePackageDir } from './workspaces-probe.ts';
 import { probeRootPackage, withoutClaimedRoot } from './workspaces-root.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { ExpandResult } from './workspaces-probe.ts';
+import { expandGlobPattern } from './workspaces-expand.ts';
 import { readDeclarations } from './workspaces-declarations.ts';
 
-/** Whether a pattern AFTER `index` names `dir` again. Glob lists let a later inclusion win over an
- * earlier exclusion, and npm honours that; deciding it from the plan rather than the filesystem
- * keeps exclusions settled before anything is probed. */
-const reincludedAfter = (declared: readonly string[], dir: string, index: number): boolean =>
-  declared.some(
-    (pattern, at) =>
-      at > index &&
-      !isNegatedPattern(pattern) &&
-      planMatchesPath(classifyWorkspacePattern(pattern), dir),
+/** Whether `pattern`, read as a path, is what `negation` names.
+ *
+ * This is npm's re-inclusion test, and it is about the PATTERN STRING rather than the directories
+ * it selects — `appendNegatedPatterns` in `@npmcli/map-workspaces` runs `minimatch(pattern,
+ * negatedPattern)`. The difference is visible: after `!packages/cli`, a later literal
+ * `packages/cli` cancels the exclusion, while a later `packages/*` does not, even though it
+ * selects that same directory. Verified against that resolver for both. */
+const cancels = (pattern: string, negation: string): boolean =>
+  planMatchesPath(classifyWorkspacePattern(negatedBody(negation)), normalizeSeparators(pattern));
+
+type Selection = { negations: string[]; patterns: string[] };
+
+/** npm's `appendNegatedPatterns`, for the shapes this scanner supports.
+ *
+ * Walk the declaration in order. A negation is remembered. A positive pattern first CANCELS every
+ * remembered negation it names, then joins the list — which is why order and repetition both
+ * matter, and why the declaration reaches here as a list rather than a set.
+ *
+ * npm then drops any pattern a surviving negation names, before globbing. That step is an
+ * optimization there ("to avoid unnecessary crawling") and redundant here, because the same
+ * negations are applied to the expanded directories anyway — a literal pattern for an excluded
+ * directory returns nothing either way. Left out rather than carried as logic no test can
+ * distinguish. */
+const selectPatterns = (declared: readonly string[]): Selection =>
+  declared.reduce<Selection>(
+    (state, pattern) =>
+      isNegatedPattern(pattern)
+        ? { negations: [...state.negations, pattern], patterns: state.patterns }
+        : {
+            // Every remembered negation this pattern NAMES is cancelled by it.
+            negations: state.negations.filter((negation) => !cancels(pattern, negation)),
+            patterns: [...state.patterns, pattern],
+          },
+    { negations: [], patterns: [] },
   );
 
-// Expand one glob pattern. Which form the pattern takes is decided purely in
-// `classifyWorkspacePattern`; only the plan's filesystem side runs here. An ignored pattern is
-// reported: a package could be hiding behind it, so the scan is not complete.
-const expandGlobPattern = (
-  repoDir: string,
-  spec: { body: string; declared: string },
-  excluded: ReadonlySet<string>,
-): Promise<ExpandResult> => {
-  const plan = classifyWorkspacePattern(spec.body);
-  if (plan.kind === 'expand-children') {
-    return expandGlobSingleLevel(repoDir, plan, excluded);
-  }
+/** Whether a surviving negation names this directory. Decided from the plans alone, so it can be
+ * applied before a candidate's manifest is ever opened — an excluded directory must not be able to
+ * contribute a diagnostic about a package nobody asked for. */
+const excludedBy = (negations: readonly string[], dir: string): boolean =>
+  negations.some((negation) =>
+    planMatchesPath(classifyWorkspacePattern(negatedBody(negation)), dir),
+  );
 
-  if (plan.kind === 'probe-dir') {
-    return excluded.has(normalizeSeparators(plan.dir))
-      ? Promise.resolve({ diagnostics: [], dirs: [] })
-      : expandLiteralDir(repoDir, plan.dir);
-  }
-
-  // Reported as the repository wrote it, `!` included: that is what someone has to go and read.
-  return Promise.resolve({
-    diagnostics: [{ kind: 'unsupported_pattern', pattern: spec.declared }],
-    dirs: [],
-  });
-};
+/** A negation nobody can expand is reported, exactly as an unexpandable inclusive pattern is: the
+ * scan then holds directories the repository excluded, and nothing in it can be shown to be a
+ * member. */
+const unexpandableNegations = (negations: readonly string[]): WorkspaceDiagnostic[] =>
+  negations
+    .filter((negation) => classifyWorkspacePattern(negatedBody(negation)).kind === 'ignore')
+    .map((negation) => ({ kind: 'unsupported_pattern', pattern: negation }));
 
 const collect = (results: readonly ExpandResult[]): ExpandResult => {
   const dirs = new Set<string>();
@@ -68,55 +84,28 @@ const collect = (results: readonly ExpandResult[]): ExpandResult => {
   return { diagnostics, dirs: [...dirs] };
 };
 
-/** Expand every pattern: the inclusive ones select directories, the negated ones deselect them.
- *
- * Both sides go through the same expander, so `!packages/fixtures` and `!packages/*` are as
- * supported as their inclusive twins, and a negation nobody can expand reports
- * `unsupported_pattern` exactly as an inclusive one would — the honest outcome, since a negation
- * left unapplied leaves the scan holding directories the repository excluded.
- *
- * Order IS modelled: npm's resolver honours it, verified against `@npmcli/map-workspaces` —
- * `["packages/*", "!packages/cli", "packages/cli"]` yields BOTH packages, the later inclusion
- * winning over the earlier exclusion. Subtracting every negation at the end would drop `cli`
- * permanently. So a negation removes a directory only when no later inclusive pattern names it
- * again, decided from the classified plan rather than the filesystem so exclusions still settle
- * before anything is probed. */
-const expandPatterns = async (repoDir: string, patterns: Set<string>): Promise<ExpandResult> => {
-  const declared = [...patterns];
-  // Exclusions are resolved FIRST, so the inclusive pass never probes a directory the repository
-  // ruled out. Probing it anyway is not merely wasted work: an unreadable manifest under an
-  // excluded path would report a diagnostic, and one diagnostic marks the entire scan unreliable.
-  const negations = declared.flatMap((pattern, index) =>
-    isNegatedPattern(pattern) ? [{ index, pattern }] : [],
-  );
-  const expanded = await Promise.all(
-    negations.map(async (item) => ({
-      index: item.index,
-      result: await excludedDirs(repoDir, item.pattern),
-    })),
-  );
-  const deselected = collect(expanded.map((item) => item.result));
-  const out = new Set(
-    expanded.flatMap((item) =>
-      item.result.dirs.filter((dir) => !reincludedAfter(declared, dir, item.index)),
-    ),
-  );
+const expandPatterns = async (
+  repoDir: string,
+  declared: readonly string[],
+): Promise<ExpandResult> => {
+  const { negations, patterns } = selectPatterns(declared);
+  const excluded = { has: (dir: string): boolean => excludedBy(negations, dir) };
   const chosen = collect(
     await Promise.all(
-      declared
-        .filter((pattern) => !isNegatedPattern(pattern))
-        .map((pattern) => expandGlobPattern(repoDir, { body: pattern, declared: pattern }, out)),
+      patterns.map((pattern) =>
+        expandGlobPattern(repoDir, { body: pattern, declared: pattern }, excluded),
+      ),
     ),
   );
   return {
-    diagnostics: [...chosen.diagnostics, ...deselected.diagnostics],
+    diagnostics: [...chosen.diagnostics, ...unexpandableNegations(negations)],
     dirs: chosen.dirs,
   };
 };
 
 const detectWorkspacePackagesDetailed = async (repoDir: string): Promise<WorkspaceScan> => {
   const declared = await readDeclarations(repoDir);
-  if (declared.patterns.size === 0) {
+  if (declared.patterns.length === 0) {
     // No workspaces declared: an ordinary single-package repo, whose empty scan is the correct
     // answer and whose `no_workspace_declaration` diagnostic is what stops a caller concluding
     // anything from it. The root is deliberately NOT probed here — `refs add`'s npm fallback owns

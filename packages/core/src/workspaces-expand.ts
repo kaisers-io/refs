@@ -2,9 +2,9 @@ import {
   CURRENT_DIR_SEGMENT,
   classifyWorkspacePattern,
   matchesSegment,
-  negatedBody,
   normalizeSeparators,
 } from './workspaces-shapes.ts';
+
 import {
   MISSING_DIR_CODES,
   probeCandidateDir,
@@ -20,6 +20,11 @@ import { resolveInside } from './fs-containment.ts';
 // Turning one classified pattern into directories: reading a base dir, selecting its children, and
 // probing a literal path. Split from `workspaces.ts` for the 300-line cap; which shapes exist at
 // all is decided in `workspaces-shapes.ts`.
+
+/** Which directories a surviving negation rules out. A predicate rather than a set, because the
+ * answer comes from comparing plans and needs no listing — so an excluded directory's manifest is
+ * never opened, and cannot contribute a diagnostic about a package nobody asked for. */
+type ExcludedDirs = { has: (dir: string) => boolean };
 
 /** Whether one directory entry is selected by an `expand-children` plan. A plan without `match` is
  * a plain `<dir>/*` and takes every child; one with it came from a wildcard inside the last
@@ -70,7 +75,7 @@ const readBaseDir = async (
 const expandGlobSingleLevel = async (
   repoDir: string,
   plan: { baseDir: string; match?: { prefix: string; suffix: string } },
-  excluded: ReadonlySet<string>,
+  excluded: ExcludedDirs,
 ): Promise<ExpandResult> => {
   const { baseDir } = plan;
   const read = await readBaseDir(repoDir, baseDir);
@@ -109,36 +114,31 @@ const expandLiteralDir = async (repoDir: string, dir: string): Promise<ExpandRes
   return { diagnostics: [], dirs: [] };
 };
 
-/** The directory paths one negation names — WITHOUT probing their manifests.
- *
- * An exclusion is a statement about paths, not about packages: whether the directory holds a
- * readable manifest has no bearing on whether the repository wants it. Probing anyway produced a
- * `manifest_unreadable` diagnostic for a directory nobody asked about, which marked the whole scan
- * unreliable and silenced every finding — over a package the repository had told us to ignore.
- *
- * A base directory that cannot be listed IS reported: the exclusion then cannot be applied, and
- * the scan may hold directories the repository excluded. */
-const excludedDirs = async (repoDir: string, pattern: string): Promise<ExpandResult> => {
-  const plan = classifyWorkspacePattern(negatedBody(pattern));
+// Expand one pattern. Which form it takes is decided purely in `classifyWorkspacePattern`; only
+// the plan's filesystem side runs here. A pattern nobody can expand is reported: a package could
+// be hiding behind it, so the scan is not complete.
+const expandGlobPattern = (
+  repoDir: string,
+  spec: { body: string; declared: string },
+  excluded: ExcludedDirs,
+): Promise<ExpandResult> => {
+  const plan = classifyWorkspacePattern(spec.body);
+  if (plan.kind === 'expand-children') {
+    return expandGlobSingleLevel(repoDir, plan, excluded);
+  }
+
   if (plan.kind === 'probe-dir') {
-    return { diagnostics: [], dirs: [normalizeSeparators(plan.dir)] };
+    return excluded.has(normalizeSeparators(plan.dir))
+      ? Promise.resolve({ diagnostics: [], dirs: [] })
+      : expandLiteralDir(repoDir, plan.dir);
   }
-  if (plan.kind !== 'expand-children') {
-    return { diagnostics: [{ kind: 'unsupported_pattern', pattern }], dirs: [] };
-  }
-  const read = await readBaseDir(repoDir, plan.baseDir);
-  if ('result' in read) {
-    return { diagnostics: read.result.diagnostics, dirs: [] };
-  }
-  const base = plan.baseDir === CURRENT_DIR_SEGMENT ? '' : plan.baseDir;
-  return {
-    diagnostics: [],
-    dirs: read.entries
-      .filter(
-        (entry) => (entry.isDirectory() || entry.isSymbolicLink()) && selected(entry, plan.match),
-      )
-      .map((entry) => posix.join(base, entry.name)),
-  };
+
+  // Reported as the repository wrote it, `!` included: that is what someone has to go and read.
+  return Promise.resolve({
+    diagnostics: [{ kind: 'unsupported_pattern', pattern: spec.declared }],
+    dirs: [],
+  });
 };
 
-export { excludedDirs, expandGlobSingleLevel, expandLiteralDir, readBaseDir, selected };
+export { expandGlobPattern, expandGlobSingleLevel, expandLiteralDir, readBaseDir, selected };
+export type { ExcludedDirs };

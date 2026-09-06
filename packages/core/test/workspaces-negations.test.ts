@@ -187,3 +187,31 @@ describe('extglob exclusions', () => {
     ]);
   });
 });
+
+describe("npm's re-inclusion rule", () => {
+  // Every expectation here was read off `@npmcli/map-workspaces`, the resolver npm itself uses.
+  // The rule is about the PATTERN STRING, not the directories a pattern selects: a later literal
+  // `packages/cli` cancels `!packages/cli`, while a later `packages/*` does not, even though it
+  // selects that same directory.
+  const table: [string[], string[]][] = [
+    [['packages/cli', '!packages/cli', 'packages/*'], ['@mono/core']],
+    [['packages/*', '!packages/cli', 'packages/*'], ['@mono/core']],
+    [['!packages/cli', 'packages/*'], ['@mono/core']],
+    [
+      ['packages/cli', 'packages/*', '!packages/cli', 'packages/cli'],
+      ['@mono/cli', '@mono/core'],
+    ],
+  ];
+
+  it.each(table)('resolves %j the way npm does', async (workspaces, expected) => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    writeJson(join(repo, 'package.json'), { workspaces });
+    addPackage(repo, 'packages/cli', { name: '@mono/cli', version: '1.0.0' });
+    addPackage(repo, 'packages/core', { name: '@mono/core', version: '1.0.0' });
+
+    const scan = await detectWorkspacePackages(repo);
+
+    expect(scan.map((pkg) => pkg.name).toSorted()).toStrictEqual(expected);
+  });
+});
