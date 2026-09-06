@@ -112,11 +112,20 @@ const memberIssue = (name: string, paths: readonly string[]): StructureIssue =>
  * The root is excluded because `unregisteredRoot` owns it: it is found by looking rather than by
  * being declared, needs the manifest read that one does, and would otherwise be reported twice.
  *
- * No `scanIsReliable` guard, unlike every absence claim in `package-location.ts`, and the
- * asymmetry is deliberate: this reports packages the scan SAW. A positive sighting stands on its
- * own — an incomplete scan can only have missed more of them, which would make this list short,
- * never wrong. The claims that need a complete scan are the ones about every path ("it is
- * nowhere", "it is only here"), and none of those are made here. */
+ * Gated on `scanIsReliable`, exactly as `unregisteredRoot` is. Seeing a package is not the claim
+ * this finding makes: it says the package is an unregistered MEMBER and names the path to
+ * register it at, and both of those need a scan that inspected everything.
+ *
+ * Membership, because a sighting is not a selection. Negated workspace patterns are not supported
+ * (`!packages/fixtures` yields an `unsupported_pattern` diagnostic and the directory is expanded
+ * anyway), so a repository that explicitly excluded a package still has it in the scan — and
+ * recommending its registration would be advice contradicting the repository's own declaration.
+ *
+ * Uniqueness, because a second declaration of the same name can be sitting behind the unreadable
+ * manifest or unsupported pattern that made the scan incomplete. `refs add` keeps the LAST of a
+ * duplicate pair, so naming one path from a partial view prescribes something registration might
+ * not do — the same reason `unregisteredRoot` refuses an unreliable scan, and the reason
+ * `memberIssue` reports `candidates` rather than picking when it can see the duplicate. */
 const unregisteredMembers = async (
   configured: readonly LocationQuery[],
   discovery: MemberDiscovery,
@@ -126,6 +135,9 @@ const unregisteredMembers = async (
     return [];
   }
   const scan = await scanOnce();
+  if (!scanIsReliable(scan)) {
+    return [];
+  }
   const registered = new Set(configured.map((query) => query.packageName));
   const arrived = discovery.kind === 'all' ? undefined : new Set(discovery.paths);
   const members = scan.packages.filter((pkg) => pkg.path !== ROOT_PACKAGE_PATH);
