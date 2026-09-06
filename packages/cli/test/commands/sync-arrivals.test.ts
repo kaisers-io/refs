@@ -1,3 +1,9 @@
+import {
+  COMMAND_PREFIX_LENGTH,
+  repairLineFor,
+  resolveStatus,
+  runPrintedRepair,
+} from '../helpers/printed-command.ts';
 import { addRefViaDescription, gitFor, runSyncJson } from '../helpers/sync-support.ts';
 import { describe, expect, it } from 'vitest';
 import {
@@ -10,10 +16,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { readConfig, resolveHome, writeConfig } from '@kaisers-io/refs-core';
 import type { CliContext } from '../../src/context.ts';
 import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
-import type { StructureReport } from '../../src/commands/drift-report.ts';
 import { createFixtureRepo } from '../helpers/fixture-repo.ts';
-import { driftLines } from '../../src/commands/drift-report.ts';
 import { join } from 'node:path';
 
 // A package that arrived upstream, end to end through the real command against a real git remote.
@@ -59,62 +62,26 @@ const deregisterPackage = async (ctx: CliContext, key: string, name: string): Pr
  * `shellQuote` emits. Its job is to make the test run the string the tool PRINTED rather than one
  * the test rebuilt — a distinction that hid a real bug, since a hand-built argv passes a literal
  * `<ref>` placeholder straight through while a shell reads it as a redirection. */
-type SplitState = { argv: string[]; current: string; quoted: boolean; started: boolean };
-
-const step = (state: SplitState, char: string): SplitState => {
-  if (char === "'") {
-    return { ...state, quoted: !state.quoted, started: true };
-  }
-  if (char !== ' ' || state.quoted) {
-    return { ...state, current: state.current + char };
-  }
-  const done = state.started || state.current.length > 0;
-  return {
-    argv: done ? [...state.argv, state.current] : state.argv,
-    current: '',
-    quoted: false,
-    started: false,
-  };
-};
-
-const splitCommand = (command: string): string[] => {
-  const end = [...command].reduce<SplitState>((state, char) => step(state, char), {
-    argv: [],
-    current: '',
-    quoted: false,
-    started: false,
-  });
-  return end.started || end.current.length > 0 ? [...end.argv, end.current] : end.argv;
-};
-
-/** The `refs edit <key>` prefix of a repair command, which is where a `<ref>` placeholder used to
- * sit — a shell reads that as an input redirection, so the line could not run as printed. */
-const COMMAND_PREFIX_LENGTH = 3;
-
-/** Finds the printed repair line for one package, or throws — an absent line is a broken fixture,
- * not a branch worth asserting on. */
-const repairLineFor = (report: StructureReport | undefined, key: string, name: string): string => {
-  const line = driftLines(report ?? { status: 'ok' }, key).find((text) => text.includes(name));
-  if (line === undefined) {
-    throw new Error(`expected a drift line mentioning '${name}'`);
-  }
-  return line;
-};
-
-/** Runs the repair command a finding printed, VERBATIM — only the description placeholder is
- * filled in, which is the one part the finding deliberately leaves to the caller. */
-const runPrintedRepair = async (
+/** What has to be true after running the printed repair.
+ *
+ * "The next sync is quiet" proves nothing on its own: the arrival range was already consumed by
+ * the sync that reported it, so the finding would be gone whether or not anything was registered.
+ * These three are what actually establish the repair worked. */
+const expectRegistered = async (
   ctx: CliContext,
-  line: string,
-  description: string,
-): Promise<string[]> => {
-  const marker = 'To register it: ';
-  const command = line.slice(line.indexOf(marker) + marker.length);
-  const argv = splitCommand(command).map((arg) => (arg === '<what it is>' ? description : arg));
-  const { run } = await import('../../src/main.ts');
-  // `refs …` as printed becomes `node refs …` as commander expects.
-  await run(ctx, ['node', ...argv, '--json']);
-  return argv;
+  args: { argv: readonly string[]; key: string; stdout: string[] },
+): Promise<void> => {
+  // Nothing a shell would reinterpret, and the real key where `<ref>` used to sit.
+  expect(args.argv).not.toContain('<ref>');
+  expect(args.argv.slice(0, COMMAND_PREFIX_LENGTH)).toStrictEqual(['refs', 'edit', args.key]);
+
+  const config = await readConfig(resolveHome(ctx.env));
+  expect(config.refs[args.key]?.packages?.['@fixture/c']).toStrictEqual({
+    description: 'The package that arrived.',
+    path: 'packages/c',
+  });
+
+  await expect(resolveStatus(ctx, args.stdout, '@fixture/c')).resolves.toBe('verified');
 };
 
 /** Adds a workspace member to the upstream fixture and commits it. */
@@ -168,14 +135,14 @@ describe('refs sync: registering what arrived', () => {
           // test used to do — passes a literal `<ref>` straight through without noticing that a
           // shell reads it as an input redirection.
           const printed = repairLineFor(result.data.results[0]?.structure, key, '@fixture/c');
-          const argv = await runPrintedRepair(ctx, printed, 'The package that arrived.');
-          // Nothing a shell would reinterpret, and the real key where `<ref>` used to sit.
-          expect(argv).not.toContain('<ref>');
-          expect(argv.slice(0, COMMAND_PREFIX_LENGTH)).toStrictEqual(['refs', 'edit', key]);
+          const argv = await runPrintedRepair(ctx, {
+            description: 'The package that arrived.',
+            line: printed,
+            stdout,
+          });
+          await expectRegistered(ctx, { argv, key, stdout });
 
           const after = await runSyncJson(ctx, stdout, { refKeys: [key] });
-          // Registered now, so the next sync has nothing to say about it — and the entry it wrote
-          // verifies against the checkout like any other.
           expect(after.data.results[0]?.structure).toStrictEqual({ status: 'ok' });
         }),
       );
