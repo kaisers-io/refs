@@ -176,7 +176,7 @@ describe('a range that added a negation', () => {
   );
 
   it(
-    'is untroubled by a negation being REMOVED, which only widens',
+    'gives up even when a negation is only REMOVED, which widens',
     async () => {
       expect.hasAssertions();
       const dir = await declaredRepo();
@@ -186,10 +186,11 @@ describe('a range that added a negation', () => {
       write(dir, 'packages/new/package.json', { name: '@x/new', version: '1.0.0' });
       const to = commitAll(dir, 'stop excluding b');
 
-      await expect(packagesBefore(runner, { dir, from, to })).resolves.toStrictEqual({
-        changedDirs: ['packages/new'],
-        namesBefore: [],
-      });
+      // Removing a negation genuinely widens, and this reports nothing anyway. The rule is
+      // deliberately blunt — only "the old list, with inclusive patterns appended" is treated as
+      // safe — because every other shape can narrow once order decides which of a negation and a
+      // re-inclusion wins. The cost is a quiet sync on a rare edit; the alternative is a wrong one.
+      await expect(packagesBefore(runner, { dir, from, to })).resolves.toBeUndefined();
     },
     SLOW_IO_TIMEOUT_MS,
   );
@@ -267,7 +268,7 @@ describe('a range that changed the root manifest without changing the declaratio
   );
 
   it(
-    'ignores a reordering of the same patterns',
+    'gives up on a reordering, which the same set can hide',
     async () => {
       expect.hasAssertions();
       const dir = await declaredRepo();
@@ -280,12 +281,11 @@ describe('a range that changed the root manifest without changing the declaratio
       write(dir, 'packages/new/package.json', { name: '@x/new', version: '1.0.0' });
       const to = commitAll(dir, 'reorder');
 
-      // Order does not change which directories the patterns select, so the inference still holds
-      // and the genuinely new package is still reported.
-      await expect(packagesBefore(runner, { dir, from, to })).resolves.toStrictEqual({
-        changedDirs: ['packages/new'],
-        namesBefore: ['root'],
-      });
+      // This test used to assert the opposite, on the reasoning that order does not change which
+      // directories are selected. It does: `["packages/*", "!b", "b"]` and
+      // `["packages/*", "b", "!b"]` are the same SET and different memberships, so a reorder can
+      // drop a member with its manifest untouched — and its name then survives in neither source.
+      await expect(packagesBefore(runner, { dir, from, to })).resolves.toBeUndefined();
     },
     SLOW_IO_TIMEOUT_MS,
   );

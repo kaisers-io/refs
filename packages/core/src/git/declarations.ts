@@ -112,32 +112,40 @@ const pnpmPatternsAt = async (runner: Runner, opts: RangeOpts, rev: string): Pro
   return declaresUnreadably(contents, patterns) ? [UNREADABLE] : patterns;
 };
 
-/** Both declarations at one revision, merged into one order-insensitive set — which is exactly
- * how the scanner reads them (`readDeclarations` unions the two with no precedence between them).
- * Modelling them the same way here matters: keeping the files apart would call a pattern MOVED
- * from `package.json` into `pnpm-workspace.yaml` a narrowing, when it selects the same directories
- * either way. Order is dropped for the same reason. */
-const declarationAt = async (
-  runner: Runner,
-  opts: RangeOpts,
-  rev: string,
-): Promise<Set<string>> => {
+/** Both declarations at one revision, in order. The two files are concatenated because the scanner
+ * unions them with no precedence between them (`readDeclarations`), so a pattern MOVED from
+ * `package.json` into `pnpm-workspace.yaml` selects the same directories either way.
+ *
+ * Order is KEPT, unlike before: the scanner honours it, so `["packages/*", "!b", "b"]` and
+ * `["packages/*", "b", "!b"]` are the same set and different memberships. */
+const declarationAt = async (runner: Runner, opts: RangeOpts, rev: string): Promise<string[]> => {
   const [npm, pnpm] = await Promise.all([
     npmPatternsAt(runner, opts, rev),
     pnpmPatternsAt(runner, opts, rev),
   ]);
-  return new Set([...npm, ...pnpm]);
+  return [...npm, ...pnpm];
 };
-
-const lostAny = (before: ReadonlySet<string>, after: ReadonlySet<string>): boolean =>
-  [...before].some((pattern) => !after.has(pattern));
 
 const NEGATION_PREFIX = '!';
 
-const split = (patterns: ReadonlySet<string>): { included: Set<string>; negated: Set<string> } => ({
-  included: new Set([...patterns].filter((pattern) => !pattern.startsWith(NEGATION_PREFIX))),
-  negated: new Set([...patterns].filter((pattern) => pattern.startsWith(NEGATION_PREFIX))),
-});
+/** Whether `after` is `before` with inclusive patterns appended, and nothing else.
+ *
+ * The only change that provably cannot narrow membership. Expansion is monotone in the inclusive
+ * patterns, so appending one can only add directories; every other edit — dropping a pattern,
+ * adding a negation, or REORDERING, now that order decides which of a negation and a re-inclusion
+ * wins — can take a member out of the scan with its manifest untouched, which is the one thing the
+ * reconstruction in `arrivals.ts` cannot survive.
+ *
+ * Deliberately blunt: it calls a widening edit a narrowing whenever the shape is anything else,
+ * and the cost of that is a quiet sync rather than a wrong one. */
+const onlyAppendedInclusions = (before: readonly string[], after: readonly string[]): boolean => {
+  if (after.length < before.length) {
+    return false;
+  }
+  const kept = before.every((pattern, index) => after[index] === pattern);
+  const appended = after.slice(before.length);
+  return kept && appended.every((pattern) => !pattern.startsWith(NEGATION_PREFIX));
+};
 
 /** Whether the range dropped a workspace declaration, so a member could have left the scan with
  * its manifest untouched.
@@ -155,9 +163,7 @@ const membershipNarrowed = async (
     declarationAt(runner, opts, opts.from),
     declarationAt(runner, opts, opts.to),
   ]);
-  const from = split(before);
-  const to = split(after);
-  return lostAny(from.included, to.included) || lostAny(to.negated, from.negated);
+  return !onlyAppendedInclusions(before, after);
 };
 
 export { PNPM_WORKSPACE_FILE, ROOT_MANIFEST, membershipNarrowed };

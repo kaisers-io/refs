@@ -126,12 +126,29 @@ const classifyWorkspacePattern = (pattern: string): WorkspacePatternPlan => {
   return pattern.includes('*') ? partialSegmentPlan(pattern) : { dir: pattern, kind: 'probe-dir' };
 };
 
+/** A package path is an identifier, not a filesystem string: it is compared against configured
+ * entries, against the paths git reports, and printed into commands `zPackagePath` must accept —
+ * and `zPackagePath` rejects both a trailing slash and an empty segment. A literal declaration
+ * keeps whatever the repository wrote, and `packages//new/` is as legal to npm and pnpm as
+ * `packages/new`, so separators are collapsed and trimmed where the pattern becomes a path.
+ *
+ * Written out rather than delegated to `posix.normalize`, which also resolves `.` and `..`
+ * segments — a traversal-shaped pattern is rejected upstream as unsafe, and quietly resolving one
+ * here would be a second, weaker answer to a question already decided.
+ *
+ * The glob branch needs no equivalent: it builds its paths with `posix.join`, which normalizes. */
+const normalizeSeparators = (dir: string): string =>
+  dir.replaceAll(/\/+/gu, '/').replace(/\/$/u, '');
+
 /** Whether an already-classified inclusive pattern selects `path` — decided from the plan alone,
  * with no filesystem access, so an exclusion can be tested against later patterns before anything
  * is probed. */
 const planMatchesPath = (plan: WorkspacePatternPlan, path: string): boolean => {
   if (plan.kind === 'probe-dir') {
-    return plan.dir === path;
+    // Normalized on both sides: the exclusion's paths went through this already, and a
+    // re-inclusion written `packages/cli/` selects the same directory as `packages/cli` — npm
+    // treats them alike, so a trailing slash must not decide whether a package exists.
+    return normalizeSeparators(plan.dir) === path;
   }
   if (plan.kind !== 'expand-children') {
     return false;
@@ -150,6 +167,7 @@ export {
   isSafeWorkspacePattern,
   matchesSegment,
   negatedBody,
+  normalizeSeparators,
   planMatchesPath,
 };
 export type { WorkspacePatternPlan };

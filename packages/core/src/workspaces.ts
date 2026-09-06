@@ -9,16 +9,12 @@ import type {
 import {
   classifyWorkspacePattern,
   isNegatedPattern,
+  normalizeSeparators,
   planMatchesPath,
 } from './workspaces-shapes.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { deduplicateAndSort, sortDiagnostics } from './workspaces-patterns.ts';
-import {
-  excludedDirs,
-  expandGlobSingleLevel,
-  expandLiteralDir,
-  normalizeSeparators,
-} from './workspaces-expand.ts';
+import { excludedDirs, expandGlobSingleLevel, expandLiteralDir } from './workspaces-expand.ts';
 import { partitionProbes, probePackageDir } from './workspaces-probe.ts';
 import { probeRootPackage, withoutClaimedRoot } from './workspaces-root.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`

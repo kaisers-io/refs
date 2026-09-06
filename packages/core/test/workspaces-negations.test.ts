@@ -149,6 +149,25 @@ describe('negation patterns and declaration order', () => {
   });
 });
 
+describe('a re-inclusion written differently', () => {
+  it('selects the same directory with a trailing slash', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // npm treats `packages/cli/` and `packages/cli` alike — verified against its own resolver, both
+    // yield the package. A trailing slash must not decide whether the re-inclusion is recognized.
+    writeJson(join(repo, 'package.json'), {
+      workspaces: ['packages/*', '!packages/cli', 'packages/cli/'],
+    });
+    addPackage(repo, 'packages/cli', { name: '@mono/cli', version: '1.0.0' });
+    addPackage(repo, 'packages/core', { name: '@mono/core', version: '1.0.0' });
+
+    await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
+      { description: undefined, name: '@mono/cli', path: 'packages/cli' },
+      { description: undefined, name: '@mono/core', path: 'packages/core' },
+    ]);
+  });
+});
+
 describe('extglob exclusions', () => {
   it('reports them rather than reading them as a literal directory', async () => {
     expect.hasAssertions();
