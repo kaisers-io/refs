@@ -146,6 +146,19 @@ describe('glob expansion', () => {
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([]);
   });
 
+  it('trims a trailing slash from a literal pattern', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // Both npm and pnpm accept `packages/new/`. The path it yields is an IDENTIFIER, though: it is
+    // compared against configured entries and against paths git reports, and it is printed into
+    // `refs edit --create --path`, which `zPackagePath` rejects outright with a trailing slash.
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/new/'] });
+    addPackage(repo, 'packages/new', { name: '@mono/new', version: '1.0.0' });
+    await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
+      { description: undefined, name: '@mono/new', path: 'packages/new' },
+    ]);
+  });
+
   it('resolves non-glob paths like docs/site directly', async () => {
     expect.hasAssertions();
     const repo = freshRepo();

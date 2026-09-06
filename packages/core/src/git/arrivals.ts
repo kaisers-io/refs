@@ -1,3 +1,4 @@
+import { PNPM_WORKSPACE_FILE, ROOT_MANIFEST, declarationChanged } from './declarations.ts';
 import { basename, dirname } from 'node:path';
 import type { Runner } from '../proc/runner.ts';
 import { extractPackageName } from '../workspaces-parse.ts';
@@ -16,7 +17,9 @@ import { extractPackageName } from '../workspaces-parse.ts';
 //
 // Only manifests the range CHANGED have to be read from history. An unchanged manifest is
 // byte-identical at both ends, so its current name is also the name it had before — which is what
-// keeps this to a handful of reads on a monorepo with a hundred packages.
+// keeps this to a handful of reads on a monorepo with a hundred packages. That shortcut assumes
+// the caller can still SEE those members, so a range that changed the workspace declaration
+// itself gives up rather than guessing (`declarations.ts`).
 //
 // Best-effort throughout. Every failure resolves to `undefined`, meaning "nothing can be said",
 // and the caller reports no arrivals: this only ever adds a finding to a sync that already
@@ -81,10 +84,7 @@ const manifestPaths = (stdout: string): string[] =>
  * The pairing is a claim about history; what matters here is simply which paths were involved.
  *
  * `--` ends option parsing, for the same reason `cloneRepo` and `git remote set-url` use it. */
-const changedManifests = async (
-  runner: Runner,
-  opts: ArrivalsOpts,
-): Promise<string[] | undefined> => {
+const changedPaths = async (runner: Runner, opts: ArrivalsOpts): Promise<string[] | undefined> => {
   const stdout = await gitOutput(runner, opts.dir, [
     'diff',
     '--name-only',
@@ -93,8 +93,9 @@ const changedManifests = async (
     `${opts.from}..${opts.to}`,
     '--',
     MANIFEST_PATHSPEC,
+    PNPM_WORKSPACE_FILE,
   ]);
-  return stdout === undefined ? undefined : manifestPaths(stdout);
+  return stdout === undefined ? undefined : stdout.split('\0').filter((line) => line.length > 0);
 };
 
 /** Which of `paths` existed at `rev`, so a later read can tell "this file is new" apart from
@@ -169,6 +170,19 @@ const namesAtFrom = async (
 
 const NOTHING_BEFORE: PackagesBefore = { changedDirs: [], namesBefore: [] };
 
+/** Whether the range changed which directories count as workspace members — which invalidates the
+ * "an untouched member kept its name" half of the reconstruction. The declaring files are compared
+ * only when the range actually touched one, so the ordinary sync pays nothing for the check. */
+const membershipMoved = (
+  runner: Runner,
+  opts: ArrivalsOpts,
+  touched: readonly string[],
+): Promise<boolean> =>
+  declarationChanged(runner, {
+    ...opts,
+    touched: touched.some((path) => path === PNPM_WORKSPACE_FILE || path === ROOT_MANIFEST),
+  });
+
 /** The directories a caller should reconsider. The repository root is never a workspace member —
  * `unregisteredRoot` owns that case and needs no range to find it — so it is not among them. */
 const changedDirsOf = (changed: readonly string[]): string[] =>
@@ -201,8 +215,12 @@ const packagesBefore = async (
   if (opts.from === opts.to) {
     return NOTHING_BEFORE;
   }
-  const changed = await changedManifests(runner, opts);
-  if (changed === undefined || changed.length > MAX_CHANGED_MANIFESTS) {
+  const touched = await changedPaths(runner, opts);
+  if (touched === undefined || (await membershipMoved(runner, opts, touched))) {
+    return undefined;
+  }
+  const changed = touched.filter((path) => isPackageManifest(path));
+  if (changed.length > MAX_CHANGED_MANIFESTS) {
     return undefined;
   }
   const names = await namesBeforeFor(runner, opts, changed);

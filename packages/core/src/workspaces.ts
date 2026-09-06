@@ -177,6 +177,15 @@ const expandGlobPattern = (repoDir: string, pattern: string): Promise<ExpandResu
   return Promise.resolve({ diagnostics: [{ kind: 'unsupported_pattern', pattern }], dirs: [] });
 };
 
+/** A package path is an identifier, not a filesystem string: it is compared against configured
+ * entries, against paths git reports, and printed into commands that `zPackagePath` must accept —
+ * and `zPackagePath` rejects a trailing slash outright. A literal declaration keeps whatever the
+ * repository wrote (`packages/new/` is legal in both npm and pnpm), so the one shape that reaches
+ * here unnormalized is trimmed at the point the pattern becomes a path.
+ *
+ * The glob branch needs no equivalent: it builds its paths with `posix.join`, which normalizes. */
+const trimTrailingSlashes = (dir: string): string => dir.replace(/\/+$/u, '');
+
 // A wildcard-free pattern names one directory. Same three-way probe the glob branch uses: the
 // old boolean pair collapsed "no package here" (normal) with "refused to look" (a hole in the
 // scan), so a literal pattern naming an unreadable directory — or one symlinked out of the repo
@@ -184,7 +193,7 @@ const expandGlobPattern = (repoDir: string, pattern: string): Promise<ExpandResu
 const expandLiteralDir = async (repoDir: string, dir: string): Promise<ExpandResult> => {
   const probe = await probeCandidateDir(repoDir, join(repoDir, dir));
   if (probe === 'manifest') {
-    return { diagnostics: [], dirs: [dir] };
+    return { diagnostics: [], dirs: [trimTrailingSlashes(dir)] };
   }
   if (probe === 'rejected') {
     return { diagnostics: [{ kind: 'manifest_unreadable', path: dir }], dirs: [] };
