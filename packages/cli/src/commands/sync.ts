@@ -186,7 +186,7 @@ const linesFor = (item: SyncResultItem): string[] => {
   if (item.structure === undefined) {
     return [head];
   }
-  return [head, ...driftLines(item.structure).map((line) => `${DRIFT_INDENT}${line}`)];
+  return [head, ...driftLines(item.structure, item.key).map((line) => `${DRIFT_INDENT}${line}`)];
 };
 
 /** `Updated (N) / Fresh (N) / Cloned (N) / Restored (N) / Failed (N)` summary line, followed by

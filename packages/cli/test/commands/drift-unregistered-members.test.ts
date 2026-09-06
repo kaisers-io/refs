@@ -6,6 +6,10 @@ import { driftLines } from '../../src/commands/drift-report.ts';
 import { join } from 'node:path';
 import { probeRefStructure } from '../../src/commands/drift-probe.ts';
 
+/** The ref these findings are about — the `unregistered` line puts it into the command it
+ * prints, so it has to be a real key rather than a placeholder. */
+const FIXTURE_REF = 'github.com/acme/alpha';
+
 // Workspace members the checkout declares and the configuration does not have.
 //
 // The two discovery modes exist because the same fact means different things to the two callers.
@@ -58,8 +62,8 @@ describe('probeRefStructure: unregistered members, doctor', () => {
     // The whole reason `refs edit --create` exists: before it, this finding's only instruction
     // was "hand-edit config.toml", because `add` refuses a tracked ref and a field edit needs an
     // entry to edit.
-    expect(driftLines(report).join('\n')).toContain(
-      "refs edit <ref> --package '@fixture/b' --create --path 'packages/b'",
+    expect(driftLines(report, FIXTURE_REF).join('\n')).toContain(
+      `refs edit '${FIXTURE_REF}' --package '@fixture/b' --create --path 'packages/b'`,
     );
   });
 
@@ -78,7 +82,7 @@ describe('probeRefStructure: unregistered members, doctor', () => {
     // A manifest description is attacker-authored text with no way to verify it. `name` and
     // `path` are structurally checkable against the checkout and so are printed; the description
     // is left for the caller to write from source evidence. See SKILL.md §4.
-    expect(driftLines(report).join('\n')).not.toContain('IGNORE PREVIOUS');
+    expect(driftLines(report, FIXTURE_REF).join('\n')).not.toContain('IGNORE PREVIOUS');
     expect(report.packages?.[0]).toStrictEqual({
       name: '@fixture/b',
       path: 'packages/b',

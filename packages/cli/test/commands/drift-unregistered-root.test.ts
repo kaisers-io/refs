@@ -7,6 +7,8 @@ import { join } from 'node:path';
 import { probeRefStructure } from '../../src/commands/drift-probe.ts';
 import { writeFileSync } from 'node:fs';
 
+const FIXTURE_REF = 'github.com/acme/alpha';
+
 // The migration half of #88: a ref added before roots were registered keeps the package map it was
 // given, and no command adds one entry to an existing ref. The drift probe already holds both the
 // checkout and the configuration on every sync, so this is where that gap surfaces. Split from
@@ -89,16 +91,23 @@ describe('drift lines: an unregistered root', () => {
   it('names the command that registers it', () => {
     expect.hasAssertions();
 
-    const [line] = driftLines({
-      packages: [{ name: '@acme/toolkit', path: '.', status: 'unregistered' }],
-      status: 'drift',
-    });
+    const [line] = driftLines(
+      {
+        packages: [{ name: '@acme/toolkit', path: '.', status: 'unregistered' }],
+        status: 'drift',
+      },
+      FIXTURE_REF,
+    );
 
     // `refs add` refuses a tracked ref and an ordinary `refs edit --package` needs an entry to
     // edit — which is what `--create` was added for. Before it, the only instruction this line
     // could give was a `config.toml` fragment to type in by hand.
     expect(line).toContain('not registered');
-    expect(line).toContain("refs edit <ref> --package '@acme/toolkit' --create --path '.'");
+    // The ref key is interpolated, not a `<ref>` placeholder: a shell reads that as an input
+    // redirection, so a line carrying one cannot be run as printed.
+    expect(line).toContain(
+      `refs edit '${FIXTURE_REF}' --package '@acme/toolkit' --create --path '.'`,
+    );
   });
 });
 
@@ -128,10 +137,13 @@ describe('probeRefStructure: a root whose name a member also claims', () => {
   it('carries that path into the line it prints', () => {
     expect.hasAssertions();
 
-    const [line] = driftLines({
-      packages: [{ name: '@acme/toolkit', path: 'packages/toolkit', status: 'unregistered' }],
-      status: 'drift',
-    });
+    const [line] = driftLines(
+      {
+        packages: [{ name: '@acme/toolkit', path: 'packages/toolkit', status: 'unregistered' }],
+        status: 'drift',
+      },
+      FIXTURE_REF,
+    );
 
     expect(line).toContain("--create --path 'packages/toolkit'");
   });
@@ -184,16 +196,19 @@ describe('probeRefStructure: a root name several paths declare', () => {
   it('names them in the line it prints, instead of a path', () => {
     expect.hasAssertions();
 
-    const [line] = driftLines({
-      packages: [
-        {
-          candidates: ['packages/one', 'packages/two'],
-          name: '@acme/toolkit',
-          status: 'unregistered',
-        },
-      ],
-      status: 'drift',
-    });
+    const [line] = driftLines(
+      {
+        packages: [
+          {
+            candidates: ['packages/one', 'packages/two'],
+            name: '@acme/toolkit',
+            status: 'unregistered',
+          },
+        ],
+        status: 'drift',
+      },
+      FIXTURE_REF,
+    );
 
     expect(line).toContain('packages/one, packages/two');
     // No `--create` command either: which path to register is a decision, not a lookup, so the

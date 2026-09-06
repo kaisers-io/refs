@@ -7,6 +7,8 @@ import { join } from 'node:path';
 import { probeRefStructure } from '../../src/commands/drift-probe.ts';
 import { writeFileSync } from 'node:fs';
 
+const FIXTURE_REF = 'github.com/acme/alpha';
+
 // `drift-probe.ts` against real directories — the probe is pure filesystem reading, so a plain
 // temp tree is the whole fixture; no git repo, no lock, no CLI. `sync-drift.test.ts` covers the
 // same code through the real command, and `doctor-drift.test.ts` through `refs doctor`.
@@ -174,13 +176,13 @@ describe('drift lines: silence and ref-level failures', () => {
   it('says nothing at all for a clean ref', () => {
     expect.hasAssertions();
 
-    expect(driftLines({ status: 'ok' })).toStrictEqual([]);
+    expect(driftLines({ status: 'ok' }, FIXTURE_REF)).toStrictEqual([]);
   });
 
   it('reports a whole-probe failure as one ref-level line', () => {
     expect.hasAssertions();
 
-    expect(driftLines({ reason: 'EACCES', status: 'unknown' })).toStrictEqual([
+    expect(driftLines({ reason: 'EACCES', status: 'unknown' }, FIXTURE_REF)).toStrictEqual([
       'could not be checked — EACCES',
     ]);
   });
@@ -190,18 +192,21 @@ describe('drift lines: removal reads differently from relocation', () => {
   it('prescribes removal for a missing package and a path fix for a relocated one', () => {
     expect.hasAssertions();
 
-    const lines = driftLines({
-      packages: [
-        { configured_path: 'packages/b', name: '@fixture/b', status: 'missing' },
-        {
-          configured_path: 'packages/c',
-          name: '@fixture/c',
-          path: 'packages/moved',
-          status: 'relocated',
-        },
-      ],
-      status: 'drift',
-    });
+    const lines = driftLines(
+      {
+        packages: [
+          { configured_path: 'packages/b', name: '@fixture/b', status: 'missing' },
+          {
+            configured_path: 'packages/c',
+            name: '@fixture/c',
+            path: 'packages/moved',
+            status: 'relocated',
+          },
+        ],
+        status: 'drift',
+      },
+      FIXTURE_REF,
+    );
 
     expect(lines[0]).toContain('remove the entry');
     expect(lines[1]).toContain('moved to packages/moved');
@@ -210,14 +215,17 @@ describe('drift lines: removal reads differently from relocation', () => {
   it('falls back to a placeholder rather than printing undefined', () => {
     expect.hasAssertions();
 
-    const lines = driftLines({
-      packages: [
-        { configured_path: 'a', name: 'no-path', status: 'relocated' },
-        { configured_path: 'b', name: 'no-candidates', status: 'ambiguous' },
-        { configured_path: 'c', name: 'no-reason', status: 'unverifiable' },
-      ],
-      status: 'drift',
-    });
+    const lines = driftLines(
+      {
+        packages: [
+          { configured_path: 'a', name: 'no-path', status: 'relocated' },
+          { configured_path: 'b', name: 'no-candidates', status: 'ambiguous' },
+          { configured_path: 'c', name: 'no-reason', status: 'unverifiable' },
+        ],
+        status: 'drift',
+      },
+      FIXTURE_REF,
+    );
 
     expect(lines).toHaveLength(ONE_ISSUE + TWO_ISSUES);
     expect(lines.join(' ')).not.toContain('undefined');

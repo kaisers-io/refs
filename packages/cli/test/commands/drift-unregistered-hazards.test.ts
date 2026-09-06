@@ -7,6 +7,8 @@ import { driftLines } from '../../src/commands/drift-report.ts';
 import { join } from 'node:path';
 import { probeRefStructure } from '../../src/commands/drift-probe.ts';
 
+const FIXTURE_REF = 'github.com/acme/alpha';
+
 // The ways member discovery can be wrong in a way that MATTERS: text it hands to a shell, a name
 // it reports twice, and a scan too incomplete to support the claim it would make. Split from
 // `drift-unregistered-members.test.ts` for the 300-line cap.
@@ -30,7 +32,7 @@ describe('probeRefStructure: values that reach a shell', () => {
     // being non-empty. The line exists to be pasted into a shell.
     addPackage(repo, 'packages/$(id)', { name: '@evil/; rm -rf /tmp/x', version: '1.0.0' });
 
-    const line = driftLines(await probeRefStructure(repo, CONFIGURED, ALL)).join('\n');
+    const line = driftLines(await probeRefStructure(repo, CONFIGURED, ALL), FIXTURE_REF).join('\n');
 
     expect(line).toContain("--package '@evil/; rm -rf /tmp/x' --create --path 'packages/$(id)'");
   });

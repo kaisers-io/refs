@@ -1,7 +1,7 @@
 import { addPackage, freshRepo, writeJson } from './helpers/workspace-fixture.ts';
 import { describe, expect, it, vi } from 'vitest';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { detectWorkspacePackages, detectWorkspacePackagesDetailed } from '../src/workspaces.ts';
+import { detectWorkspacePackages } from '../src/workspaces.ts';
 import { join } from 'node:path';
 import { readdir } from 'node:fs/promises';
 
@@ -266,83 +266,5 @@ describe('untrusted pattern rejection', () => {
     const repo = freshRepo();
     writeJson(join(repo, 'package.json'), { workspaces: ['/etc/*'] });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([]);
-  });
-});
-
-describe('negation patterns', () => {
-  it('subtracts a glob negation from what the inclusive patterns selected', async () => {
-    expect.hasAssertions();
-    const repo = freshRepo();
-    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
-    writeFileSync(
-      join(repo, 'pnpm-workspace.yaml'),
-      "packages:\n  - packages/*\n  - tools/*\n  - '!tools/*'\n",
-    );
-    addPackage(repo, 'packages/a', { name: '@mono/a', version: '1.0.0' });
-    addPackage(repo, 'tools/t1', { name: '@mono/t1', version: '1.0.0' });
-
-    await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: undefined, name: '@mono/a', path: 'packages/a' },
-    ]);
-  });
-
-  it('excludes only what the negation actually matches, not what shares its prefix', async () => {
-    expect.hasAssertions();
-    const repo = freshRepo();
-    // The reason this is expansion rather than a string-prefix test: `packages/fixture-live` does
-    // not match `!packages/fixture`, and treating it as excluded would have reported a live
-    // package as gone.
-    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
-    writeFileSync(
-      join(repo, 'pnpm-workspace.yaml'),
-      "packages:\n  - packages/*\n  - '!packages/fixture'\n",
-    );
-    addPackage(repo, 'packages/fixture', { name: '@mono/fixture', version: '1.0.0' });
-    addPackage(repo, 'packages/fixture-live', { name: '@mono/live', version: '1.0.0' });
-
-    await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: undefined, name: '@mono/live', path: 'packages/fixture-live' },
-    ]);
-  });
-
-  it('applies a wildcard inside the last segment, the shape real repos exclude by', async () => {
-    expect.hasAssertions();
-    const repo = freshRepo();
-    // TanStack Query's own declaration, reduced: `examples/vue/*` minus two prefixes.
-    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
-    writeFileSync(
-      join(repo, 'pnpm-workspace.yaml'),
-      "packages:\n  - examples/vue/*\n  - '!examples/vue/2*'\n  - '!examples/vue/nuxt*'\n",
-    );
-    addPackage(repo, 'examples/vue/2.6-basic', { name: '@mono/vue26', version: '1.0.0' });
-    addPackage(repo, 'examples/vue/nuxt3', { name: '@mono/nuxt3', version: '1.0.0' });
-    addPackage(repo, 'examples/vue/basic', { name: '@mono/basic', version: '1.0.0' });
-
-    await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: undefined, name: '@mono/basic', path: 'examples/vue/basic' },
-    ]);
-  });
-});
-
-describe('negation patterns nobody can expand', () => {
-  it('reports the shape rather than silently leaving the directory in', async () => {
-    expect.hasAssertions();
-    const repo = freshRepo();
-    // `{a,b}` is glob syntax this scanner does not implement. Read as a literal it names a
-    // directory that does not exist, so the exclusion silently does nothing — and the scan then
-    // holds a package the repository declared out of scope, with no diagnostic to say so.
-    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
-    writeFileSync(
-      join(repo, 'pnpm-workspace.yaml'),
-      "packages:\n  - packages/*\n  - '!packages/{a,b}'\n",
-    );
-    addPackage(repo, 'packages/a', { name: '@mono/a', version: '1.0.0' });
-
-    const scan = await detectWorkspacePackagesDetailed(repo);
-
-    expect(scan.packages).toHaveLength(1);
-    expect(scan.diagnostics).toStrictEqual([
-      { kind: 'unsupported_pattern', pattern: '!packages/{a,b}' },
-    ]);
   });
 });

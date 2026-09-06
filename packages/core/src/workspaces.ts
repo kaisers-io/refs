@@ -2,6 +2,13 @@
 // realpath containment guards. The pure decision logic (pattern classification, containment
 // decisions, candidate selection, result shaping) lives in `workspaces-patterns.ts`.
 import {
+  CURRENT_DIR_SEGMENT,
+  classifyWorkspacePattern,
+  isNegatedPattern,
+  matchesSegment,
+  negatedBody,
+} from './workspaces-shapes.ts';
+import {
   MISSING_DIR_CODES,
   partitionProbes,
   probeCandidateDir,
@@ -14,19 +21,13 @@ import type {
   WorkspacePackage,
   WorkspaceScan,
 } from './workspaces-patterns.ts';
-import {
-  classifyWorkspacePattern,
-  isNegatedPattern,
-  matchesSegment,
-  negatedBody,
-} from './workspaces-shapes.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { deduplicateAndSort, sortDiagnostics } from './workspaces-patterns.ts';
+import { join, posix } from 'node:path';
 import { probeRootPackage, withoutClaimedRoot } from './workspaces-root.ts';
 import type { Dirent } from 'node:fs';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { ExpandResult } from './workspaces-probe.ts';
-import { join } from 'node:path';
 import { readDeclarations } from './workspaces-declarations.ts';
 import { resolveInside } from './fs-containment.ts';
 
@@ -79,25 +80,27 @@ const readBaseDir = async (
 const expandGlobSingleLevel = async (
   repoDir: string,
   plan: { baseDir: string; match?: { prefix: string; suffix: string } },
+  excluded: ReadonlySet<string>,
 ): Promise<ExpandResult> => {
   const { baseDir } = plan;
   const read = await readBaseDir(repoDir, baseDir);
   if ('result' in read) {
     return read.result;
   }
+  const base = baseDir === CURRENT_DIR_SEGMENT ? '' : baseDir;
+  const takes = (entry: Dirent): boolean =>
+    selected(entry, plan.match) && !excluded.has(posix.join(base, entry.name));
   const listed = { entries: read.entries };
   return probeChildren({
     baseDir,
-    dirs: listed.entries.filter((entry) => entry.isDirectory() && selected(entry, plan.match)),
+    dirs: listed.entries.filter((entry) => entry.isDirectory() && takes(entry)),
     fullPath: join(repoDir, baseDir),
     repoDir,
     // `readdir` uses lstat semantics, so a symlinked directory is not `isDirectory()` and never
     // becomes a candidate — it is invisible to detection, inside or outside the repo alike. That
     // was harmless while the scan only fed `add`'s best-effort proposal; now that callers infer
     // "gone" and "uniquely relocated" from it, an uninspected candidate has to be admitted.
-    symlinks: listed.entries.filter(
-      (entry) => entry.isSymbolicLink() && selected(entry, plan.match),
-    ),
+    symlinks: listed.entries.filter((entry) => entry.isSymbolicLink() && takes(entry)),
   });
 };
 
@@ -107,14 +110,17 @@ const expandGlobSingleLevel = async (
 const expandGlobPattern = (
   repoDir: string,
   spec: { body: string; declared: string },
+  excluded: ReadonlySet<string>,
 ): Promise<ExpandResult> => {
   const plan = classifyWorkspacePattern(spec.body);
   if (plan.kind === 'expand-children') {
-    return expandGlobSingleLevel(repoDir, plan);
+    return expandGlobSingleLevel(repoDir, plan, excluded);
   }
 
   if (plan.kind === 'probe-dir') {
-    return expandLiteralDir(repoDir, plan.dir);
+    return excluded.has(normalizeSeparators(plan.dir))
+      ? Promise.resolve({ diagnostics: [], dirs: [] })
+      : expandLiteralDir(repoDir, plan.dir);
   }
 
   // Reported as the repository wrote it, `!` included: that is what someone has to go and read.
@@ -153,6 +159,38 @@ const expandLiteralDir = async (repoDir: string, dir: string): Promise<ExpandRes
   return { diagnostics: [], dirs: [] };
 };
 
+/** The directory paths one negation names — WITHOUT probing their manifests.
+ *
+ * An exclusion is a statement about paths, not about packages: whether the directory holds a
+ * readable manifest has no bearing on whether the repository wants it. Probing anyway produced a
+ * `manifest_unreadable` diagnostic for a directory nobody asked about, which marked the whole scan
+ * unreliable and silenced every finding — over a package the repository had told us to ignore.
+ *
+ * A base directory that cannot be listed IS reported: the exclusion then cannot be applied, and
+ * the scan may hold directories the repository excluded. */
+const excludedDirs = async (repoDir: string, pattern: string): Promise<ExpandResult> => {
+  const plan = classifyWorkspacePattern(negatedBody(pattern));
+  if (plan.kind === 'probe-dir') {
+    return { diagnostics: [], dirs: [normalizeSeparators(plan.dir)] };
+  }
+  if (plan.kind !== 'expand-children') {
+    return { diagnostics: [{ kind: 'unsupported_pattern', pattern }], dirs: [] };
+  }
+  const read = await readBaseDir(repoDir, plan.baseDir);
+  if ('result' in read) {
+    return { diagnostics: read.result.diagnostics, dirs: [] };
+  }
+  const base = plan.baseDir === CURRENT_DIR_SEGMENT ? '' : plan.baseDir;
+  return {
+    diagnostics: [],
+    dirs: read.entries
+      .filter(
+        (entry) => (entry.isDirectory() || entry.isSymbolicLink()) && selected(entry, plan.match),
+      )
+      .map((entry) => posix.join(base, entry.name)),
+  };
+};
+
 const collect = (results: readonly ExpandResult[]): ExpandResult => {
   const dirs = new Set<string>();
   const diagnostics: WorkspaceDiagnostic[] = [];
@@ -175,26 +213,27 @@ const collect = (results: readonly ExpandResult[]): ExpandResult => {
  * that same rule. */
 const expandPatterns = async (repoDir: string, patterns: Set<string>): Promise<ExpandResult> => {
   const declared = [...patterns];
-  const [included, excluded] = await Promise.all([
-    Promise.all(
-      declared
-        .filter((pattern) => !isNegatedPattern(pattern))
-        .map((pattern) => expandGlobPattern(repoDir, { body: pattern, declared: pattern })),
-    ),
-    Promise.all(
+  // Exclusions are resolved FIRST, so the inclusive pass never probes a directory the repository
+  // ruled out. Probing it anyway is not merely wasted work: an unreadable manifest under an
+  // excluded path would report a diagnostic, and one diagnostic marks the entire scan unreliable.
+  const deselected = collect(
+    await Promise.all(
       declared
         .filter((pattern) => isNegatedPattern(pattern))
-        .map((pattern) =>
-          expandGlobPattern(repoDir, { body: negatedBody(pattern), declared: pattern }),
-        ),
+        .map((pattern) => excludedDirs(repoDir, pattern)),
     ),
-  ]);
-  const chosen = collect(included);
-  const deselected = collect(excluded);
+  );
   const out = new Set(deselected.dirs);
+  const chosen = collect(
+    await Promise.all(
+      declared
+        .filter((pattern) => !isNegatedPattern(pattern))
+        .map((pattern) => expandGlobPattern(repoDir, { body: pattern, declared: pattern }, out)),
+    ),
+  );
   return {
     diagnostics: [...chosen.diagnostics, ...deselected.diagnostics],
-    dirs: chosen.dirs.filter((dir) => !out.has(dir)),
+    dirs: chosen.dirs,
   };
 };
 

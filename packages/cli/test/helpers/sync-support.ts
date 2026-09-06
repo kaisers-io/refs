@@ -4,6 +4,7 @@ import { SpawnRunner, readConfig, readState, resolveHome } from '@kaisers-io/ref
 import { initHome, parseLastEnvelope, realContextFor } from './add-support.ts';
 import type { CliContext } from '../../src/context.ts';
 import type { FixtureRepo } from './fixture-repo.ts';
+import type { StructureReport } from '../../src/commands/drift-report.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { createFixtureRepo } from './fixture-repo.ts';
 import { expect } from 'vitest';
@@ -116,11 +117,10 @@ const setupTwoRefs = async (homeDir: string): Promise<TwoRefsFixture> => {
   return { bad, badFixture, ctx, good, home, stdout };
 };
 
-type SyncStructure = {
-  packages?: { configured_path: string; name: string; status: string; path?: string }[];
-  reason?: string;
-  status: string;
-};
+/** The envelope's `structure` IS a serialized `StructureReport`, so it is typed as one — a
+ * hand-written mirror drifts from the real shape, and a test that reads a stale mirror stops
+ * testing what the command emits. */
+type SyncStructure = StructureReport;
 
 type SyncEnvelope = {
   data: {

@@ -95,7 +95,7 @@ const probeInOrder = async (
   }
   const report = await probeUnderLock(home, config, item);
   const remaining = await probeInOrder(home, config, rest);
-  return [...driftLines(report).map((line) => `${item.key}: ${line}`), ...remaining];
+  return [...driftLines(report, item.key).map((line) => `${item.key}: ${line}`), ...remaining];
 };
 
 const checkConfigDrift = async (home: RefsHome, config: Config): Promise<CheckResult> => {

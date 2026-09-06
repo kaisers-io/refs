@@ -13,8 +13,10 @@ thought of; real repositories carry the ones nobody did. Before marking a PR rea
    path an agent uses.
 4. Compare what refs reports against ground truth computed from git itself — e.g. package names
    from `git ls-tree` at both revisions, diffed. Report the comparison, not just the output.
-5. Run any command refs printed **verbatim**. A suggested command that does not execute is a bug
-   no unit test will catch.
+5. Run any command refs printed **verbatim** — the string it printed, not an argv you rebuilt from
+   the same parts. A suggested command that does not execute is a bug, and rebuilding the argv
+   hides exactly the bugs that matter: a `<ref>` placeholder passes straight through a hand-built
+   array while a shell reads it as an input redirection.
 6. Exercise the lifecycle: `remove`, then confirm nothing is left (config, state, checkout,
    pruned parent directories, no orphans in `doctor`, `resolve` answers `unmatched_query`), then
    `add` again and confirm behaviour is unchanged.

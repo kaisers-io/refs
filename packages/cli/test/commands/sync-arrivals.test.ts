@@ -10,7 +10,10 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { readConfig, resolveHome, writeConfig } from '@kaisers-io/refs-core';
 import type { CliContext } from '../../src/context.ts';
 import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
+// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
+import type { StructureReport } from '../../src/commands/drift-report.ts';
 import { createFixtureRepo } from '../helpers/fixture-repo.ts';
+import { driftLines } from '../../src/commands/drift-report.ts';
 import { join } from 'node:path';
 
 // A package that arrived upstream, end to end through the real command against a real git remote.
@@ -50,27 +53,68 @@ const deregisterPackage = async (ctx: CliContext, key: string, name: string): Pr
   await writeConfig(home, { ...config, refs: { ...config.refs, [key]: { ...entry, packages } } });
 };
 
-/** Registers a package on an existing ref through the real command — the repair the `unregistered`
- * finding names, run exactly as printed. */
-const registerPackage = async (
+/** Splits a printed command into argv the way a POSIX shell would, honouring single quotes.
+ *
+ * Small on purpose: the commands under test only ever use single quotes, which is what
+ * `shellQuote` emits. Its job is to make the test run the string the tool PRINTED rather than one
+ * the test rebuilt — a distinction that hid a real bug, since a hand-built argv passes a literal
+ * `<ref>` placeholder straight through while a shell reads it as a redirection. */
+type SplitState = { argv: string[]; current: string; quoted: boolean; started: boolean };
+
+const step = (state: SplitState, char: string): SplitState => {
+  if (char === "'") {
+    return { ...state, quoted: !state.quoted, started: true };
+  }
+  if (char !== ' ' || state.quoted) {
+    return { ...state, current: state.current + char };
+  }
+  const done = state.started || state.current.length > 0;
+  return {
+    argv: done ? [...state.argv, state.current] : state.argv,
+    current: '',
+    quoted: false,
+    started: false,
+  };
+};
+
+const splitCommand = (command: string): string[] => {
+  const end = [...command].reduce<SplitState>((state, char) => step(state, char), {
+    argv: [],
+    current: '',
+    quoted: false,
+    started: false,
+  });
+  return end.started || end.current.length > 0 ? [...end.argv, end.current] : end.argv;
+};
+
+/** The `refs edit <key>` prefix of a repair command, which is where a `<ref>` placeholder used to
+ * sit — a shell reads that as an input redirection, so the line could not run as printed. */
+const COMMAND_PREFIX_LENGTH = 3;
+
+/** Finds the printed repair line for one package, or throws — an absent line is a broken fixture,
+ * not a branch worth asserting on. */
+const repairLineFor = (report: StructureReport | undefined, key: string, name: string): string => {
+  const line = driftLines(report ?? { status: 'ok' }, key).find((text) => text.includes(name));
+  if (line === undefined) {
+    throw new Error(`expected a drift line mentioning '${name}'`);
+  }
+  return line;
+};
+
+/** Runs the repair command a finding printed, VERBATIM — only the description placeholder is
+ * filled in, which is the one part the finding deliberately leaves to the caller. */
+const runPrintedRepair = async (
   ctx: CliContext,
-  args: { description: string; key: string; name: string; path: string },
-): Promise<void> => {
+  line: string,
+  description: string,
+): Promise<string[]> => {
+  const marker = 'To register it: ';
+  const command = line.slice(line.indexOf(marker) + marker.length);
+  const argv = splitCommand(command).map((arg) => (arg === '<what it is>' ? description : arg));
   const { run } = await import('../../src/main.ts');
-  await run(ctx, [
-    'node',
-    'refs',
-    'edit',
-    args.key,
-    '--package',
-    args.name,
-    '--create',
-    '--path',
-    args.path,
-    '--description',
-    args.description,
-    '--json',
-  ]);
+  // `refs …` as printed becomes `node refs …` as commander expects.
+  await run(ctx, ['node', ...argv, '--json']);
+  return argv;
 };
 
 /** Adds a workspace member to the upstream fixture and commits it. */
@@ -118,15 +162,16 @@ describe('refs sync: registering what arrived', () => {
         withTempHome(async (homeDir) => {
           const { ctx, key, stdout, upstream } = await setupMonorepoRef(homeDir);
           await addUpstreamPackage(upstream, 'packages/c', '@fixture/c');
-          await runSyncJson(ctx, stdout, { refKeys: [key] });
+          const result = await runSyncJson(ctx, stdout, { refKeys: [key] });
 
-          // With a description the caller writes, never one copied out of the upstream manifest.
-          await registerPackage(ctx, {
-            description: 'The package that arrived.',
-            key,
-            name: '@fixture/c',
-            path: 'packages/c',
-          });
+          // The line that sync printed, run as it stands. Rebuilding the argv by hand — which this
+          // test used to do — passes a literal `<ref>` straight through without noticing that a
+          // shell reads it as an input redirection.
+          const printed = repairLineFor(result.data.results[0]?.structure, key, '@fixture/c');
+          const argv = await runPrintedRepair(ctx, printed, 'The package that arrived.');
+          // Nothing a shell would reinterpret, and the real key where `<ref>` used to sit.
+          expect(argv).not.toContain('<ref>');
+          expect(argv.slice(0, COMMAND_PREFIX_LENGTH)).toStrictEqual(['refs', 'edit', key]);
 
           const after = await runSyncJson(ctx, stdout, { refKeys: [key] });
           // Registered now, so the next sync has nothing to say about it — and the entry it wrote

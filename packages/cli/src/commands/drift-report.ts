@@ -88,6 +88,10 @@ const UNKNOWN_PATH = '(unknown)';
  * have cannot be resolved. The root's own wording used to say so; nothing about it was specific to
  * the root.
  *
+ * The ref key is interpolated rather than left as a `<ref>` placeholder: a shell reads `<ref>` as
+ * an input redirection, so a line carrying one cannot be run as printed — which is the whole
+ * point of printing a command instead of a config fragment.
+ *
  * It names a COMMAND now rather than a `config.toml` fragment. That is `refs edit --create`'s
  * whole reason for existing: this was the one finding no command could repair, so the only honest
  * instruction was "hand-edit the config". The description is deliberately left for the caller to
@@ -100,7 +104,7 @@ const UNKNOWN_PATH = '(unknown)';
  * — `$()`, backticks, semicolons and spaces all pass. This line exists to be pasted into a shell,
  * so an unquoted value here is an execution primitive handed to whoever runs it. Being verified
  * against the checkout makes a value TRUE, not shell-safe. */
-const unregisteredLine = (issue: StructureIssue): string => {
+const unregisteredLine = (issue: StructureIssue, key: string): string => {
   const head = `${issue.name}: declared in this checkout but not registered — it cannot be resolved by name until it is`;
   if (issue.path === undefined) {
     // More than one directory declares this name, so which one to register is a decision, not a
@@ -108,8 +112,8 @@ const unregisteredLine = (issue: StructureIssue): string => {
     return `${head}. Declared at several paths (${(issue.candidates ?? []).join(', ')}) — pick one`;
   }
   return (
-    `${head}. To register it: refs edit <ref> --package ${shellQuote(issue.name)} --create ` +
-    `--path ${shellQuote(issue.path)} --description "<what it is>"`
+    `${head}. To register it: refs edit ${shellQuote(key)} --package ${shellQuote(issue.name)} ` +
+    `--create --path ${shellQuote(issue.path)} --description "<what it is>"`
   );
 };
 
@@ -133,16 +137,19 @@ const configuredIssueLine = (issue: StructureIssue): string => {
   return `${issue.name}: could not be checked — ${issue.reason ?? UNKNOWN_REASON} (${at})`;
 };
 
-const issueLine = (issue: StructureIssue): string =>
-  issue.status === 'unregistered' ? unregisteredLine(issue) : configuredIssueLine(issue);
+const issueLine = (issue: StructureIssue, key: string): string =>
+  issue.status === 'unregistered' ? unregisteredLine(issue, key) : configuredIssueLine(issue);
 
 /** One line per thing worth saying, and EMPTY for a clean ref — so a caller can append the result
- * unconditionally and stay silent by construction rather than by remembering to check. */
-const driftLines = (report: StructureReport): string[] => {
+ * unconditionally and stay silent by construction rather than by remembering to check.
+ *
+ * `key` is the ref these findings are about; the `unregistered` line puts it into the command it
+ * prints, which is what makes that command runnable as it stands. */
+const driftLines = (report: StructureReport, key: string): string[] => {
   if (report.reason !== undefined) {
     return [`could not be checked — ${report.reason}`];
   }
-  return (report.packages ?? []).map((issue) => issueLine(issue));
+  return (report.packages ?? []).map((issue) => issueLine(issue, key));
 };
 
 export { DRIFT_STATUSES, driftLines, isIssueStatus, rollUp };

@@ -29,10 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   untouched manifest is byte-identical at both ends, so the name it carries now is the name it
   carried before.
 
-  The repair is a command now rather than a config fragment:
+  The repair is a command now rather than a config fragment, with the ref key filled in so it
+  runs as printed:
 
   ```
-  refs edit <ref> --package <name> --create --path <path> --description "<what it is>"
+  refs edit 'github.com/acme/alpha' --package '@acme/new' --create --path 'packages/new' \
+    --description "<what it is>"
   ```
 
   It is a distinct mode, not an upsert — an ordinary field edit naming an unregistered package
