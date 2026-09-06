@@ -118,12 +118,25 @@ const pnpmPatternsAt = async (runner: Runner, opts: RangeOpts, rev: string): Pro
  *
  * Order is KEPT, unlike before: the scanner honours it, so `["packages/*", "!b", "b"]` and
  * `["packages/*", "b", "!b"]` are the same set and different memberships. */
-const declarationAt = async (runner: Runner, opts: RangeOpts, rev: string): Promise<string[]> => {
+/** Both declarations at one revision, kept APART and in order.
+ *
+ * Apart, because the two resolvers disagree: npm lets a later pattern cancel an earlier negation,
+ * pnpm does not. Concatenating them hid that — moving `["packages/*", "!b", "b"]` from
+ * `package.json` into `pnpm-workspace.yaml` narrows membership, since pnpm keeps the exclusion npm
+ * had cancelled, while the joined list compares unchanged.
+ *
+ * In order, because the scanner honours order: `["packages/*", "!b", "b"]` and
+ * `["packages/*", "b", "!b"]` are the same set and different memberships. */
+const declarationAt = async (
+  runner: Runner,
+  opts: RangeOpts,
+  rev: string,
+): Promise<{ npm: string[]; pnpm: string[] }> => {
   const [npm, pnpm] = await Promise.all([
     npmPatternsAt(runner, opts, rev),
     pnpmPatternsAt(runner, opts, rev),
   ]);
-  return [...npm, ...pnpm];
+  return { npm, pnpm };
 };
 
 const NEGATION_PREFIX = '!';
@@ -163,7 +176,12 @@ const membershipNarrowed = async (
     declarationAt(runner, opts, opts.from),
     declarationAt(runner, opts, opts.to),
   ]);
-  return !onlyAppendedInclusions(before, after);
+  // Each file against its own past. A pattern that moved between them fails this, correctly: under
+  // the two resolvers' different rules it does not select the same directories.
+  return (
+    !onlyAppendedInclusions(before.npm, after.npm) ||
+    !onlyAppendedInclusions(before.pnpm, after.pnpm)
+  );
 };
 
 export { PNPM_WORKSPACE_FILE, ROOT_MANIFEST, membershipNarrowed };

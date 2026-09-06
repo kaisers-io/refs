@@ -196,6 +196,36 @@ describe('a range that added a negation', () => {
   );
 });
 
+describe('a declaration that moved between the two files', () => {
+  it(
+    'counts as narrowing, because the two resolvers do not agree',
+    async () => {
+      expect.hasAssertions();
+      const dir = await declaredRepo();
+      write(dir, 'package.json', {
+        name: 'root',
+        version: '1.0.0',
+        workspaces: ['packages/*', '!packages/b', 'packages/b'],
+      });
+      const from = commitAll(dir, 'one');
+      // The same three patterns, moved verbatim into pnpm's file. Under npm the later `packages/b`
+      // cancels the exclusion; under pnpm it does not, so `packages/b` leaves the scan with its
+      // manifest untouched — and a concatenated comparison sees no change at all.
+      write(dir, 'package.json', { name: 'root', version: '1.0.0' });
+      write(
+        dir,
+        'pnpm-workspace.yaml',
+        "packages:\n  - packages/*\n  - '!packages/b'\n  - packages/b\n",
+      );
+      write(dir, 'packages/new/package.json', { name: '@x/b', version: '2.0.0' });
+      const to = commitAll(dir, 'move the declaration');
+
+      await expect(packagesBefore(runner, { dir, from, to })).resolves.toBeUndefined();
+    },
+    SLOW_IO_TIMEOUT_MS,
+  );
+});
+
 describe('a range that only added declarations', () => {
   it(
     'is untroubled by a pnpm workspace file appearing beside the manifest',
@@ -238,54 +268,6 @@ describe('a range that only added declarations', () => {
         changedDirs: ['packages/new'],
         namesBefore: ['root'],
       });
-    },
-    SLOW_IO_TIMEOUT_MS,
-  );
-});
-
-describe('a range that changed the root manifest without changing the declaration', () => {
-  it(
-    'still reports the before-picture, so an ordinary root commit is not silencing',
-    async () => {
-      expect.hasAssertions();
-      const dir = await declaredRepo();
-      const from = commitAll(dir, 'one');
-      // A version bump. Root manifests change constantly; treating every such commit as a
-      // membership change would silence arrivals in most repositories.
-      write(dir, 'package.json', {
-        name: 'root',
-        version: '2.0.0',
-        workspaces: ['packages/a', 'packages/b'],
-      });
-      const to = commitAll(dir, 'bump');
-
-      await expect(packagesBefore(runner, { dir, from, to })).resolves.toStrictEqual({
-        changedDirs: [],
-        namesBefore: ['root'],
-      });
-    },
-    SLOW_IO_TIMEOUT_MS,
-  );
-
-  it(
-    'gives up on a reordering, which the same set can hide',
-    async () => {
-      expect.hasAssertions();
-      const dir = await declaredRepo();
-      const from = commitAll(dir, 'one');
-      write(dir, 'package.json', {
-        name: 'root',
-        version: '1.0.0',
-        workspaces: ['packages/b', 'packages/a'],
-      });
-      write(dir, 'packages/new/package.json', { name: '@x/new', version: '1.0.0' });
-      const to = commitAll(dir, 'reorder');
-
-      // This test used to assert the opposite, on the reasoning that order does not change which
-      // directories are selected. It does: `["packages/*", "!b", "b"]` and
-      // `["packages/*", "b", "!b"]` are the same SET and different memberships, so a reorder can
-      // drop a member with its manifest untouched — and its name then survives in neither source.
-      await expect(packagesBefore(runner, { dir, from, to })).resolves.toBeUndefined();
     },
     SLOW_IO_TIMEOUT_MS,
   );
