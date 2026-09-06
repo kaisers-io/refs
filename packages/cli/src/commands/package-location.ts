@@ -2,6 +2,8 @@ import type { WorkspacePackage, WorkspaceScan } from '@kaisers-io/refs-core';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import {
   lookupPackagePath,
+  negatedPrefixes,
+  scanExcludesUnboundedly,
   scanMayHidePackages,
   scanSearchedSomewhere,
 } from '@kaisers-io/refs-core';
@@ -88,8 +90,20 @@ const ROOT_PACKAGE_PATH = '.';
  * wrong directory handed out as if it were verified. The root is still verified directly when it
  * is the configured package itself — that path matches on its own manifest and never reaches
  * here. */
-const withoutRoot = (scan: WorkspaceScan): WorkspacePackage[] =>
-  scan.packages.filter((pkg) => pkg.path !== ROOT_PACKAGE_PATH);
+/** The scan, minus the root and minus anything a negated pattern excludes.
+ *
+ * A dropped negation leaves directories in the scan that the repository declared out of scope.
+ * Absence survives that — the scan holds too much, so failing to find a package is still failing
+ * to find it — but `relocated` does not: it says "the package now lives HERE", and a directory the
+ * repository excluded is not somewhere it lives. Reporting one would send a caller into a fixtures
+ * or examples tree that upstream deliberately keeps out of its workspace. */
+const withoutRoot = (scan: WorkspaceScan): WorkspacePackage[] => {
+  const excluded = negatedPrefixes(scan);
+  return scan.packages.filter(
+    (pkg) =>
+      pkg.path !== ROOT_PACKAGE_PATH && !excluded.some((prefix) => pkg.path.startsWith(prefix)),
+  );
+};
 
 const classifyAgainstScan = (query: LocationQuery, scan: WorkspaceScan): VerifyOutcome => {
   const lookup = lookupPackagePath(withoutRoot(scan), query.packageName);
@@ -127,6 +141,15 @@ const classifyAgainstScan = (query: LocationQuery, scan: WorkspaceScan): VerifyO
 
   if (lookup.kind === 'absent') {
     return absenceOutcome(query, scan);
+  }
+  // An unbounded negation (`!*`, or one leading with `**`) cannot be scoped to a subtree, so no
+  // path in the scan can be shown to be a member — and a relocation target has to be one. Absence
+  // is unaffected above: a scan holding too much still cannot find what is not there.
+  if (scanExcludesUnboundedly(scan)) {
+    return incomplete(
+      query,
+      'a negated workspace pattern could exclude any directory, so the new location is not confirmed to be a workspace member',
+    );
   }
   return isSelfRelocation(query, lookup.path)
     ? incomplete(query, 'the checkout changed while it was being inspected')

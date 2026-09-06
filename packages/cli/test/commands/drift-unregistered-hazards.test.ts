@@ -124,3 +124,24 @@ describe('probeRefStructure: a repository that declares a negation', () => {
     expect(report).toStrictEqual({ status: 'ok' });
   });
 });
+
+describe('probeRefStructure: a negation that could exclude anything', () => {
+  it('says nothing, because no path can be shown to be a member', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // `!**/fixtures` has no literal prefix, so it cannot be scoped to a subtree the way
+    // `!packages/fixtures` can. Dropping such a pattern from the prefix list without saying so
+    // left it guarding nothing at all, and the excluded package was recommended for registration.
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    writeFileSync(
+      join(repo, 'pnpm-workspace.yaml'),
+      "packages:\n  - packages/*\n  - '!**/fixtures'\n",
+    );
+    addPackage(repo, 'packages/a', { name: '@fixture/a', version: '1.0.0' });
+    addPackage(repo, 'packages/fixtures', { name: '@fixture/fixtures', version: '1.0.0' });
+
+    const report = await probeRefStructure(repo, CONFIGURED, ALL);
+
+    expect(report).toStrictEqual({ status: 'ok' });
+  });
+});

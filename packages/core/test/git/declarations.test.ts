@@ -98,6 +98,46 @@ describe('a range that changed which directories are declared', () => {
   );
 });
 
+describe('a range that added a negation', () => {
+  it(
+    'counts as narrowing, because a negation removes members',
+    async () => {
+      expect.hasAssertions();
+      const dir = await declaredRepo();
+      write(dir, 'pnpm-workspace.yaml', 'packages:\n  - packages/*\n');
+      const from = commitAll(dir, 'one');
+      // Adding `!packages/b` takes that member out of the scan just as surely as deleting it from
+      // an explicit list would, and its manifest is untouched — so its name is remembered by
+      // neither source. Expansion is monotone in the INCLUSIVE patterns only.
+      write(dir, 'pnpm-workspace.yaml', "packages:\n  - packages/*\n  - '!packages/b'\n");
+      write(dir, 'packages/new/package.json', { name: '@x/b', version: '2.0.0' });
+      const to = commitAll(dir, 'exclude b');
+
+      await expect(packagesBefore(runner, { dir, from, to })).resolves.toBeUndefined();
+    },
+    SLOW_IO_TIMEOUT_MS,
+  );
+
+  it(
+    'is untroubled by a negation being REMOVED, which only widens',
+    async () => {
+      expect.hasAssertions();
+      const dir = await declaredRepo();
+      write(dir, 'pnpm-workspace.yaml', "packages:\n  - packages/*\n  - '!packages/b'\n");
+      const from = commitAll(dir, 'one');
+      write(dir, 'pnpm-workspace.yaml', 'packages:\n  - packages/*\n');
+      write(dir, 'packages/new/package.json', { name: '@x/new', version: '1.0.0' });
+      const to = commitAll(dir, 'stop excluding b');
+
+      await expect(packagesBefore(runner, { dir, from, to })).resolves.toStrictEqual({
+        changedDirs: ['packages/new'],
+        namesBefore: [],
+      });
+    },
+    SLOW_IO_TIMEOUT_MS,
+  );
+});
+
 describe('a range that only added declarations', () => {
   it(
     'is untroubled by a pnpm workspace file appearing beside the manifest',

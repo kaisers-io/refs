@@ -16,12 +16,15 @@ import type { Runner } from '../proc/runner.ts';
 // almost never does, and suppressing arrivals on every root commit would silence the feature in
 // most repositories.
 //
-// And what matters is specifically whether the declaration NARROWED. Pattern expansion is
-// monotone in the pattern set, so a purely additive change leaves every previously visible member
-// visible and the inference intact — which is exactly the shape of the commonest arrival there
-// is in a repository that lists its members explicitly: the package is added and declared in the
-// same commit. Only a pattern that went away can take a member out of the scan without touching
-// its manifest.
+// And what matters is specifically whether the declaration NARROWED. Expansion is monotone in the
+// set of INCLUSIVE patterns, so adding one leaves every previously visible member visible and the
+// inference intact — which is the shape of the commonest arrival there is in a repository that
+// lists its members explicitly: the package is added and declared in the same commit.
+//
+// Negations break that monotonicity, and in the opposite direction: adding `!packages/old`
+// narrows just as surely as deleting `packages/old` from the list does, and removing a negation
+// widens. So the two kinds are compared separately — an inclusive pattern LOST or a negation
+// GAINED means a member may have left the scan with its manifest untouched.
 
 const ROOT_MANIFEST = 'package.json';
 const PNPM_WORKSPACE_FILE = 'pnpm-workspace.yaml';
@@ -88,6 +91,13 @@ const declarationAt = async (
 const lostAny = (before: ReadonlySet<string>, after: ReadonlySet<string>): boolean =>
   [...before].some((pattern) => !after.has(pattern));
 
+const NEGATION_PREFIX = '!';
+
+const split = (patterns: ReadonlySet<string>): { included: Set<string>; negated: Set<string> } => ({
+  included: new Set([...patterns].filter((pattern) => !pattern.startsWith(NEGATION_PREFIX))),
+  negated: new Set([...patterns].filter((pattern) => pattern.startsWith(NEGATION_PREFIX))),
+});
+
 /** Whether the range dropped a workspace declaration, so a member could have left the scan with
  * its manifest untouched.
  *
@@ -104,7 +114,9 @@ const membershipNarrowed = async (
     declarationAt(runner, opts, opts.from),
     declarationAt(runner, opts, opts.to),
   ]);
-  return lostAny(before, after);
+  const from = split(before);
+  const to = split(after);
+  return lostAny(from.included, to.included) || lostAny(to.negated, from.negated);
 };
 
 export { PNPM_WORKSPACE_FILE, ROOT_MANIFEST, membershipNarrowed };

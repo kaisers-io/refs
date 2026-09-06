@@ -33,18 +33,31 @@ const scanMayHidePackages = (scan: WorkspaceScan): boolean =>
     (diagnostic) => UNRELIABLE_DIAGNOSTIC_KINDS.has(diagnostic.kind) && !isNegation(diagnostic),
   );
 
+const literalPrefixOf = (diagnostic: WorkspaceDiagnostic): string =>
+  (diagnostic as { pattern: string }).pattern.slice(NEGATION_PREFIX.length).split('*')[0] ?? '';
+
 /** The literal path prefix of each dropped negation — everything up to its first wildcard.
  *
  * `!examples/vue/2*` yields `examples/vue/2`, which no path outside that subtree can start with.
  * A package under one of these prefixes may have been excluded on purpose, so it must not be
- * recommended for registration; every other package in the scan is unaffected. */
+ * recommended for registration or named as a relocation target; every other package in the scan
+ * is unaffected. */
 const negatedPrefixes = (scan: WorkspaceScan): string[] =>
   scan.diagnostics
     .filter((diagnostic) => isNegation(diagnostic))
-    .map(
-      (diagnostic) =>
-        (diagnostic as { pattern: string }).pattern.slice(NEGATION_PREFIX.length).split('*')[0],
-    )
-    .filter((prefix): prefix is string => prefix !== undefined && prefix.length > 0);
+    .map((diagnostic) => literalPrefixOf(diagnostic))
+    .filter((prefix) => prefix.length > 0);
 
-export { negatedPrefixes, scanMayHidePackages };
+/** Whether some negation could exclude ANY directory — `!**` + `/fixtures`, `!*`, anything whose
+ * literal prefix is empty.
+ *
+ * Such a pattern cannot be scoped to a subtree, so no package in the scan can be shown to be a
+ * member. It still hides nothing, so absence claims survive; what does not survive is any claim
+ * that a particular path IS a workspace member. Dropping these from `negatedPrefixes` without
+ * saying so left them guarding nothing at all. */
+const scanExcludesUnboundedly = (scan: WorkspaceScan): boolean =>
+  scan.diagnostics.some(
+    (diagnostic) => isNegation(diagnostic) && literalPrefixOf(diagnostic).length === 0,
+  );
+
+export { negatedPrefixes, scanExcludesUnboundedly, scanMayHidePackages };

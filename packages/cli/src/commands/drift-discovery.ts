@@ -5,6 +5,7 @@ import {
   lookupPackagePath,
   negatedPrefixes,
   readRootPackage,
+  scanExcludesUnboundedly,
   scanMayHidePackages,
 } from '@kaisers-io/refs-core';
 import type { LocationQuery } from './package-location.ts';
@@ -156,7 +157,9 @@ const unregisteredMembers = async (
     return [];
   }
   const scan = await scanOnce();
-  if (scanMayHidePackages(scan)) {
+  // An unbounded negation could exclude any directory, so nothing in the scan can be shown to be
+  // a member — and this finding's whole content is that something IS one.
+  if (scanMayHidePackages(scan) || scanExcludesUnboundedly(scan)) {
     return [];
   }
   const registered = new Set(configured.map((query) => query.packageName));
