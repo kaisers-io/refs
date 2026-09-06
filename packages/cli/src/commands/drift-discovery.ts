@@ -1,4 +1,4 @@
-import type { WorkspacePackage, WorkspaceScan } from '@kaisers-io/refs-core';
+import type { PackagesBefore, WorkspacePackage, WorkspaceScan } from '@kaisers-io/refs-core';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import {
   detectWorkspacePackagesDetailed,
@@ -36,11 +36,15 @@ const scanOnceFor = (checkoutDir: string): ScanOnce => {
 /** Which unregistered workspace members a probe may report.
  *
  * `all` is `doctor`: an explicit, on-request inspection of everything, where a complete list is
- * the point. `arrivals` is `sync`, and carries the paths whose manifests this fetch ADDED — the
- * one honest way to say "new upstream" without an inventory of what was there before. A ref whose
- * owner deliberately tracks 3 packages out of 140 never hears about the other 137 again, because
- * their manifests are not in the diff; a package that genuinely landed in this pull is. */
-type MemberDiscovery = { kind: 'all' } | { kind: 'arrivals'; paths: readonly string[] };
+ * the point.
+ *
+ * `arrivals` is `sync`, and carries what the repository's packages looked like BEFORE the range it
+ * just fetched — the one honest way to say "new upstream" without an inventory of what was there
+ * before. A ref whose owner deliberately tracks 3 packages out of 140 never hears about the other
+ * 137 again, because those names existed before; a package that genuinely landed in this pull did
+ * not. It is stated as names rather than paths because that is the question: a package renamed in
+ * place is new under a name nobody had, and a package merely MOVED is not new at all. */
+type MemberDiscovery = { kind: 'all' } | ({ kind: 'arrivals' } & PackagesBefore);
 
 /** The repository's own root package, when it declares a name the configuration does not register.
  *
@@ -102,6 +106,21 @@ const byName = (packages: readonly WorkspacePackage[]): Map<string, string[]> =>
   return grouped;
 };
 
+/** Every package name the repository already had before the fetched range.
+ *
+ * Two sources, and the second is what keeps this cheap. `namesBefore` covers the manifests the
+ * range actually changed, read out of history. Every OTHER member's manifest is byte-identical at
+ * both ends of the range, so the name it carries now is the name it carried before — no read
+ * required, the scan already has it. */
+const namesThatExisted = (
+  before: PackagesBefore,
+  members: readonly WorkspacePackage[],
+): Set<string> => {
+  const changed = new Set(before.changedDirs);
+  const untouched = members.filter((pkg) => !changed.has(pkg.path)).map((pkg) => pkg.name);
+  return new Set([...before.namesBefore, ...untouched]);
+};
+
 const memberIssue = (name: string, paths: readonly string[]): StructureIssue =>
   paths.length === 1 && paths[0] !== undefined
     ? { name, path: paths[0], status: 'unregistered' }
@@ -131,7 +150,7 @@ const unregisteredMembers = async (
   discovery: MemberDiscovery,
   scanOnce: ScanOnce,
 ): Promise<StructureIssue[]> => {
-  if (discovery.kind === 'arrivals' && discovery.paths.length === 0) {
+  if (discovery.kind === 'arrivals' && discovery.changedDirs.length === 0) {
     return [];
   }
   const scan = await scanOnce();
@@ -139,13 +158,13 @@ const unregisteredMembers = async (
     return [];
   }
   const registered = new Set(configured.map((query) => query.packageName));
-  const arrived = discovery.kind === 'all' ? undefined : new Set(discovery.paths);
   const members = scan.packages.filter((pkg) => pkg.path !== ROOT_PACKAGE_PATH);
+  const existed = discovery.kind === 'all' ? undefined : namesThatExisted(discovery, members);
   // Grouped over EVERY member, then filtered — a name is ambiguous because of where it is
-  // declared, not because of which declaration this fetch happened to add.
+  // declared, not because of which declaration this fetch happened to touch.
   return [...byName(members)]
     .filter(([name]) => !registered.has(name))
-    .filter(([, paths]) => arrived === undefined || paths.some((path) => arrived.has(path)))
+    .filter(([name]) => existed === undefined || !existed.has(name))
     .map(([name, paths]) => memberIssue(name, paths))
     .toSorted((left, right) => left.name.localeCompare(right.name));
 };

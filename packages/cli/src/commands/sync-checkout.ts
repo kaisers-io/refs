@@ -1,18 +1,18 @@
 import type { CloneMode, RefEntry, RefKey, RefsHome, Settings } from '@kaisers-io/refs-core';
+import { allowFileUrlsFrom, refLockName } from './add-source.ts';
 import {
-  addedPackageDirs,
   assertInsideSources,
   checkoutPath,
   cloneRepo,
   detectDefaultBranch,
   isGitCheckout,
+  packagesBefore,
   resolveSetting,
   syncRef,
   validationError,
   withLock,
   zRefState,
 } from '@kaisers-io/refs-core';
-import { allowFileUrlsFrom, refLockName } from './add-source.ts';
 import {
   ensureCheckoutOrigin,
   ensureManagedCheckout,
@@ -167,29 +167,32 @@ const gitOutcomeFor = (
   return syncExistingCheckout(ctx, rsc, dest);
 };
 
+const NOTHING_ARRIVED: MemberDiscovery = { changedDirs: [], kind: 'arrivals', namesBefore: [] };
+
 /** Which unregistered workspace members this sync is allowed to report.
  *
- * `sync` runs unattended and on every ref, so it reports only what THIS fetch added — a ref whose
- * owner tracks 3 packages out of 140 must not be told about the other 137 on every run. A fresh
- * clone reports nothing at all: `add` registered it moments ago, and everything in it would be an
- * "arrival". `doctor` asks for `{kind: 'all'}` instead, because there the complete list is what
- * was requested.
+ * `sync` runs unattended and on every ref, so it reports only packages whose NAMES the repository
+ * did not already have — a ref whose owner tracks 3 packages out of 140 must not be told about the
+ * other 137 on every run. A fresh clone reports nothing at all: `add` registered it moments ago,
+ * and everything in it would look new. `doctor` asks for `{kind: 'all'}` instead, because there
+ * the complete list is what was requested.
  *
- * Best-effort, like `addedPackageDirs` itself: no diff, no arrivals, never a failed sync. */
+ * Best-effort, like `packagesBefore` itself: whatever cannot be established becomes "nothing
+ * arrived", never a failed sync and never a guess. */
 const arrivalsFor = async (
   ctx: CliContext,
   dest: string,
   outcome: RefSyncOutcome,
 ): Promise<MemberDiscovery> => {
   if (outcome.previousSha === undefined) {
-    return { kind: 'arrivals', paths: [] };
+    return NOTHING_ARRIVED;
   }
-  const paths = await addedPackageDirs(ctx.runner, {
+  const before = await packagesBefore(ctx.runner, {
     dir: dest,
     from: outcome.previousSha,
     to: outcome.headSha,
   });
-  return { kind: 'arrivals', paths };
+  return before === undefined ? NOTHING_ARRIVED : { ...before, kind: 'arrivals' };
 };
 
 /** Runs the git side of one ref's sync under its per-ref lock only — no config/state write here,

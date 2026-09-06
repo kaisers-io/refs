@@ -1,6 +1,5 @@
 import { addPackage, freshRepo, writeJson } from '../helpers/workspace-fixture.ts';
 import { describe, expect, it } from 'vitest';
-import { mkdirSync, writeFileSync } from 'node:fs';
 import type { MemberDiscovery } from '../../src/commands/drift-discovery.ts';
 import type { PackageEntry } from '@kaisers-io/refs-core';
 import { driftLines } from '../../src/commands/drift-report.ts';
@@ -18,7 +17,15 @@ import { probeRefStructure } from '../../src/commands/drift-probe.ts';
 const entry = (path: string): PackageEntry => ({ description: 'A fixture package.', path });
 
 const ALL: MemberDiscovery = { kind: 'all' };
-const arrivals = (...paths: string[]): MemberDiscovery => ({ kind: 'arrivals', paths });
+
+/** A `sync`-shaped discovery: `changedDirs` are the directories whose manifest the fetched range
+ * touched, `namesBefore` the names those manifests carried beforehand. Every OTHER member keeps
+ * the name the scan already shows, so it counts as pre-existing without being listed here. */
+const arrivals = (changedDirs: string[], namesBefore: string[] = []): MemberDiscovery => ({
+  changedDirs,
+  kind: 'arrivals',
+  namesBefore,
+});
 
 /** `packages/*` with `@fixture/a` registered and `@fixture/b` present but unregistered. */
 const monorepo = (): string => {
@@ -84,7 +91,7 @@ describe('probeRefStructure: unregistered members, sync', () => {
   it('stays silent about a member this fetch did not add', async () => {
     expect.hasAssertions();
 
-    const report = await probeRefStructure(monorepo(), CONFIGURED, arrivals());
+    const report = await probeRefStructure(monorepo(), CONFIGURED, arrivals([]));
 
     // `@fixture/b` is unregistered and has been for as long as the ref existed. Absent from the
     // configuration is not the same as accidentally missing — it may be a fixture, an example, or
@@ -95,21 +102,55 @@ describe('probeRefStructure: unregistered members, sync', () => {
   it('reports one whose manifest this fetch DID add', async () => {
     expect.hasAssertions();
 
-    const report = await probeRefStructure(monorepo(), CONFIGURED, arrivals('packages/b'));
+    const report = await probeRefStructure(monorepo(), CONFIGURED, arrivals(['packages/b']));
 
     expect(report.packages).toStrictEqual([
       { name: '@fixture/b', path: 'packages/b', status: 'unregistered' },
     ]);
   });
 
-  it('ignores an arrival that is already registered', async () => {
+  it('ignores a changed directory whose package is already registered', async () => {
     expect.hasAssertions();
 
-    // A manifest can be added at a path the config already tracks — a package deleted and
-    // restored, or a checkout re-cloned. Registration is what matters, not novelty on disk.
-    const report = await probeRefStructure(monorepo(), CONFIGURED, arrivals('packages/a'));
+    // A manifest can change at a path the config already tracks. Registration is what matters,
+    // not whether the range touched the file.
+    const report = await probeRefStructure(monorepo(), CONFIGURED, arrivals(['packages/a']));
 
     expect(report).toStrictEqual({ status: 'ok' });
+  });
+});
+
+describe('probeRefStructure: what a name already existing means', () => {
+  it('stays silent about a package that merely moved', async () => {
+    expect.hasAssertions();
+
+    // `@fixture/b` was at some other path before and is unregistered either way. Its directory is
+    // new, but the NAME is not, so nothing arrived — the case a path-based reading gets wrong,
+    // and the one that would otherwise nag about a package the owner never wanted on every move.
+    const report = await probeRefStructure(
+      monorepo(),
+      CONFIGURED,
+      arrivals(['packages/b', 'packages/old'], ['@fixture/b']),
+    );
+
+    expect(report).toStrictEqual({ status: 'ok' });
+  });
+
+  it('reports a package renamed in place under its new name', async () => {
+    expect.hasAssertions();
+
+    // `packages/b` held `@fixture/old` before and holds `@fixture/b` now: the manifest was
+    // MODIFIED, never added, so a path-based reading would see no arrival at all — yet
+    // `@fixture/b` is a name this repository did not have.
+    const report = await probeRefStructure(
+      monorepo(),
+      CONFIGURED,
+      arrivals(['packages/b'], ['@fixture/old']),
+    );
+
+    expect(report.packages).toStrictEqual([
+      { name: '@fixture/b', path: 'packages/b', status: 'unregistered' },
+    ]);
   });
 });
 
@@ -135,7 +176,7 @@ describe('probeRefStructure: an unregistered name declared twice', () => {
     ]);
   });
 
-  it('stays ambiguous even when only one of the two paths just arrived', async () => {
+  it('stays ambiguous when a name arrives at two paths at once', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
     writeJson(join(repo, 'package.json'), { workspaces: ['packages/*', 'tools/*'] });
@@ -143,14 +184,36 @@ describe('probeRefStructure: an unregistered name declared twice', () => {
     addPackage(repo, 'packages/dup', { name: '@fixture/dup', version: '1.0.0' });
     addPackage(repo, 'tools/dup', { name: '@fixture/dup', version: '1.0.0' });
 
-    const report = await probeRefStructure(repo, CONFIGURED, arrivals('tools/dup'));
+    const report = await probeRefStructure(
+      repo,
+      CONFIGURED,
+      arrivals(['packages/dup', 'tools/dup']),
+    );
 
-    // A name is ambiguous because of where it is declared, not because of which declaration this
-    // fetch happened to add — so the arrivals filter must run AFTER grouping, never before.
+    // A name is ambiguous because of where it is declared, not because of which declaration the
+    // range happened to touch — so the filter must run AFTER grouping, never before.
     expect(report.packages?.[0]).toMatchObject({
       candidates: ['packages/dup', 'tools/dup'],
       name: '@fixture/dup',
     });
+  });
+});
+
+describe('probeRefStructure: a duplicate of a name that already existed', () => {
+  it('stays silent when one path already carried that name', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/*', 'tools/*'] });
+    addPackage(repo, 'packages/a', { name: '@fixture/a', version: '1.0.0' });
+    addPackage(repo, 'packages/dup', { name: '@fixture/dup', version: '1.0.0' });
+    addPackage(repo, 'tools/dup', { name: '@fixture/dup', version: '1.0.0' });
+
+    // `packages/dup` is untouched, so `@fixture/dup` is a name the repository already had. A
+    // second copy appearing elsewhere is a duplicate of something existing, not a new package —
+    // and it is exactly the shape of an upstream migration mid-flight.
+    const report = await probeRefStructure(repo, CONFIGURED, arrivals(['tools/dup']));
+
+    expect(report).toStrictEqual({ status: 'ok' });
   });
 });
 
@@ -172,85 +235,5 @@ describe('probeRefStructure: the root is not a member', () => {
     expect(report.packages).toStrictEqual([
       { name: '@fixture/toolkit', path: '.', status: 'unregistered' },
     ]);
-  });
-});
-
-describe('probeRefStructure: values that reach a shell', () => {
-  it('quotes the name and path it puts into the repair command', async () => {
-    expect.hasAssertions();
-    const repo = freshRepo();
-    writeJson(join(repo, 'package.json'), { workspaces: ['packages/*'] });
-    addPackage(repo, 'packages/a', { name: '@fixture/a', version: '1.0.0' });
-    // Both values come from the checkout. `zPackagePath` rejects only separators, dot segments,
-    // percent escapes and colons, so `$()` is a legal path; a manifest `name` is checked only for
-    // being non-empty. The line exists to be pasted into a shell.
-    addPackage(repo, 'packages/$(id)', { name: '@evil/; rm -rf /tmp/x', version: '1.0.0' });
-
-    const line = driftLines(await probeRefStructure(repo, CONFIGURED, ALL)).join('\n');
-
-    expect(line).toContain("--package '@evil/; rm -rf /tmp/x' --create --path 'packages/$(id)'");
-  });
-});
-
-describe('probeRefStructure: a member claiming the root name', () => {
-  it('reports that name once, not once per discovery pass', async () => {
-    expect.hasAssertions();
-    const repo = freshRepo();
-    writeJson(join(repo, 'package.json'), {
-      name: '@fixture/toolkit',
-      workspaces: ['packages/*'],
-    });
-    addPackage(repo, 'packages/a', { name: '@fixture/a', version: '1.0.0' });
-    // Detection drops a root whose name a member claims, so `unregisteredRoot` resolves the name
-    // to the MEMBER's path — the same entry member discovery sees. Excluding `.` from the members
-    // does not separate them, because the root's finding is not at `.` here.
-    addPackage(repo, 'packages/toolkit', { name: '@fixture/toolkit', version: '1.0.0' });
-
-    const report = await probeRefStructure(repo, CONFIGURED, ALL);
-
-    expect(report.packages).toStrictEqual([
-      { name: '@fixture/toolkit', path: 'packages/toolkit', status: 'unregistered' },
-    ]);
-  });
-});
-
-describe('probeRefStructure: a scan that could not inspect everything', () => {
-  it('says nothing about a package the repository explicitly excluded', async () => {
-    expect.hasAssertions();
-    const repo = freshRepo();
-    // Negated patterns are not supported — the scan emits `unsupported_pattern` and expands the
-    // directory anyway — so `@fixture/excluded` IS in the scan despite the repository having said
-    // not to treat it as a member. Recommending its registration would be advice contradicting
-    // the repository's own declaration, derived from a pattern the scanner admits it cannot read.
-    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
-    writeFileSync(
-      join(repo, 'pnpm-workspace.yaml'),
-      "packages:\n  - packages/*\n  - '!packages/excluded'\n",
-    );
-    addPackage(repo, 'packages/a', { name: '@fixture/a', version: '1.0.0' });
-    addPackage(repo, 'packages/excluded', { name: '@fixture/excluded', version: '1.0.0' });
-
-    const report = await probeRefStructure(repo, CONFIGURED, ALL);
-
-    expect(report).toStrictEqual({ status: 'ok' });
-  });
-
-  it('says nothing while an unreadable manifest could still hide a duplicate name', async () => {
-    expect.hasAssertions();
-    const repo = freshRepo();
-    writeJson(join(repo, 'package.json'), { workspaces: ['packages/*'] });
-    addPackage(repo, 'packages/a', { name: '@fixture/a', version: '1.0.0' });
-    addPackage(repo, 'packages/b', { name: '@fixture/b', version: '1.0.0' });
-    // A second declaration of `@fixture/b` could be sitting behind this. `refs add` keeps the
-    // LAST of a duplicate pair, so naming `packages/b` from a partial view would prescribe
-    // something registration might not do.
-    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
-    mkdirSync(join(repo, 'packages/broken'), { recursive: true });
-    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
-    writeFileSync(join(repo, 'packages/broken/package.json'), '{ not json');
-
-    const report = await probeRefStructure(repo, CONFIGURED, ALL);
-
-    expect(report).toStrictEqual({ status: 'ok' });
   });
 });

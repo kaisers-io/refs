@@ -15,14 +15,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `refs add` refuses an already-tracked ref, and every `refs edit` mode needs an entry to edit. The
   only instruction anyone could give was "hand-edit `config.toml`".
 
-  `refs sync` answers "did upstream gain a package?" from the range it just fetched
-  (`git diff --no-renames --diff-filter=A -z`), not by comparing a scan against the
-  configuration. That
-  distinction is the whole design: a scan cannot tell a package that just arrived from one the
-  ref's owner deliberately never tracked, because there is no inventory of what was there before —
-  the fetch range is that inventory. A ref whose owner tracks 3 packages out of 140 hears about the
-  other 137 exactly never. `refs doctor` lists every unregistered member instead, because it was
-  asked to.
+  `refs sync` answers "did upstream gain a package?" from the range it just fetched, not by
+  comparing a scan against the configuration. That distinction is the whole design: a scan cannot
+  tell a package that just arrived from one the ref's owner deliberately never tracked, because
+  there is no inventory of what was there before — the fetch range is that inventory. A ref whose
+  owner tracks 3 packages out of 140 hears about the other 137 exactly never. `refs doctor` lists
+  every unregistered member instead, because it was asked to.
+
+  The question it asks of that range is about package NAMES, not manifest paths. A package
+  renamed in place modifies its manifest rather than adding one, and a package merely moved to
+  another directory adds one without being new — so a path-based reading is wrong in both
+  directions. Only the manifests the range actually changed have to be read out of history: an
+  untouched manifest is byte-identical at both ends, so the name it carries now is the name it
+  carried before.
 
   The repair is a command now rather than a config fragment:
 

@@ -139,6 +139,60 @@ describe('refs sync: registering what arrived', () => {
   );
 });
 
+describe('refs sync: a package that only moved', () => {
+  it(
+    'stays silent, because the name is not new even though the directory is',
+    async () => {
+      expect.hasAssertions();
+      await withResetExitCode(() =>
+        withTempHome(async (homeDir) => {
+          const { ctx, key, stdout, upstream } = await setupMonorepoRef(homeDir);
+          await deregisterPackage(ctx, key, '@fixture/b');
+          // Rename detection is off, so the move shows up as a manifest ADDED at
+          // `packages/relocated` — which a path-based reading announces as an arrival, nagging
+          // about a package the owner deliberately does not track every time upstream tidies up.
+          await gitFor(upstream, ['mv', 'packages/b', 'packages/relocated']);
+          await gitFor(upstream, ['commit', '-q', '-m', 'move package b']);
+
+          const result = await runSyncJson(ctx, stdout, { refKeys: [key] });
+
+          expect(result.data.results[0]?.structure).toStrictEqual({ status: 'ok' });
+        }),
+      );
+    },
+    SLOW_IO_TIMEOUT_MS,
+  );
+});
+
+describe('refs sync: a package renamed in place', () => {
+  it(
+    'reports the new name, even though no manifest was added',
+    async () => {
+      expect.hasAssertions();
+      await withResetExitCode(() =>
+        withTempHome(async (homeDir) => {
+          const { ctx, key, stdout, upstream } = await setupMonorepoRef(homeDir);
+          await deregisterPackage(ctx, key, '@fixture/b');
+          // The manifest is MODIFIED, never added, so a path-based reading sees nothing at all.
+          await writeFile(
+            join(upstream, 'packages/b/package.json'),
+            JSON.stringify({ name: '@fixture/renamed', private: true, version: '1.0.0' }),
+          );
+          await gitFor(upstream, ['add', '-A']);
+          await gitFor(upstream, ['commit', '-q', '-m', 'rename package b']);
+
+          const result = await runSyncJson(ctx, stdout, { refKeys: [key] });
+
+          expect(result.data.results[0]?.structure?.packages).toStrictEqual([
+            { name: '@fixture/renamed', path: 'packages/b', status: 'unregistered' },
+          ]);
+        }),
+      );
+    },
+    SLOW_IO_TIMEOUT_MS,
+  );
+});
+
 describe('refs sync: a package that was never registered and never arrived', () => {
   it(
     'stays silent about it on every sync',

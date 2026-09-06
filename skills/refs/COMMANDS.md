@@ -397,9 +397,12 @@ sync are probed. `structure.status` is `ok` (no `packages` key at all), `drift`,
 `unregistered` is the one finding that is not about an entry the config already has, and the
 only one you may act on with a command. It comes from two places: the repository root (which is
 never one of its own glob targets, so `refs add` could not have registered it) and workspace
-members. `refs sync` reports only members whose manifest _this fetch added_, so it is genuinely
-new upstream rather than something the user chose to leave out; `refs doctor` lists every
-unregistered member, because it was asked to.
+members. `refs sync` reports only members whose _name the repository did not already have_ before
+the range it just fetched, so it is genuinely new upstream rather than something the user chose to
+leave out — a package that merely moved to another directory is not new, and one renamed in place
+is. `refs doctor` lists every unregistered member, because it was asked to. Both stay silent when
+workspace detection could not inspect everything, since neither membership nor the path to
+register at can be established from a partial scan.
 
 **Never register one on your own initiative.** Show the user what was found and what you would
 run, and wait for them to say yes:

@@ -14,7 +14,7 @@ import { writeFileSync } from 'node:fs';
 //
 // Member discovery stays off throughout: the root is reported on its own evidence (a manifest
 // read), independently of whether this fetch added anything.
-const ARRIVALS_NONE: MemberDiscovery = { kind: 'arrivals', paths: [] };
+const ARRIVALS_NONE: MemberDiscovery = { changedDirs: [], kind: 'arrivals', namesBefore: [] };
 
 /** `probeRefStructure` with member discovery off — the shape `sync` uses on a ref whose fetch
  * added nothing, and the only one these cases are about. */
