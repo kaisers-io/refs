@@ -45,6 +45,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Drift detection no longer goes silent on a repository that declares a negated workspace
+  pattern.** Unsupported patterns were treated alike, but they pull in opposite directions: a
+  dropped `**` leaves directories out, so the scan may MISS a package; a dropped negation leaves
+  directories in, so the scan holds too much and misses nothing. Conflating the two disabled every
+  `missing` / `relocated` finding on such repositories — every package came back `unverifiable`.
+  Claims that need a complete scan now ask whether one could have been missed, which a negation
+  cannot cause.
+
 - **A monorepo can now be resolved by the name in its own root manifest.** Workspace detection
   expands the globs a repository declares, and a workspace root is not one of its own targets — so a
   root that names itself was registered nowhere, and `refs resolve @acme/toolkit` came back empty

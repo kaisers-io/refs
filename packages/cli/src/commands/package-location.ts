@@ -1,6 +1,10 @@
 import type { WorkspacePackage, WorkspaceScan } from '@kaisers-io/refs-core';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
-import { lookupPackagePath, scanIsReliable, scanSearchedSomewhere } from '@kaisers-io/refs-core';
+import {
+  lookupPackagePath,
+  scanMayHidePackages,
+  scanSearchedSomewhere,
+} from '@kaisers-io/refs-core';
 
 // What one workspace scan is allowed to conclude about ONE configured package location.
 //
@@ -103,9 +107,16 @@ const classifyAgainstScan = (query: LocationQuery, scan: WorkspaceScan): VerifyO
 
   // Both remaining answers claim something about EVERY path — "it is only here", "it is nowhere"
   // — so neither survives a scan that skipped something. A second package of the same name could
-  // be sitting behind an unreadable manifest or an unsupported pattern, and picking the copy we
+  // be sitting behind an unreadable manifest or an unexpanded `**`, and picking the copy we
   // happened to see is precisely the silent wrong-directory failure this exists to prevent.
-  if (!scanIsReliable(scan)) {
+  //
+  // `scanMayHidePackages`, not `scanIsReliable`: the question is whether the scan could have
+  // MISSED something, and a dropped negation cannot. It leaves directories in that the repository
+  // meant to exclude, so the scan is a superset — absence is better evidence under it, not worse,
+  // and an extra copy sharing a name surfaces as the ambiguity above rather than as a wrong pick.
+  // The stricter test disabled drift detection outright on real monorepos: TanStack Query declares
+  // two negations, and every one of its hundred packages came back `unverifiable`.
+  if (scanMayHidePackages(scan)) {
     return incomplete(
       query,
       lookup.kind === 'found'

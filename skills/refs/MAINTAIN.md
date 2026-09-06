@@ -94,7 +94,8 @@ each affected ref and package and says which repair it needs — remove the entr
 gone from the repo's workspaces), change its path (it moved within them), or register a package
 the checkout declares and the config never had (`unregistered`). All three are `refs edit` work,
 and none is urgent. `doctor` lists every unregistered member; `refs sync` mentions only the ones
-a fetch just brought in.
+a fetch just brought in. Neither says anything about a package under a negated workspace pattern,
+or about any package at all when detection could have missed one.
 
 Registering is the one repair that adds something rather than correcting it, so it is also the
 one that needs the user's agreement first — see COMMANDS.md on `unregistered`. A `detail` saying another refs

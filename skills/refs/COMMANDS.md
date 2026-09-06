@@ -400,9 +400,12 @@ never one of its own glob targets, so `refs add` could not have registered it) a
 members. `refs sync` reports only members whose _name the repository did not already have_ before
 the range it just fetched, so it is genuinely new upstream rather than something the user chose to
 leave out — a package that merely moved to another directory is not new, and one renamed in place
-is. `refs doctor` lists every unregistered member, because it was asked to. Both stay silent when
-workspace detection could not inspect everything, since neither membership nor the path to
-register at can be established from a partial scan.
+is. `refs doctor` lists every unregistered member, because it was asked to.
+
+Both go quiet where workspace detection could have MISSED something — an unreadable manifest, an
+unexpanded `**` — because the path they would name cannot be established from a partial scan. A
+negated pattern (`!examples/vue/2*`) is the exception: it hides nothing, it only leaves in what
+the repository meant to exclude, so it silences the paths beneath it and nothing else.
 
 **Never register one on your own initiative.** Show the user what was found and what you would
 run, and wait for them to say yes:

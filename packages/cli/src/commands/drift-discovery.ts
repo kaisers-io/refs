@@ -3,8 +3,9 @@ import type { PackagesBefore, WorkspacePackage, WorkspaceScan } from '@kaisers-i
 import {
   detectWorkspacePackagesDetailed,
   lookupPackagePath,
+  negatedPrefixes,
   readRootPackage,
-  scanIsReliable,
+  scanMayHidePackages,
 } from '@kaisers-io/refs-core';
 import type { LocationQuery } from './package-location.ts';
 import type { StructureIssue } from './drift-report.ts';
@@ -74,13 +75,13 @@ const unregisteredRoot = async (
   // registered `packages/<member>`. The scan is what applies that rule, so the scan supplies the
   // path.
   const scan = await scanOnce();
-  // The same two conservatisms `classifyAgainstScan` applies, for the same reason. An incomplete
-  // scan cannot support a definite path: a member sharing this name could be sitting behind the
-  // unreadable manifest that made it incomplete, and it would win once readable — so prescribing
-  // `.` now would be advice that a later sync contradicts. And more than one claimant is a real
+  // The same two conservatisms `classifyAgainstScan` applies, for the same reason. A scan that
+  // could have missed something cannot support a definite path: a member sharing this name could
+  // be sitting behind the unreadable manifest that made it incomplete, and it would win once
+  // readable — so prescribing `.` now would be advice that a later sync contradicts. And more than one claimant is a real
   // ambiguity, not something to resolve by taking the first: `refs add` itself keeps the LAST,
   // so picking either here would be prescribing something registration does not do.
-  if (!scanIsReliable(scan)) {
+  if (scanMayHidePackages(scan)) {
     return [];
   }
   const lookup = lookupPackagePath(scan.packages, root.name);
@@ -131,20 +132,21 @@ const memberIssue = (name: string, paths: readonly string[]): StructureIssue =>
  * The root is excluded because `unregisteredRoot` owns it: it is found by looking rather than by
  * being declared, needs the manifest read that one does, and would otherwise be reported twice.
  *
- * Gated on `scanIsReliable`, exactly as `unregisteredRoot` is. Seeing a package is not the claim
- * this finding makes: it says the package is an unregistered MEMBER and names the path to
- * register it at, and both of those need a scan that inspected everything.
+ * Seeing a package is not the claim this finding makes: it says the package is an unregistered
+ * MEMBER and names the path to register it at. Those two claims fail in different ways, so they
+ * are guarded separately rather than behind one `scanIsReliable`.
  *
- * Membership, because a sighting is not a selection. Negated workspace patterns are not supported
- * (`!packages/fixtures` yields an `unsupported_pattern` diagnostic and the directory is expanded
- * anyway), so a repository that explicitly excluded a package still has it in the scan — and
- * recommending its registration would be advice contradicting the repository's own declaration.
- *
- * Uniqueness, because a second declaration of the same name can be sitting behind the unreadable
- * manifest or unsupported pattern that made the scan incomplete. `refs add` keeps the LAST of a
+ * Uniqueness needs a scan that missed nothing: a second declaration of the same name could be
+ * sitting behind an unreadable manifest or an unexpanded `**`, and `refs add` keeps the LAST of a
  * duplicate pair, so naming one path from a partial view prescribes something registration might
- * not do — the same reason `unregisteredRoot` refuses an unreliable scan, and the reason
- * `memberIssue` reports `candidates` rather than picking when it can see the duplicate. */
+ * not do. `scanMayHidePackages` is that question.
+ *
+ * Membership fails only for negated patterns, and only under them. A negation is dropped rather
+ * than applied, so a repository that wrote `!packages/fixtures` still has that directory in the
+ * scan and recommending its registration would contradict the repository's own declaration —
+ * but a negation hides nothing, and every package outside its prefix is unaffected. Gating the
+ * whole pass on it silenced all hundred packages of a real monorepo over two negations that
+ * applied to `examples/vue/`. */
 const unregisteredMembers = async (
   configured: readonly LocationQuery[],
   discovery: MemberDiscovery,
@@ -154,11 +156,15 @@ const unregisteredMembers = async (
     return [];
   }
   const scan = await scanOnce();
-  if (!scanIsReliable(scan)) {
+  if (scanMayHidePackages(scan)) {
     return [];
   }
   const registered = new Set(configured.map((query) => query.packageName));
-  const members = scan.packages.filter((pkg) => pkg.path !== ROOT_PACKAGE_PATH);
+  const excluded = negatedPrefixes(scan);
+  const members = scan.packages.filter(
+    (pkg) =>
+      pkg.path !== ROOT_PACKAGE_PATH && !excluded.some((prefix) => pkg.path.startsWith(prefix)),
+  );
   const existed = discovery.kind === 'all' ? undefined : namesThatExisted(discovery, members);
   // Grouped over EVERY member, then filtered — a name is ambiguous because of where it is
   // declared, not because of which declaration this fetch happened to touch.

@@ -180,8 +180,13 @@ const deduplicateAndSort = (packages: WorkspacePackage[]): WorkspacePackage[] =>
   return deduped;
 };
 
-/** Whether a scan's package list may be treated as complete FOR WHAT IT SEARCHED. An unreliable
- * scan must never be used to conclude that a configured package is gone.
+/** Whether a scan's package list may be treated as complete FOR WHAT IT SEARCHED.
+ *
+ * The strict notion: ANY diagnostic that leaves the scan other than a faithful expansion of the
+ * declaration makes it unreliable, including a dropped negation that merely left too much in.
+ * Callers deciding what a scan can PROVE want `scanMayHidePackages`
+ * (`workspaces-completeness.ts`) instead — a scan holding too much still proves absence, and
+ * conflating the two silenced every finding on repositories that declare a negation.
  *
  * Note the qualifier: this says the declared workspaces were fully expanded, not that the whole
  * checkout was examined. `scanSearchedSomewhere` is the other half. */
@@ -241,6 +246,7 @@ const sortDiagnostics = (diagnostics: readonly WorkspaceDiagnostic[]): Workspace
 
 export {
   CURRENT_DIR_SEGMENT,
+  UNRELIABLE_DIAGNOSTIC_KINDS,
   classifyWorkspacePattern,
   compareCodepoint,
   deduplicateAndSort,

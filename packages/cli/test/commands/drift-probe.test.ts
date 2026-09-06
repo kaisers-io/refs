@@ -272,3 +272,25 @@ describe('probeRefStructure: a move that really happened', () => {
     });
   });
 });
+
+describe('probeRefStructure: a repository that declares a negation', () => {
+  it('still reports a configured package that is gone', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // A dropped negation leaves directories IN the scan, so the scan is a superset of real
+    // membership — absence is better evidence under it, not worse. Refusing to answer here left
+    // every package of a real monorepo `unverifiable` and disabled drift detection outright.
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    writeFileSync(
+      join(repo, 'pnpm-workspace.yaml'),
+      "packages:\n  - packages/*\n  - '!packages/legacy*'\n",
+    );
+    addPackage(repo, 'packages/a', { name: '@fixture/a', version: '1.0.0' });
+
+    const report = await probe(repo, { '@fixture/gone': entry('packages/gone') });
+
+    expect(report.packages).toStrictEqual([
+      { configured_path: 'packages/gone', name: '@fixture/gone', status: 'missing' },
+    ]);
+  });
+});

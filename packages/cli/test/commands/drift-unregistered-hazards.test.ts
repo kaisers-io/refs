@@ -78,6 +78,32 @@ describe('probeRefStructure: a scan that could not inspect everything', () => {
 
     expect(report).toStrictEqual({ status: 'ok' });
   });
+});
+
+describe('probeRefStructure: a repository that declares a negation', () => {
+  it('still reports a package the negation does not reach', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // Real monorepos declare negations: TanStack Query has two, both under `examples/vue/`.
+    // Treating them like any other unsupported pattern silenced every finding about all hundred
+    // of its packages — yet a dropped negation cannot HIDE anything, it only leaves in what the
+    // repository meant to exclude. So it constrains the paths under it and nothing else.
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    writeFileSync(
+      join(repo, 'pnpm-workspace.yaml'),
+      "packages:\n  - packages/*\n  - examples/*\n  - '!examples/legacy*'\n",
+    );
+    addPackage(repo, 'packages/a', { name: '@fixture/a', version: '1.0.0' });
+    addPackage(repo, 'packages/new', { name: '@fixture/new', version: '1.0.0' });
+    addPackage(repo, 'examples/legacy-vue', { name: '@fixture/legacy', version: '1.0.0' });
+
+    const report = await probeRefStructure(repo, CONFIGURED, ALL);
+
+    // The package under the negation stays silent; the one outside it is reported.
+    expect(report.packages).toStrictEqual([
+      { name: '@fixture/new', path: 'packages/new', status: 'unregistered' },
+    ]);
+  });
 
   it('says nothing while an unreadable manifest could still hide a duplicate name', async () => {
     expect.hasAssertions();

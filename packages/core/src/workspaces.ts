@@ -265,6 +265,7 @@ export { readRootPackage, withoutClaimedRoot } from './workspaces-root.ts';
 // scan from this module needs the predicate that says whether it may be trusted, and the two
 // belong together in the public surface.
 export { scanIsReliable, scanSearchedSomewhere } from './workspaces-patterns.ts';
+export { negatedPrefixes, scanMayHidePackages } from './workspaces-completeness.ts';
 export type {
   WorkspaceDiagnostic,
   WorkspacePackage,
