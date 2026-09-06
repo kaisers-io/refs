@@ -34,6 +34,11 @@ Why this is a rule: a feature once shipped with 988 green tests, including end-t
 
 - A test that pins a fix must FAIL when the fix is reverted. Check it: revert, run, restore.
   A test that passes either way pins nothing.
+- A test that runs the built bundle must REBUILD it, unconditionally. `pnpm check` does not build,
+  so reusing whatever is on disk tests whatever was last built — and the revert check above then
+  passes against code that no longer exists.
+- Assert the outcome, not the absence of a complaint. "The next run is quiet" holds for a command
+  that failed outright.
 - Test through the real boundary where one exists — real git over a fake runner, the CLI over
   internal calls — when the thing under test is git's or the CLI's behaviour.
 - `pnpm check` before pushing; `pnpm test:coverage` at the end. Coverage ratchet: 96/90/98/96.

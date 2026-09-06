@@ -1,7 +1,6 @@
 import type { CliContext } from '../../src/context.ts';
 import { SpawnRunner } from '@kaisers-io/refs-core';
 import type { StructureReport } from '../../src/commands/drift-report.ts';
-import { access } from 'node:fs/promises';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { driftLines } from '../../src/commands/drift-report.ts';
 import { expect } from 'vitest';
@@ -49,23 +48,19 @@ const BUNDLE = fileURLToPath(new URL('../../dist/refs.mjs', import.meta.url));
  * with no output, which is how this first failed on the floor interpreter while passing locally.
  * The bundle has no such imports, and is what actually ships.
  *
- * Built here rather than assumed, because `pnpm check` does not build: skipping the test when the
- * bundle is absent would make it silently vacuous, which is the failure mode this whole helper
- * exists to avoid. One build, memoized across the suite. */
+ * Built UNCONDITIONALLY, once per run. `pnpm check` does not build, so reusing whatever bundle
+ * happens to be on disk means testing whatever was last built — verified: breaking `--create` at
+ * the source leaves this suite green against a stale bundle, which is the same vacuous test in a
+ * new disguise. One build per run is the price of the assertions meaning anything. */
 // eslint-disable-next-line init-declarations -- the point is that it is unset until first use
 let building: Promise<string> | undefined;
 
 const buildBundle = async (): Promise<string> => {
-  try {
-    await access(BUNDLE);
-    return BUNDLE;
-  } catch {
-    const built = await new SpawnRunner().run('pnpm', ['--filter', '@kaisers-io/refs', 'build'], {
-      cwd: fileURLToPath(new URL('../../../..', import.meta.url)),
-    });
-    expect(built.exitCode, `pnpm build failed: ${built.stderr}`).toBe(SUCCESS);
-    return BUNDLE;
-  }
+  const built = await new SpawnRunner().run('pnpm', ['--filter', '@kaisers-io/refs', 'build'], {
+    cwd: fileURLToPath(new URL('../../../..', import.meta.url)),
+  });
+  expect(built.exitCode, `pnpm build failed: ${built.stderr}`).toBe(SUCCESS);
+  return BUNDLE;
 };
 
 const cliBundle = (): Promise<string> => {
