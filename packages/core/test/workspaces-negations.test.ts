@@ -216,6 +216,36 @@ describe("npm's re-inclusion rule", () => {
   });
 });
 
+describe('a trailing slash on the negation itself', () => {
+  // minimatch tolerates a trailing slash on the PATH and requires one on the pattern — measured:
+  // `minimatch('packages/cli/', 'packages/cli')` is true, `minimatch('packages/cli',
+  // 'packages/cli/')` is false. So which side carries the slash decides whether a later pattern
+  // cancels the exclusion, and every expectation here was read off npm's own resolver.
+  const table: [string[], string[]][] = [
+    [
+      ['packages/*', '!packages/cli', 'packages/cli/'],
+      ['@mono/cli', '@mono/core'],
+    ],
+    [['packages/*', '!packages/cli/', 'packages/cli'], ['@mono/core']],
+    [
+      ['packages/*', '!packages/cli/', 'packages/cli/'],
+      ['@mono/cli', '@mono/core'],
+    ],
+  ];
+
+  it.each(table)('resolves %j the way npm does', async (workspaces, expected) => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    writeJson(join(repo, 'package.json'), { workspaces });
+    addPackage(repo, 'packages/cli', { name: '@mono/cli', version: '1.0.0' });
+    addPackage(repo, 'packages/core', { name: '@mono/core', version: '1.0.0' });
+
+    const scan = await detectWorkspacePackages(repo);
+
+    expect(scan.map((pkg) => pkg.name).toSorted()).toStrictEqual(expected);
+  });
+});
+
 describe("pnpm's rule, which is not npm's", () => {
   it('keeps an exclusion a later identical pattern would cancel under npm', async () => {
     expect.hasAssertions();

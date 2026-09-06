@@ -29,8 +29,17 @@ import { readDeclarations } from './workspaces-declarations.ts';
  * negatedPattern)`. The difference is visible: after `!packages/cli`, a later literal
  * `packages/cli` cancels the exclusion, while a later `packages/*` does not, even though it
  * selects that same directory. Verified against that resolver for both. */
-const cancels = (pattern: string, negation: string): boolean =>
-  planMatchesPath(classifyWorkspacePattern(negatedBody(negation)), normalizeSeparators(pattern));
+const cancels = (pattern: string, negation: string): boolean => {
+  const body = negatedBody(negation);
+  if (!planMatchesPath(classifyWorkspacePattern(body), normalizeSeparators(pattern))) {
+    return false;
+  }
+  // minimatch tolerates a trailing slash on the PATH and requires one on the pattern: measured,
+  // `minimatch('packages/cli/', 'packages/cli')` is true and `minimatch('packages/cli',
+  // 'packages/cli/')` is false. Normalizing both sides flattened that, so `!packages/cli/` was
+  // cancelled by a later `packages/cli` — and npm keeps the exclusion there.
+  return !body.endsWith('/') || pattern.endsWith('/');
+};
 
 type Selection = { negations: string[]; patterns: string[] };
 
@@ -74,6 +83,11 @@ const selectPatterns = (declared: readonly string[]): Selection =>
  * contribute a diagnostic about a package nobody asked for. */
 const excludedBy = (negations: readonly string[], dir: string): boolean =>
   negations.some((negation) =>
+    // No normalization of the negation here, unlike in `cancels` — `planMatchesPath` already
+    // normalizes the plan it is given, which is what makes `!packages//*` and `!packages/cli/`
+    // rule out the directories they name. npm's glob stage appends a separator to every pattern
+    // before matching, so a trailing slash does not distinguish anything at THIS step; it only
+    // does at the cancellation step above.
     planMatchesPath(classifyWorkspacePattern(negatedBody(negation)), dir),
   );
 
