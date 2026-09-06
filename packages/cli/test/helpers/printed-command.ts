@@ -1,62 +1,32 @@
 import type { CliContext } from '../../src/context.ts';
+import { SpawnRunner } from '@kaisers-io/refs-core';
 import type { StructureReport } from '../../src/commands/drift-report.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { driftLines } from '../../src/commands/drift-report.ts';
 import { expect } from 'vitest';
+import { fileURLToPath } from 'node:url';
+import { shellQuote } from '../../src/shell-quote.ts';
 
-// Running a command the tool PRINTED, rather than one the test rebuilt from the same parts.
+// Running a command the tool PRINTED, through a real shell.
 //
-// The distinction has now hidden two real bugs. A hand-built argv passed a literal `<ref>`
-// placeholder straight through, where a shell reads it as an input redirection. And a splitter
-// that knew only single quotes turned `--description "<what it is>"` into three tokens, so the
-// substitution never fired and the CLI was handed nonsense — with nothing asserting it had
-// worked, because the assertion that followed held either way.
+// The shell is the point. Three bugs have now hidden behind not using one: a hand-built argv
+// passed a literal `<ref>` straight through, where a shell reads it as an input redirection; a
+// splitter that knew only single quotes turned `--description "<what it is>"` into three tokens,
+// so the substitution never fired and the CLI was handed nonsense; and that same splitter mangled
+// `shellQuote`'s own output for a value containing a quote — `'packages/o'\\''brien'` came back as
+// `packages/obrien` where `/bin/sh` gives `packages/o'brien`.
+//
+// Each fix made the parser less wrong. Deleting the parser makes the question moot: `sh -c` does
+// the word splitting, which is what the printed command has to survive in the first place.
 
 const LAST = -1;
-
-type SplitState = { argv: string[]; current: string; quote: string; started: boolean };
-
-const QUOTES = new Set(["'", '"']);
-
-/** One character of the split. BOTH quote characters matter: the command single-quotes its
- * interpolated values but writes the description placeholder as `"<what it is>"`. */
-const step = (state: SplitState, char: string): SplitState => {
-  if (state.quote !== '') {
-    return char === state.quote
-      ? { ...state, quote: '' }
-      : { ...state, current: state.current + char };
-  }
-  if (QUOTES.has(char)) {
-    return { ...state, quote: char, started: true };
-  }
-  if (char !== ' ') {
-    return { ...state, current: state.current + char };
-  }
-  const done = state.started || state.current.length > 0;
-  return {
-    argv: done ? [...state.argv, state.current] : state.argv,
-    current: '',
-    quote: '',
-    started: false,
-  };
-};
-
-/** Splits a printed command into argv the way a POSIX shell would. */
-const splitCommand = (command: string): string[] => {
-  const end = [...command].reduce<SplitState>((state, char) => step(state, char), {
-    argv: [],
-    current: '',
-    quote: '',
-    started: false,
-  });
-  return end.started || end.current.length > 0 ? [...end.argv, end.current] : end.argv;
-};
+const SUCCESS = 0;
 
 /** The `refs edit <key>` prefix of a repair command, which is where a `<ref>` placeholder used to
- * sit — a shell reads that as an input redirection, so the line could not run as printed. */
+ * sit — a shell reads that as an input redirection. */
 const COMMAND_PREFIX_LENGTH = 3;
 
-/** The one part of the printed command the finding deliberately leaves to the caller. */
+/** The one part of the printed command a finding deliberately leaves to the caller. */
 const PLACEHOLDER = '<what it is>';
 
 /** Finds the printed repair line for one package, or throws — an absent line is a broken fixture,
@@ -69,38 +39,56 @@ const repairLineFor = (report: StructureReport | undefined, key: string, name: s
   return line;
 };
 
-/** Runs the repair command a finding printed, VERBATIM — only the description placeholder is
- * filled in, which is the one part the finding deliberately leaves to the caller. */
-const runPrintedRepair = async (
-  ctx: CliContext,
-  args: { description: string; line: string; stdout: string[] },
-): Promise<string[]> => {
-  const marker = 'To register it: ';
-  const command = args.line.slice(args.line.indexOf(marker) + marker.length);
-  const argv = splitCommand(command);
-  // The placeholder has to be ONE token for this to fire — which is the whole point of splitting
-  // the printed string the way a shell does rather than trusting it to look how we expect.
-  expect(argv).toContain(PLACEHOLDER);
-  const filled = argv.map((arg) => (arg === PLACEHOLDER ? args.description : arg));
-  const { run } = await import('../../src/main.ts');
-  args.stdout.length = 0;
-  // `refs …` as printed becomes `node refs …` as commander expects.
-  await run(ctx, ['node', ...filled, '--json']);
-  // The command has to have SUCCEEDED. Without this the test passed while the CLI rejected the
-  // arguments outright, because the assertion that followed held either way.
-  expectSucceeded(args.stdout);
-  return filled;
+/** The CLI entry a shell can invoke without a build step. The bundle at `bin/refs.mjs` needs
+ * `pnpm build`, which `pnpm test` does not run; what matters here is the SHELL boundary, and this
+ * is the same argument handling behind it. */
+const CLI_ENTRY = fileURLToPath(new URL('../../src/index.ts', import.meta.url));
+
+/** The full `sh -c` line: the environment as a prefix (which is what a person pasting the command
+ * would type, and what the runner cannot pass otherwise), `refs` pointed at the CLI entry, and the
+ * description substituted into the placeholder's own quotes. */
+const shellLine = (
+  printed: string,
+  description: string,
+  env: Record<string, string | undefined>,
+): string => {
+  const prefix = Object.entries(env)
+    .filter(([, value]) => value !== undefined)
+    .map(([name, value]) => `${name}=${shellQuote(value ?? '')}`)
+    .join(' ');
+  const command = printed
+    .replace(`"${PLACEHOLDER}"`, shellQuote(description))
+    .replace(/^refs /u, `node --experimental-strip-types ${shellQuote(CLI_ENTRY)} `);
+  return `${prefix} ${command} --json`;
 };
 
-/** Asserts the last envelope on stdout reports success. Without this the repair test passed while
- * the CLI rejected the arguments outright, because the assertion that followed held either way. */
-const expectSucceeded = (stdout: readonly string[]): void => {
-  const envelope = JSON.parse(stdout.at(LAST) ?? '{}') as {
-    error?: { code: string };
+/** Runs the repair command a finding printed, through `sh -c`, VERBATIM — only the description
+ * placeholder is substituted, which is the one part the finding leaves to the caller.
+ *
+ * The substitution happens in the STRING, before the shell sees it, and the placeholder carries
+ * its own quotes (`"<what it is>"`) so the replacement is quoted in turn rather than pasted bare. */
+const runPrintedRepair = async (args: {
+  description: string;
+  env: Record<string, string | undefined>;
+  line: string;
+}): Promise<string> => {
+  const marker = 'To register it: ';
+  const printed = args.line.slice(args.line.indexOf(marker) + marker.length);
+  expect(printed).toContain(`"${PLACEHOLDER}"`);
+  const result = await new SpawnRunner().run('sh', [
+    '-c',
+    shellLine(printed, args.description, args.env),
+  ]);
+  // The command has to have SUCCEEDED. Without this the test passed while the CLI rejected the
+  // arguments outright, because the assertion that followed held either way.
+  expect(result.exitCode).toBe(SUCCESS);
+  const envelope = JSON.parse(result.stdout.trim().split('\n').at(LAST) ?? '{}') as {
+    error?: unknown;
     ok?: boolean;
   };
   expect(envelope.error).toBeUndefined();
   expect(envelope.ok).toBe(true);
+  return printed;
 };
 
 /** Resolves `name` through the real command and returns the package's verification status. */
@@ -118,11 +106,4 @@ const resolveStatus = async (
   return envelope.data?.package?.status;
 };
 
-export {
-  COMMAND_PREFIX_LENGTH,
-  PLACEHOLDER,
-  repairLineFor,
-  resolveStatus,
-  runPrintedRepair,
-  splitCommand,
-};
+export { COMMAND_PREFIX_LENGTH, PLACEHOLDER, repairLineFor, resolveStatus, runPrintedRepair };

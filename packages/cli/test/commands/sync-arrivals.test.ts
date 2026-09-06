@@ -1,9 +1,3 @@
-import {
-  COMMAND_PREFIX_LENGTH,
-  repairLineFor,
-  resolveStatus,
-  runPrintedRepair,
-} from '../helpers/printed-command.ts';
 import { addRefViaDescription, gitFor, runSyncJson } from '../helpers/sync-support.ts';
 import { describe, expect, it } from 'vitest';
 import {
@@ -14,6 +8,7 @@ import {
 } from '../helpers/add-support.ts';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { readConfig, resolveHome, writeConfig } from '@kaisers-io/refs-core';
+import { repairLineFor, resolveStatus, runPrintedRepair } from '../helpers/printed-command.ts';
 import type { CliContext } from '../../src/context.ts';
 import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { createFixtureRepo } from '../helpers/fixture-repo.ts';
@@ -69,11 +64,11 @@ const deregisterPackage = async (ctx: CliContext, key: string, name: string): Pr
  * These three are what actually establish the repair worked. */
 const expectRegistered = async (
   ctx: CliContext,
-  args: { argv: readonly string[]; key: string; stdout: string[] },
+  args: { command: string; key: string; stdout: string[] },
 ): Promise<void> => {
   // Nothing a shell would reinterpret, and the real key where `<ref>` used to sit.
-  expect(args.argv).not.toContain('<ref>');
-  expect(args.argv.slice(0, COMMAND_PREFIX_LENGTH)).toStrictEqual(['refs', 'edit', args.key]);
+  expect(args.command).not.toContain('<ref>');
+  expect(args.command).toContain(`refs edit '${args.key}'`);
 
   const config = await readConfig(resolveHome(ctx.env));
   expect(config.refs[args.key]?.packages?.['@fixture/c']).toStrictEqual({
@@ -135,12 +130,12 @@ describe('refs sync: registering what arrived', () => {
           // test used to do — passes a literal `<ref>` straight through without noticing that a
           // shell reads it as an input redirection.
           const printed = repairLineFor(result.data.results[0]?.structure, key, '@fixture/c');
-          const argv = await runPrintedRepair(ctx, {
+          const command = await runPrintedRepair({
             description: 'The package that arrived.',
+            env: ctx.env,
             line: printed,
-            stdout,
           });
-          await expectRegistered(ctx, { argv, key, stdout });
+          await expectRegistered(ctx, { command, key, stdout });
 
           const after = await runSyncJson(ctx, stdout, { refKeys: [key] });
           expect(after.data.results[0]?.structure).toStrictEqual({ status: 'ok' });
