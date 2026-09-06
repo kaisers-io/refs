@@ -41,26 +41,54 @@ type RangeOpts = {
   to: string;
 };
 
-/** One file's contents at one revision. `undefined` covers both "not there" and "could not be
- * read" — a distinction that does not matter here, because the caller treats every unreadable
- * declaration the same way it treats a changed one. */
+/** What one file was at one revision. The three cases are genuinely different, and collapsing the
+ * last two is what this type exists to prevent: `absent` is a statement about membership — the
+ * repository declared nothing there — while `unreadable` is the absence of a statement. Reading a
+ * failed `git show` as "declared nothing" makes the old declaration a subset of anything, so a
+ * narrowing below it goes unseen and a name that was there all along is announced as new. */
+type FileAt = { contents: string } | { kind: 'absent' } | { kind: 'unreadable' };
+
+/** Whether `path` existed at `rev`, asked separately so a failing read cannot be mistaken for a
+ * file that was never there. `ls-tree` prints the path when it exists and nothing when it does
+ * not, and exits 0 either way; a non-zero exit is a failure to look. */
+const existsAt = async (
+  runner: Runner,
+  opts: { dir: string; path: string; rev: string },
+): Promise<boolean | undefined> => {
+  const result = await runner.run(
+    'git',
+    ['ls-tree', '-z', '--name-only', opts.rev, '--', opts.path],
+    { cwd: opts.dir },
+  );
+  return result.exitCode === SUCCESS_EXIT_CODE ? result.stdout.includes(opts.path) : undefined;
+};
+
 const showFile = async (
   runner: Runner,
   opts: { dir: string; path: string; rev: string },
-): Promise<string | undefined> => {
+): Promise<FileAt> => {
+  const present = await existsAt(runner, opts);
+  if (present === undefined) {
+    return { kind: 'unreadable' };
+  }
+  if (!present) {
+    return { kind: 'absent' };
+  }
   const result = await runner.run('git', ['show', `${opts.rev}:${opts.path}`], { cwd: opts.dir });
-  return result.exitCode === SUCCESS_EXIT_CODE ? result.stdout : undefined;
+  return result.exitCode === SUCCESS_EXIT_CODE
+    ? { contents: result.stdout }
+    : { kind: 'unreadable' };
 };
 
 /** The npm-style patterns a root manifest declares, or `[]` when it declares none — including when
  * the file is absent, which is the same statement about membership. */
 const npmPatternsAt = async (runner: Runner, opts: RangeOpts, rev: string): Promise<string[]> => {
-  const contents = await showFile(runner, { dir: opts.dir, path: ROOT_MANIFEST, rev });
-  if (contents === undefined) {
-    return [];
+  const read = await showFile(runner, { dir: opts.dir, path: ROOT_MANIFEST, rev });
+  if ('kind' in read) {
+    return read.kind === 'absent' ? [] : [UNREADABLE];
   }
   try {
-    const data = JSON.parse(contents) as Record<string, unknown>;
+    const data = JSON.parse(read.contents) as Record<string, unknown>;
     return parseNpmWorkspaces(data['workspaces']);
   } catch {
     // Unparsable is not "declares nothing". The sentinel makes the OLD declaration unmatchable, so
@@ -72,10 +100,11 @@ const npmPatternsAt = async (runner: Runner, opts: RangeOpts, rev: string): Prom
 };
 
 const pnpmPatternsAt = async (runner: Runner, opts: RangeOpts, rev: string): Promise<string[]> => {
-  const contents = await showFile(runner, { dir: opts.dir, path: PNPM_WORKSPACE_FILE, rev });
-  if (contents === undefined) {
-    return [];
+  const read = await showFile(runner, { dir: opts.dir, path: PNPM_WORKSPACE_FILE, rev });
+  if ('kind' in read) {
+    return read.kind === 'absent' ? [] : [UNREADABLE];
   }
+  const { contents } = read;
   const patterns = collectPnpmPatterns(contents.split('\n'));
   // A `packages:` key this parser cannot read — flow style, most often — is not a declaration of
   // nothing. Reading it as empty makes any later narrowing invisible: the old declaration compares

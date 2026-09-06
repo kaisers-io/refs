@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import type { Runner } from '../../src/proc/runner.ts';
 import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
+// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { SpawnRunner } from '../../src/proc/runner.ts';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
@@ -17,6 +19,17 @@ import { tmpdir } from 'node:os';
 // directory carrying that same name would be announced as an arrival it is not.
 
 const runner = new SpawnRunner();
+const SHOW_FAILED = 128;
+
+/** The real runner, except `git show <rev>:…` fails for one revision. */
+const withFailingShowAt = (rev: string): Runner => ({
+  run: (cmd, args, opts) => {
+    const isShowAtRev = args[0] === 'show' && (args[1] ?? '').startsWith(rev);
+    return isShowAtRev
+      ? Promise.resolve({ exitCode: SHOW_FAILED, stderr: 'fatal: bad object', stdout: '' })
+      : runner.run(cmd, args, opts);
+  },
+});
 
 const git = (dir: string, ...args: string[]): void => {
   // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
@@ -93,6 +106,29 @@ describe('a range that changed which directories are declared', () => {
       // The pathspec covers this file for exactly this reason: it is not a manifest, so nothing
       // else in the range would reveal that membership narrowed.
       await expect(packagesBefore(runner, { dir, from, to })).resolves.toBeUndefined();
+    },
+    SLOW_IO_TIMEOUT_MS,
+  );
+});
+
+describe('a historical declaration that cannot be read at all', () => {
+  it(
+    'gives up rather than reading the failure as an empty declaration',
+    async () => {
+      expect.hasAssertions();
+      const dir = await declaredRepo();
+      write(dir, 'pnpm-workspace.yaml', 'packages:\n  - packages/a\n  - packages/b\n');
+      const from = commitAll(dir, 'one');
+      write(dir, 'pnpm-workspace.yaml', 'packages:\n  - packages/a\n');
+      write(dir, 'packages/new/package.json', { name: '@x/b', version: '2.0.0' });
+      const to = commitAll(dir, 'narrow');
+
+      // A runner whose `git show` fails for the OLD revision only — what a shallow clone that no
+      // longer has that blob looks like. Read as "declared nothing", the old declaration becomes a
+      // subset of anything and the narrowing below it disappears.
+      await expect(
+        packagesBefore(withFailingShowAt(from), { dir, from, to }),
+      ).resolves.toBeUndefined();
     },
     SLOW_IO_TIMEOUT_MS,
   );
