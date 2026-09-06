@@ -1,7 +1,7 @@
 import {
   CURRENT_DIR_SEGMENT,
   classifyWorkspacePattern,
-  matchesSegment,
+  matchesPattern,
   normalizeSeparators,
 } from './workspaces-shapes.ts';
 
@@ -26,11 +26,16 @@ import { resolveInside } from './fs-containment.ts';
  * never opened, and cannot contribute a diagnostic about a package nobody asked for. */
 type ExcludedDirs = { has: (dir: string) => boolean };
 
-/** Whether one directory entry is selected by an `expand-children` plan. A plan without `match` is
- * a plain `<dir>/*` and takes every child; one with it came from a wildcard inside the last
- * segment and takes only the names that fit. */
-const selected = (entry: Dirent, match?: { prefix: string; suffix: string }): boolean =>
-  match === undefined || matchesSegment(entry.name, match);
+/** Whether one child of the base directory is selected by the pattern that opened it.
+ *
+ * Matched as the repo-relative PATH rather than as a bare name, because that is what the pattern
+ * is written against — `examples/vue/2*` keeps `2.6-basic` and drops `nuxt3`, and the matcher
+ * decides that, not this file. */
+const selected = (entry: Dirent, plan: { baseDir: string; pattern: string }): boolean =>
+  matchesPattern(
+    posix.join(plan.baseDir === CURRENT_DIR_SEGMENT ? '' : plan.baseDir, entry.name),
+    plan.pattern,
+  );
 
 // One-level glob expansion. Reports the two ways it can come up empty for a reason — a base
 // directory that resolves outside the repo, and one that exists but cannot be read — instead of
@@ -74,7 +79,7 @@ const readBaseDir = async (
 
 const expandGlobSingleLevel = async (
   repoDir: string,
-  plan: { baseDir: string; match?: { prefix: string; suffix: string } },
+  plan: { baseDir: string; pattern: string },
   excluded: ExcludedDirs,
 ): Promise<ExpandResult> => {
   const { baseDir } = plan;
@@ -84,7 +89,7 @@ const expandGlobSingleLevel = async (
   }
   const base = baseDir === CURRENT_DIR_SEGMENT ? '' : baseDir;
   const takes = (entry: Dirent): boolean =>
-    selected(entry, plan.match) && !excluded.has(posix.join(base, entry.name));
+    selected(entry, plan) && !excluded.has(posix.join(base, entry.name));
   const listed = { entries: read.entries };
   return probeChildren({
     baseDir,

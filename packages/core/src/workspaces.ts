@@ -6,15 +6,9 @@ import type {
   WorkspacePackage,
   WorkspaceScan,
 } from './workspaces-patterns.ts';
-import {
-  classifyWorkspacePattern,
-  isNegatedPattern,
-  negatedBody,
-  normalizeSeparators,
-  planMatchesPath,
-} from './workspaces-shapes.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { deduplicateAndSort, sortDiagnostics } from './workspaces-patterns.ts';
+import { isNegatedPattern, matchesPattern, negatedBody } from './workspaces-shapes.ts';
 import { partitionProbes, probePackageDir } from './workspaces-probe.ts';
 import { probeRootPackage, withoutClaimedRoot } from './workspaces-root.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
@@ -24,22 +18,16 @@ import { readDeclarations } from './workspaces-declarations.ts';
 
 /** Whether `pattern`, read as a path, is what `negation` names.
  *
- * This is npm's re-inclusion test, and it is about the PATTERN STRING rather than the directories
- * it selects — `appendNegatedPatterns` in `@npmcli/map-workspaces` runs `minimatch(pattern,
- * negatedPattern)`. The difference is visible: after `!packages/cli`, a later literal
- * `packages/cli` cancels the exclusion, while a later `packages/*` does not, even though it
- * selects that same directory. Verified against that resolver for both. */
-const cancels = (pattern: string, negation: string): boolean => {
-  const body = negatedBody(negation);
-  if (!planMatchesPath(classifyWorkspacePattern(body), normalizeSeparators(pattern))) {
-    return false;
-  }
-  // minimatch tolerates a trailing slash on the PATH and requires one on the pattern: measured,
-  // `minimatch('packages/cli/', 'packages/cli')` is true and `minimatch('packages/cli',
-  // 'packages/cli/')` is false. Normalizing both sides flattened that, so `!packages/cli/` was
-  // cancelled by a later `packages/cli` — and npm keeps the exclusion there.
-  return !body.endsWith('/') || pattern.endsWith('/');
-};
+ * npm's re-inclusion test, run the way npm runs it: `appendNegatedPatterns` in
+ * `@npmcli/map-workspaces` calls `minimatch(pattern, negatedPattern)` — the positive pattern is
+ * matched AS A PATH against the negation. The difference from matching selected directories is
+ * visible: after `!packages/cli`, a later literal `packages/cli` cancels the exclusion, while a
+ * later `packages/*` does not, though it selects that same directory.
+ *
+ * Calling the same matcher is what makes the trailing-slash asymmetry fall out rather than need
+ * restating: `minimatch('packages/cli/', 'packages/cli')` is true, the reverse is false. */
+const cancels = (pattern: string, negation: string): boolean =>
+  matchesPattern(pattern, negatedBody(negation));
 
 type Selection = { negations: string[]; patterns: string[] };
 
@@ -81,23 +69,17 @@ const selectPatterns = (declared: readonly string[]): Selection =>
 /** Whether a surviving negation names this directory. Decided from the plans alone, so it can be
  * applied before a candidate's manifest is ever opened — an excluded directory must not be able to
  * contribute a diagnostic about a package nobody asked for. */
+/** npm's `getGlobPattern`: every pattern gets a trailing separator before it reaches the glob, so
+ * that it can only match directories. Applied here too, and it is what makes this step's answer
+ * differ from the cancellation step's — `!packages/cli/` rules out `packages/cli` here, while a
+ * later `packages/cli` does NOT cancel it there. */
+const asDirectoryPattern = (pattern: string): string =>
+  pattern.endsWith('/') ? pattern : `${pattern}/`;
+
 const excludedBy = (negations: readonly string[], dir: string): boolean =>
   negations.some((negation) =>
-    // No normalization of the negation here, unlike in `cancels` — `planMatchesPath` already
-    // normalizes the plan it is given, which is what makes `!packages//*` and `!packages/cli/`
-    // rule out the directories they name. npm's glob stage appends a separator to every pattern
-    // before matching, so a trailing slash does not distinguish anything at THIS step; it only
-    // does at the cancellation step above.
-    planMatchesPath(classifyWorkspacePattern(negatedBody(negation)), dir),
+    matchesPattern(asDirectoryPattern(dir), asDirectoryPattern(negatedBody(negation))),
   );
-
-/** A negation nobody can expand is reported, exactly as an unexpandable inclusive pattern is: the
- * scan then holds directories the repository excluded, and nothing in it can be shown to be a
- * member. */
-const unexpandableNegations = (negations: readonly string[]): WorkspaceDiagnostic[] =>
-  negations
-    .filter((negation) => classifyWorkspacePattern(negatedBody(negation)).kind === 'ignore')
-    .map((negation) => ({ kind: 'unsupported_pattern', pattern: negation }));
 
 const collect = (results: readonly ExpandResult[]): ExpandResult => {
   const dirs = new Set<string>();
@@ -109,7 +91,11 @@ const collect = (results: readonly ExpandResult[]): ExpandResult => {
   return { diagnostics, dirs: [...dirs] };
 };
 
-/** One declaration's patterns, under its own resolver's rules. */
+/** One declaration's patterns, under its own resolver's rules.
+ *
+ * Only the INCLUSIVE patterns face a shape restriction. They have to be walked, and this scanner
+ * expands one level; a negation is only ever matched, and the matcher handles every shape — so
+ * `!packages/{a,b}` excludes what it names even though `packages/{a,b}` could not be expanded. */
 const expandSelection = async (repoDir: string, selection: Selection): Promise<ExpandResult> => {
   const { negations, patterns } = selection;
   const excluded = { has: (dir: string): boolean => excludedBy(negations, dir) };
@@ -120,10 +106,7 @@ const expandSelection = async (repoDir: string, selection: Selection): Promise<E
       ),
     ),
   );
-  return {
-    diagnostics: [...chosen.diagnostics, ...unexpandableNegations(negations)],
-    dirs: chosen.dirs,
-  };
+  return { diagnostics: chosen.diagnostics, dirs: chosen.dirs };
 };
 
 /** Both declarations, each under its own rules, unioned — which is how the scanner has always

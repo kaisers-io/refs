@@ -47,6 +47,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Workspace patterns are matched by `minimatch`, the matcher npm itself uses.** Hand-written
+  matching disagreed with the real resolvers in five distinct ways, each found only after the last
+  was fixed: extglob (`@(a|b)`) read as a literal directory name, trailing slashes treated
+  symmetrically where `minimatch` is asymmetric, repeated separators silently matching nothing, and
+  two more. Delegating removes that class of defect rather than the current instance of it.
+
+  Measured before choosing: `picomatch` disagrees with `minimatch` on ten of 154 comparisons over
+  the shapes this scanner supports, exactly on trailing slashes and repeated separators — so it is
+  not a drop-in. pnpm matches through `picomatch` but normalizes first, and was measured to agree
+  with `minimatch` on every one of those shapes, so one matcher covers both ecosystems.
+
+  Walking stays here: containment guards, the diagnostics that say why a scan came up short, and
+  the deliberate one-level depth policy are unchanged. `minimatch` answers only whether a path
+  matches a pattern. Nothing new is installed by `refs` users — the CLI publishes a bundle with no
+  dependencies — and that bundle grows by 24 KB.
+
+  One behaviour improves as a consequence: a negation in a shape this scanner cannot WALK
+  (`!packages/{a,b}`) is now applied, because applying an exclusion needs matching and never
+  walking. It used to be reported as unsupported and silently ignored.
+
 - **Negated workspace patterns are applied instead of ignored.** `!packages/fixtures` was dropped
   as an unsupported shape (a v1 simplification), so `refs add` registered packages the repository
   had explicitly excluded, and every finding about a repository declaring one was silenced —

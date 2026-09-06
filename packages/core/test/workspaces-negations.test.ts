@@ -95,8 +95,8 @@ describe('negation patterns and unreadable manifests', () => {
   });
 });
 
-describe('negation patterns nobody can expand', () => {
-  it('reports the shape rather than silently leaving the directory in', async () => {
+describe('negation patterns in shapes this scanner cannot expand', () => {
+  it('applies them anyway, because a negation is matched and never walked', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
     // `{a,b}` is glob syntax this scanner does not implement. Read as a literal it names a
@@ -111,10 +111,11 @@ describe('negation patterns nobody can expand', () => {
 
     const scan = await detectWorkspacePackagesDetailed(repo);
 
-    expect(scan.packages).toHaveLength(1);
-    expect(scan.diagnostics).toStrictEqual([
-      { kind: 'unsupported_pattern', pattern: '!packages/{a,b}' },
-    ]);
+    // `packages/{a,b}` could not be EXPANDED — walking a brace pattern is not implemented — but
+    // nothing needs expanding to apply an exclusion, and the matcher understands the shape. So the
+    // package is ruled out and no diagnostic is warranted: nothing about the scan is incomplete.
+    expect(scan.packages).toStrictEqual([]);
+    expect(scan.diagnostics).toStrictEqual([]);
   });
 });
 
@@ -172,19 +173,20 @@ describe('extglob exclusions', () => {
   it('reports them rather than reading them as a literal directory', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
-    // npm expands this and excludes both packages. Unrecognized, `packages/@(core|cli)` names a
-    // directory that does not exist, so the exclusion silently does nothing — and doctor would go
-    // on to recommend registering packages the repository ruled out.
+    // `packages/@(core|cli)` could not be EXPANDED here — walking an extglob is not implemented —
+    // but nothing needs expanding to apply an exclusion, and the matcher understands the shape.
+    // npm excludes both packages for this declaration; so does this now, with no diagnostic,
+    // because nothing about the scan is incomplete.
     writeJson(join(repo, 'package.json'), {
       workspaces: ['packages/*', '!packages/@(core|cli)'],
     });
     addPackage(repo, 'packages/cli', { name: '@mono/cli', version: '1.0.0' });
+    addPackage(repo, 'packages/core', { name: '@mono/core', version: '1.0.0' });
 
     const scan = await detectWorkspacePackagesDetailed(repo);
 
-    expect(scan.diagnostics).toStrictEqual([
-      { kind: 'unsupported_pattern', pattern: '!packages/@(core|cli)' },
-    ]);
+    expect(scan.packages).toStrictEqual([]);
+    expect(scan.diagnostics).toStrictEqual([]);
   });
 });
 

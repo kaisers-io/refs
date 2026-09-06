@@ -1,15 +1,17 @@
 // Which workspace-pattern shapes this scanner implements, and what each one means. The decisions
 // live here; the filesystem side of every plan runs in `workspaces.ts`. Split from
 // `workspaces-patterns.ts`, which keeps the diagnostics vocabulary, for the 300-line cap.
-
 import { isAbsolute } from 'node:path';
+import { minimatch } from 'minimatch';
 
-/** `match` narrows an `expand-children` plan to the children whose NAME matches a wildcard inside
- * the last segment — `examples/vue/2*` keeps `2.6-basic` and `2.7-basic`, drops `nuxt3`. Absent
- * for a plain `<dir>/*`, which takes every child. */
+/** What this scanner will do with one pattern, plus the pattern itself.
+ *
+ * The plan decides WALKING — which directory to read, or which single path to probe. Whether a
+ * given path matches is not decided here at all: `pattern` is carried through so `minimatch`
+ * answers that, on the original text rather than on anything reconstructed from the plan. */
 type WorkspacePatternPlan =
-  | { baseDir: string; kind: 'expand-children'; match?: { prefix: string; suffix: string } }
-  | { dir: string; kind: 'probe-dir' }
+  | { baseDir: string; kind: 'expand-children'; pattern: string }
+  | { dir: string; kind: 'probe-dir'; pattern: string }
   | { kind: 'ignore' };
 
 const GLOB_SUFFIX = '/*';
@@ -82,12 +84,17 @@ const isSupportedPatternShape = (pattern: string): boolean =>
  *
  * Only the LAST segment may hold the wildcard; one in an earlier segment would mean expanding
  * more than one level, which this scanner deliberately does not do. */
-/** Whether a directory name satisfies a partial-segment wildcard. The length guard is what stops
- * `2*` matching a name shorter than its own literal parts, and `a*a` matching `a`. */
-const matchesSegment = (name: string, match: { prefix: string; suffix: string }): boolean =>
-  name.length >= match.prefix.length + match.suffix.length &&
-  name.startsWith(match.prefix) &&
-  name.endsWith(match.suffix);
+/** Whether `path` matches `pattern`, answered by the matcher npm itself uses.
+ *
+ * Hand-written matching produced five defects across as many review rounds — extglob read as a
+ * literal, trailing slashes treated symmetrically (`minimatch('a/', 'a')` is true while
+ * `minimatch('a', 'a/')` is false), repeated separators silently matching nothing. Every one was a
+ * disagreement with the resolver whose declaration was being read, and none was a disagreement
+ * about walking the filesystem, which stays here.
+ *
+ * One matcher covers both ecosystems: pnpm matches through picomatch, but normalizes first, and
+ * was measured to agree with minimatch on every shape this scanner supports. */
+const matchesPattern = (path: string, pattern: string): boolean => minimatch(path, pattern);
 
 const partialSegmentPlan = (pattern: string): WorkspacePatternPlan => {
   const cut = pattern.lastIndexOf('/');
@@ -95,14 +102,10 @@ const partialSegmentPlan = (pattern: string): WorkspacePatternPlan => {
   if (!lastSegment.includes('*')) {
     return IGNORE;
   }
-  const [prefix, suffix] = lastSegment.split('*');
-  if (prefix === undefined || suffix === undefined) {
-    return IGNORE;
-  }
   return {
     baseDir: cut === NOT_FOUND ? CURRENT_DIR_SEGMENT : pattern.slice(0, cut),
     kind: 'expand-children',
-    match: { prefix, suffix },
+    pattern,
   };
 };
 
@@ -116,14 +119,16 @@ const classifyWorkspacePattern = (pattern: string): WorkspacePatternPlan => {
   }
 
   if (pattern.endsWith(GLOB_SUFFIX)) {
-    return { baseDir: pattern.slice(0, -GLOB_SUFFIX.length), kind: 'expand-children' };
+    return { baseDir: pattern.slice(0, -GLOB_SUFFIX.length), kind: 'expand-children', pattern };
   }
 
   if (pattern === BARE_GLOB) {
-    return { baseDir: CURRENT_DIR_SEGMENT, kind: 'expand-children' };
+    return { baseDir: CURRENT_DIR_SEGMENT, kind: 'expand-children', pattern };
   }
 
-  return pattern.includes('*') ? partialSegmentPlan(pattern) : { dir: pattern, kind: 'probe-dir' };
+  return pattern.includes('*')
+    ? partialSegmentPlan(pattern)
+    : { dir: pattern, kind: 'probe-dir', pattern };
 };
 
 /** A package path is an identifier, not a filesystem string: it is compared against configured
@@ -143,27 +148,13 @@ const normalizeSeparators = (dir: string): string =>
 /** Whether an already-classified inclusive pattern selects `path` — decided from the plan alone,
  * with no filesystem access, so an exclusion can be tested against later patterns before anything
  * is probed. */
-const planMatchesPath = (plan: WorkspacePatternPlan, path: string): boolean => {
-  if (plan.kind === 'probe-dir') {
-    // Normalized on both sides: the exclusion's paths went through this already, and a
-    // re-inclusion written `packages/cli/` selects the same directory as `packages/cli` — npm
-    // treats them alike, so a trailing slash must not decide whether a package exists.
-    return normalizeSeparators(plan.dir) === path;
-  }
-  if (plan.kind !== 'expand-children') {
-    return false;
-  }
-  const cut = path.lastIndexOf('/');
-  const base = cut === NOT_FOUND ? CURRENT_DIR_SEGMENT : path.slice(0, cut);
-  const name = cut === NOT_FOUND ? path : path.slice(cut + 1);
-  // Normalized on both sides, for the same reason `probe-dir` is: `!packages//*` names the same
-  // directories as `!packages/*`, and a repeated separator must not decide whether an exclusion
-  // has any effect at all.
-  return (
-    normalizeSeparators(plan.baseDir) === base &&
-    (plan.match === undefined || matchesSegment(name, plan.match))
-  );
-};
+/** Whether an already-classified pattern selects `path`.
+ *
+ * The plan carries the ORIGINAL pattern so matching stays minimatch's job; classification only
+ * decides whether this scanner is willing to expand that shape at all, which is a question about
+ * walking cost rather than about matching. */
+const planMatchesPath = (plan: WorkspacePatternPlan, path: string): boolean =>
+  plan.kind === 'ignore' ? false : matchesPattern(path, plan.pattern);
 
 export {
   CURRENT_DIR_SEGMENT,
@@ -171,7 +162,7 @@ export {
   classifyWorkspacePattern,
   isNegatedPattern,
   isSafeWorkspacePattern,
-  matchesSegment,
+  matchesPattern,
   negatedBody,
   normalizeSeparators,
   planMatchesPath,
