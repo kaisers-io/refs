@@ -45,14 +45,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Drift detection no longer goes silent on a repository that declares a negated workspace
-  pattern.** Unsupported patterns were treated alike, but they pull in opposite directions: a
-  dropped `**` leaves directories out, so the scan may MISS a package; a dropped negation leaves
-  directories in, so the scan holds too much and misses nothing. Conflating the two disabled every
-  `missing` / `relocated` finding on such repositories — every package came back `unverifiable`.
-  Claims that need a complete scan now ask whether one could have been missed, which a negation
-  cannot cause. Claims that a path IS a member still refuse it: a package surviving only in an
-  excluded directory is reported `missing`, never as having relocated there.
+- **Negated workspace patterns are applied instead of ignored.** `!packages/fixtures` was dropped
+  as an unsupported shape (a v1 simplification), so `refs add` registered packages the repository
+  had explicitly excluded, and every finding about a repository declaring one was silenced —
+  TanStack Query declares two, and all hundred of its packages came back `unverifiable`. Negations
+  are now expanded exactly like inclusive patterns and subtracted from the result, which makes the
+  scan an accurate statement of membership rather than an approximation of one.
+
+  A wildcard inside the last segment (`examples/vue/2*`) is supported too, since that is the shape
+  real repositories exclude by, and a negation nobody can expand costs every finding about the
+  repository rather than just the paths it names. Glob syntax that is still unimplemented —
+  `{a,b}`, `?`, `[…]` — now reports `unsupported_pattern` rather than reading as a literal
+  directory name and silently matching nothing.
 
 - **A monorepo can now be resolved by the name in its own root manifest.** Workspace detection
   expands the globs a repository declares, and a workspace root is not one of its own targets — so a

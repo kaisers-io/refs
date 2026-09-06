@@ -3,6 +3,7 @@
 // shaping. No filesystem access happens here — `workspaces.ts` owns the IO (readdir walks,
 // manifest probes, realpath containment guards) and feeds this module plain values.
 import { isAbsolute, posix, sep } from 'node:path';
+import { PARENT_DIR_SEGMENT } from './workspaces-shapes.ts';
 
 type WorkspacePackage = {
   // Missing description is `undefined` (omitted in JSON), matching the proposal schema's
@@ -20,11 +21,6 @@ type PackageManifestInfo = {
 
 // The decided fate of one workspace pattern: expand a base directory one level, probe a single
 // literal directory, or ignore the pattern entirely.
-type WorkspacePatternPlan =
-  | { baseDir: string; kind: 'expand-children' }
-  | { dir: string; kind: 'probe-dir' }
-  | { kind: 'ignore' };
-
 // Why a scan carries diagnostics at all: detection collapses every failure — an unreadable
 // workspace declaration, an unreadable manifest, a containment rejection, an unsupported
 // pattern — into the same empty result. That is right for `add`, which is best-effort and has
@@ -82,57 +78,6 @@ const UNRELIABLE_DIAGNOSTIC_KINDS: ReadonlySet<WorkspaceDiagnostic['kind']> = ne
   'workspace_file_unreadable',
 ]);
 
-const GLOB_SUFFIX = '/*';
-const BARE_GLOB = '*';
-const CURRENT_DIR_SEGMENT = '.';
-const PARENT_DIR_SEGMENT = '..';
-const PATH_SEGMENT_SEPARATOR_PATTERN = /[/\\]/u;
-const MAX_WILDCARDS_PER_PATTERN = 1;
-
-const IGNORE: WorkspacePatternPlan = { kind: 'ignore' };
-
-// Reject any workspace pattern that is absolute or contains `.`/`..` path segments before
-// it is ever used in a filesystem call. Defense in depth; `isContainedInRepo` in
-// `workspaces.ts` still re-checks each resolved candidate via realpath.
-const isSafeWorkspacePattern = (pattern: string): boolean => {
-  if (isAbsolute(pattern)) {
-    return false;
-  }
-
-  const segments = pattern.split(PATH_SEGMENT_SEPARATOR_PATTERN);
-  return segments.every(
-    (segment) => segment !== CURRENT_DIR_SEGMENT && segment !== PARENT_DIR_SEGMENT,
-  );
-};
-
-// A pattern is supported only when it is safe, is not a negation, has no `**`, and stays within
-// the wildcard budget (v1 simplification). The check order preserves the original precedence.
-const isSupportedPatternShape = (pattern: string): boolean =>
-  isSafeWorkspacePattern(pattern) &&
-  !pattern.startsWith('!') &&
-  !pattern.includes('**') &&
-  (pattern.match(/\*/gu) ?? []).length <= MAX_WILDCARDS_PER_PATTERN;
-
-// Flat dispatch over the supported glob forms; the check order IS the precedence order:
-// `<dir>/*` and bare `*` expand one level (bare `*`, a flat workspaces layout, expands the repo
-// root `.` as glob base, same as `<dir>/*`), a wildcard-free pattern probes a single literal
-// directory, and any other wildcard placement is ignored.
-const classifyWorkspacePattern = (pattern: string): WorkspacePatternPlan => {
-  if (!isSupportedPatternShape(pattern)) {
-    return IGNORE;
-  }
-
-  if (pattern.endsWith(GLOB_SUFFIX)) {
-    return { baseDir: pattern.slice(0, -GLOB_SUFFIX.length), kind: 'expand-children' };
-  }
-
-  if (pattern === BARE_GLOB) {
-    return { baseDir: CURRENT_DIR_SEGMENT, kind: 'expand-children' };
-  }
-
-  return pattern.includes('*') ? IGNORE : { dir: pattern, kind: 'probe-dir' };
-};
-
 // Pure containment decision over an already-computed `relative(repoReal, targetReal)` result.
 // `allowSelf` accepts the empty relative path (the target IS the repo root); see
 // `isContainedInRepo` in `workspaces.ts` for why only the bare `*` glob base passes `true`.
@@ -180,13 +125,14 @@ const deduplicateAndSort = (packages: WorkspacePackage[]): WorkspacePackage[] =>
   return deduped;
 };
 
-/** Whether a scan's package list may be treated as complete FOR WHAT IT SEARCHED.
+/** Whether a scan's package list may be treated as complete FOR WHAT IT SEARCHED. An unreliable
+ * scan must never be used to conclude that a configured package is gone.
  *
- * The strict notion: ANY diagnostic that leaves the scan other than a faithful expansion of the
- * declaration makes it unreliable, including a dropped negation that merely left too much in.
- * Callers deciding what a scan can PROVE want `scanMayHidePackages`
- * (`workspaces-completeness.ts`) instead — a scan holding too much still proves absence, and
- * conflating the two silenced every finding on repositories that declare a negation.
+ * Negations no longer reach this by themselves: they are expanded and subtracted like any other
+ * pattern (`workspaces.ts#expandPatterns`), so a repository that declares one still gets an exact
+ * scan. Only a negation nobody can expand — one using `{a,b}`, or a doubled wildcard — lands
+ * here, and it belongs here: the scan then holds directories the repository excluded, so nothing
+ * in it can be shown to be a member.
  *
  * Note the qualifier: this says the declared workspaces were fully expanded, not that the whole
  * checkout was examined. `scanSearchedSomewhere` is the other half. */
@@ -245,23 +191,13 @@ const sortDiagnostics = (diagnostics: readonly WorkspaceDiagnostic[]): Workspace
   );
 
 export {
-  CURRENT_DIR_SEGMENT,
-  UNRELIABLE_DIAGNOSTIC_KINDS,
-  classifyWorkspacePattern,
   compareCodepoint,
   deduplicateAndSort,
   isRelPathContained,
-  isSafeWorkspacePattern,
   scanIsReliable,
   scanSearchedSomewhere,
   selectPackageDirs,
   sortDiagnostics,
   toWorkspacePackage,
 };
-export type {
-  PackageManifestInfo,
-  WorkspaceDiagnostic,
-  WorkspacePackage,
-  WorkspacePatternPlan,
-  WorkspaceScan,
-};
+export type { PackageManifestInfo, WorkspaceDiagnostic, WorkspacePackage, WorkspaceScan };

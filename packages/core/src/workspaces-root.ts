@@ -1,4 +1,4 @@
-import { CURRENT_DIR_SEGMENT } from './workspaces-patterns.ts';
+import { CURRENT_DIR_SEGMENT } from './workspaces-shapes.ts';
 import type { ProbedDir } from './workspaces-probe.ts';
 import type { WorkspacePackage } from './workspaces-patterns.ts';
 import { probePackageDir } from './workspaces-probe.ts';

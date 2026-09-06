@@ -1,8 +1,7 @@
+import { classifyWorkspacePattern, isSafeWorkspacePattern } from '../src/workspaces-shapes.ts';
 import {
-  classifyWorkspacePattern,
   deduplicateAndSort,
   isRelPathContained,
-  isSafeWorkspacePattern,
   scanIsReliable,
   selectPackageDirs,
   sortDiagnostics,
@@ -46,8 +45,10 @@ describe('workspace pattern classification', () => {
 });
 
 describe('unsupported workspace pattern forms', () => {
-  it('ignores negation patterns (v1 simplification)', () => {
+  it('ignores a raw negation, which the caller is expected to have stripped', () => {
     expect.hasAssertions();
+    // Negations ARE applied — `expandPatterns` strips the `!` and classifies the body. Reaching
+    // here with one still attached would classify a directory literally named `!packages`.
     expect(classifyWorkspacePattern('!packages/b')).toStrictEqual({ kind: 'ignore' });
   });
 
@@ -61,9 +62,25 @@ describe('unsupported workspace pattern forms', () => {
     expect(classifyWorkspacePattern('packages/*/nested/*')).toStrictEqual({ kind: 'ignore' });
   });
 
-  it('ignores a single wildcard in an unsupported position', () => {
+  it('expands a wildcard inside the last segment, matching by prefix and suffix', () => {
     expect.hasAssertions();
-    expect(classifyWorkspacePattern('pkg-*')).toStrictEqual({ kind: 'ignore' });
+    // Real repositories exclude by this shape — TanStack Query writes `!examples/vue/2*` — and a
+    // negation nobody can expand costs every finding about the repository, not just those paths.
+    expect(classifyWorkspacePattern('pkg-*')).toStrictEqual({
+      baseDir: '.',
+      kind: 'expand-children',
+      match: { prefix: 'pkg-', suffix: '' },
+    });
+    expect(classifyWorkspacePattern('examples/vue/2*')).toStrictEqual({
+      baseDir: 'examples/vue',
+      kind: 'expand-children',
+      match: { prefix: '2', suffix: '' },
+    });
+  });
+
+  it('ignores a wildcard in an earlier segment, which would mean expanding two levels', () => {
+    expect.hasAssertions();
+    expect(classifyWorkspacePattern('packages/*/test')).toStrictEqual({ kind: 'ignore' });
   });
 
   it('ignores absolute, leading-.. and mid-pattern .. patterns', () => {

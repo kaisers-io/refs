@@ -3,10 +3,8 @@ import type { PackagesBefore, WorkspacePackage, WorkspaceScan } from '@kaisers-i
 import {
   detectWorkspacePackagesDetailed,
   lookupPackagePath,
-  negatedPrefixes,
   readRootPackage,
-  scanExcludesUnboundedly,
-  scanMayHidePackages,
+  scanIsReliable,
 } from '@kaisers-io/refs-core';
 import type { LocationQuery } from './package-location.ts';
 import type { StructureIssue } from './drift-report.ts';
@@ -82,7 +80,7 @@ const unregisteredRoot = async (
   // readable — so prescribing `.` now would be advice that a later sync contradicts. And more than one claimant is a real
   // ambiguity, not something to resolve by taking the first: `refs add` itself keeps the LAST,
   // so picking either here would be prescribing something registration does not do.
-  if (scanMayHidePackages(scan)) {
+  if (!scanIsReliable(scan)) {
     return [];
   }
   const lookup = lookupPackagePath(scan.packages, root.name);
@@ -157,17 +155,11 @@ const unregisteredMembers = async (
     return [];
   }
   const scan = await scanOnce();
-  // An unbounded negation could exclude any directory, so nothing in the scan can be shown to be
-  // a member — and this finding's whole content is that something IS one.
-  if (scanMayHidePackages(scan) || scanExcludesUnboundedly(scan)) {
+  if (!scanIsReliable(scan)) {
     return [];
   }
   const registered = new Set(configured.map((query) => query.packageName));
-  const excluded = negatedPrefixes(scan);
-  const members = scan.packages.filter(
-    (pkg) =>
-      pkg.path !== ROOT_PACKAGE_PATH && !excluded.some((prefix) => pkg.path.startsWith(prefix)),
-  );
+  const members = scan.packages.filter((pkg) => pkg.path !== ROOT_PACKAGE_PATH);
   const existed = discovery.kind === 'all' ? undefined : namesThatExisted(discovery, members);
   // Grouped over EVERY member, then filtered — a name is ambiguous because of where it is
   // declared, not because of which declaration this fetch happened to touch.
