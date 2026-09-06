@@ -29,7 +29,13 @@ const argvThroughShell = async (name: string, path: string): Promise<string[]> =
   return result.stdout.split('\n').filter((token) => token.length > 0);
 };
 
-describe('the printed repair command, through a shell', () => {
+// POSIX only. The assertions are about what `sh` parses, and the command is POSIX-quoted —
+// which is the convention refs already prints under everywhere (`rmCommand` in
+// `doctor-checks-orphans.ts`), not something this suite introduces. Windows has its own shell and
+// its own quoting; nothing here would be true of it.
+const posixOnly = process.platform === 'win32';
+
+describe.skipIf(posixOnly)('the printed repair command, through a shell', () => {
   it('delivers a package name containing a quote intact', async () => {
     expect.hasAssertions();
 

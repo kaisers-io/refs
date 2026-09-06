@@ -115,7 +115,9 @@ describe('refs sync: a package that arrived upstream', () => {
   );
 });
 
-describe('refs sync: registering what arrived', () => {
+// POSIX only: this one runs the printed command through `sh`, which Windows does not have. The
+// finding it repairs, and everything else in this file, is platform-independent and covered above.
+describe.skipIf(process.platform === 'win32')('refs sync: registering what arrived', () => {
   it(
     'silences the finding, with an entry that verifies like any other',
     async () => {
