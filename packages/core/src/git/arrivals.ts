@@ -48,6 +48,15 @@ const addedPackageDirs = async (runner: Runner, opts: ArrivalsOpts): Promise<str
       'diff',
       '--name-only',
       '-z',
+      // Rename detection is on by default, and `--diff-filter=A` excludes whatever it pairs up.
+      // Two package manifests are almost always similar — same fields, same shape — so a package
+      // deleted alongside a new one added is routinely classified as a rename even when the NAME
+      // changed: git reports `R068 packages/old/package.json -> packages/new/package.json` and
+      // prints no addition at all. The new package would then never be reported, and HEAD has
+      // advanced by the time anyone could look again. Whether a path is a rename of some other
+      // path is a question about history; the only question here is whether a manifest is at a
+      // path that had none.
+      '--no-renames',
       '--diff-filter=A',
       `${opts.from}..${opts.to}`,
       '--',

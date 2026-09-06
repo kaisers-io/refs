@@ -16,7 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only instruction anyone could give was "hand-edit `config.toml`".
 
   `refs sync` answers "did upstream gain a package?" from the range it just fetched
-  (`git diff --diff-filter=A`), not by comparing a scan against the configuration. That
+  (`git diff --no-renames --diff-filter=A -z`), not by comparing a scan against the
+  configuration. That
   distinction is the whole design: a scan cannot tell a package that just arrived from one the
   ref's owner deliberately never tracked, because there is no inventory of what was there before —
   the fetch range is that inventory. A ref whose owner tracks 3 packages out of 140 hears about the
