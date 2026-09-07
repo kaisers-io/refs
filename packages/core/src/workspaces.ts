@@ -27,7 +27,7 @@ import { readDeclarations } from './workspaces-declarations.ts';
  * Calling the same matcher is what makes the trailing-slash asymmetry fall out rather than need
  * restating: `minimatch('packages/cli/', 'packages/cli')` is true, the reverse is false. */
 const cancels = (pattern: string, negation: string): boolean =>
-  matchesPattern(pattern, negatedBody(negation));
+  matchesPattern(negatedBody(pattern), negatedBody(negation));
 
 type Selection = { negations: string[]; patterns: string[] };
 
@@ -102,7 +102,9 @@ const expandSelection = async (repoDir: string, selection: Selection): Promise<E
   const chosen = collect(
     await Promise.all(
       patterns.map((pattern) =>
-        expandGlobPattern(repoDir, { body: pattern, declared: pattern }, excluded),
+        // `body` is what gets classified and matched; `declared` is what a diagnostic quotes, so
+        // someone reading it sees what the repository actually wrote.
+        expandGlobPattern(repoDir, { body: negatedBody(pattern), declared: pattern }, excluded),
       ),
     ),
   );

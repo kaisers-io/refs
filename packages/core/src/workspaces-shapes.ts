@@ -38,17 +38,33 @@ const isSafeWorkspacePattern = (pattern: string): boolean => {
   );
 };
 
-const NEGATION_PREFIX = '!';
+const LEADING_EXCLAMATIONS = /^!+/u;
+const PAIR = 2;
+const ODD = 1;
+const LEADING_CURRENT_DIR = /^\.?\/+/u;
 
-/** A negation declares which directories are NOT members. It is expanded exactly like an inclusive
- * pattern and the result subtracted (`workspaces.ts#expandPatterns`), so the same shapes are
- * supported on both sides and an unsupported negation reports `unsupported_pattern` like any
- * other — which is the honest answer, since a negation we cannot apply leaves the scan holding
- * directories the repository excluded. */
-const isNegatedPattern = (pattern: string): boolean => pattern.startsWith(NEGATION_PREFIX);
+/** One declared pattern, stripped the way both resolvers strip it.
+ *
+ * Two rules, both from npm's `appendNegatedPatterns` and both confirmed against pnpm as well:
+ *
+ *   - EVERY leading `!` comes off, and an ODD count means exclusion. `!!packages/cli` is an
+ *     inclusion, not an exclusion of `!packages/cli` — leaving one mark on would hand minimatch a
+ *     negated pattern of its own, which matches everything EXCEPT that directory.
+ *   - A leading `./` or `/` comes off, of positive and negated patterns alike, so
+ *     `!./packages/cli` rules out the directory it names. */
+const parsePattern = (pattern: string): { body: string; negated: boolean } => {
+  const marks = LEADING_EXCLAMATIONS.exec(pattern)?.[0] ?? '';
+  return {
+    body: pattern.slice(marks.length).replace(LEADING_CURRENT_DIR, ''),
+    negated: marks.length % PAIR === ODD,
+  };
+};
 
-/** The pattern a negation negates. Classification only ever sees this, never the `!`. */
-const negatedBody = (pattern: string): string => pattern.slice(NEGATION_PREFIX.length);
+const isNegatedPattern = (pattern: string): boolean => parsePattern(pattern).negated;
+
+/** What a pattern names, with the marks and any leading `./` removed. Classification and matching
+ * only ever see this, never the raw declaration. */
+const negatedBody = (pattern: string): string => parsePattern(pattern).body;
 
 /** Glob syntax this expander does not implement — character classes, braces, and the extglob forms
  * `@(a|b)`, `+(a)`, `!(a)`, `?(a)`, `*(a)`, every one of which is a character followed by `(`.
