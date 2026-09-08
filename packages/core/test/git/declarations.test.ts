@@ -225,7 +225,6 @@ describe('a declaration that moved between the two files', () => {
     SLOW_IO_TIMEOUT_MS,
   );
 });
-
 describe('a range that only added declarations', () => {
   it(
     'is untroubled by a pnpm workspace file appearing beside the manifest',

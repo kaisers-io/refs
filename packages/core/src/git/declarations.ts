@@ -141,23 +141,29 @@ const declarationAt = async (
 
 const NEGATION_PREFIX = '!';
 
-/** Whether `after` is `before` with inclusive patterns appended, and nothing else.
+/** Whether `after` is `before` with inclusive patterns INSERTED, anywhere, and nothing else.
  *
- * The only change that provably cannot narrow membership. Expansion is monotone in the inclusive
- * patterns, so appending one can only add directories; every other edit — dropping a pattern,
- * adding a negation, or REORDERING, now that order decides which of a negation and a re-inclusion
- * wins — can take a member out of the scan with its manifest untouched, which is the one thing the
- * reconstruction in `arrivals.ts` cannot survive.
+ * The only change that provably cannot narrow membership. An inclusive pattern can add directories
+ * and can cancel an earlier negation; both widen. Everything else — dropping a pattern, adding a
+ * negation, or reordering the ones already there, now that order decides which of a negation and a
+ * re-inclusion wins — can take a member out of the scan with its manifest untouched, which is the
+ * one thing the reconstruction in `arrivals.ts` cannot survive.
  *
- * Deliberately blunt: it calls a widening edit a narrowing whenever the shape is anything else,
- * and the cost of that is a quiet sync rather than a wrong one. */
-const onlyAppendedInclusions = (before: readonly string[], after: readonly string[]): boolean => {
-  if (after.length < before.length) {
-    return false;
+ * A subsequence rather than a prefix, because repositories add workspace patterns where they
+ * belong rather than at the end. TanStack Query's own commit adding `packages/lit-query` inserts
+ * `examples/lit/*` between `examples/preact/*` and `examples/solid/*`; requiring an append made
+ * that commit look like a narrowing and silenced every finding about it — the exact case this
+ * reconstruction exists to report. */
+const onlyInsertedInclusions = (before: readonly string[], after: readonly string[]): boolean => {
+  let matched = 0;
+  for (const pattern of after) {
+    if (matched < before.length && before[matched] === pattern) {
+      matched += 1;
+    } else if (pattern.startsWith(NEGATION_PREFIX)) {
+      return false;
+    }
   }
-  const kept = before.every((pattern, index) => after[index] === pattern);
-  const appended = after.slice(before.length);
-  return kept && appended.every((pattern) => !pattern.startsWith(NEGATION_PREFIX));
+  return matched === before.length;
 };
 
 /** Whether the range dropped a workspace declaration, so a member could have left the scan with
@@ -179,8 +185,8 @@ const membershipNarrowed = async (
   // Each file against its own past. A pattern that moved between them fails this, correctly: under
   // the two resolvers' different rules it does not select the same directories.
   return (
-    !onlyAppendedInclusions(before.npm, after.npm) ||
-    !onlyAppendedInclusions(before.pnpm, after.pnpm)
+    !onlyInsertedInclusions(before.npm, after.npm) ||
+    !onlyInsertedInclusions(before.pnpm, after.pnpm)
   );
 };
 

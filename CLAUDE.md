@@ -52,6 +52,19 @@ Verify every finding against the code before acting on it, and reproduce it befo
 Findings have been wrong, and one proposed fix would have introduced a regression. Say so plainly
 when a finding does not hold; do not implement it to be agreeable.
 
+## Workspace pattern fidelity
+
+`packages/core/src/workspaces.ts` emulates part of npm's and pnpm's workspace resolution, and that
+surface has no natural end. The stopping rule is the DIRECTION a divergence errs in:
+
+- **Missing a declared package is a defect.** `refs resolve` then answers `not_found` for source
+  that is present.
+- **Including an excluded one is tolerated.** The entry points at real code in a repository the
+  user asked to track; the cost is an extra routing target.
+
+Known divergences of the tolerated kind are listed in that file's header. A review finding in that
+direction belongs on the list, not in a fix.
+
 ## Design constraints
 
 - **Never add a verb.** A benchmark measured 0/324 adoption of new refs commands by agents.

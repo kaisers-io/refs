@@ -107,3 +107,32 @@ describe('a range that changed the root manifest without changing the declaratio
     SLOW_IO_TIMEOUT_MS,
   );
 });
+
+describe('a declaration pattern inserted where it belongs', () => {
+  it(
+    'is not a narrowing, which is how repositories actually add one',
+    async () => {
+      expect.hasAssertions();
+      const dir = await declaredRepo();
+      write(dir, 'pnpm-workspace.yaml', 'packages:\n  - packages/a\n  - packages/z\n');
+      const from = commitAll(dir, 'one');
+      // TanStack Query's own commit adding `packages/lit-query` inserts `examples/lit/*` between
+      // `examples/preact/*` and `examples/solid/*`. Requiring an APPEND made that commit look like
+      // a narrowing and silenced every finding about it — the exact case this reconstruction
+      // exists to report, found by running the real repository rather than by a review.
+      write(
+        dir,
+        'pnpm-workspace.yaml',
+        'packages:\n  - packages/a\n  - packages/inserted\n  - packages/z\n',
+      );
+      write(dir, 'packages/inserted/package.json', { name: '@x/inserted', version: '1.0.0' });
+      const to = commitAll(dir, 'insert a pattern in the middle');
+
+      await expect(packagesBefore(runner, { dir, from, to })).resolves.toStrictEqual({
+        changedDirs: ['packages/inserted'],
+        namesBefore: [],
+      });
+    },
+    SLOW_IO_TIMEOUT_MS,
+  );
+});

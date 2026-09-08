@@ -1,6 +1,27 @@
 // IO orchestration for workspace package detection: which patterns survive a declaration's
 // negations, and shaping the result. Turning one pattern into directories lives in
 // `workspaces-expand.ts`; which shapes exist at all, in `workspaces-shapes.ts`.
+//
+// HOW EXACT THIS HAS TO BE, because the question has no natural end otherwise. npm's workspace
+// resolution is a large surface and this file emulates part of it; the stopping rule is the
+// DIRECTION a divergence errs in, not how many shapes are covered.
+//
+//   - Missing a package the repository declares is a real defect. `refs resolve` then answers
+//     `not_found` for source that is right there, which is the failure this whole tool exists to
+//     prevent. The re-inclusion rule and the `!!` handling are here for that reason.
+//   - Including one the repository excludes is tolerated. The entry points at a real directory
+//     holding a real manifest, in a repository the user asked to track; the cost is an extra
+//     routing target, not a wrong answer.
+//
+// Known divergences, all of the tolerated kind, measured against `@npmcli/map-workspaces`:
+//
+//   ["packages/*", "!packages/./core"]                             npm: (none)   here: core
+//   ["packages/*", "!packages/core", "!packages/core", "packages/core"]
+//                                                                  npm: (none)   here: core
+//
+// The first is `.` inside a pattern rather than at its start; the second is npm cancelling only
+// ONE of a repeated exclusion. Fixing either would add emulation for no behavioural gain. A review
+// finding in this direction is a note for this list, not a change.
 import type {
   WorkspaceDiagnostic,
   WorkspacePackage,
