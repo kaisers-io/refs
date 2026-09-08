@@ -1,14 +1,29 @@
 import { addPackage, freshRepo, writeJson } from '../helpers/workspace-fixture.ts';
 import { describe, expect, it } from 'vitest';
-import { driftLines, probeRefStructure } from '../../src/commands/drift-probe.ts';
+import type { MemberDiscovery } from '../../src/commands/drift-discovery.ts';
 import type { PackageEntry } from '@kaisers-io/refs-core';
+import { driftLines } from '../../src/commands/drift-report.ts';
 import { join } from 'node:path';
+import { probeRefStructure } from '../../src/commands/drift-probe.ts';
 import { writeFileSync } from 'node:fs';
+
+const FIXTURE_REF = 'github.com/acme/alpha';
 
 // The migration half of #88: a ref added before roots were registered keeps the package map it was
 // given, and no command adds one entry to an existing ref. The drift probe already holds both the
 // checkout and the configuration on every sync, so this is where that gap surfaces. Split from
 // `drift-probe.test.ts` for the 300-line cap.
+//
+// Member discovery stays off throughout: the root is reported on its own evidence (a manifest
+// read), independently of whether this fetch added anything.
+const ARRIVALS_NONE: MemberDiscovery = { changedDirs: [], kind: 'arrivals', namesBefore: [] };
+
+/** `probeRefStructure` with member discovery off — the shape `sync` uses on a ref whose fetch
+ * added nothing, and the only one these cases are about. */
+const probe = (
+  checkoutDir: string,
+  packages: Parameters<typeof probeRefStructure>[1],
+): ReturnType<typeof probeRefStructure> => probeRefStructure(checkoutDir, packages, ARRIVALS_NONE);
 
 const entry = (path: string): PackageEntry => ({ description: 'A fixture package.', path });
 
@@ -33,7 +48,7 @@ describe('probeRefStructure: a root the configuration never registered', () => {
       workspaces: ['packages/*'],
     });
 
-    const report = await probeRefStructure(repo, { '@fixture/a': entry('packages/a') });
+    const report = await probe(repo, { '@fixture/a': entry('packages/a') });
 
     expect(report.status).toBe('drift');
     expect(report.packages).toContainEqual({
@@ -52,37 +67,47 @@ describe('probeRefStructure: a root the configuration never registered', () => {
       workspaces: ['packages/*'],
     });
 
-    const report = await probeRefStructure(repo, {
+    const report = await probe(repo, {
       '@fixture/a': entry('packages/a'),
       '@fixture/toolkit': entry('.'),
     });
 
     expect(report).toStrictEqual({ status: 'ok' });
   });
+});
 
+describe('probeRefStructure: a root there is nothing to report about', () => {
   it('says nothing about a root that names nothing', async () => {
     expect.hasAssertions();
     // The ordinary shape: most workspace roots are private and unnamed. Reporting them would put a
     // finding on every sync of every repository.
-    const report = await probeRefStructure(monorepo(), { '@fixture/a': entry('packages/a') });
+    const report = await probe(monorepo(), { '@fixture/a': entry('packages/a') });
 
     expect(report).toStrictEqual({ status: 'ok' });
   });
 });
 
 describe('drift lines: an unregistered root', () => {
-  it('says how to register it, since no command does', () => {
+  it('names the command that registers it', () => {
     expect.hasAssertions();
 
-    const [line] = driftLines({
-      packages: [{ name: '@acme/toolkit', path: '.', status: 'unregistered' }],
-      status: 'drift',
-    });
+    const [line] = driftLines(
+      {
+        packages: [{ name: '@acme/toolkit', path: '.', status: 'unregistered' }],
+        status: 'drift',
+      },
+      FIXTURE_REF,
+    );
 
-    // `refs add` refuses a tracked ref and `refs edit --package` needs an entry to edit, so the
-    // instruction has to be the entry itself.
+    // `refs add` refuses a tracked ref and an ordinary `refs edit --package` needs an entry to
+    // edit — which is what `--create` was added for. Before it, the only instruction this line
+    // could give was a `config.toml` fragment to type in by hand.
     expect(line).toContain('not registered');
-    expect(line).toContain('path = "."');
+    // The ref key is interpolated, not a `<ref>` placeholder: a shell reads that as an input
+    // redirection, so a line carrying one cannot be run as printed.
+    expect(line).toContain(
+      `refs edit '${FIXTURE_REF}' --package '@acme/toolkit' --create --path '.'`,
+    );
   });
 });
 
@@ -100,7 +125,7 @@ describe('probeRefStructure: a root whose name a member also claims', () => {
     // where `refs add` would have registered `packages/toolkit`.
     addPackage(repo, 'packages/toolkit', { name: '@fixture/toolkit', version: '1.0.0' });
 
-    const report = await probeRefStructure(repo, { '@fixture/a': entry('packages/a') });
+    const report = await probe(repo, { '@fixture/a': entry('packages/a') });
 
     expect(report.packages).toContainEqual({
       name: '@fixture/toolkit',
@@ -112,12 +137,15 @@ describe('probeRefStructure: a root whose name a member also claims', () => {
   it('carries that path into the line it prints', () => {
     expect.hasAssertions();
 
-    const [line] = driftLines({
-      packages: [{ name: '@acme/toolkit', path: 'packages/toolkit', status: 'unregistered' }],
-      status: 'drift',
-    });
+    const [line] = driftLines(
+      {
+        packages: [{ name: '@acme/toolkit', path: 'packages/toolkit', status: 'unregistered' }],
+        status: 'drift',
+      },
+      FIXTURE_REF,
+    );
 
-    expect(line).toContain('path = "packages/toolkit"');
+    expect(line).toContain("--create --path 'packages/toolkit'");
   });
 });
 
@@ -135,7 +163,7 @@ describe('probeRefStructure: an unregistered root the scan cannot settle', () =>
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     writeFileSync(join(repo, 'packages/broken/package.json'), '{ not json');
 
-    const report = await probeRefStructure(repo, { '@fixture/a': entry('packages/a') });
+    const report = await probe(repo, { '@fixture/a': entry('packages/a') });
 
     // Silent entirely: the configured package verified, and the root question could not be
     // settled, so there is nothing this run may claim.
@@ -156,7 +184,7 @@ describe('probeRefStructure: a root name several paths declare', () => {
     addPackage(repo, 'packages/one', { name: '@fixture/toolkit', version: '1.0.0' });
     addPackage(repo, 'packages/two', { name: '@fixture/toolkit', version: '1.0.0' });
 
-    const report = await probeRefStructure(repo, { '@fixture/a': entry('packages/a') });
+    const report = await probe(repo, { '@fixture/a': entry('packages/a') });
 
     expect(report.packages).toContainEqual({
       candidates: ['packages/one', 'packages/two'],
@@ -168,18 +196,23 @@ describe('probeRefStructure: a root name several paths declare', () => {
   it('names them in the line it prints, instead of a path', () => {
     expect.hasAssertions();
 
-    const [line] = driftLines({
-      packages: [
-        {
-          candidates: ['packages/one', 'packages/two'],
-          name: '@acme/toolkit',
-          status: 'unregistered',
-        },
-      ],
-      status: 'drift',
-    });
+    const [line] = driftLines(
+      {
+        packages: [
+          {
+            candidates: ['packages/one', 'packages/two'],
+            name: '@acme/toolkit',
+            status: 'unregistered',
+          },
+        ],
+        status: 'drift',
+      },
+      FIXTURE_REF,
+    );
 
     expect(line).toContain('packages/one, packages/two');
-    expect(line).not.toContain('path = ');
+    // No `--create` command either: which path to register is a decision, not a lookup, so the
+    // line must not hand over one that looks ready to run.
+    expect(line).not.toContain('--create');
   });
 });

@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "minimatch": "10.2.6",
     "smol-toml": "1.8.0",
     "zod": "4.5.2"
   },

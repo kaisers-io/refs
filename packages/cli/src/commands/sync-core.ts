@@ -2,7 +2,7 @@ import type { RefSyncContext, RefSyncOutcome, SyncStatus } from './sync-checkout
 import { applySyncSuccess, recordFailure } from './sync-state.ts';
 import { createSemaphore, runGated } from './sync-semaphore.ts';
 import type { CliContext } from '../context.ts';
-import type { StructureReport } from './drift-probe.ts';
+import type { StructureReport } from './drift-report.ts';
 import { errorMessageOf } from '../output.ts';
 import { syncCheckout } from './sync-checkout.ts';
 

@@ -24,17 +24,24 @@ import { refLockName } from '../../src/commands/add-source.ts';
 const ALPHA_KEY = 'github.com/acme/alpha';
 const ALPHA_URL = 'https://github.com/acme/alpha';
 
-const refEntry = (packagePath: string): Record<string, unknown> => ({
+const refEntry = (
+  packagePath: string,
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> => ({
   default_branch: 'main',
   description: 'Alpha lib',
-  packages: { '@acme/b': { description: 'Package B.', path: packagePath } },
+  packages: { '@acme/b': { description: 'Package B.', path: packagePath }, ...extra },
   url: ALPHA_URL,
 });
 
 /** Seeds the config plus a checkout that declares `packages/*` and holds only `@acme/a` — so a
  * ref configured for `@acme/b` at any path is drifted, and one configured for `@acme/a` is not. */
-const seedCheckout = async (home: RefsHome, packagePath: string): Promise<string> => {
-  await seedConfig(home, { [ALPHA_KEY]: refEntry(packagePath) });
+const seedCheckout = async (
+  home: RefsHome,
+  packagePath: string,
+  extraPackages: Record<string, unknown> = {},
+): Promise<string> => {
+  await seedConfig(home, { [ALPHA_KEY]: refEntry(packagePath, extraPackages) });
   const dest = checkoutPath(home, zRefKey.parse(ALPHA_KEY));
   await markCheckoutPresent(dest, { hooksDir: home.hooksDir, url: ALPHA_URL });
   // Unnamed: these cases are about configured entries, and a named root would add an
@@ -80,7 +87,11 @@ describe('refs doctor: config-drift', () => {
     await withResetExitCode(() =>
       withTempHome(async (homeDir) => {
         const setup = await setupInitializedHome(homeDir);
-        const dest = await seedCheckout(setup.home, 'packages/b');
+        // Configures BOTH members: `doctor` discovers unregistered ones too (`{kind: 'all'}`),
+        // so a checkout holding a member the config never had is `warn` by design, not `ok`.
+        const dest = await seedCheckout(setup.home, 'packages/b', {
+          '@acme/a': { description: 'Package A.', path: 'packages/a' },
+        });
         addPackage(dest, 'packages/b', { name: '@acme/b', version: '1.0.0' });
         expectCheckoutGit(setup, dest);
 

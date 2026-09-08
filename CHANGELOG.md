@@ -7,7 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`refs sync` now reports a package that arrived upstream, and `refs edit --create` registers
+  it.** The drift probe checked the packages the configuration already had, so a package added
+  upstream after `refs add` stayed invisible — and there was no command to register one either:
+  `refs add` refuses an already-tracked ref, and every `refs edit` mode needs an entry to edit. The
+  only instruction anyone could give was "hand-edit `config.toml`".
+
+  `refs sync` answers "did upstream gain a package?" from the range it just fetched, not by
+  comparing a scan against the configuration. That distinction is the whole design: a scan cannot
+  tell a package that just arrived from one the ref's owner deliberately never tracked, because
+  there is no inventory of what was there before — the fetch range is that inventory. A ref whose
+  owner tracks 3 packages out of 140 hears about the other 137 exactly never. `refs doctor` lists
+  every unregistered member instead, because it was asked to.
+
+  The question it asks of that range is about package NAMES, not manifest paths. A package
+  renamed in place modifies its manifest rather than adding one, and a package merely moved to
+  another directory adds one without being new — so a path-based reading is wrong in both
+  directions. Only the manifests the range actually changed have to be read out of history: an
+  untouched manifest is byte-identical at both ends, so the name it carries now is the name it
+  carried before.
+
+  The repair is a command now rather than a config fragment, with the ref key filled in so it
+  runs as printed:
+
+  ```
+  refs edit 'github.com/acme/alpha' --package '@acme/new' --create --path 'packages/new' \
+    --description "<what it is>"
+  ```
+
+  It is a distinct mode, not an upsert — an ordinary field edit naming an unregistered package
+  still fails with `not_found`, so a typo in `--package` can never become a new entry. The
+  finding carries `name` and `path`, both verified against the checkout and both shell-quoted
+  (being verified makes a value true, not shell-safe: `zPackagePath` permits `$()` and a manifest
+  `name` is checked only for being non-empty), and deliberately no description: a manifest description is untrusted third-party content, and copying it moves it
+  into a file refs later reads as its own configuration. The skill instructs agents to propose the
+  registration and wait for the user to agree, rather than run it on their own initiative.
+
 ### Fixed
+
+- **Workspace patterns are matched by `minimatch`, the matcher npm itself uses.** Hand-written
+  matching disagreed with the real resolvers in five distinct ways, each found only after the last
+  was fixed: extglob (`@(a|b)`) read as a literal directory name, trailing slashes treated
+  symmetrically where `minimatch` is asymmetric, repeated separators silently matching nothing, and
+  two more. Delegating removes that class of defect rather than the current instance of it.
+
+  Measured before choosing: `picomatch` disagrees with `minimatch` on ten of 154 comparisons over
+  the shapes this scanner supports, exactly on trailing slashes and repeated separators — so it is
+  not a drop-in. pnpm matches through `picomatch` but normalizes first, and was measured to agree
+  with `minimatch` on every one of those shapes, so one matcher covers both ecosystems.
+
+  Walking stays here: containment guards, the diagnostics that say why a scan came up short, and
+  the deliberate one-level depth policy are unchanged. `minimatch` answers only whether a path
+  matches a pattern. Nothing new is installed by `refs` users — the CLI publishes a bundle with no
+  dependencies — and that bundle grows by 24 KB.
+
+  One behaviour improves as a consequence: a negation in a shape this scanner cannot WALK
+  (`!packages/{a,b}`) is now applied, because applying an exclusion needs matching and never
+  walking. It used to be reported as unsupported and silently ignored.
+
+- **Negated workspace patterns are applied instead of ignored.** `!packages/fixtures` was dropped
+  as an unsupported shape (a v1 simplification), so `refs add` registered packages the repository
+  had explicitly excluded, and every finding about a repository declaring one was silenced —
+  TanStack Query declares two, and all hundred of its packages came back `unverifiable`. Negations
+  are now expanded exactly like inclusive patterns and subtracted from the result, which makes the
+  scan an accurate statement of membership rather than an approximation of one.
+
+  A wildcard inside the last segment (`examples/vue/2*`) is supported too, since that is the shape
+  real repositories exclude by, and a negation nobody can expand costs every finding about the
+  repository rather than just the paths it names. Glob syntax that is still unimplemented —
+  `{a,b}`, `?`, `[…]` — now reports `unsupported_pattern` rather than reading as a literal
+  directory name and silently matching nothing.
 
 - **A monorepo can now be resolved by the name in its own root manifest.** Workspace detection
   expands the globs a repository declares, and a workspace root is not one of its own targets — so a

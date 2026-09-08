@@ -60,7 +60,7 @@ describe('npm workspaces', () => {
 });
 
 describe('pnpm workspaces', () => {
-  it('parses pnpm-workspace.yaml and ignores negation patterns (v1 simplification)', async () => {
+  it('parses pnpm-workspace.yaml and applies negation patterns', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
@@ -70,10 +70,11 @@ describe('pnpm workspaces', () => {
     );
     addPackage(repo, 'packages/a', { description: 'Package A', name: '@mono/a' });
     addPackage(repo, 'packages/b', { description: 'Package B', name: '@mono/b' });
-    // The `!packages/b` negation is ignored in v1, so BOTH packages are returned.
+    // `!packages/b` is expanded like any other pattern and subtracted, so only `@mono/a` remains.
+    // Leaving it in registered packages the repository declared out of scope, and made every
+    // package in such a repository unreportable.
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
       { description: 'Package A', name: '@mono/a', path: 'packages/a' },
-      { description: 'Package B', name: '@mono/b', path: 'packages/b' },
     ]);
   });
 
@@ -145,7 +146,37 @@ describe('glob expansion', () => {
     addPackage(repo, 'src/deep/pkg', { name: '@deep/pkg', version: '1.0.0' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([]);
   });
+});
 
+describe('literal pattern normalization', () => {
+  it('trims a trailing slash from a literal pattern', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // Both npm and pnpm accept `packages/new/`. The path it yields is an IDENTIFIER, though: it is
+    // compared against configured entries and against paths git reports, and it is printed into
+    // `refs edit --create --path`, which `zPackagePath` rejects outright with a trailing slash.
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/new/'] });
+    addPackage(repo, 'packages/new', { name: '@mono/new', version: '1.0.0' });
+    await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
+      { description: undefined, name: '@mono/new', path: 'packages/new' },
+    ]);
+  });
+
+  it('collapses repeated separators in a literal pattern', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // `packages//new/` selects the same directory as `packages/new` for npm and pnpm alike, but
+    // yields a path with an empty segment — which `zPackagePath` rejects, so the repair command
+    // printed for it would not run.
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages//new/'] });
+    addPackage(repo, 'packages/new', { name: '@mono/new', version: '1.0.0' });
+    await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
+      { description: undefined, name: '@mono/new', path: 'packages/new' },
+    ]);
+  });
+});
+
+describe('glob expansion, continued', () => {
   it('resolves non-glob paths like docs/site directly', async () => {
     expect.hasAssertions();
     const repo = freshRepo();

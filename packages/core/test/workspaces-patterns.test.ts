@@ -1,8 +1,6 @@
 import {
-  classifyWorkspacePattern,
   deduplicateAndSort,
   isRelPathContained,
-  isSafeWorkspacePattern,
   scanIsReliable,
   selectPackageDirs,
   sortDiagnostics,
@@ -10,69 +8,7 @@ import {
 } from '../src/workspaces-patterns.ts';
 import { describe, expect, it } from 'vitest';
 import { join, sep } from 'node:path';
-
-describe('workspace pattern classification', () => {
-  it('classifies `<dir>/*` as one-level expansion under that dir', () => {
-    expect.hasAssertions();
-    expect(classifyWorkspacePattern('packages/*')).toStrictEqual({
-      baseDir: 'packages',
-      kind: 'expand-children',
-    });
-  });
-
-  it('classifies bare `*` (flat layout) as expansion under the repo root `.`', () => {
-    expect.hasAssertions();
-    expect(classifyWorkspacePattern('*')).toStrictEqual({
-      baseDir: '.',
-      kind: 'expand-children',
-    });
-  });
-
-  it('classifies a wildcard-free pattern as a literal directory probe', () => {
-    expect.hasAssertions();
-    expect(classifyWorkspacePattern('docs/site')).toStrictEqual({
-      dir: 'docs/site',
-      kind: 'probe-dir',
-    });
-  });
-
-  it('classifies a directory literally named "..packages" as a probe, not an escape', () => {
-    expect.hasAssertions();
-    expect(classifyWorkspacePattern('..packages')).toStrictEqual({
-      dir: '..packages',
-      kind: 'probe-dir',
-    });
-  });
-});
-
-describe('unsupported workspace pattern forms', () => {
-  it('ignores negation patterns (v1 simplification)', () => {
-    expect.hasAssertions();
-    expect(classifyWorkspacePattern('!packages/b')).toStrictEqual({ kind: 'ignore' });
-  });
-
-  it('ignores deeper glob patterns like ** (v1 simplification)', () => {
-    expect.hasAssertions();
-    expect(classifyWorkspacePattern('src/**/pkg')).toStrictEqual({ kind: 'ignore' });
-  });
-
-  it('ignores a pattern above the single-wildcard budget even when it ends with `/*`', () => {
-    expect.hasAssertions();
-    expect(classifyWorkspacePattern('packages/*/nested/*')).toStrictEqual({ kind: 'ignore' });
-  });
-
-  it('ignores a single wildcard in an unsupported position', () => {
-    expect.hasAssertions();
-    expect(classifyWorkspacePattern('pkg-*')).toStrictEqual({ kind: 'ignore' });
-  });
-
-  it('ignores absolute, leading-.. and mid-pattern .. patterns', () => {
-    expect.hasAssertions();
-    expect(classifyWorkspacePattern('/etc/*')).toStrictEqual({ kind: 'ignore' });
-    expect(classifyWorkspacePattern('../*')).toStrictEqual({ kind: 'ignore' });
-    expect(classifyWorkspacePattern('packages/../../etc/*')).toStrictEqual({ kind: 'ignore' });
-  });
-});
+import { isSafeWorkspacePattern } from '../src/workspaces-shapes.ts';
 
 describe('workspace pattern safety', () => {
   it('accepts relative patterns without `.`/`..` segments', () => {

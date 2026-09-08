@@ -12,7 +12,7 @@ import { resolveInside } from './fs-containment.ts';
 // A pattern collector's outcome: the patterns it found, plus whether the declaration was usable.
 type CheckedPatterns = {
   ok: boolean;
-  patterns: Set<string>;
+  patterns: string[];
   // The declaration named workspaces in a shape this reader cannot parse. Distinct from `!ok`
   // (could not read it at all) and from an absent declaration (normal).
   unparsed?: boolean;
@@ -47,10 +47,10 @@ const collectNpmPatternsChecked = async (
 ): Promise<CheckedPatterns> => {
   const read = await readDeclarationFile(repoDir, packageJsonPath);
   if (!read.ok) {
-    return { ok: false, patterns: new Set<string>() };
+    return { ok: false, patterns: [] };
   }
   if (read.content === undefined) {
-    return { ok: true, patterns: new Set<string>() };
+    return { ok: true, patterns: [] };
   }
   return parseNpmDeclaration(read.content);
 };
@@ -58,14 +58,12 @@ const collectNpmPatternsChecked = async (
 // Parse the `workspaces` field out of an already-read root manifest. Malformed JSON is a
 // failure, not an absence: the declaration is there, we just cannot use it.
 const parseNpmDeclaration = (content: string): CheckedPatterns => {
-  const patterns = new Set<string>();
   try {
     const npmData = JSON.parse(content) as Record<string, unknown>;
-    parseNpmWorkspaces(npmData['workspaces']).forEach((pattern) => patterns.add(pattern));
+    return { ok: true, patterns: parseNpmWorkspaces(npmData['workspaces']) };
   } catch {
-    return { ok: false, patterns };
+    return { ok: false, patterns: [] };
   }
-  return { ok: true, patterns };
 };
 
 // Collect pnpm workspace patterns.
@@ -80,34 +78,41 @@ const parseNpmDeclaration = (content: string): CheckedPatterns => {
 // `packages: ["a/*"]`, which is perfectly valid.
 const PNPM_PACKAGES_KEY = /^packages:/mu;
 
+/** A `packages:` key that yielded no patterns — the file says something this parser cannot read.
+ * Flow style (`packages: [a, b]`) is the ordinary case. Distinct from a file that genuinely
+ * declares nothing, which the scanner reports as `workspace_declaration_unparsed` rather than as
+ * an empty declaration; `declarations.ts` needs the same distinction when reading history, where
+ * treating it as empty hides a narrowing. */
+const declaresUnreadably = (content: string, patterns: readonly string[]): boolean =>
+  patterns.length === 0 && PNPM_PACKAGES_KEY.test(content);
+
 const collectPnpmPatternsChecked = async (
   repoDir: string,
   pnpmWorkspacePath: string,
 ): Promise<CheckedPatterns> => {
-  const patterns = new Set<string>();
   const read = await readDeclarationFile(repoDir, pnpmWorkspacePath);
   if (!read.ok) {
-    return { ok: false, patterns };
+    return { ok: false, patterns: [] };
   }
   if (read.content === undefined) {
-    return { ok: true, patterns };
+    return { ok: true, patterns: [] };
   }
 
-  collectPnpmPatterns(read.content.split('\n')).forEach((pattern) => patterns.add(pattern));
+  const patterns = collectPnpmPatterns(read.content.split('\n'));
   // Keyed on the KEY, not the file: a pnpm 9 catalog-only `pnpm-workspace.yaml` legitimately
   // declares no `packages` at all, and must not be reported as unparsed.
   return {
     ok: true,
     patterns,
-    unparsed: patterns.size === 0 && PNPM_PACKAGES_KEY.test(read.content),
+    unparsed: declaresUnreadably(read.content, patterns),
   };
 };
 
-// Both workspace declarations, merged. Each contributes a diagnostic only when it EXISTS and is
-// unusable — an absent declaration is the normal state for most repos.
+// Both workspace declarations, kept separate. Each contributes a diagnostic only when it EXISTS
+// and is unusable — an absent declaration is the normal state for most repos.
 const readDeclarations = async (
   repoDir: string,
-): Promise<{ diagnostics: WorkspaceDiagnostic[]; patterns: Set<string> }> => {
+): Promise<{ diagnostics: WorkspaceDiagnostic[]; npm: string[]; pnpm: string[] }> => {
   const [npmRead, pnpmRead] = await Promise.all([
     collectNpmPatternsChecked(repoDir, join(repoDir, 'package.json')),
     collectPnpmPatternsChecked(repoDir, join(repoDir, 'pnpm-workspace.yaml')),
@@ -122,8 +127,12 @@ const readDeclarations = async (
   if (pnpmRead.unparsed === true) {
     diagnostics.push({ file: 'pnpm-workspace.yaml', kind: 'workspace_declaration_unparsed' });
   }
-  return { diagnostics, patterns: new Set<string>([...npmRead.patterns, ...pnpmRead.patterns]) };
+  // Kept APART, and each an ordered list with duplicates: the two resolvers do not agree. npm
+  // walks its declaration in order and lets a later pattern cancel an earlier negation; pnpm hands
+  // its list to tinyglobby, where a negation is an ignore and nothing takes it back. Merging them
+  // applied one repository's rules to the other's declaration.
+  return { diagnostics, npm: npmRead.patterns, pnpm: pnpmRead.patterns };
 };
 
-export { readDeclarations };
+export { declaresUnreadably, readDeclarations };
 export type { CheckedPatterns };

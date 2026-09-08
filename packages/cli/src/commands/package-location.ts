@@ -103,8 +103,13 @@ const classifyAgainstScan = (query: LocationQuery, scan: WorkspaceScan): VerifyO
 
   // Both remaining answers claim something about EVERY path — "it is only here", "it is nowhere"
   // — so neither survives a scan that skipped something. A second package of the same name could
-  // be sitting behind an unreadable manifest or an unsupported pattern, and picking the copy we
+  // be sitting behind an unreadable manifest or an unexpanded `**`, and picking the copy we
   // happened to see is precisely the silent wrong-directory failure this exists to prevent.
+  //
+  // A repository that declares negations is NOT unreliable for that reason alone — they are
+  // expanded and subtracted like any other pattern. Only one nobody can expand lands here, and
+  // then the scan genuinely cannot support either answer: it holds directories the repository
+  // excluded, so a sighting proves no membership, and it may equally be missing a duplicate.
   if (!scanIsReliable(scan)) {
     return incomplete(
       query,
