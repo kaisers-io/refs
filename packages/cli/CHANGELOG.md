@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-08
+
+### Upgrading
+
+Run `refs sync` after updating. Two things are worth expecting on that first run.
+
+**Packages may be reported as `missing` that are still on disk.** Negated workspace patterns are
+applied now, so a package a repository excludes (`!examples/vue/2*`) is no longer a workspace
+member — and an entry registered for one before this release no longer verifies. Nothing is removed
+automatically; the finding names the entry and leaves the decision alone.
+
+**Packages that arrived upstream since the last sync are reported.** Only those: a package the
+configuration never had and that did not arrive in the fetched range stays unmentioned, however
+long it has been there.
+
 ### Added
 
 - **`refs sync` now reports a package that arrived upstream, and `refs edit --create` registers
@@ -894,7 +909,8 @@ trusted-publishing pipeline end to end.
   installed git hooks.
 - Agent skill (`skills/refs/`) documenting the investigate/add/maintain workflows.
 
-[Unreleased]: https://github.com/kaisers-io/refs/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/kaisers-io/refs/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/kaisers-io/refs/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/kaisers-io/refs/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/kaisers-io/refs/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/kaisers-io/refs/compare/v0.8.3...v0.9.0
