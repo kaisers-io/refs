@@ -127,3 +127,37 @@ describe('the marks and prefixes both resolvers strip', () => {
     expect(scan.map((pkg) => pkg.name).toSorted()).toStrictEqual(expected);
   });
 });
+
+describe("npm's pattern-filtering step, which pnpm has no equivalent of", () => {
+  it('drops a positive pattern a surviving negation names, not just the directories', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // `!packages/?` names the pattern STRING `packages/*` — `?` matches its literal `*` — while
+    // naming no directory the glob would produce. npm therefore drops `packages/*` outright and
+    // returns nothing. Testing only expanded directories returns everything, which is how this
+    // step was once mistaken for an optimization and removed.
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/*', '!packages/?'] });
+    addPackage(repo, 'packages/cli', { name: '@mono/cli', version: '1.0.0' });
+    addPackage(repo, 'packages/core', { name: '@mono/core', version: '1.0.0' });
+
+    await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([]);
+  });
+
+  it('does not apply to a pnpm declaration, which keeps both packages', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // Asked directly, pnpm returns both for this declaration — its ignores apply to results, not
+    // to the pattern list. Applying npm's step here would have silently emptied the scan.
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    writeFileSync(
+      join(repo, 'pnpm-workspace.yaml'),
+      "packages:\n  - packages/*\n  - '!packages/?'\n",
+    );
+    addPackage(repo, 'packages/cli', { name: '@mono/cli', version: '1.0.0' });
+    addPackage(repo, 'packages/core', { name: '@mono/core', version: '1.0.0' });
+
+    const scan = await detectWorkspacePackages(repo);
+
+    expect(scan.map((pkg) => pkg.name).toSorted()).toStrictEqual(['@mono/cli', '@mono/core']);
+  });
+});

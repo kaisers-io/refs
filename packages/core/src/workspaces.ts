@@ -53,8 +53,8 @@ const selectPnpmPatterns = (declared: readonly string[]): Selection => ({
  * negations are applied to the expanded directories anyway — a literal pattern for an excluded
  * directory returns nothing either way. Left out rather than carried as logic no test can
  * distinguish. */
-const selectPatterns = (declared: readonly string[]): Selection =>
-  declared.reduce<Selection>(
+const selectPatterns = (declared: readonly string[]): Selection => {
+  const walked = declared.reduce<Selection>(
     (state, pattern) =>
       isNegatedPattern(pattern)
         ? { negations: [...state.negations, pattern], patterns: state.patterns }
@@ -65,6 +65,21 @@ const selectPatterns = (declared: readonly string[]): Selection =>
           },
     { negations: [], patterns: [] },
   );
+  return {
+    negations: walked.negations,
+    // npm's last step: a positive pattern that a SURVIVING negation names is dropped outright,
+    // before anything is globbed. NOT redundant with excluding the expanded directories, which is
+    // how it was once mistaken for an optimization and removed: `!packages/?` names the pattern
+    // STRING `packages/*` — the `?` matches its literal `*` — without naming any directory that
+    // glob would produce. npm returns nothing for that declaration; testing only directories
+    // returns everything.
+    //
+    // pnpm has no equivalent: asked directly, it keeps both packages there. Hence npm's rule only.
+    patterns: walked.patterns.filter(
+      (pattern) => !walked.negations.some((negation) => cancels(pattern, negation)),
+    ),
+  };
+};
 
 /** Whether a surviving negation names this directory. Decided from the plans alone, so it can be
  * applied before a candidate's manifest is ever opened — an excluded directory must not be able to

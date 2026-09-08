@@ -34,6 +34,9 @@ Why this is a rule: a feature once shipped with 988 green tests, including end-t
 
 - A test that pins a fix must FAIL when the fix is reverted. Check it: revert, run, restore.
   A test that passes either way pins nothing.
+- That check proves the TESTS do not distinguish a change — never that nothing does. It is evidence
+  for writing a test, not for deleting code. Logic removed on that basis here turned out to be
+  load-bearing on a shape no test covered.
 - A test that runs the built bundle must REBUILD it, unconditionally. `pnpm check` does not build,
   so reusing whatever is on disk tests whatever was last built — and the revert check above then
   passes against code that no longer exists.
