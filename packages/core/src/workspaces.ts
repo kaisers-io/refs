@@ -33,8 +33,10 @@ import { isNegatedPattern, matchesPattern, negatedBody } from './workspaces-shap
 import { partitionProbes, probePackageDir } from './workspaces-probe.ts';
 import { probeRootPackage, withoutClaimedRoot } from './workspaces-root.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
+import type { ExcludedDirs } from './workspaces-expand.ts';
 import type { ExpandResult } from './workspaces-probe.ts';
 import type { ScanBudget } from './workspaces-recursive.ts';
+// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { expandGlobPattern } from './workspaces-expand.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { newScanBudget } from './workspaces-recursive.ts';
@@ -120,6 +122,35 @@ const excludedBy = (negations: readonly string[], dir: string): boolean =>
     matchesPattern(asDirectoryPattern(dir), asDirectoryPattern(negatedBody(negation))),
   );
 
+const SUBTREE_SUFFIX = '/**';
+
+/** Whether one negation excludes EVERYTHING below `dir` — a stronger claim than `has`, and the
+ * only one that justifies not walking a subtree at all.
+ *
+ * Only the `<prefix>/**` form makes it, and the test is on the negation's own shape rather than on
+ * matching a constructed path. Asking `minimatch('<dir>/**', negation)` looks equivalent and is
+ * not: in the SUBJECT string `**` is ordinary text, so `packages/group/*` "matches"
+ * `packages/group/**` and a single-level exclusion would prune every descendant it does not
+ * exclude. Excluding a package directory is not the same as excluding what is under it, and refs
+ * follows the resolvers on that.
+ *
+ * Written as a suffix test rather than a glob: `<prefix>/**` is the literal spelling both
+ * resolvers document, and inferring the intent of any other shape would be guessing. */
+const coversSubtree = (negation: string, dir: string): boolean => {
+  const body = negatedBody(negation);
+  return (
+    body.endsWith(SUBTREE_SUFFIX) && matchesPattern(dir, body.slice(0, -SUBTREE_SUFFIX.length))
+  );
+};
+
+/** The exclusion predicates one selection's negations impose. Exported so tests drive the real
+ * rules: a test that restates them with its own matcher proves nothing about what ships. */
+const excludedDirsFor = (negations: readonly string[]): ExcludedDirs => ({
+  coversSubtree: (dir: string): boolean =>
+    negations.some((negation) => coversSubtree(negation, dir)),
+  has: (dir: string): boolean => excludedBy(negations, dir),
+});
+
 const collect = (results: readonly ExpandResult[]): ExpandResult => {
   const dirs = new Set<string>();
   const diagnostics: WorkspaceDiagnostic[] = [];
@@ -141,15 +172,7 @@ const expandSelection = async (
   budget: ScanBudget,
 ): Promise<ExpandResult> => {
   const { negations, patterns } = selection;
-  const excluded = {
-    // Whether EVERYTHING below `dir` is excluded, which is a stronger claim than `has` and the
-    // only one that justifies not walking a subtree at all. Only the `<dir>/**` form of a
-    // negation makes it: excluding a package directory is not the same as excluding what is
-    // under it, and refs follows the resolvers on that.
-    coversSubtree: (dir: string): boolean =>
-      negations.some((negation) => matchesPattern(`${dir}/**`, negatedBody(negation))),
-    has: (dir: string): boolean => excludedBy(negations, dir),
-  };
+  const excluded = excludedDirsFor(negations);
   const chosen = collect(
     await Promise.all(
       patterns.map((pattern) =>
@@ -230,7 +253,7 @@ const detectWorkspacePackages = async (repoDir: string): Promise<WorkspacePackag
   return scan.packages;
 };
 
-export { detectWorkspacePackages, detectWorkspacePackagesDetailed };
+export { detectWorkspacePackages, detectWorkspacePackagesDetailed, excludedDirsFor };
 export { readRootPackage, withoutClaimedRoot } from './workspaces-root.ts';
 // Re-exported here rather than from `workspaces-patterns.ts` directly: a consumer that gets a
 // scan from this module needs the predicate that says whether it may be trusted, and the two
