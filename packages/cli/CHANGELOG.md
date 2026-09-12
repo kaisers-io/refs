@@ -15,8 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   those twenty are one package's tags, not a sample of the repository's. Measured against two real
   repositories, `refs add` proposed `create-astro@{version}` for a repository with 839
   `astro@{version}` tags, and `keystatic@{version}` — a package whose last tag is `0.0.36` and whose
-  directory no longer exists — for one where `@keystatic/core@{version}` is the live package with
-  183. Both now resolve correctly, and the two repositories whose detection was already right are
+  directory no longer exists — for one where `@keystatic/core@{version}` is the live package with 183 of
+  them. Both now resolve correctly, and the two repositories whose detection was already right are
   unchanged.
 
   A tag list that could not be read whole now yields no candidate at all rather than one derived
