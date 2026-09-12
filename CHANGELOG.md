@@ -5,7 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.13.1] - 2026-09-12
+
+### Upgrading
+
+**A repository declaring a workspace pattern like `crates/*/js` will suddenly report packages refs
+could not see before.** The pattern was classified as unsupported, which also made the whole scan
+unreliable and stood the unregistered-package pass down for that ref. `refs doctor` may therefore
+name members on a ref that reported nothing for months. They are not new; they were invisible.
+Register the ones worth routing to, and leave the rest.
 
 ### Added
 
@@ -33,6 +41,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   table rather than leaving an empty one, which `add` and the drift probe read differently.
 
 ### Fixed
+
+- **A workspace pattern whose wildcard is not in its last segment is expanded.** `crates/*/js` —
+  the spelling a Rust/JS monorepo uses — was reported as `unsupported_pattern` and every package
+  beneath it went undetected. That pattern costs one `readdir` and a literal probe per child, the
+  same shape `packages/*` has, so the budget that refused it was measuring the wrong thing. Two
+  wildcards still mean two levels and `packages/*/nested/*` is still refused. Measured on a
+  repository declaring `crates/*/js` and `turbopack/crates/*/js`: 41 packages detected instead of
+  37, with no diagnostics; three other monorepos detect exactly what they did before.
 
 - **`tag_format` is detected from every tag, not from the top twenty of a refname sort.** Detection
   counted formats among the first 20 tags of `git tag --sort=-version:refname`. That sort is
