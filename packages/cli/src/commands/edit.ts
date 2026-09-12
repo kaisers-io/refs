@@ -1,18 +1,19 @@
 import { cliOptsOf, emit, wrapAction } from '../output.ts';
+import { createPackageEntry, removePackageEntry } from './edit-package.ts';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
-import { createPackageEntry } from './edit-package.ts';
 import { runEditRef } from './edit-ref.ts';
 import { runEditSettings } from './edit-settings.ts';
 import { usageError } from '@kaisers-io/refs-core';
 
-// `refs edit` mutates exactly one field, under three modes:
+// `refs edit` mutates exactly one thing, under five modes:
 //   - `refs edit settings <key> <value>`               — a global setting (edit-settings.ts)
 //   - `refs edit <ref> <field> <value>`                 — a top-level ref field (edit-ref.ts)
 //   - `refs edit <ref> <field> <value> --package <name>` — a package field (edit-ref.ts delegates
 //     to edit-package.ts)
 //   - `refs edit <ref> --package <name> --create --path <p> --description <d>` — registers a
 //     package the config did not have (edit-package.ts)
+//   - `refs edit <ref> --package <name> --remove`      — unregisters one it has (edit-package.ts)
 //
 // The two positional arguments after `<ref>` are optional ONLY so `--create` can carry its two
 // fields as flags: a creation needs `path` and `description` together, and the positional form
@@ -51,16 +52,22 @@ type EditData = {
   key: string;
   new: unknown;
   old: unknown;
+  /** Present only on `--remove`, where `new` is null and `old` is the entry that was unregistered
+   * — the mirror of `created`, and the one other mode whose human line is not a field transition. */
+  removed?: boolean;
 };
 
 type EditOptions = {
   packageName?: string;
 };
 
+/** The mode flags and their fields. `create` and `remove` are the two modes that take no
+ * positional `<field> <value>` pair; `description`/`path` belong to `create` alone. */
 type CreateOptions = {
   create?: boolean;
   description?: string;
   path?: string;
+  remove?: boolean;
 };
 
 type EditResult = {
@@ -72,6 +79,10 @@ const SETTINGS_MODE_KEYWORD = 'settings';
 const NO_WARNINGS: string[] = [];
 const PACKAGE_OPTION_USAGE_MESSAGE =
   "--package is not valid with 'refs edit settings ...' — it only applies to ref/package edits";
+const REMOVE_USAGE_MESSAGE =
+  '--remove unregisters a package: it needs --package <name>, and takes no <field> <value> ' +
+  'arguments, no --path and no --description';
+
 const CREATE_USAGE_MESSAGE =
   '--create registers a new package: it needs --package <name>, --path <path> and ' +
   '--description <text>, and takes no <field> <value> arguments';
@@ -131,6 +142,29 @@ const requireFieldAndValue = (args: EditArgs): { field: string; value: string } 
   return { field: args.second, value: args.value };
 };
 
+/** `--remove`'s shape, checked the way `--create`'s is: a partial or contradictory invocation
+ * names everything wrong with it at once, and a `<field> <value>` pair alongside would be two
+ * mutually exclusive forms in one command. */
+const requireRemoveShape = (args: EditArgs): { packageName: string } => {
+  const { packageName } = args.opts;
+  if (
+    packageName === undefined ||
+    args.second !== undefined ||
+    args.value !== undefined ||
+    args.create.path !== undefined ||
+    args.create.description !== undefined
+  ) {
+    throw usageError(REMOVE_USAGE_MESSAGE);
+  }
+  return { packageName };
+};
+
+const runRemove = async (ctx: CliContext, args: EditArgs): Promise<EditResult> => {
+  const { packageName } = requireRemoveShape(args);
+  const data = await removePackageEntry(ctx, { packageName, query: args.first });
+  return { data, warnings: NO_WARNINGS };
+};
+
 const runCreate = async (ctx: CliContext, args: EditArgs): Promise<EditResult> => {
   const { description, packageName, path } = requireCreateShape(args);
   const data = await createPackageEntry(ctx, {
@@ -153,10 +187,24 @@ const runSettings = (
   return runEditSettings(ctx, setting);
 };
 
-const runEdit = async (ctx: CliContext, args: EditArgs): Promise<EditResult> => {
-  if (args.create.create === true) {
-    return runCreate(ctx, args);
+const BOTH_MODES_MESSAGE =
+  'use either --create or --remove, not both: one registers a package and the other unregisters it';
+
+/** The mode a set of flags selects, or `undefined` for the ordinary `<field> <value>` form. Both
+ * at once is refused here rather than resolved: they are opposites, and picking one would guess. */
+const packageModeOf = (create: CreateOptions): 'create' | 'remove' | undefined => {
+  if (create.create === true && create.remove === true) {
+    throw usageError(BOTH_MODES_MESSAGE);
   }
+  if (create.create === true) {
+    return 'create';
+  }
+  return create.remove === true ? 'remove' : undefined;
+};
+
+/** The `<field> <value>` form, once the two package modes have declined it. Split out only so
+ * `runEdit` stays a dispatch. */
+const runFieldEdit = async (ctx: CliContext, args: EditArgs): Promise<EditResult> => {
   if (args.create.description !== undefined || args.create.path !== undefined) {
     throw usageError(CREATE_ONLY_OPTION_MESSAGE);
   }
@@ -171,6 +219,14 @@ const runEdit = async (ctx: CliContext, args: EditArgs): Promise<EditResult> => 
     value,
   });
   return { data, warnings: NO_WARNINGS };
+};
+
+const runEdit = (ctx: CliContext, args: EditArgs): Promise<EditResult> => {
+  const mode = packageModeOf(args.create);
+  if (mode === 'create') {
+    return runCreate(ctx, args);
+  }
+  return mode === 'remove' ? runRemove(ctx, args) : runFieldEdit(ctx, args);
 };
 
 const UNSET_DISPLAY = '(unset)';
@@ -194,6 +250,12 @@ const editHuman = (data: EditData): string[] => {
     const created = data.new as CreatedEntry;
     return [`${data.key}: registered '${created.name}' at ${created.path}`];
   }
+  if (data.removed === true) {
+    // The path is named because it is the only thing that identifies WHICH entry went, and a
+    // removal is the one edit nothing else records.
+    const removed = data.old as CreatedEntry;
+    return [`${data.key}: unregistered '${removed.name}' (was at ${removed.path})`];
+  }
   return [
     `${data.key}: ${data.field} '${formatEditValue(data.old)}' -> '${formatEditValue(data.new)}'`,
   ];
@@ -205,13 +267,15 @@ const registerEdit = (program: RefsCommand, ctx: CliContext): void => {
     .description(
       "Edit one field: 'refs edit settings <key> <value>' for a global setting, or " +
         "'refs edit <ref> <field> <value> [--package <name>]' for a ref or package field. " +
-        'With --create, registers a package the config does not have yet.',
+        'With --create, registers a package the config does not have yet; with --remove, ' +
+        'unregisters one it has.',
     )
     .argument('<ref-or-settings>', "a ref key/unique suffix, or the literal 'settings'")
     .argument('[field-or-key]', 'field to edit (or, in settings mode, the setting key)')
     .argument('[value]', 'the new value')
     .option('--package <name>', "edit this package's field instead of a top-level ref field")
     .option('--create', 'register --package as a new package on this ref')
+    .option('--remove', 'unregister --package from this ref, leaving the checkout alone')
     .option('--path <path>', 'with --create: the package path, relative to the checkout root')
     .option('--description <text>', 'with --create: what the package is')
     // eslint-disable-next-line max-params -- fixed 5-arg shape commander gives a 3-argument command

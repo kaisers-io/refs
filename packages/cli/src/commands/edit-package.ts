@@ -154,4 +154,65 @@ const createPackageEntry = (ctx: CliContext, args: CreatePackageArgs): Promise<E
   });
 };
 
-export { createPackageEntry, editPackageField };
+const notRegisteredMessage = (name: string, key: RefKey): string =>
+  `package '${name}' is not registered on ref '${key}' — nothing to remove`;
+
+/** Unregisters a package the configuration has.
+ *
+ * A CONFIGURATION operation, deliberately: it asks nothing of the checkout. The finding that sends
+ * someone here is `missing` — "gone from this repo's workspaces" — but a user may also stop
+ * tracking a package that is still there, and a checkout guard would turn that into an argument
+ * with the tool. Removal works with an absent or unreadable checkout for the same reason
+ * `--create` does not verify one.
+ *
+ * A distinct mode rather than an upsert, matching `--create`: naming a package the configuration
+ * does not have fails rather than quietly succeeding, so a typo cannot look like it worked. It
+ * cannot protect against a typo that names a DIFFERENT registered package — nothing can — which is
+ * why the removed entry comes back as `old` for the caller to show.
+ *
+ * Unregistering is not suppression: a package still declared in the checkout will be reported as
+ * `unregistered` by the next full discovery. That is correct, and a standing "never mention this
+ * again" would be a different feature. */
+const removePackageEntry = (
+  ctx: CliContext,
+  args: { packageName: string; query: string },
+): Promise<EditData> => {
+  const home = resolveHome(ctx.env);
+  return withLock(home, 'home', async () => {
+    const config = await readConfig(home);
+    const key = matchRefKey(config, args.query);
+    const entry = requireEntry(config, key);
+    const packages = entry.packages ?? {};
+    if (!Object.hasOwn(packages, args.packageName)) {
+      throw validationError(notRegisteredMessage(args.packageName, key));
+    }
+    const { [args.packageName]: removed, ...rest } = packages;
+    // An empty `packages` table is omitted rather than written as `{}`: that is how a ref with no
+    // packages is represented everywhere else, and `{}` would read as "this ref configures none"
+    // through a different shape.
+    const next =
+      Object.keys(rest).length === 0 ? withoutPackages(entry) : { ...entry, packages: rest };
+    await writeConfig(home, { ...config, refs: { ...config.refs, [key]: next } });
+    return {
+      field: PACKAGES_FIELD,
+      key,
+      // eslint-disable-next-line unicorn/no-null -- cross-process JSON contract requires null
+      new: null,
+      old: {
+        description: removed?.description ?? '',
+        name: args.packageName,
+        path: removed?.path ?? '',
+      },
+      removed: true,
+    };
+  });
+};
+
+/** `entry` without its `packages` key at all — `exactOptionalPropertyTypes` distinguishes an absent
+ * key from one set to `undefined`, and TOML can write only the former. */
+const withoutPackages = (entry: RefEntry): RefEntry => {
+  const { packages: _packages, ...rest } = entry;
+  return rest;
+};
+
+export { createPackageEntry, editPackageField, removePackageEntry };

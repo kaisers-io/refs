@@ -156,16 +156,27 @@ const unregisteredLine = (issue: StructureIssue, key: string): string => {
 };
 
 /** The three findings about an entry that IS configured — each naming the repair it needs, and the
- * configured path it needs repairing from. */
-const configuredIssueLine = (issue: StructureIssue): string => {
+ * configured path it needs repairing from.
+ *
+ * Two of them can name a runnable command, and do. The ref key and the package name are the
+ * configuration's own, but a ref key admits spaces and `$()` (`zRefKey`) and a package name is
+ * checked only for being non-empty — so both go through `shellQuote`, for the reason spelled out
+ * above `registrable`. A relocation's new path comes from the CHECKOUT and is validated before it
+ * is printed: a path the configuration cannot hold makes the command a lie, and the finding is
+ * still true without it. */
+const configuredIssueLine = (issue: StructureIssue, key: string): string => {
   const at = `configured: ${issue.configured_path ?? UNKNOWN_PATH}`;
   if (issue.status === 'relocated') {
-    return `${issue.name}: moved to ${issue.path ?? UNKNOWN_PATH} — update the entry's path (${at})`;
+    const head = `${issue.name}: moved to ${issue.path ?? UNKNOWN_PATH} — update the entry's path (${at})`;
+    return zPackagePath.safeParse(issue.path).success
+      ? `${head}. To fix it: refs edit ${shellQuote(key)} path ${shellQuote(issue.path ?? '')} --package ${shellQuote(issue.name)}`
+      : head;
   }
   if (issue.status === 'missing') {
     return (
-      `${issue.name}: gone from this repo's workspaces — remove the entry, ` +
-      `or repoint it if it moved out of them (${at})`
+      `${issue.name}: gone from this repo's workspaces (${at}) — repoint the entry if it moved ` +
+      `out of them, or unregister it: refs edit ${shellQuote(key)} --package ` +
+      `${shellQuote(issue.name)} --remove`
     );
   }
   if (issue.status === 'ambiguous') {
@@ -176,7 +187,7 @@ const configuredIssueLine = (issue: StructureIssue): string => {
 };
 
 const issueLine = (issue: StructureIssue, key: string): string =>
-  issue.status === 'unregistered' ? unregisteredLine(issue, key) : configuredIssueLine(issue);
+  issue.status === 'unregistered' ? unregisteredLine(issue, key) : configuredIssueLine(issue, key);
 
 /** One line per thing worth saying, and EMPTY for a clean ref — so a caller can append the result
  * unconditionally and stay silent by construction rather than by remembering to check.
