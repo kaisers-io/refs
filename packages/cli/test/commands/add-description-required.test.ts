@@ -3,14 +3,17 @@ import { SOLO_MANIFEST_DESCRIPTION, createFixtureRepo } from '../helpers/fixture
 import { describe, expect, it } from 'vitest';
 import {
   expectFinalizedState,
+  finalizeViaProposalFile,
   initHome,
   parseLastEnvelope,
   realContextFor,
+  runAddDryRunJson,
   withResetExitCode,
   withTempHome,
 } from '../helpers/add-support.ts';
 import type { CliContext } from '../../src/context.ts';
 import type { FixtureRepo } from '../helpers/fixture-repo.ts';
+import type { Proposal } from '@kaisers-io/refs-core';
 import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { run } from '../../src/main.ts';
 
@@ -35,6 +38,9 @@ import { run } from '../../src/main.ts';
 // the repo's 300-line oxlint cap.
 
 const ONE_PACKAGE = 1;
+// Two members plus the named root — every entry the proposal carries, and every entry the refusal
+// lists, which is the point of `(l5)`.
+const MONOREPO_PACKAGES = 3;
 const NO_REFS = 0;
 const REF_DESCRIPTION = 'A fixture monorepo.';
 
@@ -81,6 +87,28 @@ const packagesOf = (
 /** The error message out of a parsed envelope, for the same reason as `packagesOf`. */
 const messageOf = (envelope: ErrorEnvelope): string => envelope.error?.message ?? '';
 
+/** The package names the refusal printed — read back out of the message rather than rebuilt from
+ * the fixture, so the test follows what a reader actually sees. */
+const listedPackages = (message: string): string[] =>
+  (message.split('packages to describe: ')[1] ?? '').trim().split(', ');
+
+/** The proposal as it came back, with a description written into EXACTLY the entries the message
+ * listed — what a reader who follows the instruction does. Every other entry is left exactly as
+ * the dry-run produced it, which is the realistic mistake: dropping it instead would quietly
+ * deregister a package rather than fail. `zFinalProposal` requires a description on every entry,
+ * so a list that omits one finalizes into `packages["<name>"].description: expected string,
+ * received undefined`. */
+const describedFrom = (proposal: Proposal, listed: readonly string[]): unknown => ({
+  ...proposal,
+  description: REF_DESCRIPTION,
+  packages: Object.fromEntries(
+    Object.entries(proposal.packages).map(([name, pkg]) => [
+      name,
+      listed.includes(name) ? { ...pkg, description: `The ${name} package.` } : pkg,
+    ]),
+  ),
+});
+
 describe('refs add --description: refuses a package it cannot describe', () => {
   it(
     '(l) fails (exit 3) naming every workspace member, though every manifest describes itself',
@@ -98,8 +126,11 @@ describe('refs add --description: refuses a package it cannot describe', () => {
           expect(envelope.ok).toBe(false);
           expect(envelope.error?.message).toContain('@fixture/a');
           expect(envelope.error?.message).toContain('@fixture/b');
-          // The root IS the repository, so it is never among the packages that need one.
-          expect(envelope.error?.message).not.toContain('fixture-root');
+          // The root is listed too, though it is NOT why the one-shot refused: the list is what
+          // the reader must fill into the proposal, and `zFinalProposal` requires a description
+          // for every entry including the root. Listing only the members finalized into
+          // `packages["fixture-root"].description: expected string, received undefined`.
+          expect(envelope.error?.message).toContain('fixture-root');
         }),
       );
     },
@@ -175,6 +206,31 @@ describe('refs add --description: the clone a refusal leaves behind', () => {
           const [entry] = Object.values(state.refs);
           expect(entry?.effective_clone_mode).toBe('full');
           expect(entry?.pending_proposal_at).toBeDefined();
+        }),
+      );
+    },
+    SLOW_IO_TIMEOUT_MS,
+  );
+});
+
+describe('refs add --description: following the refusal as printed', () => {
+  it(
+    '(l5) filling in exactly the packages it lists produces a proposal that finalizes',
+    async () => {
+      expect.hasAssertions();
+      await withResetExitCode(() =>
+        withTempHome(async (homeDir) => {
+          const { ctx, fixture, stdout } = await runOneShot(homeDir, {
+            monorepo: true,
+            monorepoAllDescribed: true,
+          });
+          const listed = listedPackages(messageOf(parseLastEnvelope(stdout) as ErrorEnvelope));
+          const proposal = await runAddDryRunJson(ctx, stdout, fixture.url);
+
+          await finalizeViaProposalFile(ctx, homeDir, describedFrom(proposal, listed));
+
+          const { entry } = (parseLastEnvelope(stdout) as FinalizeEnvelope).data;
+          expect(Object.keys(packagesOf(entry))).toHaveLength(MONOREPO_PACKAGES);
         }),
       );
     },

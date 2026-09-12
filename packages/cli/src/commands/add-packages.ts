@@ -169,7 +169,8 @@ const packagesNeedingDescription = (
  * than the repository root, naming ALL of them (the repo's established "list every offending key"
  * precedent — see `resolve.ts`'s multi-ref ambiguity message) rather than just the first. Validates
  * before finalize: called from `add.ts#buildDescriptionRef` before `finalizeRef` ever runs, so a
- * rejection here writes nothing to config or state (the dry-run's checkout is already on disk).
+ * rejection here configures no ref. It is not a rejection that leaves nothing behind: the clone
+ * happened, and `runAddDescription` has already recorded it as a pending add (see its comment).
  *
  * The suggested commands carry the caller's own `source`, shell-quoted, rather than a `<source>`
  * placeholder: a printed command that cannot be run as printed is a bug here (`CLAUDE.md`). They
@@ -180,7 +181,14 @@ const packagesNeedingDescription = (
  * The list comes LAST, unlike `resolve.ts`'s ambiguity message, and for the opposite reason: there
  * every name is a choice the reader has to make between, so the names ARE the message. Here every
  * name leads to the same two commands, and a real monorepo contributes a hundred of them — so the
- * part worth reading if anything truncates is the recovery, not the inventory. */
+ * part worth reading if anything truncates is the recovery, not the inventory.
+ *
+ * It lists EVERY package in the proposal, including the registered root, which is deliberately not
+ * the set this guard rejected on. The two sets are different questions: the root is exempt from
+ * "why did the one-shot refuse" (the ref's own text describes it) but not from "what must carry a
+ * description in a proposal" — `zFinalProposal` requires one for every entry. Printing the guard's
+ * set here sent the reader to fill in exactly the members and finalize into
+ * `packages["<root>"].description: expected string, received undefined`. */
 const requireDescribablePackages = (
   proposalPackages: Record<string, ProposalPackageEntry>,
   source: string,
@@ -194,10 +202,10 @@ const requireDescribablePackages = (
     'refs add --description cannot describe a package: it has one description, about the ' +
       'repository. Run the two-phase flow instead:\n' +
       `  refs add ${shellQuote(source)} --dry-run --json > proposal.json\n` +
-      "Fill in the ref's own description and one for every package below, written from its own " +
-      'source, then:\n' +
+      "Fill in the ref's own description, and one written from its own source for each package " +
+      'below, then:\n' +
       '  refs add --proposal proposal.json\n' +
-      `packages needing a description: ${undescribed.join(', ')}`,
+      `packages to describe: ${Object.keys(proposalPackages).toSorted().join(', ')}`,
   );
 };
 

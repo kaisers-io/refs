@@ -64,17 +64,21 @@ describe('listing the packages the one-shot cannot describe', () => {
 });
 
 describe('the description guard', () => {
-  it('names every package it cannot describe, sorted, and points at the two-phase flow', () => {
+  it('lists every package the proposal needs a description for, sorted, INCLUDING the root', () => {
     expect.hasAssertions();
+    // The root is exempt from the guard (the ref's own text describes it) but not from
+    // `zFinalProposal`, which requires a description on every entry. Listing only what the guard
+    // rejected on sent the reader to finalize a proposal still missing the root's.
     const detected: WorkspacePackage[] = [
       { name: 'zeta', path: 'packages/zeta' },
+      { name: '@acme/toolkit', path: '.' },
       { name: 'beta', path: 'packages/beta' },
     ];
     const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
 
-    expect(() => requireDescribablePackages(packages, SOURCE)).toThrow(
-      /two-phase flow.*packages needing a description: beta, zeta/su,
-    );
+    expect(() =>
+      requireDescribablePackages(packages, SOURCE, registeredRootName(detected, packages)),
+    ).toThrow(/two-phase flow.*packages to describe: @acme\/toolkit, beta, zeta/su);
   });
 
   it('shell-quotes the source into the printed command rather than a <source> placeholder', () => {

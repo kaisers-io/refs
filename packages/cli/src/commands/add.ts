@@ -84,8 +84,8 @@ const runAddProposal = async (ctx: CliContext, location: string): Promise<AddOut
 // `requireDescribablePackages` runs FIRST, before anything else here and before `finalizeRef` is
 // ever reached — the one-shot `--description` text is the top-level ref's own description and not
 // a fallback for any CHILD package, and detection supplies none (a manifest's own description does
-// not survive the scan), so any child package must fail closed here, with no config/state write
-// having happened yet. The root package registered at `.` is the single exception, and not really
+// not survive the scan), so any child package must fail closed here, with no ref having been
+// configured. The root package registered at `.` is the single exception, and not really
 // an exception at all: it is this repository, so the ref's description describes it exactly (see
 // `withRootDescription`).
 const buildDescriptionRef = (

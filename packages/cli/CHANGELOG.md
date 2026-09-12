@@ -22,11 +22,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   finalizes a source with no detected packages, or one whose only detected package is the
   repository root at `.` — and there the text now wins over whatever the root manifest said about
   itself. For anything else it exits `3`, naming every package and printing the two-phase commands
-  to run instead, with the source it was given quoted into them. A refusal registers no ref. The
-  checkout it cloned stays, and is now recorded as a pending add — so `doctor` reports it as one
-  instead of offering to delete a checkout the printed recovery is about to reuse, and the clone
-  mode actually used survives into the finalize (it exists nowhere but the clone's own output: a
-  fallback to a full clone is indistinguishable on disk from a real partial one).
+  to run instead, with the source it was given quoted into them, and listing every package the
+  proposal will need a description for — the repository root included, which is not the set the
+  refusal is about but is the set `refs add --proposal` requires.
+
+  A refusal registers no ref. The checkout it cloned stays, and is now recorded as a pending add —
+  so for the next 24 hours `doctor` reports it as one instead of offering to delete a checkout the
+  printed recovery is about to reuse, and the clone mode actually used survives into the finalize.
+  That mode cannot be recovered from the checkout afterwards: git records
+  `remote.origin.promisor` and `partialclonefilter` from the requested filter, whether or not the
+  server honoured it.
 
   Existing entries are untouched. A description imported from a manifest before this release stays
   exactly as it is — nothing distinguishes it from one written by hand, so nothing rewrites it. To
