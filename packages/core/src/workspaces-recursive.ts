@@ -104,11 +104,12 @@ const descendable = async (
     return false;
   }
   if (entry.isSymbolicLink()) {
-    // An excluded link is not a missed candidate: the repository said it does not want what is
-    // behind it, so not looking costs nothing. Reporting it anyway would mark the scan unreliable
-    // — which turns the unregistered-package pass off for the whole ref — over a directory
-    // nobody asked about.
-    if (!at.excluded.has(at.relPath)) {
+    // Suppressed only when the exclusion covers everything BELOW the link, not merely the link
+    // itself. Excluding `packages/linked` says nothing about `packages/linked/pkg`, which stays
+    // selected — so staying quiet there would let an uninspected package certify a complete scan.
+    // Where the whole subtree is excluded, not looking costs nothing and the diagnostic would
+    // disable the unregistered-package pass over a directory nobody asked about.
+    if (!at.excluded.coversSubtree(at.relPath)) {
       await reportLinkedDir(walk, at.relPath);
     }
     return false;

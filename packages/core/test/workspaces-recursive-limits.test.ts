@@ -129,7 +129,7 @@ describe('an excluded symlink', () => {
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     writeFileSync(
       join(repo, 'pnpm-workspace.yaml'),
-      "packages:\n  - 'packages/**/*'\n  - '!packages/linked'\n",
+      "packages:\n  - 'packages/**/*'\n  - '!packages/linked/**'\n",
     );
     addPackage(repo, 'packages/real', { name: '@deep/real', version: '1.0.0' });
     addPackage(repo, 'elsewhere/pkg', { name: '@deep/elsewhere', version: '1.0.0' });
@@ -138,9 +138,10 @@ describe('an excluded symlink', () => {
 
     const scan = await detectWorkspacePackagesDetailed(repo);
 
-    // The repository said it does not want what is behind that link, so not looking costs
-    // nothing — and an unreliable scan would turn the unregistered-package pass off for the
-    // whole ref over a directory nobody asked about.
+    // The exclusion covers everything BELOW the link, so not looking costs nothing — and an
+    // unreliable scan would turn the unregistered-package pass off for the whole ref over a
+    // directory nobody asked about. Excluding the link ALONE would not do: `!packages/linked`
+    // says nothing about `packages/linked/pkg`, which stays selected.
     expect(scan.diagnostics).toStrictEqual([]);
     expect(scanIsReliable(scan)).toBe(true);
   });
@@ -250,5 +251,29 @@ describe('an exclusion that does not reach a hidden descendant', () => {
     // pattern says otherwise — so the package is selected and not excluded. Pruning its ancestor
     // on the strength of that exclusion would drop a package nothing excluded.
     expect(names(scan.packages)).toStrictEqual(['@deep/internal']);
+  });
+});
+
+describe('a symlink whose exclusion covers only itself', () => {
+  it('is still reported, because what is below it is not excluded', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    writeFileSync(
+      join(repo, 'pnpm-workspace.yaml'),
+      "packages:\n  - 'packages/**/*'\n  - '!packages/linked'\n",
+    );
+    addPackage(repo, 'packages/real', { name: '@deep/real', version: '1.0.0' });
+    addPackage(repo, 'elsewhere/pkg', { name: '@deep/elsewhere', version: '1.0.0' });
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    symlinkSync(join(repo, 'elsewhere'), join(repo, 'packages', 'linked'), 'dir');
+
+    const scan = await detectWorkspacePackagesDetailed(repo);
+
+    // `packages/linked/pkg` is selected and excluded by nothing, so a package could be sitting
+    // behind that link. Staying quiet would let it certify a scan that never looked.
+    expect(scan.diagnostics).toStrictEqual([
+      { kind: 'candidate_not_inspected', path: 'packages/linked' },
+    ]);
   });
 });
