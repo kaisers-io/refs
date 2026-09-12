@@ -409,6 +409,11 @@ the range it just fetched, so it is genuinely new upstream rather than something
 leave out — a package that merely moved to another directory is not new, and one renamed in place
 is. `refs doctor` lists every unregistered member, because it was asked to.
 
+One shape `refs sync` misses: a member whose `package.json` is a **symlink** into the repository
+declares its name somewhere else, so renaming it changes a file no package directory contains and
+the sync sees nothing new. `refs doctor` reports it — ask for one whenever a repository's packages
+look out of step and sync has been quiet.
+
 Both go quiet where workspace detection could have MISSED something — an unreadable manifest, an
 unexpanded `**` — because the path they would name cannot be established from a partial scan. A
 negated pattern (`!examples/vue/2*`) is the exception: it hides nothing, it only leaves in what

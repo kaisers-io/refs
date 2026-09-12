@@ -15,12 +15,22 @@ import { extractPackageName } from '../workspaces-parse.ts';
 // a deliberately untracked package to another directory adds a manifest path and would be
 // announced as an arrival. Names answer both correctly.
 //
-// Only manifests the range CHANGED have to be read from history. An unchanged manifest is
+// Only manifests the range CHANGED have to be read from history. An unchanged manifest FILE is
 // byte-identical at both ends, so its current name is also the name it had before — which is what
 // keeps this to a handful of reads on a monorepo with a hundred packages. That shortcut assumes
 // the caller can still SEE those members, so a range that changed the workspace declaration
 // itself NARROWED gives up rather than guessing (`declarations.ts`); one that only added
 // declarations keeps every previously visible member visible, so it does not have to.
+//
+// Read "manifest" there as the path `<member>/package.json`, not as the bytes a member's name is
+// declared in. Workspace detection follows a manifest symlink that stays inside the repository, so
+// `packages/b/package.json -> ../../manifests/b.json` is an ordinary member — and renaming it
+// edits `manifests/b.json`, which this diff does not select and no package directory contains.
+// The member counts as untouched, its NEW name is taken for its old one, and the arrival is
+// suppressed. That is an accepted limitation, not an oversight: see #94 for the measurements and
+// for why the conservative alternative (give up whenever a symlink is present) was implemented,
+// measured and reverted. `refs doctor` reports the unregistered name instead — though only while
+// workspace discovery is reliable, which is its own limitation (#104).
 //
 // Best-effort throughout. Every failure resolves to `undefined`, meaning "nothing can be said",
 // and the caller reports no arrivals: this only ever adds a finding to a sync that already

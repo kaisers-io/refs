@@ -109,9 +109,14 @@ const byName = (packages: readonly WorkspacePackage[]): Map<string, string[]> =>
 /** Every package name the repository already had before the fetched range.
  *
  * Two sources, and the second is what keeps this cheap. `namesBefore` covers the manifests the
- * range actually changed, read out of history. Every OTHER member's manifest is byte-identical at
- * both ends of the range, so the name it carries now is the name it carried before — no read
- * required, the scan already has it. */
+ * range actually changed, read out of history. Every OTHER member's manifest FILE is
+ * byte-identical at both ends of the range, so the name it carries now is the name it carried
+ * before — no read required, the scan already has it.
+ *
+ * "Manifest" means the path `<member>/package.json`. A member whose manifest is a symlink into the
+ * repository declares its name somewhere that path does not name, so a rename there leaves the
+ * member looking untouched and its new name is wrongly taken for its old one. Accepted limitation,
+ * measured in #94; `arrivals.ts` carries the full reasoning. */
 const namesThatExisted = (
   before: PackagesBefore,
   members: readonly WorkspacePackage[],
