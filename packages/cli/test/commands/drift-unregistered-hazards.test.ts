@@ -34,7 +34,7 @@ describe('probeRefStructure: values that reach a shell', () => {
 
     const line = driftLines(await probeRefStructure(repo, CONFIGURED, ALL), FIXTURE_REF).join('\n');
 
-    expect(line).toContain("--package '@evil/; rm -rf /tmp/x' --create --path 'packages/$(id)'");
+    expect(line).toContain("--package='@evil/; rm -rf /tmp/x' --create --path='packages/$(id)'");
   });
 });
 

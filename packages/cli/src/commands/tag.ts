@@ -7,11 +7,11 @@ import {
   validationError,
 } from '@kaisers-io/refs-core';
 import { cliOptsOf, emit, wrapAction } from '../output.ts';
+import { editCommand, shellQuote } from '../shell-quote.ts';
 import { requireCheckout, requireEntry, requirePackage } from './ref-context.ts';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
 import { matchRefKey } from './list.ts';
-import { shellQuote } from '../shell-quote.ts';
 
 // `refs tag <ref> <version> [--package <name>]` — resolves a semver-ish `<version>` to the actual
 // git tag it corresponds to, by rendering the applicable `tag_format` and verifying the rendered
@@ -70,10 +70,10 @@ const requireFormat = (
   // fixed with `--package`: setting the ref-level format instead would hand that convention to
   // every other package that has no override of its own.
   const subject = packageName === undefined ? `ref '${key}'` : `package '${packageName}'`;
-  const scope = packageName === undefined ? '' : ` --package ${shellQuote(packageName)}`;
+  const scope = packageName === undefined ? [] : [`--package=${shellQuote(packageName)}`];
   throw validationError(
     `${subject} has no tag_format configured — inspect the repository's real tags and set one ` +
-      `with: refs edit ${shellQuote(key)} tag_format '<format>'${scope}`,
+      `with: ${editCommand(scope, [key, 'tag_format', '<format>'])}`,
   );
 };
 

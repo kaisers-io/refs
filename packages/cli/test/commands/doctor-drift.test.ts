@@ -75,7 +75,7 @@ describe('refs doctor: config-drift', () => {
         const envelope = await runDoctorJson(setup.ctx, setup.stdout);
 
         expectCheck(envelope, 'config-drift', {
-          detailContains: "--package '@acme/b' --remove",
+          detailContains: "--package='@acme/b' --remove",
           status: 'warn',
         });
       }),

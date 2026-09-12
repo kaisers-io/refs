@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   command refs prints. A new path the configuration could not hold is still reported, without a command
   that would only fail validation.
 
+  Every printed `refs edit` now attaches its option values with `=` and, where a positional would
+  otherwise begin with `-`, ends the options with `--`. Quoting gets a value past the shell; refs'
+  own parser reads it next, and `refs edit '<ref>' path '-new/pkg'` — a path `zPackagePath` accepts
+  — arrived correctly quoted and exited `2` with `unknown option '-new/pkg'`. The terminator is
+  printed only where it is needed, so appending `--json` to an ordinary printed line still works.
+
 - **`refs edit <ref> --package <name> --remove` unregisters a package.** The counterpart to
   `--create`, and the repair the `missing` finding needed: a package that left a repository's
   workspaces leaves an entry behind that `refs resolve` keeps answering with, pointing at a path no

@@ -106,7 +106,7 @@ describe('drift lines: an unregistered root', () => {
     // The ref key is interpolated, not a `<ref>` placeholder: a shell reads that as an input
     // redirection, so a line carrying one cannot be run as printed.
     expect(line).toContain(
-      `refs edit '${FIXTURE_REF}' --package '@acme/toolkit' --create --path '.'`,
+      `refs edit --package='@acme/toolkit' --create --path='.' --description="<what it is>" '${FIXTURE_REF}'`,
     );
   });
 });
@@ -145,7 +145,7 @@ describe('probeRefStructure: a root whose name a member also claims', () => {
       FIXTURE_REF,
     );
 
-    expect(line).toContain("--create --path 'packages/toolkit'");
+    expect(line).toContain("--create --path='packages/toolkit'");
   });
 });
 

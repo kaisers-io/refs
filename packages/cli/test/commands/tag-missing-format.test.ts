@@ -182,7 +182,7 @@ describe('refs tag: package override without a ref-level format', () => {
           // inherited by every other package that has no override of its own. And it must be
           // quoted — this string is meant to be pasted into a shell, and the name came from a
           // third-party repository's manifest.
-          expect(message).toContain(String.raw`--package '$(id);'\''weird'`);
+          expect(message).toContain(String.raw`--package='$(id);'\''weird'`);
         }),
       );
     },
