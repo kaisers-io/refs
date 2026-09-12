@@ -183,45 +183,65 @@ const descendAll = async (
   }
 };
 
-// Expands one recursive pattern from its wildcard-free base. The base itself is never a candidate
-// — a recursive pattern under `packages/` does not select `packages`, and the matcher says so.
+/** Whether the base can be walked at all: absent is ordinary, outside the checkout is not.
+ *
+ * A declared tree the repository does not have — `smoke/**` in a clone with no `smoke/` — is the
+ * one absence that says nothing about the scan. An escape is the opposite: `readdir` FOLLOWS a
+ * symlinked base, so without this guard a `packages` link pointing out of the checkout is walked
+ * in full, and the manifest probe's own refusals turn that into a list of complaints about paths
+ * that are not in the repository — or into silence, when the target holds no manifests at all.
+ * The single-level expander has applied the same guard since it was written. */
+const baseFault = async (repoDir: string, baseDir: string): Promise<ExpandResult | undefined> => {
+  const located = await resolveInside(repoDir, join(repoDir, baseDir));
+  if (located.kind === 'inside') {
+    return undefined;
+  }
+  return located.kind === 'missing'
+    ? { diagnostics: [], dirs: [] }
+    : { diagnostics: [{ kind: 'workspace_dir_unreadable', path: baseDir }], dirs: [] };
+};
+
+/** Two matchers, for two different questions.
+ *
+ * SELECTION asks about the MANIFEST path, which is what both resolvers actually glob: npm appends
+ * `/package.json` to every declared pattern. That is not cosmetic — a trailing `**` matches zero
+ * segments before the manifest, so `packages/core/**` selects `packages/core` itself, which the
+ * same pattern matched against the directory path does not. Checked against
+ * `@npmcli/map-workspaces` itself over six pattern shapes: manifest paths agree with npm on all
+ * six, directory paths on four.
+ *
+ * PRUNING asks about the directory prefix. Appending the manifest name there asks whether an
+ * ancestor's own manifest path could match a pattern that ends in another wildcard segment — it
+ * cannot, so the whole valid subtree below that ancestor is skipped while the scan still reports
+ * itself complete. (No glob is written out here: a wildcard followed by a slash closes a doc
+ * block early.) */
+const matchersFor = (pattern: string): Pick<Walk, 'couldHold' | 'selects'> => {
+  const normalized = normalizeSeparators(pattern);
+  const selecting = new Minimatch(`${normalized}/${MANIFEST_FILE}`);
+  const descending = new Minimatch(normalized);
+  return {
+    couldHold: (path) => descending.match(path, true),
+    selects: (path) => selecting.match(posix.join(path, MANIFEST_FILE)),
+  };
+};
+
+// Expands one recursive pattern from the deepest directory it names outright.
 const expandRecursive = async (
   repoDir: string,
   plan: { baseDir: string; pattern: string },
   context: { budget: ScanBudget; excluded: ExcludedDirs },
 ): Promise<ExpandResult> => {
-  const located = await resolveInside(repoDir, join(repoDir, plan.baseDir));
-  if (located.kind === 'missing') {
-    // A declared tree the repository does not have is ordinary — `smoke/**/*` in a clone with no
-    // `smoke/` — and is the one absence that says nothing about the scan.
-    return { diagnostics: [], dirs: [] };
+  const fault = await baseFault(repoDir, plan.baseDir);
+  if (fault !== undefined) {
+    return fault;
   }
-  if (located.kind !== 'inside') {
-    // The same guard the single-level expander applies, and for a reason recursion makes sharper:
-    // `readdir` FOLLOWS a symlinked base, so without this a `packages` link pointing out of the
-    // checkout would be walked in full. The probe at the end refuses each manifest it finds out
-    // there, which turns an escape into a list of `manifest_unreadable` lines about paths that
-    // are not in the repository — and into silence when the target holds no manifests at all.
-    return { diagnostics: [{ kind: 'workspace_dir_unreadable', path: plan.baseDir }], dirs: [] };
-  }
-  // Matched as the MANIFEST path, which is what both resolvers actually glob: npm appends
-  // `/package.json` to every declared pattern, and pnpm appends `/package.{json,yaml,json5}`.
-  // The difference is not cosmetic. `packages/core/**` selects `packages/core` itself — `**`
-  // matches zero segments before the manifest — while the same pattern matched against the
-  // DIRECTORY path does not, so a walk that asked the directory question silently dropped the
-  // package the pattern most obviously names. Checked against `@npmcli/map-workspaces` itself
-  // over six pattern shapes: matching manifest paths agrees with npm on all of them, matching
-  // directory paths on four.
-  const matcher = new Minimatch(`${normalizeSeparators(plan.pattern)}/${MANIFEST_FILE}`);
-  const manifestIn = (path: string): string => posix.join(path, MANIFEST_FILE);
   const walk: Walk = {
+    ...matchersFor(plan.pattern),
     budget: context.budget,
-    couldHold: (path) => matcher.match(manifestIn(path), true),
     diagnostics: [],
     dirs: [],
     pattern: plan.pattern,
     repoDir,
-    selects: (path) => matcher.match(manifestIn(path)),
   };
   await walkDir(walk, { depth: 1, relPath: plan.baseDir }, context.excluded);
   return { diagnostics: walk.diagnostics, dirs: walk.dirs };
