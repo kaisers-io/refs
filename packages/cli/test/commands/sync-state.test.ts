@@ -135,3 +135,94 @@ describe('record failure persistence', () => {
     });
   });
 });
+
+// A sync failure's message is not bounded by anything this side cares about: most of it is git's
+// own stderr, and git quotes every ref it was working on. `SpawnRunner`'s 64 MiB stream cap stops a
+// runaway subprocess; it is no budget for a string written into `state.json` and read back on every
+// later command. Reproduced against a real remote: 120 conflicting tags produced 47,816 characters.
+//
+// The numbers below are deliberately NOT derived from the production constant. A test that sizes
+// its input from the cap it is checking moves with the cap, and every assertion stays green however
+// large the cap becomes.
+const HUGE_MESSAGE_CHARS = 100_000;
+const PERSISTED_CEILING_CHARS = 4000;
+const PREFIX = 'git fetch failed: ';
+const SUFFIX = " try running 'git remote prune origin'";
+
+/** A message of exactly `length` characters that begins with `PREFIX` and ends with `SUFFIX`, so a
+ * test can tell which end of it survived. */
+const messageOf = (length: number): string => {
+  const filler = 'x'.repeat(length - PREFIX.length - SUFFIX.length);
+  return `${PREFIX}${filler}${SUFFIX}`;
+};
+
+/** Records `message` against a fresh home and reads back what was persisted — the whole of every
+ * case below, so each test body is its message and its assertions. The `??` lives here rather than
+ * in a test, where `vitest/no-conditional-in-test` would refuse it. */
+const recordAndReadBack = async (message: string): Promise<string> => {
+  let recorded = '';
+  await withTempHome(async (homeDir) => {
+    const { ctx } = realContextFor(homeDir);
+    await initHome(ctx);
+    const home = resolveHome(ctx.env);
+    const key = zRefKey.parse('github.com/acme/widget');
+    await recordFailure(home, key, message);
+    const state = await readState(home);
+    recorded = state.refs[key]?.last_error ?? '';
+  });
+  return recorded;
+};
+
+const NOTICE_PATTERN = /\n… (?<count>\d+) characters omitted …\n/u;
+
+/** The truncation notice as written, or `''` when there is none — hoisted out of the test body,
+ * where `vitest/no-conditional-in-test` refuses the `??`. */
+const noticeIn = (recorded: string): string => NOTICE_PATTERN.exec(recorded)?.[0] ?? '';
+
+/** The count the truncation notice claims, or `undefined` when there is no notice. */
+const omittedCountIn = (recorded: string): number | undefined => {
+  const match = NOTICE_PATTERN.exec(recorded);
+  return match?.groups?.['count'] === undefined ? undefined : Number(match.groups['count']);
+};
+
+describe('a failure message large enough to matter', () => {
+  it('persists a bounded amount of it, however much arrives', async () => {
+    expect.hasAssertions();
+
+    const recorded = await recordAndReadBack(messageOf(HUGE_MESSAGE_CHARS));
+
+    expect(recorded.length).toBeLessThan(PERSISTED_CEILING_CHARS);
+  });
+
+  it('keeps both ends — the command at the top, git’s own hint at the bottom', async () => {
+    expect.hasAssertions();
+
+    const recorded = await recordAndReadBack(messageOf(HUGE_MESSAGE_CHARS));
+
+    expect(recorded.startsWith(PREFIX)).toBe(true);
+    expect(recorded.endsWith(SUFFIX)).toBe(true);
+  });
+
+  it('states exactly how much it dropped', async () => {
+    expect.hasAssertions();
+    const message = messageOf(HUGE_MESSAGE_CHARS);
+
+    const recorded = await recordAndReadBack(message);
+
+    // Derived from what was actually persisted rather than from the cap, so the notice cannot
+    // drift from the truncation it describes: a plausible-looking but wrong count is the failure
+    // this pins. `recorded.length - notice.length` is how much of the original survived.
+    const survived = recorded.length - noticeIn(recorded).length;
+    expect(omittedCountIn(recorded)).toBe(message.length - survived);
+  });
+
+  it('leaves an ordinary failure message exactly as it arrived', async () => {
+    expect.hasAssertions();
+    const ordinary = "git fetch failed: error: 'refs/tags/release' exists; cannot create …";
+
+    const recorded = await recordAndReadBack(ordinary);
+
+    expect(recorded).toBe(ordinary);
+    expect(omittedCountIn(recorded)).toBeUndefined();
+  });
+});
