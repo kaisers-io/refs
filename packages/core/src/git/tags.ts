@@ -1,8 +1,37 @@
+import { gitSpec, runOrThrow, tagExists } from './repo.ts';
 import type { Runner } from '../proc/runner.ts';
 import type { TagFormat } from '../schemas/primitives.ts';
 import { notFoundError } from '../errors.ts';
-import { tagExists } from './repo.ts';
 import { zTagFormat } from '../schemas/primitives.ts';
+
+// `spawn-collector.ts` puts this on `stderr` when a stream hits its cap. Read rather than assumed
+// away: a truncated list looks exactly like a complete one to anything that counts it.
+const TRUNCATION_NOTE = 'refs: stdout exceeded';
+
+/** Every tag, or the first `limit` of them, ordered by `git tag --sort=-version:refname` — which is
+ * version-aware over the whole refname, so it groups by prefix rather than by date.
+ *
+ * `complete` says whether this is the repository's whole tag list: false when `limit` cut it, and
+ * false when git's output hit the stream cap. It matters to a caller that COUNTS — "the format most
+ * tags use" is a claim about all of them — and not at all to one that wants a sample. */
+const listTags = async (
+  runner: Runner,
+  dir: string,
+  limit?: number,
+): Promise<{ complete: boolean; tags: string[] }> => {
+  const result = await runOrThrow(
+    runner,
+    gitSpec('git tag', ['tag', '--sort=-version:refname'], dir),
+  );
+  const tags = result.stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '');
+  const whole = !result.stderr.includes(TRUNCATION_NOTE);
+  return limit === undefined
+    ? { complete: whole, tags }
+    : { complete: whole && tags.length <= limit, tags: tags.slice(0, limit) };
+};
 
 // Regex for semantic version: major.minor.patch with optional prerelease and optional build metadata.
 // Dots are allowed in both the prerelease and build parts, per SemVer spec §9
@@ -93,7 +122,9 @@ const isBetter = (newCandidate: FormatCandidate, bestCandidate: FormatCandidate)
   newCandidate.count > bestCandidate.count ||
   (newCandidate.count === bestCandidate.count && newCandidate.index < bestCandidate.index);
 
-/** Finds the most frequent format; on a tie, the earliest index (most recent) wins. */
+/** Finds the most frequent format; on a tie, the earliest index in the SUPPLIED ORDER wins — not
+ * "the most recent tag". `listTags` orders by `--sort=-version:refname`, which groups by prefix in
+ * a repository that tags per package, so the head of that list is one package's tags. */
 const findBestFormat = (formatCounts: Map<string, FormatCandidate>): string | null => {
   const entries = [...formatCounts.entries()];
   const [firstEntry] = entries;
@@ -116,10 +147,20 @@ const findBestFormat = (formatCounts: Map<string, FormatCandidate>): string | nu
 };
 
 /**
- * Detects the dominant tag format from a list of recent tags (newest-first from git tag --sort=-version:refname).
- * Replaces the first semver substring in each tag with {version}; tags without semver are ignored.
- * Groups identical formats and returns the most frequent; on a tie, the most recent tag wins.
- * Returns null if no valid formats are found.
+ * The format most of `tags` use. Replaces the first semver substring in each tag with `{version}`;
+ * tags without semver are ignored. Groups identical formats and returns the most frequent; on a
+ * tie, the first in the supplied order wins. `null` when no tag yields a usable format.
+ *
+ * The answer is only as good as the list it is given. Handed the first twenty tags of a monorepo
+ * that tags per package, this returned whichever prefix sorted highest: `create-astro@{version}`
+ * for a repository with 839 `astro@{version}` tags, and a package that no longer exists for
+ * another. Callers pass every tag for that reason, and pass nothing at all rather than a partial
+ * list (`listTags`'s `complete`).
+ *
+ * Even then it establishes historical plurality, not which package is primary or still alive. A
+ * retired package with a thousand tags outvotes its replacement's hundred, and a nightly-release
+ * prefix outvotes everything. The two-phase flow shows the candidate to a human for that reason:
+ * it is a starting point, not a determination.
  */
 const detectTagFormat = (tags: readonly string[]): TagFormat | null => {
   const formatCounts = buildFormatCounts(tags);
@@ -156,4 +197,4 @@ const resolveTag = async (
   return tag;
 };
 
-export { detectTagFormat, renderTag, resolveTag };
+export { detectTagFormat, listTags, renderTag, resolveTag };

@@ -120,6 +120,31 @@ describe('format detection: edge cases', () => {
   });
 });
 
+// The shape that made `refs add` write a wrong `tag_format` twice against real repositories: a
+// monorepo tagging per package, read through a window that is the top of a refname sort rather
+// than a sample. Measured on `withastro/astro`, whose first twenty tags are dominated by
+// `create-astro@*` while `astro@*` carries the overwhelming majority overall.
+const MONOREPO_TAGS = [
+  ...Array.from({ length: 12 }, (_unused, index) => `create-astro@5.1.${String(index)}`),
+  ...Array.from({ length: 60 }, (_unused, index) => `astro@5.0.${String(index)}`),
+];
+const WINDOW = 12;
+
+describe('format detection over a monorepo that tags per package', () => {
+  it('names the format most tags use when it sees all of them', () => {
+    expect.hasAssertions();
+
+    expect(detectTagFormat(MONOREPO_TAGS)).toBe('astro@{version}');
+  });
+
+  it('names the wrong one when it sees only the head of the list', () => {
+    expect.hasAssertions();
+    // Not an assertion about desired behaviour — it states why callers must pass every tag. The
+    // function is honest about the list it gets; the defect was in what it was given.
+    expect(detectTagFormat(MONOREPO_TAGS.slice(0, WINDOW))).toBe('create-astro@{version}');
+  });
+});
+
 describe('tag rendering', () => {
   it('replaces {version} with the provided version', () => {
     expect.hasAssertions();

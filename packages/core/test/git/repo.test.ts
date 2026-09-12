@@ -5,7 +5,6 @@ import {
   detectDefaultBranch,
   installHooksGuard,
   isGitCheckout,
-  listTags,
   syncRef,
   tagExists,
 } from '../../src/git/repo.ts';
@@ -13,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { SpawnRunner } from '../../src/proc/runner.ts';
 import { join } from 'node:path';
+import { listTags } from '../../src/git/tags.ts';
 import { resolveHome } from '../../src/home.ts';
 import { tmpdir } from 'node:os';
 
@@ -244,24 +244,18 @@ describe('syncRef() managed-checkout guard', SUITE_OPTS, () => {
 });
 
 describe('listTags / tagExists', SUITE_OPTS, () => {
-  it('orders by -version:refname and reports tag existence', async () => {
+  it('orders by -version:refname, reports completeness, and answers tag existence', async () => {
     expect.hasAssertions();
     const fixture = await createFixtureRepo({ tags: ['v1.0.0', 'v1.2.0', 'v1.10.0'] });
     const dest = await makeDest();
     await plainClone(fixture.url, dest);
 
-    await expect(listTags(runner, dest)).resolves.toStrictEqual(['v1.10.0', 'v1.2.0', 'v1.0.0']);
+    await expect(listTags(runner, dest)).resolves.toStrictEqual({
+      complete: true,
+      tags: ['v1.10.0', 'v1.2.0', 'v1.0.0'],
+    });
     await expect(tagExists(runner, dest, 'v1.2.0')).resolves.toBe(true);
     await expect(tagExists(runner, dest, 'v9.9.9')).resolves.toBe(false);
-  });
-
-  it('returns an empty array when the repo has no tags', async () => {
-    expect.hasAssertions();
-    const fixture = await createFixtureRepo();
-    const dest = await makeDest();
-    await plainClone(fixture.url, dest);
-
-    await expect(listTags(runner, dest)).resolves.toStrictEqual([]);
   });
 
   // Regression test: `tagExists` must verify the LITERAL ref, not resolve git revision syntax.

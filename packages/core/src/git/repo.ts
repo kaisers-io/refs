@@ -34,7 +34,6 @@ type SyncOpts = {
 // established public names.
 type SyncResult = BuiltSyncResult;
 
-const DEFAULT_TAG_LIMIT = 20;
 const SUCCESS_EXIT_CODE = 0;
 const HOOK_MODE = 0o755;
 
@@ -233,23 +232,6 @@ const syncRef = async (runner: Runner, opts: SyncOpts): Promise<SyncResult> => {
   return buildSyncResult(toBuildSyncResultOpts(syncBranch, dirty, { newSha, oldSha }));
 };
 
-/** First `limit` tags, newest-first (`git tag --sort=-version:refname`), or `[]` if none. */
-const listTags = async (
-  runner: Runner,
-  dir: string,
-  limit = DEFAULT_TAG_LIMIT,
-): Promise<string[]> => {
-  const result = await runOrThrow(
-    runner,
-    gitSpec('git tag', ['tag', '--sort=-version:refname'], dir),
-  );
-  const tags = result.stdout
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line !== '');
-  return tags.slice(0, limit);
-};
-
 // `show-ref --verify` checks the LITERAL ref name, unlike `rev-parse --verify` — which also
 // resolves git revision syntax (e.g. `refs/tags/v1.0.0^{}` peels against an existing `v1.0.0` tag).
 // A crafted version rendered through a `tag_format` must never be treated as a match just because
@@ -289,5 +271,13 @@ const installHooksGuard = async (home: RefsHome): Promise<void> => {
 
 export { isGitCheckout } from './managed-checkout.ts';
 export type { SyncStatus } from './sync-result.ts';
-export { cloneRepo, detectDefaultBranch, installHooksGuard, listTags, syncRef, tagExists };
+export {
+  cloneRepo,
+  detectDefaultBranch,
+  gitSpec,
+  installHooksGuard,
+  runOrThrow,
+  syncRef,
+  tagExists,
+};
 export type { CloneResult, SyncResult };

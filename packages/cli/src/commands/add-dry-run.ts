@@ -118,14 +118,25 @@ const detectedFrom = (scan: WorkspaceScan, ctx: DetectionContext): DetectedField
   };
 };
 
+/** The format most of the repository's tags use — or `null`, when the tag list could not be read
+ * whole.
+ *
+ * Counting is a claim about every tag, so a partial list cannot support it: a repository whose tag
+ * output hit the stream cap would otherwise get a candidate derived from whichever prefix happened
+ * to survive. `null` is the same answer a repository with no usable tags gets, and `refs tag`
+ * already reports the absence rather than inventing a convention. */
+const tagCandidateFrom = (tagged: { complete: boolean; tags: string[] }): TagFormat | null =>
+  // eslint-disable-next-line unicorn/no-null -- matches `detectTagFormat`'s own `TagFormat | null`
+  tagged.complete ? detectTagFormat(tagged.tags) : null;
+
 const detectProposalFields = async (
   ctx: CliContext,
   dest: string,
   resolved: ResolvedSource,
 ): Promise<DetectedFields> => {
   const defaultBranch = await detectDefaultBranch(ctx.runner, dest);
-  const tags = await listTags(ctx.runner, dest);
-  const tagFormatCandidate = detectTagFormat(tags);
+  const tagged = await listTags(ctx.runner, dest);
+  const tagFormatCandidate = tagCandidateFrom(tagged);
   progress(ctx, 'detecting workspace packages…');
   const scan = await detectWorkspacePackagesDetailed(dest);
   return detectedFrom(scan, { defaultBranch, resolved, tagFormatCandidate });
@@ -244,5 +255,5 @@ const writePendingProposal = (
     await writeState(home, state);
   });
 
-export { runDryRunCore, writePendingProposal };
+export { runDryRunCore, tagCandidateFrom, writePendingProposal };
 export type { DryRunOutcome };

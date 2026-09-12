@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`tag_format` is detected from every tag, not from the top twenty of a refname sort.** Detection
+  counted formats among the first 20 tags of `git tag --sort=-version:refname`. That sort is
+  version-aware over the whole refname, so in a monorepo that tags per package it groups by prefix:
+  those twenty are one package's tags, not a sample of the repository's. Measured against two real
+  repositories, `refs add` proposed `create-astro@{version}` for a repository with 839
+  `astro@{version}` tags, and `keystatic@{version}` — a package whose last tag is `0.0.36` and whose
+  directory no longer exists — for one where `@keystatic/core@{version}` is the live package with
+  183. Both now resolve correctly, and the two repositories whose detection was already right are
+  unchanged.
+
+  A tag list that could not be read whole now yields no candidate at all rather than one derived
+  from whatever survived. `git tag` output is capped at the subprocess stream limit, and the note
+  saying so was written to stderr and never read — which did not matter while only twenty lines
+  were needed, and does once the count is a claim about all of them.
+
+  What this establishes is historical plurality, not which package is primary or still alive: a
+  retired package with a thousand tags still outvotes its replacement's hundred. The two-phase flow
+  shows the candidate for exactly that reason.
+
 ## [0.13.0] - 2026-09-12
 
 ### Upgrading
