@@ -46,15 +46,46 @@ const applySyncSuccess = (home: RefsHome, key: RefKey, outcome: RefSyncOutcome):
     await writeState(home, state);
   });
 
+// What a sync failure's message contains is not bounded by anything this side cares about. Most of
+// it is git's own stderr, and git quotes what it was working on — ref names among them, which the
+// tracked repository chooses. `SpawnRunner` caps each stream at 64 MiB, which stops a runaway
+// subprocess; it is not a budget for something written into `state.json` and read back on every
+// later command. An upstream with 120 conflicting tags produces one error line per tag.
+//
+// So the recorded message is capped, and the cut is stated rather than silent: a truncated error
+// is still evidence, but only if the reader can tell it is partial.
+//
+// Head AND tail, not head alone. A git failure puts the command context at the top and its own
+// summary and hint at the bottom ("try running 'git remote prune origin'"), and the bottom is the
+// half a reader acts on. Neither end guarantees the one line that names the actual cause — that
+// can sit anywhere in the middle — which is why the omission count is exact: it says how much
+// judgement the reader is missing.
+const LAST_ERROR_HEAD_CHARS = 1500;
+const LAST_ERROR_TAIL_CHARS = 500;
+const MAX_LAST_ERROR_CHARS = LAST_ERROR_HEAD_CHARS + LAST_ERROR_TAIL_CHARS;
+
+const boundedFailure = (message: string): string => {
+  if (message.length <= MAX_LAST_ERROR_CHARS) {
+    return message;
+  }
+  const head = message.slice(0, LAST_ERROR_HEAD_CHARS);
+  const tail = message.slice(message.length - LAST_ERROR_TAIL_CHARS);
+  const omitted = message.length - MAX_LAST_ERROR_CHARS;
+  return `${head}\n… ${String(omitted)} characters omitted …\n${tail}`;
+};
+
 /** Best-effort: records `message` as `key`'s `last_error` under a short home lock, preserving
  * every other field already in state. A failure here (e.g. lock contention) must never mask the
  * real sync failure the caller is already about to report, so it is swallowed rather than thrown —
- * the batch's result item for `key` still carries the original error either way. */
+ * the batch's result item for `key` still carries the original error either way.
+ *
+ * The message is capped on the way in (`boundedFailure`); the caller's own result item still
+ * carries the full text, so nothing is lost from the run that produced it. */
 const recordFailure = async (home: RefsHome, key: RefKey, message: string): Promise<void> => {
   try {
     await withLock(home, 'home', async () => {
       const state = await readState(home);
-      state.refs[key] = { ...state.refs[key], last_error: message };
+      state.refs[key] = { ...state.refs[key], last_error: boundedFailure(message) };
       await writeState(home, state);
     });
   } catch {

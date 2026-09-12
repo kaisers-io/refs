@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   U+D800, U+D801 and U+FFFD therefore shared one directory and one lock name, and two unrelated
   refs would have serialized against each other. No real config could carry one: TOML has no
   escape for an unpaired surrogate.
+- **A failed sync no longer persists an unbounded amount of remote output into `state.json`.**
+  `last_error` holds the failure's message, most often git's own output — which quotes what git was
+  working on, ref names among them, chosen by the tracked repository. No persistence-specific limit
+  applied: an upstream with 120 conflicting tags produced a 47,816-character error, all of it
+  written into a file refs reads back on every command. A newly recorded message now keeps 1500
+  characters from the start and 500 from the end, with an exact count of what was dropped in
+  between — so both the command that failed and git's own closing hint survive. The result of the
+  run that produced the failure still carries the message as it arrived.
 
 ### Changed
 
@@ -58,6 +66,9 @@ description "…"` to replace one.
 
 ### Security
 
+- `last_error` is documented as what it is — a failure message, usually git's own output, quoting
+  ref names the tracked repository chose — and `skills/refs/COMMANDS.md` now tells agents to read
+  it as untrusted evidence rather than as something refs vouches for.
 - `SECURITY.md` claimed refs "never reads checkout content as configuration", which was not true of
   manifest descriptions and is still not true of package names, paths, the default branch, or a
   `tag_format` derived from real tags. The claim is now stated as what the code enforces: refs never
