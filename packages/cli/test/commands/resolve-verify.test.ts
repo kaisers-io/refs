@@ -177,7 +177,7 @@ describe('a package that cannot be checked', () => {
       const repo = asCheckout(freshRepo());
       writeJson(join(repo, 'package.json'), {
         name: 'monorepo',
-        workspaces: ['src/*', 'libs/**/deep'],
+        workspaces: ['src/*', 'libs/{a,b}'],
       });
       addPackage(repo, 'src/other', { name: 'other' });
       // An ignored pattern means a package could be hiding behind it, so "not found" is not a
@@ -204,7 +204,7 @@ describe('an incomplete scan proves nothing either way', () => {
       // whole feature exists to prevent.
       writeJson(join(repo, 'package.json'), {
         name: 'monorepo',
-        workspaces: ['src/*', 'libs/**/deep'],
+        workspaces: ['src/*', 'libs/{a,b}'],
       });
       addPackage(repo, 'src/zod', { name: 'zod' });
       const outcome = await verifyIn({

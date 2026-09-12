@@ -14,9 +14,8 @@ import { run } from '../../src/main.ts';
 // What a dry-run says when workspace detection could not read the repository's own declaration.
 //
 // An empty `packages` record is not self-explanatory: it is also exactly what an ordinary
-// single-package repository produces. So a repository declaring `packages/**` — a pattern the
-// classifier cannot expand — used to hand back a package-less proposal indistinguishable from a
-// legitimate one, and `ADD.md` gives the agent no reason to doubt it. The configuration was then
+// single-package repository produces. So a repository declaring a pattern the classifier cannot
+// expand used to hand back a package-less proposal indistinguishable from a legitimate one, and `ADD.md` gives the agent no reason to doubt it. The configuration was then
 // built empty, and the drift probe never runs for a ref that configures no packages, so nothing
 // downstream could recover it either (#106).
 
@@ -66,7 +65,7 @@ describe('refs add --dry-run: a workspace declaration detection could not read',
           expect(Object.keys(envelope.data.packages)).toStrictEqual(['fixture-root']);
           expect(detectionWarnings(envelope)).toStrictEqual([
             'workspace detection could not fully inspect the declared workspaces ' +
-              '(packages/**: unsupported_pattern) — members may be missing from the detected ' +
+              '(packages/{a,b}: unsupported_pattern) — members may be missing from the detected ' +
               "packages; the repository's own workspace declaration is what settles it",
           ]);
         }),

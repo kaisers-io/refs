@@ -34,7 +34,10 @@ import { partitionProbes, probePackageDir } from './workspaces-probe.ts';
 import { probeRootPackage, withoutClaimedRoot } from './workspaces-root.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { ExpandResult } from './workspaces-probe.ts';
+import type { ScanBudget } from './workspaces-recursive.ts';
 import { expandGlobPattern } from './workspaces-expand.ts';
+// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
+import { newScanBudget } from './workspaces-recursive.ts';
 import { readDeclarations } from './workspaces-declarations.ts';
 
 /** Whether `pattern`, read as a path, is what `negation` names.
@@ -132,7 +135,11 @@ const collect = (results: readonly ExpandResult[]): ExpandResult => {
  * Only the INCLUSIVE patterns face a shape restriction. They have to be walked, and this scanner
  * expands one level; a negation is only ever matched, and the matcher handles every shape — so
  * `!packages/{a,b}` excludes what it names even though `packages/{a,b}` could not be expanded. */
-const expandSelection = async (repoDir: string, selection: Selection): Promise<ExpandResult> => {
+const expandSelection = async (
+  repoDir: string,
+  selection: Selection,
+  budget: ScanBudget,
+): Promise<ExpandResult> => {
   const { negations, patterns } = selection;
   const excluded = { has: (dir: string): boolean => excludedBy(negations, dir) };
   const chosen = collect(
@@ -140,7 +147,11 @@ const expandSelection = async (repoDir: string, selection: Selection): Promise<E
       patterns.map((pattern) =>
         // `body` is what gets classified and matched; `declared` is what a diagnostic quotes, so
         // someone reading it sees what the repository actually wrote.
-        expandGlobPattern(repoDir, { body: negatedBody(pattern), declared: pattern }, excluded),
+        expandGlobPattern(
+          repoDir,
+          { body: negatedBody(pattern), declared: pattern },
+          { budget, excluded },
+        ),
       ),
     ),
   );
@@ -156,9 +167,14 @@ const expandPatterns = async (
 ): Promise<ExpandResult> => {
   const fromNpm = selectPatterns(declared.npm);
   const fromPnpm = selectPnpmPatterns(declared.pnpm);
+  // ONE budget for the whole scan, both declarations included. Per-pattern budgets multiply with
+  // the number of declarations and charge overlapping trees again for each — a repository
+  // declaring three recursive patterns over intersecting directories would pay three times for the
+  // same walk, which is the opposite of a bound.
+  const budget = newScanBudget();
   const expanded = await Promise.all([
-    expandSelection(repoDir, fromNpm),
-    expandSelection(repoDir, fromPnpm),
+    expandSelection(repoDir, fromNpm, budget),
+    expandSelection(repoDir, fromPnpm, budget),
   ]);
   return collect(expanded);
 };

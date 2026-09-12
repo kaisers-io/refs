@@ -237,11 +237,33 @@ const issueLine = (issue: StructureIssue, key: string): string =>
 const discoveryLine = (reason: string): string =>
   `could not check for unregistered packages — ${reason}`;
 
+/** How many findings are worth printing in full before the list stops being read.
+ *
+ * Not a hypothetical limit. A repository declaring `packages/**` can legitimately have hundreds of
+ * workspace members — astro has 554, every one of them real, and pnpm agrees — so a ref tracking
+ * three of them would otherwise print 551 repair commands into one `doctor` line. The cap is on
+ * the PROSE; `refs sync --json` carries every finding in `structure.packages` for anything that
+ * needs the list rather than the message. */
+const MAX_LINES_PER_REF = 10;
+
+const overflowLine = (hidden: number): string =>
+  `…and ${hidden} more finding(s) — 'refs sync <ref> --json' carries the full list under ` +
+  '`structure.packages`';
+
+/** The findings, capped, with what the cap hid stated rather than silently dropped. Which ones
+ * survive is the order they came in: configured entries are classified before discovery runs, so
+ * a problem with a package the ref actually tracks is never crowded out by a list of ones it does
+ * not. */
+const cap = (lines: readonly string[]): string[] => {
+  const hidden = lines.length - MAX_LINES_PER_REF;
+  return hidden <= 0 ? [...lines] : [...lines.slice(0, MAX_LINES_PER_REF), overflowLine(hidden)];
+};
+
 const driftLines = (report: StructureReport, key: string): string[] => {
   if (report.reason !== undefined) {
     return [`could not be checked — ${report.reason}`];
   }
-  const issues = (report.packages ?? []).map((issue) => issueLine(issue, key));
+  const issues = cap((report.packages ?? []).map((issue) => issueLine(issue, key)));
   return report.discovery_incomplete === undefined
     ? issues
     : [...issues, discoveryLine(report.discovery_incomplete)];

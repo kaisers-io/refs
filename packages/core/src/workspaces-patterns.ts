@@ -46,6 +46,10 @@ type WorkspaceDiagnostic =
   // yields zero patterns. Without this the repo would be indistinguishable from one that
   // declares no workspaces at all — and would then look like a complete, trustworthy scan.
   | { kind: 'workspace_declaration_unparsed'; file: string }
+  // A recursive pattern (`packages/**/*`) whose walk hit one of the scan's budgets before it ran
+  // out of directories. Reaching the budget is not itself a failure; leaving a subtree that could
+  // still have matched unwalked is, which is the only condition this is reported under.
+  | { kind: 'scan_budget_exhausted'; path: string; pattern: string }
   | { kind: 'unsupported_pattern'; pattern: string }
   | { kind: 'workspace_dir_unreadable'; path: string }
   | { kind: 'workspace_file_unreadable'; file: string };
@@ -72,6 +76,7 @@ type WorkspaceScan = {
 // in it does not prove uniqueness either.
 const UNRELIABLE_DIAGNOSTIC_KINDS: ReadonlySet<WorkspaceDiagnostic['kind']> = new Set([
   'candidate_not_inspected',
+  'scan_budget_exhausted',
   'manifest_unreadable',
   'unsupported_pattern',
   'workspace_declaration_unparsed',

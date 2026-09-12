@@ -13,7 +13,13 @@ import { minimatch } from 'minimatch';
  * suffix to agree. */
 type WildcardPlan = { baseDir: string; kind: 'expand-children'; pattern: string; suffix: string };
 
+/** The walk-it plan, for a pattern that can match at more than one depth. No suffix and no single
+ * base level: which paths match is minimatch's answer at every step, and `workspaces-recursive.ts`
+ * only decides where to stop. */
+type RecursivePlan = { baseDir: string; kind: 'expand-recursive'; pattern: string };
+
 type WorkspacePatternPlan =
+  | RecursivePlan
   | WildcardPlan
   | { dir: string; kind: 'probe-dir'; pattern: string }
   | { kind: 'ignore' };
@@ -89,9 +95,7 @@ const UNSUPPORTED_GLOB_SYNTAX = /[?[\]{}()]/u;
 const isSupportedPatternShape = (pattern: string): boolean =>
   isSafeWorkspacePattern(pattern) &&
   !isNegatedPattern(pattern) &&
-  !pattern.includes('**') &&
-  !UNSUPPORTED_GLOB_SYNTAX.test(pattern) &&
-  (pattern.match(/\*/gu) ?? []).length <= MAX_WILDCARDS_PER_PATTERN;
+  !UNSUPPORTED_GLOB_SYNTAX.test(pattern);
 
 /** Whether `path` matches `pattern`, answered by the matcher npm itself uses.
  *
@@ -154,14 +158,40 @@ const wildcardSegmentPlan = (pattern: string): WorkspacePatternPlan => {
 // and a wildcard-free one probes a single literal directory. `<dir>/*`, a bare `*`,
 // `examples/vue/2*` and `crates/*/js` are all the first case — they differ only in where the
 // wildcard sits and what literal follows it, which `wildcardSegmentPlan` reads off the pattern.
+/** Whether one `readdir` and a literal probe per child can serve this pattern. That is true of
+ * exactly one wildcard segment, none of it `**`: everything before it is read once, everything
+ * after is a literal. A second wildcard segment, or a `**` that matches any number of them, means
+ * the depth is not known in advance — which is the recursive walk's job and nothing else's. */
+const isSingleLevel = (pattern: string): boolean => {
+  const segments = normalizeSeparators(pattern).split('/');
+  const wildcarded = segments.filter((segment) => segment.includes('*'));
+  return wildcarded.length <= MAX_WILDCARDS_PER_PATTERN && !wildcarded.includes('**');
+};
+
+/** Everything up to the first segment holding a wildcard: the deepest directory the pattern names
+ * outright, and therefore the only place a walk needs to start. */
+const wildcardBaseDir = (pattern: string): string => {
+  const segments = normalizeSeparators(pattern).split('/');
+  const at = segments.findIndex((segment) => segment.includes('*'));
+  return at <= 0 ? CURRENT_DIR_SEGMENT : segments.slice(0, at).join('/');
+};
+
+// Three outcomes for a supported pattern: one wildcard segment expands its base a single level, a
+// wildcard-free one probes a single literal directory, and anything deeper is walked.
 const classifyWorkspacePattern = (pattern: string): WorkspacePatternPlan => {
   if (!isSupportedPatternShape(pattern)) {
     return IGNORE;
   }
-
-  return pattern.includes('*')
+  if (!pattern.includes('*')) {
+    return { dir: pattern, kind: 'probe-dir', pattern };
+  }
+  return isSingleLevel(pattern)
     ? wildcardSegmentPlan(pattern)
-    : { dir: pattern, kind: 'probe-dir', pattern };
+    : {
+        baseDir: wildcardBaseDir(pattern),
+        kind: 'expand-recursive',
+        pattern: normalizeSeparators(pattern),
+      };
 };
 
 /** Whether an already-classified inclusive pattern selects `path` — decided from the plan alone,
@@ -186,4 +216,4 @@ export {
   normalizeSeparators,
   planMatchesPath,
 };
-export type { WildcardPlan, WorkspacePatternPlan };
+export type { RecursivePlan, WildcardPlan, WorkspacePatternPlan };

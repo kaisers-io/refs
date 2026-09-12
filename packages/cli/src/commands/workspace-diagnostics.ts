@@ -30,6 +30,11 @@ const diagnosticSubject = (diagnostic: WorkspaceDiagnostic): string | undefined 
     case 'unsupported_pattern': {
       return diagnostic.pattern;
     }
+    // Both, because either alone leaves the reader stuck: the pattern says which declaration was
+    // being walked, the path says how far it got.
+    case 'scan_budget_exhausted': {
+      return `${diagnostic.pattern} at ${diagnostic.path}`;
+    }
     case 'no_workspace_declaration': {
       return undefined;
     }

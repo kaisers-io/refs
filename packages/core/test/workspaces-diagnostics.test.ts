@@ -147,13 +147,13 @@ describe('incomplete expansion', () => {
     expect.hasAssertions();
     const repo = freshRepo();
     writeJson(join(repo, 'package.json'), {
-      workspaces: ['packages/*', 'libs/**/deep'],
+      workspaces: ['packages/*', 'libs/{a,b}'],
     });
     addPackage(repo, 'packages/a', { name: '@mono/a' });
     const scan = await detectWorkspacePackagesDetailed(repo);
     expect(scan.packages).toStrictEqual([{ name: '@mono/a', path: 'packages/a' }]);
     expect(scan.diagnostics).toStrictEqual([
-      { kind: 'unsupported_pattern', pattern: 'libs/**/deep' },
+      { kind: 'unsupported_pattern', pattern: 'libs/{a,b}' },
     ]);
     // A package could be hiding behind the ignored pattern, so the scan is not complete.
     expect(scanIsReliable(scan)).toBe(false);

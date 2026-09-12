@@ -428,6 +428,10 @@ declares its name somewhere else, so renaming it changes a file no package direc
 the sync sees nothing new. `refs doctor` reports it — ask for one whenever a repository's packages
 look out of step and sync has been quiet.
 
+A repository whose patterns reach many levels can declare hundreds of members — astro declares
+`packages/**/*` and has 554, every one of them real. `doctor` prints the first ten findings and a
+count of the rest; `refs sync <ref> --json` carries the full list under `structure.packages`.
+
 Both stop naming packages where workspace detection could have MISSED something — an unreadable
 manifest, an unexpanded `**` — because the path they would name cannot be established from a
 partial scan. They **say so** rather than going quiet: the report carries

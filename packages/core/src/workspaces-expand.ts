@@ -15,8 +15,11 @@ import { join, posix } from 'node:path';
 import type { Dirent } from 'node:fs';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { ExpandResult } from './workspaces-probe.ts';
+import type { ScanBudget } from './workspaces-recursive.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { WildcardPlan } from './workspaces-shapes.ts';
+// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
+import { expandRecursive } from './workspaces-recursive.ts';
 import { resolveInside } from './fs-containment.ts';
 
 // Turning one classified pattern into directories: reading a base dir, selecting its children, and
@@ -139,11 +142,16 @@ const expandLiteralDir = async (repoDir: string, dir: string): Promise<ExpandRes
 const expandGlobPattern = (
   repoDir: string,
   spec: { body: string; declared: string },
-  excluded: ExcludedDirs,
+  context: { budget: ScanBudget; excluded: ExcludedDirs },
 ): Promise<ExpandResult> => {
+  const { excluded } = context;
   const plan = classifyWorkspacePattern(spec.body);
   if (plan.kind === 'expand-children') {
     return expandGlobSingleLevel(repoDir, plan, excluded);
+  }
+
+  if (plan.kind === 'expand-recursive') {
+    return expandRecursive(repoDir, plan, context);
   }
 
   if (plan.kind === 'probe-dir') {
