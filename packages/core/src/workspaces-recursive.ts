@@ -89,6 +89,17 @@ const inspect = async (walk: Walk, relPath: string, excluded: ExcludedDirs): Pro
  * A symlinked directory is not `isDirectory()` under `readdir`'s lstat semantics, so it can never
  * be walked here — and one that could have held a match makes the scan incomplete rather than
  * simply absent, the same rule `probeChildren` applies one level down. */
+/** Whether nothing under this path can be selected — the one condition under which not walking it,
+ * and not reporting a link at it, cost nothing.
+ *
+ * Two qualifications, and both have to hold in BOTH places this is asked. Only a whole-subtree
+ * exclusion counts: excluding `packages/linked` says nothing about `packages/linked/pkg`. And a
+ * pattern that names a hidden segment outright reaches past such an exclusion anyway, because a
+ * wildcard exclusion does not cover a dot-name. Answering this differently for walking and for
+ * reporting is how a skipped link came to certify a scan that never looked. */
+const excludedSubtree = (walk: Walk, at: { excluded: ExcludedDirs; relPath: string }): boolean =>
+  !walk.selectsHidden && at.excluded.coversSubtree(at.relPath);
+
 const descendable = async (
   walk: Walk,
   entry: Dirent,
@@ -97,7 +108,7 @@ const descendable = async (
   if (!walk.couldHold(at.relPath) || NEVER_WALKED.has(entry.name)) {
     return false;
   }
-  if (!walk.selectsHidden && at.excluded.coversSubtree(at.relPath)) {
+  if (excludedSubtree(walk, at)) {
     // Nothing under it can be selected, so walking it can only spend budget that the packages
     // this scan IS looking for would otherwise get. A repository excluding a large generated
     // tree would otherwise lose real packages to it.
@@ -109,7 +120,7 @@ const descendable = async (
     // selected — so staying quiet there would let an uninspected package certify a complete scan.
     // Where the whole subtree is excluded, not looking costs nothing and the diagnostic would
     // disable the unregistered-package pass over a directory nobody asked about.
-    if (!at.excluded.coversSubtree(at.relPath)) {
+    if (!excludedSubtree(walk, at)) {
       await reportLinkedDir(walk, at.relPath);
     }
     return false;
