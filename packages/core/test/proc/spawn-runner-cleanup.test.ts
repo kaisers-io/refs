@@ -71,25 +71,60 @@ const waitUntil = async (
 // found via the OS process table (`pgrep -P` on POSIX, CIM on Windows), never captured from the
 // middle process's own stdout, so this stays a black-box assertion on real OS process state
 // rather than trusting the thing under test to self-report correctly.
-const firstPidLine = (stdout: string, description: string): number => {
+const firstPidLine = (stdout: string): number | undefined => {
   const [firstLine] = stdout.trim().split(/\r?\n/u);
-  if (firstLine === undefined || firstLine === '') {
-    throw new Error(`${description}: no child found`);
-  }
-  return Number(firstLine);
+  return firstLine === undefined || firstLine === '' ? undefined : Number(firstLine);
 };
 
-const directChildPid = async (parentPid: number): Promise<number> => {
-  if (process.platform === 'win32') {
-    const { stdout } = await execFileAsync('powershell.exe', [
-      '-NoProfile',
-      '-Command',
-      `(Get-CimInstance Win32_Process -Filter "ParentProcessId=${String(parentPid)}").ProcessId`,
-    ]);
-    return firstPidLine(stdout, `CIM children of ${String(parentPid)}`);
+// How the query would be written by hand, for the timeout message — the reader needs to know which
+// process table was asked about which pid.
+const childQueryFor = (parentPid: number): string =>
+  process.platform === 'win32'
+    ? `CIM children of ${String(parentPid)}`
+    : `pgrep -P ${String(parentPid)}`;
+
+/** One look at the process table: the direct child's pid, or `undefined` when the table does not
+ * (yet) show one. Both "no match" shapes collapse to `undefined` — Windows returns empty stdout,
+ * `pgrep` exits non-zero, which rejects — because the caller polls and only the eventual absence
+ * of a child is a failure. */
+const tryDirectChildPid = async (parentPid: number): Promise<number | undefined> => {
+  try {
+    if (process.platform === 'win32') {
+      const { stdout } = await execFileAsync('powershell.exe', [
+        '-NoProfile',
+        '-Command',
+        `(Get-CimInstance Win32_Process -Filter "ParentProcessId=${String(parentPid)}").ProcessId`,
+      ]);
+      return firstPidLine(stdout);
+    }
+    const { stdout } = await execFileAsync('pgrep', ['-P', String(parentPid)]);
+    return firstPidLine(stdout);
+  } catch {
+    return undefined;
   }
-  const { stdout } = await execFileAsync('pgrep', ['-P', String(parentPid)]);
-  return firstPidLine(stdout, `pgrep -P ${String(parentPid)}`);
+};
+
+/** The direct child's pid, polled like every other cross-process wait in this file.
+ *
+ * The grandchild's marker file proves it reached its own code; it does NOT prove the OS process
+ * table has caught up, and on a loaded hosted runner the CIM query is not instantaneous. Reading
+ * once turned that lag into a red Windows check that passed on re-run (#84). Polling asserts on
+ * the same real OS state, just not on a snapshot taken before it exists — a child that never
+ * appears still fails, with the same message it always did. */
+const directChildPid = async (parentPid: number, timeoutMs: number): Promise<number> => {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    // eslint-disable-next-line no-await-in-loop -- sequential polling by design, as in `waitUntil`
+    const pid = await tryDirectChildPid(parentPid);
+    if (pid !== undefined) {
+      return pid;
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(`${childQueryFor(parentPid)}: no child found`);
+    }
+    // eslint-disable-next-line no-await-in-loop -- sequential polling by design, as in `waitUntil`
+    await delay(POLL_INTERVAL_MS);
+  }
 };
 
 // The signal the test delivers to the middle process. On POSIX, SIGTERM exercises the classic
@@ -122,7 +157,7 @@ const runParentDeathScenario = async (dir: string): Promise<Scenario> => {
   const middlePid = requireMiddlePid(middle);
 
   await waitUntil(() => fileExists(marker), MARKER_TIMEOUT_MS);
-  const childPid = await directChildPid(middlePid);
+  const childPid = await directChildPid(middlePid, MARKER_TIMEOUT_MS);
   const childAliveBeforeKill = isPidAlive(childPid);
 
   middle.kill(CATCHABLE_KILL_SIGNAL);
