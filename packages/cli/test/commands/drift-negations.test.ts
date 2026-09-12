@@ -18,8 +18,9 @@ const entry = (path: string): PackageEntry => ({ description: 'A fixture package
 
 const probe = (
   checkoutDir: string,
-  packages: Parameters<typeof probeRefStructure>[1],
-): ReturnType<typeof probeRefStructure> => probeRefStructure(checkoutDir, packages, ARRIVALS_NONE);
+  packages: NonNullable<Parameters<typeof probeRefStructure>[1]['packages']>,
+): ReturnType<typeof probeRefStructure> =>
+  probeRefStructure(checkoutDir, { packages }, ARRIVALS_NONE);
 
 describe('probeRefStructure: a repository that declares a negation', () => {
   it('still reports a configured package that is gone', async () => {

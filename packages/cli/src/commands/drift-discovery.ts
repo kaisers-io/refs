@@ -1,4 +1,9 @@
-import type { PackagesBefore, WorkspacePackage, WorkspaceScan } from '@kaisers-io/refs-core';
+import type {
+  DeclinedPackage,
+  PackagesBefore,
+  WorkspacePackage,
+  WorkspaceScan,
+} from '@kaisers-io/refs-core';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import {
   detectWorkspacePackagesDetailed,
@@ -199,5 +204,39 @@ const unregisteredMembers = async (
   return { issues };
 };
 
-export { scanOnceFor, unregisteredMembers, unregisteredRoot };
+/** Applies the ref's declined list, and only to `unregistered` findings.
+ *
+ * A decline records that someone looked at a package and decided against routing to it. It is not
+ * a claim that the package is gone, so it must never touch a finding about a CONFIGURED entry
+ * (`missing`, `relocated`, `ambiguous`, `unverifiable`) — those say the configuration and the
+ * checkout disagree, and no decision about registration makes that untrue. It never suppresses
+ * `discovery_incomplete` either: "could not look" is not something anyone decided.
+ *
+ * Declining one claimant of an ambiguous name removes that candidate and keeps the rest. A name
+ * declared at three paths, two of them declined, is still a finding about the third — collapsing
+ * the whole name would hide a package nobody was asked about. */
+const applyDeclines = (
+  issues: readonly StructureIssue[],
+  declined: readonly DeclinedPackage[],
+): { issues: StructureIssue[]; suppressed: DeclinedPackage[] } => {
+  if (declined.length === 0) {
+    return { issues: [...issues], suppressed: [] };
+  }
+  const declinedAt = (name: string, dir: string): boolean =>
+    declined.some((entry) => entry.name === name && entry.path === dir);
+  const suppressed: DeclinedPackage[] = [];
+  const kept = issues.flatMap((issue) => {
+    if (issue.status !== 'unregistered') {
+      return [issue];
+    }
+    const paths = issue.path === undefined ? (issue.candidates ?? []) : [issue.path];
+    const remaining = paths.filter((dir) => !declinedAt(issue.name, dir));
+    const gone = paths.filter((dir) => declinedAt(issue.name, dir));
+    suppressed.push(...gone.map((dir) => ({ name: issue.name, path: dir })));
+    return remaining.length === 0 ? [] : [memberIssue(issue.name, remaining)];
+  });
+  return { issues: kept, suppressed };
+};
+
+export { applyDeclines, scanOnceFor, unregisteredMembers, unregisteredRoot };
 export type { DiscoveryResult, MemberDiscovery, ScanOnce };

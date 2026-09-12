@@ -32,7 +32,10 @@ describe('probeRefStructure: values that reach a shell', () => {
     // being non-empty. The line exists to be pasted into a shell.
     addPackage(repo, 'packages/$(id)', { name: '@evil/; rm -rf /tmp/x', version: '1.0.0' });
 
-    const line = driftLines(await probeRefStructure(repo, CONFIGURED, ALL), FIXTURE_REF).join('\n');
+    const line = driftLines(
+      await probeRefStructure(repo, { packages: CONFIGURED }, ALL),
+      FIXTURE_REF,
+    ).join('\n');
 
     expect(line).toContain("--package='@evil/; rm -rf /tmp/x' --create --path='packages/$(id)'");
   });
@@ -52,7 +55,7 @@ describe('probeRefStructure: a member claiming the root name', () => {
     // does not separate them, because the root's finding is not at `.` here.
     addPackage(repo, 'packages/toolkit', { name: '@fixture/toolkit', version: '1.0.0' });
 
-    const report = await probeRefStructure(repo, CONFIGURED, ALL);
+    const report = await probeRefStructure(repo, { packages: CONFIGURED }, ALL);
 
     expect(report.packages).toStrictEqual([
       { name: '@fixture/toolkit', path: 'packages/toolkit', status: 'unregistered' },
@@ -75,7 +78,7 @@ describe('probeRefStructure: a scan that could not inspect everything', () => {
     addPackage(repo, 'packages/a', { name: '@fixture/a', version: '1.0.0' });
     addPackage(repo, 'packages/excluded', { name: '@fixture/excluded', version: '1.0.0' });
 
-    const report = await probeRefStructure(repo, CONFIGURED, ALL);
+    const report = await probeRefStructure(repo, { packages: CONFIGURED }, ALL);
 
     expect(report).toStrictEqual({ status: 'ok' });
   });
@@ -98,7 +101,7 @@ describe('probeRefStructure: a repository that declares a negation', () => {
     addPackage(repo, 'packages/new', { name: '@fixture/new', version: '1.0.0' });
     addPackage(repo, 'examples/legacy-vue', { name: '@fixture/legacy', version: '1.0.0' });
 
-    const report = await probeRefStructure(repo, CONFIGURED, ALL);
+    const report = await probeRefStructure(repo, { packages: CONFIGURED }, ALL);
 
     // The package under the negation stays silent; the one outside it is reported.
     expect(report.packages).toStrictEqual([
@@ -122,7 +125,7 @@ describe('probeRefStructure: a negation that could exclude anything', () => {
     addPackage(repo, 'packages/a', { name: '@fixture/a', version: '1.0.0' });
     addPackage(repo, 'packages/fixtures', { name: '@fixture/fixtures', version: '1.0.0' });
 
-    const report = await probeRefStructure(repo, CONFIGURED, ALL);
+    const report = await probeRefStructure(repo, { packages: CONFIGURED }, ALL);
 
     expect(report).toStrictEqual({ status: 'ok' });
   });

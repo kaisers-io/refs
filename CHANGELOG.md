@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **A drift finding you have decided against can be recorded, so it stops coming back.**
+  `refs doctor` reports every workspace member a checkout declares that the configuration does not
+  have. There was no way to say "I looked, and no": the finding returned on every run forever, so
+  `config-drift` sat on `warn` permanently and the next real finding arrived in a line already
+  being ignored. On a home tracking four monorepos, six of seven findings were decisions that had
+  already been made — a repository root, and four packages published nowhere.
+
+  `refs edit --package=<name> --decline --path=<path> <ref>` records the decision on the ref, as
+  the name AND the path. Neither identifies it alone: a name-only record would also silence a
+  different package that later takes the name, and a path-only one would silence whatever moves in.
+  The `unregistered` finding now prints this command beside the registration command, so both
+  answers are available where the question is asked.
+
+  What a decline does not do: it never touches a finding about a configured entry (`missing`,
+  `relocated`, `ambiguous`, `unverifiable`), never suppresses `discovery_incomplete`, and never
+  hides the other claimants of an ambiguous name. The package is reported again if it moves.
+  `--undecline` withdraws the decision; registering the package clears it in the same write.
+  `refs doctor` says how many decisions a run left unreported, so a quiet check is not a silent
+  one.
+
 ## [0.13.1] - 2026-09-12
 
 ### Upgrading

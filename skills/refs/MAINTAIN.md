@@ -93,7 +93,12 @@ A `warn` on `config-drift` means the configuration and the checkout disagree. Th
 each affected ref and package, says which repair it needs — unregister the entry (the package is
 gone from the repo's workspaces), change its path (it moved within them), or register a package
 the checkout declares and the config never had (`unregistered`) — and prints the `refs edit`
-command for it. None is urgent, and none should be run without showing the user first. `doctor` lists every unregistered member; `refs sync` mentions only the ones
+command for it. None is urgent, and none should be run without showing the user first.
+
+An `unregistered` package the user does not want is answered with `refs edit --package=<name>
+--decline --path=<path> <ref>`, which is what stops it being reported on every future run. Without
+it `config-drift` stays on `warn` permanently and stops carrying information. `doctor` says how
+many decisions a run left unreported. `doctor` lists every unregistered member; `refs sync` mentions only the ones
 a fetch just brought in. Neither says anything about a package under a negated workspace pattern,
 or about any package at all when detection could have missed one.
 

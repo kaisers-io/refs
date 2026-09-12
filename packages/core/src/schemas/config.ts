@@ -60,6 +60,17 @@ const removeDefaults = <Shape extends z.ZodRawShape>(shape: Shape): WithoutDefau
 // `{}` really does parse to `{}`.
 const zRefSettingsOverride = z.strictObject(removeDefaults(zSettings.shape));
 
+// A package the checkout declares and the user has decided NOT to register. Stored as name AND
+// path, because either alone answers the wrong question: a name-only record means "ignore this
+// name here, wherever upstream puts it", which also silences a different package that later takes
+// the name, and a path-only record silences whatever moves in. Neither is a claim about the
+// package — it records a routing decision, and a decision about one repository never travels to
+// another, which is why this sits on the ref rather than in settings.
+const zDeclinedPackage = z.strictObject({
+  name: z.string().min(1),
+  path: zPackagePath,
+});
+
 const zPackageEntry = z.strictObject({
   description: z.string().min(1),
   path: zPackagePath,
@@ -71,6 +82,7 @@ const zPackageEntry = z.strictObject({
 // `refs add` to invent a convention and write it down as if it had been observed — `refs tag` is
 // the only command that reads the field, and it reports the absence itself.
 const zRefEntry = z.strictObject({
+  declined_packages: z.array(zDeclinedPackage).optional(),
   default_branch: z.string().min(1),
   description: z.string().min(1),
   packages: zSafePackagesRecord(zPackageEntry).optional(),
@@ -127,6 +139,7 @@ const zConfig = z.strictObject({
 });
 
 type Config = z.infer<typeof zConfig>;
+type DeclinedPackage = z.infer<typeof zDeclinedPackage>;
 type PackageEntry = z.infer<typeof zPackageEntry>;
 type RefEntry = z.infer<typeof zRefEntry>;
 type Settings = z.infer<typeof zSettings>;
@@ -136,11 +149,12 @@ export {
   SCHEMA_VERSION,
   SETTINGS_DEFAULTS,
   zConfig,
+  zDeclinedPackage,
   zPackageEntry,
   zRefEntry,
   zRefSettingsOverride,
   zSettings,
   zUpdates,
 };
-export type { Config, PackageEntry, RefEntry, Settings, Updates };
+export type { Config, DeclinedPackage, PackageEntry, RefEntry, Settings, Updates };
 export { isRegistrablePackageName } from './record-keys.ts';

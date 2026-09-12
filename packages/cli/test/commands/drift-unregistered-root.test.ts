@@ -22,8 +22,9 @@ const ARRIVALS_NONE: MemberDiscovery = { changedDirs: [], kind: 'arrivals', name
  * added nothing, and the only one these cases are about. */
 const probe = (
   checkoutDir: string,
-  packages: Parameters<typeof probeRefStructure>[1],
-): ReturnType<typeof probeRefStructure> => probeRefStructure(checkoutDir, packages, ARRIVALS_NONE);
+  packages: NonNullable<Parameters<typeof probeRefStructure>[1]['packages']>,
+): ReturnType<typeof probeRefStructure> =>
+  probeRefStructure(checkoutDir, { packages }, ARRIVALS_NONE);
 
 const entry = (path: string): PackageEntry => ({ description: 'A fixture package.', path });
 

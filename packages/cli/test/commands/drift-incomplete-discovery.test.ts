@@ -43,7 +43,7 @@ describe('probeRefStructure: a scan the obstacle stopped', () => {
     addPackage(repo, 'packages/a', { name: '@fixture/a', version: '1.0.0' });
     addPackage(repo, 'packages/b', { name: '@fixture/b', version: '1.0.0' });
 
-    const report = await probeRefStructure(repo, CONFIGURED, ALL);
+    const report = await probeRefStructure(repo, { packages: CONFIGURED }, ALL);
 
     // Naming no package is right; answering `ok` was not. "Nothing is unregistered" and "the
     // search was called off" send the reader to different places, and the obstacle names the file
@@ -61,7 +61,7 @@ describe('probeRefStructure: how a stopped scan reads', () => {
     const repo = repoWithBrokenManifest();
     addPackage(repo, 'packages/a', { name: '@fixture/a', version: '1.0.0' });
 
-    const report = await probeRefStructure(repo, CONFIGURED, ALL);
+    const report = await probeRefStructure(repo, { packages: CONFIGURED }, ALL);
 
     expect(driftLines(report, FIXTURE_REF)).toStrictEqual([
       `could not check for unregistered packages — ${OBSTACLE}`,
@@ -79,7 +79,7 @@ describe('probeRefStructure: what an obstacle does not cost', () => {
     const repo = repoWithBrokenManifest();
     addPackage(repo, 'packages/other', { name: '@fixture/other', version: '1.0.0' });
 
-    const report = await probeRefStructure(repo, CONFIGURED, ALL);
+    const report = await probeRefStructure(repo, { packages: CONFIGURED }, ALL);
 
     expect(report.discovery_incomplete).toBe(OBSTACLE);
     expect(report.packages?.map((issue) => [issue.name, issue.status])).toStrictEqual([
@@ -99,7 +99,7 @@ describe('probeRefStructure: what an obstacle does not cost', () => {
     addPackage(repo, 'packages/a', { name: '@fixture/a', version: '1.0.0' });
     addPackage(repo, 'packages/a-copy', { name: '@fixture/a', version: '1.0.0' });
 
-    const report = await probeRefStructure(repo, CONFIGURED, ALL);
+    const report = await probeRefStructure(repo, { packages: CONFIGURED }, ALL);
 
     expect(report.status).toBe('unknown');
     expect(report.discovery_incomplete).toBe(OBSTACLE);
@@ -119,7 +119,7 @@ describe('probeRefStructure: a sync-shaped probe that reached the scan', () => {
       namesBefore: ['@fixture/a'],
     };
 
-    const report = await probeRefStructure(repo, CONFIGURED, arrivals);
+    const report = await probeRefStructure(repo, { packages: CONFIGURED }, arrivals);
 
     expect(report.discovery_incomplete).toBe(OBSTACLE);
   });

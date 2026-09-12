@@ -1,5 +1,7 @@
 import { editCommand, shellQuote } from '../shell-quote.ts';
 import { isRegistrablePackageName, zPackagePath } from '@kaisers-io/refs-core';
+// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
+import type { DeclinedPackage } from '@kaisers-io/refs-core';
 import type { PackageStatus } from './package-location.ts';
 
 // What a config-drift probe can find, and how each finding reads to a human.
@@ -39,6 +41,10 @@ type StructureReport = {
    * missed a package, so its silence is not evidence — and a check that declined to look must not
    * answer `ok`. Distinct from `reason`, which is a whole-probe failure with no per-package answer
    * at all: here the CONFIGURED entries were checked normally and only discovery stood down. */
+  /** Unregistered findings this ref's configuration has already answered, and which were
+   * therefore left out of `packages`. Present only when something was actually suppressed: the
+   * decision stays visible to whoever asks, without becoming a second permanent warning. */
+  declined?: DeclinedPackage[];
   discovery_incomplete?: string;
   packages?: StructureIssue[];
   reason?: string;
@@ -76,22 +82,22 @@ const DRIFT_STATUSES: ReadonlySet<IssueStatus> = new Set<IssueStatus>([
  * branch is written for what the types allow rather than for what currently reaches it. */
 const rollUp = (
   issues: readonly StructureIssue[],
-  discoveryIncomplete?: string,
+  extra: { declined?: readonly DeclinedPackage[]; discoveryIncomplete?: string } = {},
 ): StructureReport => {
+  const { declined = [], discoveryIncomplete } = extra;
+  const suppressed = declined.length === 0 ? {} : { declined: [...declined] };
   const [first] = issues;
   if (first === undefined) {
     return discoveryIncomplete === undefined
-      ? { status: 'ok' }
-      : { discovery_incomplete: discoveryIncomplete, status: 'unknown' };
+      ? { ...suppressed, status: 'ok' }
+      : { ...suppressed, discovery_incomplete: discoveryIncomplete, status: 'unknown' };
   }
-  const report: StructureReport = {
+  return {
+    ...suppressed,
+    ...(discoveryIncomplete === undefined ? {} : { discovery_incomplete: discoveryIncomplete }),
     packages: [...issues],
     status: issues.some((issue) => DRIFT_STATUSES.has(issue.status)) ? 'drift' : 'unknown',
   };
-  if (discoveryIncomplete !== undefined) {
-    report.discovery_incomplete = discoveryIncomplete;
-  }
-  return report;
 };
 
 const UNKNOWN_REASON = '(no reason given)';
@@ -158,7 +164,15 @@ const unregisteredLine = (issue: StructureIssue, key: string): string => {
     ],
     [key],
   );
-  return `${head}. To register it: ${register}`;
+  // Both answers, because both are answers. Registering is the one that needs a human decision
+  // (SKILL.md: never on your own initiative), and declining is what stops the finding returning
+  // on every run once that decision was "no" — without it the only way to quieten this line was
+  // to register something nobody wanted.
+  const decline = editCommand(
+    [`--package=${shellQuote(issue.name)}`, '--decline', `--path=${shellQuote(issue.path)}`],
+    [key],
+  );
+  return `${head}. To register it: ${register}. If it should not be: ${decline}`;
 };
 
 /** A relocation, with the path edit that repairs it. The new path comes from the CHECKOUT and is

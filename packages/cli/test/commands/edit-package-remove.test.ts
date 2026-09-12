@@ -144,7 +144,7 @@ describe('refs edit --remove: what it refuses', () => {
 
         const envelope = parseSoleEnvelope(stdout);
         expect(envelope.ok).toBe(false);
-        expect(envelope.error?.message).toContain('not both');
+        expect(envelope.error?.message).toContain('--create, --remove');
       }),
     );
   });
