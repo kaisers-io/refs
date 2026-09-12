@@ -59,7 +59,9 @@ const sampleTagsFor = async (ctx: CliContext, dest: string): Promise<SampleTagsR
     return { tags: [] };
   }
   try {
-    const tags = await listTags(ctx.runner, dest, SAMPLE_TAG_LIMIT);
+    // A sample, not a census: `complete` is irrelevant here, and a truncated read still yields
+    // real tags at the head of the list.
+    const { tags } = await listTags(ctx.runner, dest, SAMPLE_TAG_LIMIT);
     return { tags };
   } catch (error) {
     return { tags: [], warning: `could not list tags: ${errorMessageOf(error)}` };
