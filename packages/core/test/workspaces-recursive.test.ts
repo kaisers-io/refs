@@ -222,3 +222,57 @@ describe('a symlink that leaves the checkout', () => {
     expect(scan.diagnostics).toStrictEqual([]);
   });
 });
+
+describe('a pattern ending in **', () => {
+  it('selects the base directory it names, not only what is below it', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/core/**'] });
+    addPackage(repo, 'packages/core', { name: '@deep/core', version: '1.0.0' });
+    addPackage(repo, 'packages/core/sub', { name: '@deep/sub', version: '1.0.0' });
+
+    const scan = await detectWorkspacePackagesDetailed(repo);
+
+    // `**` matches zero segments before the manifest, so `packages/core/**` names
+    // `packages/core/package.json` too. Verified against `@npmcli/map-workspaces` itself, which
+    // reports both — matching the DIRECTORY path instead drops the first, which is the package
+    // the pattern most obviously names.
+    expect(names(scan.packages)).toStrictEqual(['@deep/core', '@deep/sub']);
+  });
+
+  it('selects the base of a bare ** under a directory', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/**'] });
+    addPackage(repo, 'packages', { name: '@deep/packages-root', version: '1.0.0' });
+    addPackage(repo, 'packages/a', { name: '@deep/a', version: '1.0.0' });
+
+    const scan = await detectWorkspacePackagesDetailed(repo);
+
+    expect(names(scan.packages)).toStrictEqual(['@deep/a', '@deep/packages-root']);
+  });
+});
+
+describe('an excluded symlink', () => {
+  it('does not make the scan unreliable', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    writeFileSync(
+      join(repo, 'pnpm-workspace.yaml'),
+      "packages:\n  - 'packages/**/*'\n  - '!packages/linked'\n",
+    );
+    addPackage(repo, 'packages/real', { name: '@deep/real', version: '1.0.0' });
+    addPackage(repo, 'elsewhere/pkg', { name: '@deep/elsewhere', version: '1.0.0' });
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    symlinkSync(join(repo, 'elsewhere'), join(repo, 'packages', 'linked'), 'dir');
+
+    const scan = await detectWorkspacePackagesDetailed(repo);
+
+    // The repository said it does not want what is behind that link, so not looking costs
+    // nothing — and an unreliable scan would turn the unregistered-package pass off for the
+    // whole ref over a directory nobody asked about.
+    expect(scan.diagnostics).toStrictEqual([]);
+    expect(scanIsReliable(scan)).toBe(true);
+  });
+});

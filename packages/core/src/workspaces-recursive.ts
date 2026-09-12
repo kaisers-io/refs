@@ -25,6 +25,7 @@ import { resolveInside } from './fs-containment.ts';
  * with the number of declarations, which is the opposite of a bound. */
 type ScanBudget = { dirs: number; entries: number };
 
+const MANIFEST_FILE = 'package.json';
 const MAX_DEPTH = 32;
 const MAX_DIRS = 20_000;
 const MAX_ENTRIES = 200_000;
@@ -40,14 +41,14 @@ const NEVER_WALKED: ReadonlySet<string> = new Set(['.git', 'node_modules']);
 
 type Walk = {
   budget: ScanBudget;
-  /** Whether the pattern selects this exact path. */
+  /** Whether anything BELOW this path could still match — minimatch's partial mode, which is what
+   * makes pruning the matcher's decision rather than a rule of thumb. */
   couldHold: (path: string) => boolean;
   diagnostics: WorkspaceDiagnostic[];
   dirs: string[];
   pattern: string;
   repoDir: string;
-  /** Whether anything BELOW this path could still match — minimatch's partial mode, which is what
-   * makes pruning the matcher's decision rather than a rule of thumb. */
+  /** Whether the pattern selects the package AT this path. */
   selects: (path: string) => boolean;
 };
 
@@ -74,12 +75,22 @@ const inspect = async (walk: Walk, relPath: string, excluded: ExcludedDirs): Pro
  * A symlinked directory is not `isDirectory()` under `readdir`'s lstat semantics, so it can never
  * be walked here — and one that could have held a match makes the scan incomplete rather than
  * simply absent, the same rule `probeChildren` applies one level down. */
-const descendable = async (walk: Walk, entry: Dirent, relPath: string): Promise<boolean> => {
-  if (!walk.couldHold(relPath) || NEVER_WALKED.has(entry.name)) {
+const descendable = async (
+  walk: Walk,
+  entry: Dirent,
+  at: { excluded: ExcludedDirs; relPath: string },
+): Promise<boolean> => {
+  if (!walk.couldHold(at.relPath) || NEVER_WALKED.has(entry.name)) {
     return false;
   }
   if (entry.isSymbolicLink()) {
-    await reportLinkedDir(walk, relPath);
+    // An excluded link is not a missed candidate: the repository said it does not want what is
+    // behind it, so not looking costs nothing. Reporting it anyway would mark the scan unreliable
+    // — which turns the unregistered-package pass off for the whole ref — over a directory
+    // nobody asked about.
+    if (!at.excluded.has(at.relPath)) {
+      await reportLinkedDir(walk, at.relPath);
+    }
     return false;
   }
   return entry.isDirectory();
@@ -138,6 +149,9 @@ const walkDir = async (
     return;
   }
   walk.budget.dirs -= 1;
+  // This directory first, then its children. A trailing `**` selects its own base, so a walk that
+  // only ever inspected children dropped exactly the package `packages/core/**` names.
+  await inspect(walk, at.relPath, excluded);
   const entries = await entriesOf(walk, at.relPath);
   if (entries !== undefined) {
     await descendAll(walk, { depth: at.depth, entries, relPath: at.relPath }, excluded);
@@ -158,9 +172,7 @@ const descendAll = async (
   for (const entry of at.entries) {
     const relPath = childPath(at.relPath, entry.name);
     // eslint-disable-next-line no-await-in-loop -- sequential by design; see the doc comment
-    if (await descendable(walk, entry, relPath)) {
-      // eslint-disable-next-line no-await-in-loop -- sequential by design; see the doc comment
-      await inspect(walk, relPath, excluded);
+    if (await descendable(walk, entry, { excluded, relPath })) {
       if (at.depth + 1 > MAX_DEPTH) {
         exhausted(walk, relPath);
       } else {
@@ -192,15 +204,24 @@ const expandRecursive = async (
     // are not in the repository — and into silence when the target holds no manifests at all.
     return { diagnostics: [{ kind: 'workspace_dir_unreadable', path: plan.baseDir }], dirs: [] };
   }
-  const matcher = new Minimatch(normalizeSeparators(plan.pattern));
+  // Matched as the MANIFEST path, which is what both resolvers actually glob: npm appends
+  // `/package.json` to every declared pattern, and pnpm appends `/package.{json,yaml,json5}`.
+  // The difference is not cosmetic. `packages/core/**` selects `packages/core` itself — `**`
+  // matches zero segments before the manifest — while the same pattern matched against the
+  // DIRECTORY path does not, so a walk that asked the directory question silently dropped the
+  // package the pattern most obviously names. Checked against `@npmcli/map-workspaces` itself
+  // over six pattern shapes: matching manifest paths agrees with npm on all of them, matching
+  // directory paths on four.
+  const matcher = new Minimatch(`${normalizeSeparators(plan.pattern)}/${MANIFEST_FILE}`);
+  const manifestIn = (path: string): string => posix.join(path, MANIFEST_FILE);
   const walk: Walk = {
     budget: context.budget,
-    couldHold: (path) => matcher.match(path, true),
+    couldHold: (path) => matcher.match(manifestIn(path), true),
     diagnostics: [],
     dirs: [],
     pattern: plan.pattern,
     repoDir,
-    selects: (path) => matcher.match(path),
+    selects: (path) => matcher.match(manifestIn(path)),
   };
   await walkDir(walk, { depth: 1, relPath: plan.baseDir }, context.excluded);
   return { diagnostics: walk.diagnostics, dirs: walk.dirs };
