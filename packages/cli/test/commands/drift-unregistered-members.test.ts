@@ -63,7 +63,7 @@ describe('probeRefStructure: unregistered members, doctor', () => {
     // was "hand-edit config.toml", because `add` refuses a tracked ref and a field edit needs an
     // entry to edit.
     expect(driftLines(report, FIXTURE_REF).join('\n')).toContain(
-      `refs edit '${FIXTURE_REF}' --package '@fixture/b' --create --path 'packages/b'`,
+      `refs edit --package='@fixture/b' --create --path='packages/b' --description="<what it is>" '${FIXTURE_REF}'`,
     );
   });
 

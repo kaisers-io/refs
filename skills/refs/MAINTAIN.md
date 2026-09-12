@@ -90,10 +90,10 @@ Never delete a lock directory by hand on the strength of this check alone — th
 proof of identity, only of absence when it says "not running".
 
 A `warn` on `config-drift` means the configuration and the checkout disagree. The `detail` names
-each affected ref and package and says which repair it needs — remove the entry (the package is
+each affected ref and package, says which repair it needs — unregister the entry (the package is
 gone from the repo's workspaces), change its path (it moved within them), or register a package
-the checkout declares and the config never had (`unregistered`). All three are `refs edit` work,
-and none is urgent. `doctor` lists every unregistered member; `refs sync` mentions only the ones
+the checkout declares and the config never had (`unregistered`) — and prints the `refs edit`
+command for it. None is urgent, and none should be run without showing the user first. `doctor` lists every unregistered member; `refs sync` mentions only the ones
 a fetch just brought in. Neither says anything about a package under a negated workspace pattern,
 or about any package at all when detection could have missed one.
 

@@ -43,7 +43,9 @@ describe.skipIf(posixOnly)('the printed repair command, through a shell', () => 
 
     // `shellQuote` closes and reopens around the embedded quote. Unquoted, the shell would swallow
     // it and hand the CLI a different package name.
-    expect(argv).toContain("@acme/o'brien");
+    // Attached with `=`, because an option's value cannot hide behind the `--` terminator: a name
+    // beginning with `-` would otherwise be read as the next option.
+    expect(argv).toContain("--package=@acme/o'brien");
   });
 
   it('delivers a path containing a space as ONE argument', async () => {
@@ -51,7 +53,7 @@ describe.skipIf(posixOnly)('the printed repair command, through a shell', () => 
 
     const argv = await argvThroughShell('@acme/spaced', 'packages/with space');
 
-    expect(argv).toContain('packages/with space');
+    expect(argv).toContain('--path=packages/with space');
   });
 
   it('delivers the ref key intact, quote and all', async () => {
@@ -69,8 +71,8 @@ describe.skipIf(posixOnly)('the printed repair command, through a shell', () => 
     // `zPackagePath` permits `$()`; single quotes are what stop the shell running it.
     const argv = await argvThroughShell('@acme/subst', 'packages/$(echo pwned)');
 
-    expect(argv).toContain('packages/$(echo pwned)');
-    expect(argv).not.toContain('packages/pwned');
+    expect(argv).toContain('--path=packages/$(echo pwned)');
+    expect(argv).not.toContain('--path=packages/pwned');
   });
 });
 

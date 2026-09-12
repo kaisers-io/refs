@@ -405,16 +405,18 @@ sync are probed. `structure.status` is `ok` (no `packages` key at all), `drift`,
 off, and names what stopped it; the `packages` findings, if any, are unaffected. Each entry in
 `packages` says what to do about one package:
 
-| `status`       | Means                                                               | Tell the user                                           |
-| -------------- | ------------------------------------------------------------------- | ------------------------------------------------------- |
-| `missing`      | declared nowhere in the repo's workspaces any more                  | remove the entry, unless it moved out of the workspaces |
-| `relocated`    | now declared at `path` instead                                      | change the entry's `path` to `path`                     |
-| `ambiguous`    | several `candidates` declare that name                              | pick one and set it                                     |
-| `unverifiable` | could not be checked (`reason`)                                     | nothing — it is not a claim about the package           |
-| `unregistered` | the checkout declares this package and the config has no such entry | propose registering it, and wait for the user to agree  |
+| `status`       | Means                                                               | Tell the user                                          |
+| -------------- | ------------------------------------------------------------------- | ------------------------------------------------------ |
+| `missing`      | declared nowhere in the repo's workspaces any more                  | unregister it, unless it moved out of the workspaces   |
+| `relocated`    | now declared at `path` instead                                      | change the entry's `path` to `path`                    |
+| `ambiguous`    | several `candidates` declare that name                              | pick one and set it                                    |
+| `unverifiable` | could not be checked (`reason`)                                     | nothing — it is not a claim about the package          |
+| `unregistered` | the checkout declares this package and the config has no such entry | propose registering it, and wait for the user to agree |
 
-`unregistered` is the one finding that is not about an entry the config already has, and the
-only one you may act on with a command. It comes from two places: the repository root (which is
+`missing`, `relocated` and `unregistered` each end with the `refs edit` command that repairs
+them, quoted for a shell; the other statuses have no repair to print. Show the user the command
+and what was found — a removal in particular discards an entry they may have written by hand.
+`unregistered` is the one finding that is not about an entry the config already has. It comes from two places: the repository root (which is
 never one of its own glob targets, so `refs add` could not have registered it) and workspace
 members. `refs sync` reports only members whose _name the repository did not already have_ before
 the range it just fetched, so it is genuinely new upstream rather than something the user chose to

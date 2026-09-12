@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Every drift finding that has a repair now prints it as a command.** `unregistered` has printed
+  a runnable `refs edit --create` since the probe shipped; `missing` and `relocated` described the
+  repair in prose and left the reader to construct it. The asymmetry was not deliberate — one of
+  the two repairs did not exist as a command at all. `refs doctor` now ends those findings with
+  `refs edit --package='<name>' --remove '<ref>'` and
+  `refs edit --package='<name>' '<ref>' 'path' '<new>'`, quoted for a shell like every other
+  command refs prints. A new path the configuration could not hold is still reported, without a command
+  that would only fail validation.
+
+  Every printed `refs edit` now attaches its option values with `=` and, where a positional would
+  otherwise begin with `-`, ends the options with `--`. Quoting gets a value past the shell; refs'
+  own parser reads it next, and `refs edit '<ref>' path '-new/pkg'` — a path `zPackagePath` accepts
+  — arrived correctly quoted and exited `2` with `unknown option '-new/pkg'`. The terminator is
+  printed only where it is needed, so appending `--json` to an ordinary printed line still works.
+
+- **`refs edit <ref> --package <name> --remove` unregisters a package.** The counterpart to
+  `--create`, and the repair the `missing` finding needed: a package that left a repository's
+  workspaces leaves an entry behind that `refs resolve` keeps answering with, pointing at a path no
+  checkout has. The only instruction refs could give was to hand-edit `config.toml`. Removal
+  touches configuration alone and never consults a checkout — it has to work while the checkout is
+  stale, absent, or still carrying the directory. Removing the last entry drops the `packages`
+  table rather than leaving an empty one, which `add` and the drift probe read differently.
+
 ### Fixed
 
 - **`tag_format` is detected from every tag, not from the top twenty of a refname sort.** Detection

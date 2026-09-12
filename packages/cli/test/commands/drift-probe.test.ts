@@ -208,7 +208,7 @@ describe('drift lines: removal reads differently from relocation', () => {
       FIXTURE_REF,
     );
 
-    expect(lines[0]).toContain('remove the entry');
+    expect(lines[0]).toContain('--remove');
     expect(lines[1]).toContain('moved to packages/moved');
   });
 

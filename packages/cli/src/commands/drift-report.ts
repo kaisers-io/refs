@@ -1,6 +1,6 @@
+import { editCommand, shellQuote } from '../shell-quote.ts';
 import { isRegistrablePackageName, zPackagePath } from '@kaisers-io/refs-core';
 import type { PackageStatus } from './package-location.ts';
-import { shellQuote } from '../shell-quote.ts';
 
 // What a config-drift probe can find, and how each finding reads to a human.
 //
@@ -149,23 +149,47 @@ const unregisteredLine = (issue: StructureIssue, key: string): string => {
       `for it — report it and leave it unregistered`
     );
   }
-  return (
-    `${head}. To register it: refs edit ${shellQuote(key)} --package ${shellQuote(issue.name)} ` +
-    `--create --path ${shellQuote(issue.path)} --description "<what it is>"`
+  const register = editCommand(
+    [
+      `--package=${shellQuote(issue.name)}`,
+      '--create',
+      `--path=${shellQuote(issue.path)}`,
+      '--description="<what it is>"',
+    ],
+    [key],
   );
+  return `${head}. To register it: ${register}`;
 };
 
-/** The three findings about an entry that IS configured — each naming the repair it needs, and the
- * configured path it needs repairing from. */
-const configuredIssueLine = (issue: StructureIssue): string => {
+/** A relocation, with the path edit that repairs it. The new path comes from the CHECKOUT and is
+ * validated before it is printed: a path the configuration cannot hold makes the command a lie,
+ * and the finding is still true without it. */
+const relocatedLine = (issue: StructureIssue, key: string, at: string): string => {
+  const head = `${issue.name}: moved to ${issue.path ?? UNKNOWN_PATH} — update the entry's path (${at})`;
+  const repoint = editCommand(
+    [`--package=${shellQuote(issue.name)}`],
+    [key, 'path', issue.path ?? ''],
+  );
+  return zPackagePath.safeParse(issue.path).success ? `${head}. To fix it: ${repoint}` : head;
+};
+
+/** The four findings about an entry that IS configured — each naming the repair it needs, and the
+ * configured path it needs repairing from.
+ *
+ * Two of them can name a runnable command, and do. The ref key and the package name are the
+ * configuration's own, but a ref key admits spaces and `$()` (`zRefKey`) and a package name is
+ * checked only for being non-empty — so both go through `shellQuote`, for the reason spelled out
+ * above `registrable`, and through `editCommand`, for the second parser they then meet. */
+const configuredIssueLine = (issue: StructureIssue, key: string): string => {
   const at = `configured: ${issue.configured_path ?? UNKNOWN_PATH}`;
   if (issue.status === 'relocated') {
-    return `${issue.name}: moved to ${issue.path ?? UNKNOWN_PATH} — update the entry's path (${at})`;
+    return relocatedLine(issue, key, at);
   }
   if (issue.status === 'missing') {
+    const unregister = editCommand([`--package=${shellQuote(issue.name)}`, '--remove'], [key]);
     return (
-      `${issue.name}: gone from this repo's workspaces — remove the entry, ` +
-      `or repoint it if it moved out of them (${at})`
+      `${issue.name}: gone from this repo's workspaces (${at}) — repoint the entry if it moved ` +
+      `out of them, or unregister it: ${unregister}`
     );
   }
   if (issue.status === 'ambiguous') {
@@ -176,7 +200,7 @@ const configuredIssueLine = (issue: StructureIssue): string => {
 };
 
 const issueLine = (issue: StructureIssue, key: string): string =>
-  issue.status === 'unregistered' ? unregisteredLine(issue, key) : configuredIssueLine(issue);
+  issue.status === 'unregistered' ? unregisteredLine(issue, key) : configuredIssueLine(issue, key);
 
 /** One line per thing worth saying, and EMPTY for a clean ref — so a caller can append the result
  * unconditionally and stay silent by construction rather than by remembering to check.

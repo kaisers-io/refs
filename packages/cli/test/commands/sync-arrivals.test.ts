@@ -68,7 +68,7 @@ const expectRegistered = async (
 ): Promise<void> => {
   // Nothing a shell would reinterpret, and the real key where `<ref>` used to sit.
   expect(args.command).not.toContain('<ref>');
-  expect(args.command).toContain(`refs edit '${args.key}'`);
+  expect(args.command).toContain(`'${args.key}'`);
 
   const config = await readConfig(resolveHome(ctx.env));
   expect(config.refs[args.key]?.packages?.['@fixture/c']).toStrictEqual({
