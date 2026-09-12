@@ -9,13 +9,15 @@ import { minimatch } from 'minimatch';
  * The plan decides WALKING — which directory to read, or which single path to probe. Whether a
  * given path matches is not decided here at all: `pattern` is carried through so `minimatch`
  * answers that, on the original text rather than on anything reconstructed from the plan. */
+/** The expand-one-level plan, named because three files pass it around and all of them need the
+ * suffix to agree. */
+type WildcardPlan = { baseDir: string; kind: 'expand-children'; pattern: string; suffix: string };
+
 type WorkspacePatternPlan =
-  | { baseDir: string; kind: 'expand-children'; pattern: string }
+  | WildcardPlan
   | { dir: string; kind: 'probe-dir'; pattern: string }
   | { kind: 'ignore' };
 
-const GLOB_SUFFIX = '/*';
-const BARE_GLOB = '*';
 const CURRENT_DIR_SEGMENT = '.';
 const PARENT_DIR_SEGMENT = '..';
 const PATH_SEGMENT_SEPARATOR_PATTERN = /[/\\]/u;
@@ -91,15 +93,6 @@ const isSupportedPatternShape = (pattern: string): boolean =>
   !UNSUPPORTED_GLOB_SYNTAX.test(pattern) &&
   (pattern.match(/\*/gu) ?? []).length <= MAX_WILDCARDS_PER_PATTERN;
 
-/** A wildcard INSIDE the last segment: `examples/vue/2*`, `pkg-*`, `*-utils`.
- *
- * Real repositories use this shape for exclusions — TanStack Query writes `!examples/vue/2*` and
- * `!examples/vue/nuxt*` — and a negation nobody can expand leaves the scan holding directories the
- * repository excluded, which costs every finding about the repository rather than just those two
- * directories. Supported for inclusive patterns too, since the two sides go through one expander.
- *
- * Only the LAST segment may hold the wildcard; one in an earlier segment would mean expanding
- * more than one level, which this scanner deliberately does not do. */
 /** Whether `path` matches `pattern`, answered by the matcher npm itself uses.
  *
  * Hand-written matching produced five defects across as many review rounds — extglob read as a
@@ -111,41 +104,6 @@ const isSupportedPatternShape = (pattern: string): boolean =>
  * One matcher covers both ecosystems: pnpm matches through picomatch, but normalizes first, and
  * was measured to agree with minimatch on every shape this scanner supports. */
 const matchesPattern = (path: string, pattern: string): boolean => minimatch(path, pattern);
-
-const partialSegmentPlan = (pattern: string): WorkspacePatternPlan => {
-  const cut = pattern.lastIndexOf('/');
-  const lastSegment = cut === NOT_FOUND ? pattern : pattern.slice(cut + 1);
-  if (!lastSegment.includes('*')) {
-    return IGNORE;
-  }
-  return {
-    baseDir: cut === NOT_FOUND ? CURRENT_DIR_SEGMENT : pattern.slice(0, cut),
-    kind: 'expand-children',
-    pattern,
-  };
-};
-
-// Flat dispatch over the supported glob forms; the check order IS the precedence order:
-// `<dir>/*` and bare `*` expand one level (bare `*`, a flat workspaces layout, expands the repo
-// root `.` as glob base, same as `<dir>/*`), a wildcard-free pattern probes a single literal
-// directory, and any other wildcard placement is ignored.
-const classifyWorkspacePattern = (pattern: string): WorkspacePatternPlan => {
-  if (!isSupportedPatternShape(pattern)) {
-    return IGNORE;
-  }
-
-  if (pattern.endsWith(GLOB_SUFFIX)) {
-    return { baseDir: pattern.slice(0, -GLOB_SUFFIX.length), kind: 'expand-children', pattern };
-  }
-
-  if (pattern === BARE_GLOB) {
-    return { baseDir: CURRENT_DIR_SEGMENT, kind: 'expand-children', pattern };
-  }
-
-  return pattern.includes('*')
-    ? partialSegmentPlan(pattern)
-    : { dir: pattern, kind: 'probe-dir', pattern };
-};
 
 /** A package path is an identifier, not a filesystem string: it is compared against configured
  * entries, against the paths git reports, and printed into commands `zPackagePath` must accept —
@@ -160,6 +118,51 @@ const classifyWorkspacePattern = (pattern: string): WorkspacePatternPlan => {
  * The glob branch needs no equivalent: it builds its paths with `posix.join`, which normalizes. */
 const normalizeSeparators = (dir: string): string =>
   dir.replaceAll(/\/+/gu, '/').replace(/\/$/u, '');
+
+// Splits a single-wildcard pattern around the segment that holds the wildcard.
+//
+// Everything BEFORE that segment is the directory to expand, one level. Everything AFTER it is a
+// literal suffix appended to each child when probing and when matching. `packages/*` and a bare
+// `*` are this with an empty suffix, so they need no branch of their own.
+//
+// `crates/*/js` is one `readdir` of `crates/` plus a literal probe per child — the same shape as
+// `packages/*`, and the reason the wildcard's position never mattered. It was rejected on the
+// grounds that an earlier wildcard "would mean expanding more than one level", which is what a
+// SECOND wildcard would mean; `packages/*/nested/*` is still refused, by the wildcard budget that
+// exists for it. Real repositories declare the first shape: `vercel/next.js` writes `crates/*/js`
+// and `turbopack/crates/*/js`, and four published packages sat behind them unseen.
+const wildcardSegmentPlan = (pattern: string): WorkspacePatternPlan => {
+  const segments = normalizeSeparators(pattern).split('/');
+  const at = segments.findIndex((segment) => segment.includes('*'));
+  if (at === NOT_FOUND) {
+    return IGNORE;
+  }
+  return {
+    baseDir: at === 0 ? CURRENT_DIR_SEGMENT : segments.slice(0, at).join('/'),
+    kind: 'expand-children',
+    // The NORMALIZED pattern, not the declared one. A candidate path is built from the normalized
+    // segments, and minimatch treats a trailing separator asymmetrically — `packages/core` does
+    // not match `packages/*/` — so carrying the raw pattern here selected nothing and reported
+    // nothing, which is worse than the `unsupported_pattern` this shape used to get. The declared
+    // text is still what a diagnostic names (`expandGlobPattern`).
+    pattern: normalizeSeparators(pattern),
+    suffix: segments.slice(at + 1).join('/'),
+  };
+};
+
+// Two outcomes for a supported pattern: one holding a wildcard expands its base a single level,
+// and a wildcard-free one probes a single literal directory. `<dir>/*`, a bare `*`,
+// `examples/vue/2*` and `crates/*/js` are all the first case — they differ only in where the
+// wildcard sits and what literal follows it, which `wildcardSegmentPlan` reads off the pattern.
+const classifyWorkspacePattern = (pattern: string): WorkspacePatternPlan => {
+  if (!isSupportedPatternShape(pattern)) {
+    return IGNORE;
+  }
+
+  return pattern.includes('*')
+    ? wildcardSegmentPlan(pattern)
+    : { dir: pattern, kind: 'probe-dir', pattern };
+};
 
 /** Whether an already-classified inclusive pattern selects `path` — decided from the plan alone,
  * with no filesystem access, so an exclusion can be tested against later patterns before anything
@@ -183,4 +186,4 @@ export {
   normalizeSeparators,
   planMatchesPath,
 };
-export type { WorkspacePatternPlan };
+export type { WildcardPlan, WorkspacePatternPlan };

@@ -2,7 +2,7 @@
 // decisions over already-resolved relative paths, candidate-directory selection, and result
 // shaping. No filesystem access happens here — `workspaces.ts` owns the IO (readdir walks,
 // manifest probes, realpath containment guards) and feeds this module plain values.
-import { isAbsolute, posix, sep } from 'node:path';
+import { isAbsolute, sep } from 'node:path';
 import { PARENT_DIR_SEGMENT } from './workspaces-shapes.ts';
 
 // Identity only. A manifest's `description` is deliberately NOT carried: it is prose written by
@@ -96,20 +96,6 @@ const isRelPathContained = (rel: string, allowSelf: boolean): boolean => {
 };
 
 // Pair a glob base's child directory names with their package.json probe results: keep the
-// names whose probe succeeded, each joined under the base dir, preserving input order.
-// `posix.join`, not `join`: package paths are repo-relative *identifiers* (stored in config/state,
-// compared and sorted as strings) — always `/`-separated, like ref keys, on every platform. Only
-// the fs layer (`workspaces.ts`) joins them onto real directories, and `node:path.join` accepts
-// `/`-separated segments on Windows.
-const selectPackageDirs = (
-  baseDir: string,
-  dirNames: string[],
-  hasManifestFlags: boolean[],
-): string[] =>
-  dirNames
-    .filter((_name, index) => hasManifestFlags[index] === true)
-    .map((name) => posix.join(baseDir, name));
-
 // Shape a probed manifest into a WorkspacePackage; a missing manifest or a missing/empty name
 // rejects the directory.
 const toWorkspacePackage = (
@@ -196,7 +182,6 @@ export {
   isRelPathContained,
   scanIsReliable,
   scanSearchedSomewhere,
-  selectPackageDirs,
   sortDiagnostics,
   toWorkspacePackage,
 };
