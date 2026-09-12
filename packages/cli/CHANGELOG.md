@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`refs add` says when it could not fully inspect a repository's declared workspaces.** A
+  repository declaring `packages/**` — an ordinary spelling the pattern classifier cannot expand —
+  produced a proposal missing every member, with no indication why. That is not self-explanatory:
+  a thin `packages` record is also what an ordinary repository produces, and a detected root makes
+  even a memberless result look complete. The configuration was then built without those packages,
+  and the drift probe returns immediately for a ref that configures none, so nothing downstream
+  could recover it either. Both `--dry-run` and the `--description` one-shot now carry a warning
+  naming what stopped the scan — an unexpandable pattern, an unreadable manifest, a candidate that
+  could not be inspected — alongside any clone warning rather than instead of it.
+
 - **A drift probe that could not finish looking says so, instead of reporting `ok`.** The pass that
   finds packages a checkout declares and the configuration does not have stands down whenever
   workspace detection may have missed something — an unreadable manifest, a pattern the classifier
@@ -22,8 +32,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   what stopped them (`packages/c: manifest_unreadable`), and its `status` is `unknown` rather than
   `ok`. The findings about configured entries are unaffected — that half never needed the scan to
   begin.
-
-### Fixed
 
 - **A ref whose key carries `@`, a space or any non-ASCII character can be locked, and therefore
   synced.** `zRefKey` admits every character but `/`, `\`, `%` and `:`; the lock alphabet is far

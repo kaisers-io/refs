@@ -5,6 +5,7 @@ import type {
   RefState,
   RefsHome,
   TagFormat,
+  WorkspaceScan,
 } from '@kaisers-io/refs-core';
 import {
   allowFileUrlsFrom,
@@ -15,21 +16,24 @@ import {
   resolveAddSource,
 } from './add-source.ts';
 import { buildProposalPackages, registeredRootName } from './add-packages.ts';
+// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import {
   checkoutPath,
   detectDefaultBranch,
   detectTagFormat,
-  detectWorkspacePackages,
+  detectWorkspacePackagesDetailed,
   listTags,
   readConfig,
   readState,
   resolveHome,
   resolveSetting,
+  scanIsReliable,
   withLock,
   writeState,
 } from '@kaisers-io/refs-core';
 import type { CliContext } from '../context.ts';
 import type { ResolvedSource } from './add-source.ts';
+import { discoveryObstacle } from './workspace-diagnostics.ts';
 import { ensureClonedCheckout } from './add-checkout-guards.ts';
 import { progress } from '../output.ts';
 
@@ -39,6 +43,10 @@ import { progress } from '../output.ts';
 
 type DryRunOutcome = {
   dest: string;
+  /** Two independent things can be worth saying about one dry-run — the clone fell back, and the
+   * scan could not read the workspace declaration — so they are collected rather than competing
+   * for one `warning` field. The envelope's `warnings` is already an array. */
+  detectionWarning?: string;
   effectiveCloneMode?: CloneMode;
   proposal: Proposal;
   /** The detected workspace root's package name, when its manifest declares one. Carried on the
@@ -52,9 +60,62 @@ type DryRunOutcome = {
 
 type DetectedFields = {
   defaultBranch: string;
+  /** Why this proposal's `packages` may be short, when the scan said so. A repository declaring
+   * `packages/**` — a pattern the classifier cannot expand — detects NOTHING, and an empty
+   * `packages` record is also what an ordinary single-package repository produces. The two are
+   * indistinguishable to whoever reads the proposal, and `ADD.md` gives them no reason to doubt
+   * the empty one, so the difference has to be said out loud. */
+  detectionWarning?: string;
   packages: Proposal['packages'];
   rootPackageName?: string;
   tagFormatCandidate: TagFormat | null;
+};
+
+/** Said out loud, or `undefined` when the scan needs nothing said.
+ *
+ * `add` used to call a wrapper that dropped the scan's diagnostics, on the grounds that it is
+ * best-effort and has an agent to fill the gaps. That holds for a gap the agent can SEE. It cannot
+ * fill in packages nobody told it exist — and a thin `packages` record is exactly what an ordinary
+ * repository produces too, so there is nothing in the result to doubt.
+ *
+ * Worded for both flows. `--dry-run` returns a proposal nobody has approved; the `--description`
+ * one-shot has already written the config entry by the time this reaches the reader, and telling
+ * them to check something "before approving" would describe a step that is over. What is true in
+ * both is that the detected list may be short and the repository's own declaration settles it.
+ *
+ * "Could not fully inspect the declared workspaces", not "could not read the declaration": the
+ * declaration may parse and expand perfectly while a member manifest is unreadable or a candidate
+ * directory was never inspected. `scanIsReliable` covers all of those. */
+const detectionWarningFor = (scan: WorkspaceScan): string | undefined =>
+  scanIsReliable(scan)
+    ? undefined
+    : `workspace detection could not fully inspect the declared workspaces ` +
+      `(${discoveryObstacle(scan)}) — members may be missing from the detected packages; the ` +
+      "repository's own workspace declaration is what settles it";
+
+type DetectionContext = {
+  defaultBranch: string;
+  resolved: ResolvedSource;
+  tagFormatCandidate: TagFormat | null;
+};
+
+/** Shapes one scan into the proposal's detected half. Built key-by-key rather than spread, because
+ * `exactOptionalPropertyTypes` distinguishes an absent key from one set to `undefined`. */
+const detectedFrom = (scan: WorkspaceScan, ctx: DetectionContext): DetectedFields => {
+  const packages = buildProposalPackages(
+    scan.packages,
+    ctx.resolved.npmDirectory,
+    ctx.resolved.npmPkgName,
+  );
+  const rootPackageName = registeredRootName(scan.packages, packages);
+  const detectionWarning = detectionWarningFor(scan);
+  return {
+    defaultBranch: ctx.defaultBranch,
+    ...(detectionWarning === undefined ? {} : { detectionWarning }),
+    packages,
+    ...(rootPackageName === undefined ? {} : { rootPackageName }),
+    tagFormatCandidate: ctx.tagFormatCandidate,
+  };
 };
 
 const detectProposalFields = async (
@@ -66,15 +127,8 @@ const detectProposalFields = async (
   const tags = await listTags(ctx.runner, dest);
   const tagFormatCandidate = detectTagFormat(tags);
   progress(ctx, 'detecting workspace packages…');
-  const detected = await detectWorkspacePackages(dest);
-  const packages = buildProposalPackages(detected, resolved.npmDirectory, resolved.npmPkgName);
-  const rootPackageName = registeredRootName(detected, packages);
-  return {
-    defaultBranch,
-    packages,
-    ...(rootPackageName === undefined ? {} : { rootPackageName }),
-    tagFormatCandidate,
-  };
+  const scan = await detectWorkspacePackagesDetailed(dest);
+  return detectedFrom(scan, { defaultBranch, resolved, tagFormatCandidate });
 };
 
 type CloneAndDetectOpts = {
@@ -120,26 +174,30 @@ type BuildDryRunOutcomeOpts = {
   resolved: ResolvedSource;
 };
 
+/** The serialized half: what a `--proposal` file carries. `description` starts empty — it is the
+ * one field a human or an agent must supply. */
+const proposalFrom = (fields: DetectedFields, resolved: ResolvedSource): Proposal => ({
+  default_branch: fields.defaultBranch,
+  description: '',
+  key: resolved.key,
+  packages: fields.packages,
+  tag_format_candidate: fields.tagFormatCandidate,
+  url: resolved.cloneUrl,
+});
+
+/** Assembled in one expression, with the same conditional-spread idiom `detectedFrom` uses above:
+ * `exactOptionalPropertyTypes` distinguishes an absent key from one set to `undefined`, and all
+ * four of these are genuinely absent most of the time. */
 const buildDryRunOutcome = (opts: BuildDryRunOutcomeOpts): DryRunOutcome => {
-  const proposal: Proposal = {
-    default_branch: opts.cloneResult.fields.defaultBranch,
-    description: '',
-    key: opts.resolved.key,
-    packages: opts.cloneResult.fields.packages,
-    tag_format_candidate: opts.cloneResult.fields.tagFormatCandidate,
-    url: opts.resolved.cloneUrl,
+  const { effectiveMode, fields, warning } = opts.cloneResult;
+  return {
+    dest: opts.dest,
+    proposal: proposalFrom(fields, opts.resolved),
+    ...(fields.detectionWarning === undefined ? {} : { detectionWarning: fields.detectionWarning }),
+    ...(fields.rootPackageName === undefined ? {} : { rootPackageName: fields.rootPackageName }),
+    ...(effectiveMode === undefined ? {} : { effectiveCloneMode: effectiveMode }),
+    ...(warning === undefined ? {} : { warning }),
   };
-  const outcome: DryRunOutcome = { dest: opts.dest, proposal };
-  if (opts.cloneResult.fields.rootPackageName !== undefined) {
-    outcome.rootPackageName = opts.cloneResult.fields.rootPackageName;
-  }
-  if (opts.cloneResult.effectiveMode !== undefined) {
-    outcome.effectiveCloneMode = opts.cloneResult.effectiveMode;
-  }
-  if (opts.cloneResult.warning !== undefined) {
-    outcome.warning = opts.cloneResult.warning;
-  }
-  return outcome;
 };
 
 const runDryRunCore = async (ctx: CliContext, source: string): Promise<DryRunOutcome> => {

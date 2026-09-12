@@ -194,9 +194,13 @@ const detectWorkspacePackagesDetailed = async (repoDir: string): Promise<Workspa
   };
 };
 
-/** Best-effort detection, unchanged: the exact shape `refs add` has always consumed.
- * Diagnostics are deliberately dropped here — `add` is best-effort by design and has an agent to
- * fill any gaps. */
+/** The packages a scan selected, without its diagnostics.
+ *
+ * `refs add` used to call this, and no longer does: dropping the diagnostics there meant a
+ * repository whose declared workspaces could not be fully inspected produced a proposal with
+ * missing members and nothing to say why — and a named root makes such a proposal look complete
+ * (#106). No production caller remains; what is left is tests that genuinely only want the
+ * selection. */
 const detectWorkspacePackages = async (repoDir: string): Promise<WorkspacePackage[]> => {
   const scan = await detectWorkspacePackagesDetailed(repoDir);
   return scan.packages;

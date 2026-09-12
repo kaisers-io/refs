@@ -38,11 +38,19 @@ const dryRunHuman = (key: string, dest: string): string[] => [
   'next: review the proposal, then run refs add --proposal <file> to finalize',
 ];
 
+/** Everything worth saying about one dry-run: the clone's own warning (a partial-clone fallback)
+ * and detection's (a workspace declaration it could not fully read). Independent facts, so both
+ * are reported rather than one displacing the other. */
+const dryRunWarnings = (outcome: DryRunOutcome): string[] => [
+  ...warningsFor(outcome.warning),
+  ...warningsFor(outcome.detectionWarning),
+];
+
 const runAddDryRun = async (ctx: CliContext, source: string): Promise<AddOutcome> => {
   const outcome = await runDryRunCore(ctx, source);
   const home = resolveHome(ctx.env);
   await writePendingProposal(home, outcome.proposal.key, outcome.effectiveCloneMode);
-  const warnings = warningsFor(outcome.warning);
+  const warnings = dryRunWarnings(outcome);
   return {
     data: outcome.proposal,
     human: dryRunHuman(outcome.proposal.key, outcome.dest),
@@ -140,8 +148,7 @@ const runAddDescription = async (
     finalizeOpts.effectiveCloneMode = outcome.effectiveCloneMode;
   }
   const { entry, key } = await finalizeRef(ctx, finalizeOpts);
-  const warnings = warningsFor(outcome.warning);
-  return { data: { entry, key }, human: finalizeHuman(key), warnings };
+  return { data: { entry, key }, human: finalizeHuman(key), warnings: dryRunWarnings(outcome) };
 };
 
 type AddOptions = {
