@@ -42,22 +42,33 @@ const isValidHostSegment = (host: string): boolean => {
   return labels.every((label) => isValidDnsLabel(label));
 };
 
+// A lone surrogate is a valid JS string and not a valid piece of text. It has no UTF-8 encoding,
+// so anything that writes the key out — the config file, the checkout directory, the sha256 a lock
+// name falls back to — silently substitutes U+FFFD. Three distinct keys ending in U+D800, U+D801
+// and U+FFFD therefore share one directory and one lock name, which is exactly the non-injectivity
+// the lock-name encoding exists to prevent. Rejecting here is the only place that holds for every
+// consumer at once; no real config can carry one anyway, since TOML admits no escape for an
+// unpaired surrogate.
+const isEncodableKey = (raw: string): boolean => raw.isWellFormed();
+
+/** `host/path…/repo`, with a host the DNS rules accept and path segments the safe alphabet does. */
+const hasKeyShape = (raw: string): boolean => {
+  const [host, ...path] = raw.split('/');
+  if (host === undefined || path.length < MIN_PATH_SEGMENTS) {
+    return false;
+  }
+  if (!HOST_SEGMENT.test(host) || !isValidHostSegment(host)) {
+    return false;
+  }
+  return path.every((seg) => SAFE_SEGMENT.test(seg));
+};
+
 const zRefKey = z
   .string()
-  .refine((raw) => {
-    const segments = raw.split('/');
-    const [host, ...path] = segments;
-    if (host === undefined || path.length < MIN_PATH_SEGMENTS) {
-      return false;
-    }
-    if (!HOST_SEGMENT.test(host)) {
-      return false;
-    }
-    if (!isValidHostSegment(host)) {
-      return false;
-    }
-    return path.every((seg) => SAFE_SEGMENT.test(seg));
-  }, 'ref key must be host/path…/repo with safe, non-empty segments')
+  .refine(
+    (raw) => isEncodableKey(raw) && hasKeyShape(raw),
+    'ref key must be host/path…/repo with safe, non-empty segments',
+  )
   .brand<'RefKey'>();
 
 const zDuration = z

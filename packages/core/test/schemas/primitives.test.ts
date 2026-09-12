@@ -54,6 +54,49 @@ describe('ref key validation', () => {
   });
 });
 
+// A lone surrogate is a valid JS string and has no UTF-8 encoding, so `Buffer.from(key, 'utf8')`
+// substitutes U+FFFD for it. Keys ending U+D800, U+D801 and U+FFFD then share one byte sequence,
+// and therefore one checkout directory and one lock name — two unrelated refs serializing against
+// each other, which is precisely what the lock-name encoding exists to rule out. Rejecting the
+// key is the only place that holds for every consumer at once.
+// Written as escapes rather than `String.fromCharCode`, so the codepoint is the literal and there
+// is no magic number to name.
+const LONE_HIGH_SURROGATE = '\uD800';
+const LONE_LOW_SURROGATE = '\uDC00';
+const REPLACEMENT_CHARACTER = '\u{FFFD}';
+
+describe('ref keys that no encoding can tell apart', () => {
+  it('rejects a key carrying an unpaired surrogate', () => {
+    expect.hasAssertions();
+
+    expect(zRefKey.safeParse(`github.com/a/${LONE_HIGH_SURROGATE}`).success).toBe(false);
+    expect(zRefKey.safeParse(`github.com/a/${LONE_LOW_SURROGATE}`).success).toBe(false);
+  });
+
+  it('accepts the replacement character itself, which is ordinary text', () => {
+    expect.hasAssertions();
+
+    // The rejection above must be about what cannot be encoded, not about the character the
+    // encoder would have produced. U+FFFD is a real, encodable codepoint.
+    expect(zRefKey.safeParse(`github.com/a/${REPLACEMENT_CHARACTER}`).success).toBe(true);
+  });
+
+  it('gives every accepted key a distinct utf-8 encoding', () => {
+    expect.hasAssertions();
+    const candidates = [
+      `github.com/a/${LONE_HIGH_SURROGATE}`,
+      `github.com/a/${LONE_LOW_SURROGATE}`,
+      `github.com/a/${REPLACEMENT_CHARACTER}`,
+    ];
+
+    const encodings = candidates
+      .filter((key) => zRefKey.safeParse(key).success)
+      .map((key) => Buffer.from(key, 'utf8').toString('hex'));
+
+    expect(new Set(encodings).size).toBe(encodings.length);
+  });
+});
+
 describe('duration validation', () => {
   it('parses m/h/d and converts to ms', () => {
     expect.hasAssertions();
