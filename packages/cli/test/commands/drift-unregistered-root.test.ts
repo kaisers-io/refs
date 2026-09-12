@@ -150,7 +150,7 @@ describe('probeRefStructure: a root whose name a member also claims', () => {
 });
 
 describe('probeRefStructure: an unregistered root the scan cannot settle', () => {
-  it('says nothing while an unreadable manifest could still change the answer', async () => {
+  it('names no root while an unreadable manifest could still change the answer — and says so', async () => {
     expect.hasAssertions();
     const repo = monorepo();
     writeJson(join(repo, 'package.json'), {
@@ -165,9 +165,13 @@ describe('probeRefStructure: an unregistered root the scan cannot settle', () =>
 
     const report = await probe(repo, { '@fixture/a': entry('packages/a') });
 
-    // Silent entirely: the configured package verified, and the root question could not be
-    // settled, so there is nothing this run may claim.
-    expect(report).toStrictEqual({ status: 'ok' });
+    // Naming no root is right: a member sharing the name could be behind that manifest. Answering
+    // `ok` was not — the configured package verified, and the root question was abandoned, which
+    // are two different facts. The obstacle names the file that caused it.
+    expect(report).toStrictEqual({
+      discovery_incomplete: 'packages/broken: manifest_unreadable',
+      status: 'unknown',
+    });
   });
 });
 
