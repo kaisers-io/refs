@@ -258,9 +258,10 @@ describe('a ref with more findings than anyone will read', () => {
 
     expect(lines).toHaveLength(CAPPED);
     expect(lines.at(LAST)).toContain('…and 1 more finding(s)');
-    // The KEY, not a `<ref>` placeholder: a shell reads `<ref>` as an input redirection, so a
-    // line carrying one cannot be pasted — the exact defect a printed command shipped with once.
-    expect(lines.at(LAST)).toContain(String.raw`refs sync 'github.com/acme/o'\''brien' --json`);
+    // No command. `refs sync <ref> --json` was the obvious one and would be wrong: sync reports
+    // only what ARRIVED in the range it fetched, so on an unchanged ref it returns nothing and
+    // the reader concludes the findings evaporated.
+    expect(lines.at(LAST)).not.toContain('refs sync');
   });
 
   it('prints every finding when there are few enough to read', () => {

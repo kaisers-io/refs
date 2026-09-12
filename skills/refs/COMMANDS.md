@@ -430,7 +430,9 @@ look out of step and sync has been quiet.
 
 A repository whose patterns reach many levels can declare hundreds of members — astro declares
 `packages/**/*` and has 554, every one of them real. `doctor` prints the first ten findings and a
-count of the rest; `refs sync <ref> --json` carries the full list under `structure.packages`.
+count of the rest — act on those (register, repoint or decline) and run it again for the next
+batch. Do not reach for `refs sync --json` to get the full list: sync reports only what ARRIVED in
+the range it fetched, so on an unchanged ref it answers with nothing at all.
 
 Both stop naming packages where workspace detection could have MISSED something — an unreadable
 manifest, an unexpanded `**` — because the path they would name cannot be established from a

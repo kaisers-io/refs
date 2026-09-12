@@ -1,11 +1,13 @@
-import { CURRENT_DIR_SEGMENT, normalizeSeparators } from './workspaces-shapes.ts';
 import { MISSING_DIR_CODES, probeCandidateDir, tryReaddir } from './workspaces-probe.ts';
+import { depthOf, planFor } from './workspaces-pattern-plan.ts';
 import { join, posix } from 'node:path';
+import { CURRENT_DIR_SEGMENT } from './workspaces-shapes.ts';
 import type { Dirent } from 'node:fs';
 import type { ExcludedDirs } from './workspaces-expand.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { ExpandResult } from './workspaces-probe.ts';
-import { Minimatch } from 'minimatch';
+// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
+import type { PatternPlan } from './workspaces-pattern-plan.ts';
 import type { WorkspaceDiagnostic } from './workspaces-patterns.ts';
 import { resolveInside } from './fs-containment.ts';
 
@@ -28,7 +30,6 @@ type ScanBudget = { dirs: number; entries: number };
 // `readdir` on something that is not a directory. Both spellings occur: Linux and macOS answer
 // ENOTDIR, Windows answers ENOENT for the same shape.
 const NOT_A_DIRECTORY_CODES: ReadonlySet<string> = new Set(['ENOENT', 'ENOTDIR']);
-const MANIFEST_FILE = 'package.json';
 const MAX_DEPTH = 32;
 const MAX_DIRS = 20_000;
 const MAX_ENTRIES = 200_000;
@@ -42,8 +43,13 @@ const newScanBudget = (): ScanBudget => ({ dirs: MAX_DIRS, entries: MAX_ENTRIES 
 // (Line comments, not a doc block: a `**` glob written out closes one early.)
 const NEVER_WALKED: ReadonlySet<string> = new Set(['.git', 'node_modules']);
 
-type Walk = {
+type Walk = PatternPlan & {
   budget: ScanBudget;
+  /** Whether this pattern names a hidden segment outright. A `<prefix>` + wildcard exclusion does
+   * NOT cover a hidden descendant — minimatch's wildcards skip dot-names unless the pattern says
+   * otherwise — so a pattern that reaches into one must keep walking a subtree such an exclusion
+   * appears to cover. Pruning there would drop a package nothing excluded. */
+  selectsHidden: boolean;
   /** How deep a match can sit, when the pattern bounds it at all. A wildcard-only pattern has a
    * fixed segment count, so a directory at that depth cannot hold a selected DESCENDANT — and
    * listing it would spend entries on a subtree that could never contribute. `**` matches any
@@ -91,7 +97,7 @@ const descendable = async (
   if (!walk.couldHold(at.relPath) || NEVER_WALKED.has(entry.name)) {
     return false;
   }
-  if (at.excluded.coversSubtree(at.relPath)) {
+  if (!walk.selectsHidden && at.excluded.coversSubtree(at.relPath)) {
     // Nothing under it can be selected, so walking it can only spend budget that the packages
     // this scan IS looking for would otherwise get. A repository excluding a large generated
     // tree would otherwise lose real packages to it.
@@ -245,26 +251,6 @@ const baseFault = async (repoDir: string, baseDir: string): Promise<ExpandResult
  * cannot, so the whole valid subtree below that ancestor is skipped while the scan still reports
  * itself complete. (No glob is written out here: a wildcard followed by a slash closes a doc
  * block early.) */
-/** The deepest a match can sit under a pattern with no `**`, counted in segments. `undefined`
- * where `**` makes it unbounded. */
-const boundedDepthOf = (pattern: string): number | undefined => {
-  const segments = normalizeSeparators(pattern).split('/');
-  return segments.includes('**') ? undefined : segments.length;
-};
-
-const depthOf = (relPath: string): number =>
-  relPath === CURRENT_DIR_SEGMENT ? 0 : relPath.split('/').length;
-
-const matchersFor = (pattern: string): Pick<Walk, 'couldHold' | 'selects'> => {
-  const normalized = normalizeSeparators(pattern);
-  const selecting = new Minimatch(`${normalized}/${MANIFEST_FILE}`);
-  const descending = new Minimatch(normalized);
-  return {
-    couldHold: (path) => descending.match(path, true),
-    selects: (path) => selecting.match(posix.join(path, MANIFEST_FILE)),
-  };
-};
-
 // Expands one recursive pattern from the deepest directory it names outright.
 const expandRecursive = async (
   repoDir: string,
@@ -276,11 +262,10 @@ const expandRecursive = async (
     return fault;
   }
   const walk: Walk = {
-    ...matchersFor(plan.pattern),
+    ...planFor(plan.pattern),
     budget: context.budget,
     diagnostics: [],
     dirs: [],
-    maxDepth: boundedDepthOf(plan.pattern),
     pattern: plan.pattern,
     repoDir,
   };

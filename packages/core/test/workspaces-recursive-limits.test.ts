@@ -232,3 +232,23 @@ describe('what counts as excluding a whole subtree', () => {
     expect(scanIsReliable(scan)).toBe(true);
   });
 });
+
+describe('an exclusion that does not reach a hidden descendant', () => {
+  it('keeps walking for a pattern that names one outright', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    writeFileSync(
+      join(repo, 'pnpm-workspace.yaml'),
+      "packages:\n  - 'packages/*/.internal/**'\n  - '!packages/group/**'\n",
+    );
+    addPackage(repo, 'packages/group/.internal/pkg', { name: '@deep/internal', version: '1.0.0' });
+
+    const scan = await detectWorkspacePackagesDetailed(repo);
+
+    // A wildcard exclusion does not cover a hidden segment — minimatch skips dot-names unless the
+    // pattern says otherwise — so the package is selected and not excluded. Pruning its ancestor
+    // on the strength of that exclusion would drop a package nothing excluded.
+    expect(names(scan.packages)).toStrictEqual(['@deep/internal']);
+  });
+});
