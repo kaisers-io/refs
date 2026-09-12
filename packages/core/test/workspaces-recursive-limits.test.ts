@@ -1,7 +1,7 @@
 import { addPackage, freshRepo, writeJson } from './helpers/workspace-fixture.ts';
+import { chmodSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { detectWorkspacePackagesDetailed, scanIsReliable } from '../src/workspaces.ts';
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -172,5 +172,41 @@ describe('pruning, which asks a different question from selection', () => {
     const scan = await detectWorkspacePackagesDetailed(repo);
 
     expect(names(scan.packages)).toStrictEqual(['@deep/core']);
+  });
+});
+
+// Running as root defeats a permission fixture: root reads a 0o000 directory regardless.
+const asRoot = process.getuid?.() === 0;
+
+/** A checkout whose `packages/link` points at a directory nobody may read. */
+const unreadableLinkTarget = (): string => {
+  const repo = freshRepo();
+  writeJson(join(repo, 'package.json'), { workspaces: ['packages/**/*'] });
+  addPackage(repo, 'packages/real', { name: '@deep/real', version: '1.0.0' });
+  addPackage(repo, 'elsewhere/pkg', { name: '@deep/elsewhere', version: '1.0.0' });
+  // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+  symlinkSync(join(repo, 'elsewhere'), join(repo, 'packages', 'link'), 'dir');
+  // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+  chmodSync(join(repo, 'elsewhere'), NO_ACCESS);
+  return repo;
+};
+const NO_ACCESS = 0o000;
+const RESTORED_ACCESS = 0o755;
+
+describe('a symlink that cannot be read', () => {
+  it.skipIf(asRoot === true)('is reported rather than passed over in silence', async () => {
+    expect.hasAssertions();
+    const repo = unreadableLinkTarget();
+
+    const scan = await detectWorkspacePackagesDetailed(repo);
+    // eslint-disable-next-line node/no-sync -- restore so the temp dir can be cleaned up
+    chmodSync(join(repo, 'elsewhere'), RESTORED_ACCESS);
+
+    // A failure to look is never evidence. Silence here would let an unreadable link establish
+    // that the scan was complete, and callers read "this package is gone" out of that.
+    expect(scan.diagnostics).toStrictEqual([
+      { kind: 'candidate_not_inspected', path: 'packages/link' },
+    ]);
+    expect(scanIsReliable(scan)).toBe(false);
   });
 });

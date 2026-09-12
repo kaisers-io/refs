@@ -25,6 +25,9 @@ import { resolveInside } from './fs-containment.ts';
  * with the number of declarations, which is the opposite of a bound. */
 type ScanBudget = { dirs: number; entries: number };
 
+// `readdir` on something that is not a directory. Both spellings occur: Linux and macOS answer
+// ENOTDIR, Windows answers ENOENT for the same shape.
+const NOT_A_DIRECTORY_CODES: ReadonlySet<string> = new Set(['ENOENT', 'ENOTDIR']);
 const MANIFEST_FILE = 'package.json';
 const MAX_DEPTH = 32;
 const MAX_DIRS = 20_000;
@@ -103,15 +106,22 @@ const descendable = async (
  * link points at nothing and is silent for the same reason. */
 const reportLinkedDir = async (walk: Walk, relPath: string): Promise<void> => {
   const target = await resolveInside(walk.repoDir, join(walk.repoDir, relPath));
-  if (target.kind !== 'inside') {
-    // Outside the checkout, or pointing at nothing. Neither is a package this walk lost: an
-    // outside path is one `resolve` would refuse anyway, and a broken link holds nothing.
+  if (target.kind === 'outside' || target.kind === 'missing') {
+    // Neither is a package this walk lost: an outside path is one `resolve` would refuse anyway,
+    // and a broken link holds nothing.
+    return;
+  }
+  if (target.kind === 'unreadable') {
+    // A failure to look is never evidence. Staying quiet here would let an unreadable link
+    // establish that the scan was complete, and callers draw "this package is gone" from that.
+    walk.diagnostics.push({ kind: 'candidate_not_inspected', path: relPath });
     return;
   }
   // `readdir` is the directory test: it is the operation that would have been performed here, so
-  // it answers exactly the question — could this link have been walked?
+  // it answers exactly the question — could this link have been walked? A refusal (EACCES, EIO)
+  // is not the same answer as "not a directory", and only the second one is silent.
   const listed = await tryReaddir(target.real);
-  if (!('code' in listed)) {
+  if (!('code' in listed) || !NOT_A_DIRECTORY_CODES.has(listed.code)) {
     walk.diagnostics.push({ kind: 'candidate_not_inspected', path: relPath });
   }
 };
@@ -132,7 +142,10 @@ const entriesOf = async (walk: Walk, relPath: string): Promise<Dirent[] | undefi
     return undefined;
   }
   walk.budget.entries -= listed.entries.length;
-  if (walk.budget.entries <= 0) {
+  // `< 0`, not `<= 0`: a listing that exactly fits the remaining budget was paid for in full, and
+  // nothing below it was left unwalked. Reporting incompleteness there would disable discovery
+  // over a walk that finished.
+  if (walk.budget.entries < 0) {
     exhausted(walk, relPath);
     return undefined;
   }
