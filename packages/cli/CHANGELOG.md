@@ -5,7 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.13.0] - 2026-09-12
+
+### Upgrading
+
+**`refs add <url> --description "…"` now refuses a source with workspace members.** It holds one
+description, about the repository, and none for a package — and a package's description is no
+longer read out of its manifest, so there is nothing for it to fall back on. Such a source exits
+`3`, listing every package the proposal will need a description for and printing the two-phase
+commands to run instead, with the source quoted into them. The shortcut still finalizes a
+repository with no detected packages, and one whose only detected package is the root at `.`.
+
+If a script calls the one-shot against a monorepo, it will start failing. The two-phase flow is the
+replacement and always was the documented agent path.
+
+**Package descriptions already in `config.toml` are left exactly as they are.** A description
+imported from a manifest before this release stays; nothing distinguishes it from one someone
+wrote, so nothing rewrites it. To review them: `refs show <ref> --packages --json`, and
+`refs edit <ref> --package <name> description "…"` to replace one.
+
+**A ref key containing an unpaired surrogate is now rejected.** No configuration written by refs
+can contain one — TOML has no escape for it — so this only affects a hand-built key.
 
 ### Fixed
 
@@ -59,6 +79,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Dependencies refreshed.** `zod` 4.5.2 → 4.6.2 — the only production dependency, and bundled
+  into the published CLI. The development toolchain moved too: `vitest` 4 → 5, `tsdown` 0.22 →
+  0.23 (rolldown 1.2.8), `oxlint`, `oxfmt` and `vite`. No behaviour depends on any of it.
 - **A package's description is never read out of a manifest.** Workspace detection carried each
   package's `description` from its `package.json`, and `refs add <source> --description "…"`
   persisted it into `config.toml` — text written by whoever owns the upstream repository, crossing
