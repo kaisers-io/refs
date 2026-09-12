@@ -5,6 +5,7 @@ import {
   canonicalizeGitUrl,
   conflictError,
   isEnoent,
+  isValidLockName,
   resolveNpmPackage,
   resolveSetting,
   usageError,
@@ -43,8 +44,9 @@ const REF_LOCK_DIGEST_PREFIX = `${REF_LOCK_ESCAPE_PREFIX}_`;
  * alternative is `mkdir` failing with `ENAMETOOLONG` and every locking command for that ref
  * erroring out — or, worse, succeeding and then failing on the RENAME the steal protocol needs,
  * which leaves an abandoned lock nothing can reclaim. `MAX_LOCK_NAME_BYTES` (core) is the budget
- * and already reserves room for that suffix. Reached only by a key of roughly 200 characters,
- * which needs a self-hosted url: no forge allows a path that long. */
+ * and already reserves room for that suffix. Reached two ways, neither through a forge url: a key
+ * of roughly 200 characters (no forge allows a path that long), and a key carrying a character the
+ * lock alphabet does not admit (no forge allows those in a path either) — see `refLockName`. */
 const digestLockName = (key: RefKey): string =>
   `${REF_LOCK_DIGEST_PREFIX}${createHash('sha256').update(key, 'utf8').digest('hex')}`;
 
@@ -67,9 +69,12 @@ const digestLockName = (key: RefKey): string =>
  * grammar is documented here rather than implemented twice.
  *
  * A name too long for a directory entry falls back to a third form, `ref.__` plus a digest — see
- * `digestLockName`. `zRefKey` admits path characters `LOCK_NAME_PATTERN` rejects (`@` and a space
- * among them), which this passes through and `withLock` then refuses; that predates the encoding
- * and is tracked separately.
+ * `digestLockName`. So does a name the lock alphabet will not accept: `zRefKey`'s `SAFE_SEGMENT`
+ * admits everything but `/`, `\\`, `%` and `:`, which is wider than `LOCK_NAME_PATTERN` — `@`, a
+ * space and any non-ASCII character among the difference. Passing those through produced a name
+ * `withLock` refused, so the ref could be configured and read but never locked, and therefore
+ * never synced (#85). Routing them to the digest form costs readability for those keys and
+ * nothing else: the form already exists, is bounded, and is valid by construction.
  *
  * Shared by the dry-run clone step and the finalize identity/head checks so both ever use the
  * exact same name for a given ref. */
@@ -77,7 +82,9 @@ const refLockName = (key: RefKey): string => {
   const readable = key.includes('_')
     ? `${REF_LOCK_ESCAPE_PREFIX}${key.replaceAll('_', '_u').replaceAll('/', '_s')}`
     : `${REF_LOCK_PREFIX}${key.replaceAll('/', '_')}`;
-  return Buffer.byteLength(readable, 'utf8') > MAX_LOCK_NAME_BYTES ? digestLockName(key) : readable;
+  const usable =
+    Buffer.byteLength(readable, 'utf8') <= MAX_LOCK_NAME_BYTES && isValidLockName(readable);
+  return usable ? readable : digestLockName(key);
 };
 
 /** Whether `REFS_ALLOW_FILE_URLS=1` is set — the same escape hatch `canonicalizeGitUrl` itself

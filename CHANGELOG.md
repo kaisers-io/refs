@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A ref whose key carries `@`, a space or any non-ASCII character can be locked, and therefore
+  synced.** `zRefKey` admits every character but `/`, `\`, `%` and `:`; the lock alphabet is far
+  narrower, and the derived lock name was passed through unchanged. Such a ref could be added and
+  read but never locked — so `refs sync`, `refs remove`, `refs resolve`'s package verification and
+  `refs doctor`'s drift check all failed for it, with a message naming the lock name rather than
+  the ref. A name the lock alphabet will not accept now falls back to the same bounded digest form
+  a too-long name already used. Keys the alphabet does admit keep their readable name unchanged.
+  Reachable through a self-hosted url or a hand-edited `config.toml`; no forge allows these
+  characters in a repository path.
+- **A ref key carrying an unpaired surrogate is rejected.** Such a character is a valid JavaScript
+  string and has no UTF-8 encoding, so everything that writes the key out — the checkout directory,
+  the digest a lock name can fall back to — silently substituted U+FFFD for it. Keys ending
+  U+D800, U+D801 and U+FFFD therefore shared one directory and one lock name, and two unrelated
+  refs would have serialized against each other. No real config could carry one: TOML has no
+  escape for an unpaired surrogate.
+
 ### Changed
 
 - **A package's description is never read out of a manifest.** Workspace detection carried each

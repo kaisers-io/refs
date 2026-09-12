@@ -1,4 +1,4 @@
-import { MAX_LOCK_NAME_BYTES, zRefKey } from '@kaisers-io/refs-core';
+import { MAX_LOCK_NAME_BYTES, isValidLockName, zRefKey } from '@kaisers-io/refs-core';
 import { describe, expect, it } from 'vitest';
 import { refLockName } from '../../src/commands/add-source.ts';
 
@@ -123,6 +123,57 @@ describe('refLockName: names that do not fit a directory entry', () => {
   });
 });
 
+// `zRefKey`'s `SAFE_SEGMENT` admits every character but `/`, `\\`, `%` and `:`. The lock alphabet
+// is far narrower, so a key can be perfectly valid and still derive a name `withLock` refuses —
+// which used to leave the ref configured, readable, and impossible to sync, because every command
+// that takes the per-ref lock died on the name rather than on anything about the ref (#85).
+//
+// Reached through a self-hosted url or a hand-edited `config.toml`; no forge allows these in a
+// path. Reachability is not the test's business — the type says `RefKey`, so the function has to
+// handle the whole of it.
+const KEYS_OUTSIDE_THE_LOCK_ALPHABET = [
+  'git.example.com/a/re@po',
+  'git.example.com/a/my repo',
+  'git.example.com/a/repö',
+  'git.example.com/a/b+c',
+  'git.example.com/a/~tilde',
+];
+
+describe('refLockName: keys the lock alphabet does not admit', () => {
+  it('never derives a name withLock would refuse', () => {
+    expect.hasAssertions();
+
+    const refused = KEYS_OUTSIDE_THE_LOCK_ALPHABET.filter((key) => !isValidLockName(nameFor(key)));
+
+    expect(refused).toStrictEqual([]);
+  });
+
+  it('derives the digest form, spelled out rather than asked of the same predicate', () => {
+    expect.hasAssertions();
+    // `isValidLockName` is what the implementation consults, so asserting only through it would
+    // let a predicate that had been accidentally broadened agree with itself. This states the
+    // expected shape independently: the digest namespace plus a sha256 in hex.
+    const shapes = KEYS_OUTSIDE_THE_LOCK_ALPHABET.map((key) => nameFor(key));
+
+    expect(shapes.every((name) => /^ref\.__[0-9a-f]{64}$/u.test(name))).toBe(true);
+  });
+
+  it('keeps them distinct from each other and from ordinary keys', () => {
+    expect.hasAssertions();
+    const keys = [...KEYS_OUTSIDE_THE_LOCK_ALPHABET, 'git.example.com/a/repo'];
+
+    expect(collisionsAmong(keys)).toStrictEqual([]);
+  });
+
+  it('leaves a key the alphabet does admit on its readable name', () => {
+    expect.hasAssertions();
+
+    // The fallback is for what cannot be written readably, never a blanket downgrade: `doctor`'s
+    // `locks` check prints these names, and a digest tells nobody which ref is busy.
+    expect(nameFor('git.example.com/a/repo')).toBe('ref.git.example.com_a_repo');
+  });
+});
+
 /** Every string over `alphabet` of length `length`, as an array. Small alphabets only — this is
  * exponential, and it is chosen to stress the escape characters rather than to be broad. */
 const wordsOf = (alphabet: string, length: number): string[] => {
@@ -173,5 +224,33 @@ describe('refLockName: injective over generated keys', () => {
 
     expect(collisionsAmong(keys)).toStrictEqual([]);
     expect(keys.length).toBeGreaterThan(NO_KEYS);
+  });
+});
+
+// A second, smaller sweep over an alphabet that crosses the lock alphabet's boundary. Kept apart
+// from the one above rather than folded into it: the generator is exponential in the alphabet, and
+// what this asks is a different question — not "are two names ever equal" but "is any name one
+// `withLock` refuses", which is the failure #85 describes.
+const OUTSIDE_ALPHABET = 'a1_/@ ä.';
+const OUTSIDE_MAX_LENGTH = 5;
+
+const generatedOutsideKeys = (): string[] => {
+  const lengths = Array.from(
+    { length: OUTSIDE_MAX_LENGTH - MIN_LENGTH + 1 },
+    (_unused, index) => MIN_LENGTH + index,
+  );
+  return lengths
+    .flatMap((length) => wordsOf(OUTSIDE_ALPHABET, length))
+    .filter((candidate) => zRefKey.safeParse(candidate).success);
+};
+
+describe('refLockName: lockable over generated keys', () => {
+  it('derives a name withLock accepts for every valid ref key', () => {
+    expect.hasAssertions();
+    const keys = generatedOutsideKeys();
+
+    expect(keys.filter((key) => !isValidLockName(nameFor(key)))).toStrictEqual([]);
+    expect(keys.length).toBeGreaterThan(NO_KEYS);
+    expect(collisionsAmong(keys)).toStrictEqual([]);
   });
 });

@@ -218,11 +218,23 @@ const finishHold = async <TResult>(
   return outcome.value;
 };
 
+/** Whether `name` is one `withLock` will accept — the same allowlist `validateLockName` enforces,
+ * as a predicate.
+ *
+ * Exported because a caller DERIVING a lock name from something with a wider alphabet (a ref key,
+ * whose `SAFE_SEGMENT` admits `@`, spaces and non-ASCII) has to be able to ask before it commits
+ * to a name. Asking is the whole point: a derived name that fails here is not a bad input to
+ * report, it is a name the deriver must not produce — it would configure a ref that can be read
+ * but never locked, and so never synced. Duplicating the pattern at the call site instead would
+ * put two copies of this alphabet in the repo, to drift apart. */
+const isValidLockName = (name: string): boolean =>
+  name !== '.' && name !== '..' && LOCK_NAME_PATTERN.test(name);
+
 // Rejects unless `name` matches the strict allowlist (see `LOCK_NAME_PATTERN`), checked explicitly
 // against "." and ".." too (even though the pattern already excludes them) to make the intent
 // unmistakable at the call site guarding every destructive fs op below.
 const validateLockName = (name: string): void => {
-  if (name === '.' || name === '..' || !LOCK_NAME_PATTERN.test(name)) {
+  if (!isValidLockName(name)) {
     throw validationError(
       `lock name must not contain "/" or other unsafe characters — only letters, digits, and ` +
         `"_.-" are allowed, and it may not be "." or "..": ${name}`,
@@ -262,4 +274,4 @@ const withLock = async <TResult>(
   return finishHold(ctx, token, heartbeat, await settle(fn));
 };
 
-export { MAX_LOCK_NAME_BYTES, withLock };
+export { MAX_LOCK_NAME_BYTES, isValidLockName, withLock };
