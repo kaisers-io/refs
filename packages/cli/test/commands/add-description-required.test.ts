@@ -2,6 +2,7 @@ import { EXIT, readConfig, readState, resolveHome } from '@kaisers-io/refs-core'
 import { SOLO_MANIFEST_DESCRIPTION, createFixtureRepo } from '../helpers/fixture-repo.ts';
 import { describe, expect, it } from 'vitest';
 import {
+  expectFinalizedState,
   initHome,
   parseLastEnvelope,
   realContextFor,
@@ -188,13 +189,16 @@ describe('refs add --description: the shapes it still finalizes', () => {
       expect.hasAssertions();
       await withResetExitCode(() =>
         withTempHome(async (homeDir) => {
-          const { stdout } = await runOneShot(homeDir, {});
+          const { ctx, stdout } = await runOneShot(homeDir, {});
 
           expect(process.exitCode).toBeUndefined();
           const envelope = parseLastEnvelope(stdout) as FinalizeEnvelope;
           expect(envelope.ok).toBe(true);
           expect(envelope.data.entry.description).toBe(REF_DESCRIPTION);
           expect(envelope.data.entry.packages).toBeUndefined();
+          // This flow now records a pending proposal on its way through (see `runAddDescription`),
+          // so the success path has to clear it again like any other finalize.
+          await expectFinalizedState(resolveHome(ctx.env), envelope.data.key);
         }),
       );
     },
