@@ -25,8 +25,8 @@ describe('the workspace root itself', () => {
     addPackage(repo, 'packages/a', { name: '@acme/a', version: '1.0.0' });
 
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: undefined, name: '@acme/toolkit', path: '.' },
-      { description: undefined, name: '@acme/a', path: 'packages/a' },
+      { name: '@acme/toolkit', path: '.' },
+      { name: '@acme/a', path: 'packages/a' },
     ]);
   });
 
@@ -37,7 +37,7 @@ describe('the workspace root itself', () => {
     addPackage(repo, 'packages/a', { name: '@acme/a', version: '1.0.0' });
 
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: undefined, name: '@acme/a', path: 'packages/a' },
+      { name: '@acme/a', path: 'packages/a' },
     ]);
   });
 
@@ -83,7 +83,7 @@ describe('a root whose name a workspace member also claims', () => {
     addPackage(repo, 'packages/toolkit', { name: '@acme/toolkit', version: '1.0.0' });
 
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: undefined, name: '@acme/toolkit', path: 'packages/toolkit' },
+      { name: '@acme/toolkit', path: 'packages/toolkit' },
     ]);
   });
 

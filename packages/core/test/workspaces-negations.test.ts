@@ -20,7 +20,7 @@ describe('negation patterns', () => {
     addPackage(repo, 'tools/t1', { name: '@mono/t1', version: '1.0.0' });
 
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: undefined, name: '@mono/a', path: 'packages/a' },
+      { name: '@mono/a', path: 'packages/a' },
     ]);
   });
 
@@ -39,7 +39,7 @@ describe('negation patterns', () => {
     addPackage(repo, 'packages/fixture-live', { name: '@mono/live', version: '1.0.0' });
 
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: undefined, name: '@mono/live', path: 'packages/fixture-live' },
+      { name: '@mono/live', path: 'packages/fixture-live' },
     ]);
   });
 });
@@ -59,7 +59,7 @@ describe('negation patterns with a wildcard inside a segment', () => {
     addPackage(repo, 'examples/vue/basic', { name: '@mono/basic', version: '1.0.0' });
 
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: undefined, name: '@mono/basic', path: 'examples/vue/basic' },
+      { name: '@mono/basic', path: 'examples/vue/basic' },
     ]);
   });
 });
@@ -89,9 +89,7 @@ describe('negation patterns and unreadable manifests', () => {
     const scan = await detectWorkspacePackagesDetailed(repo);
 
     expect(scan.diagnostics).toStrictEqual([]);
-    expect(scan.packages).toStrictEqual([
-      { description: undefined, name: '@mono/a', path: 'packages/a' },
-    ]);
+    expect(scan.packages).toStrictEqual([{ name: '@mono/a', path: 'packages/a' }]);
   });
 });
 
@@ -132,8 +130,8 @@ describe('negation patterns and declaration order', () => {
     addPackage(repo, 'packages/core', { name: '@mono/core', version: '1.0.0' });
 
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: undefined, name: '@mono/cli', path: 'packages/cli' },
-      { description: undefined, name: '@mono/core', path: 'packages/core' },
+      { name: '@mono/cli', path: 'packages/cli' },
+      { name: '@mono/core', path: 'packages/core' },
     ]);
   });
 
@@ -145,7 +143,7 @@ describe('negation patterns and declaration order', () => {
     addPackage(repo, 'packages/core', { name: '@mono/core', version: '1.0.0' });
 
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: undefined, name: '@mono/core', path: 'packages/core' },
+      { name: '@mono/core', path: 'packages/core' },
     ]);
   });
 });
@@ -163,8 +161,8 @@ describe('a re-inclusion written differently', () => {
     addPackage(repo, 'packages/core', { name: '@mono/core', version: '1.0.0' });
 
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: undefined, name: '@mono/cli', path: 'packages/cli' },
-      { description: undefined, name: '@mono/core', path: 'packages/core' },
+      { name: '@mono/cli', path: 'packages/cli' },
+      { name: '@mono/core', path: 'packages/core' },
     ]);
   });
 });

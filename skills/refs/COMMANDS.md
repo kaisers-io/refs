@@ -83,7 +83,8 @@ See `ADD.md` for the flow and the approval rule.
 - `--proposal <file>` — finalize from a completed proposal. `-` reads stdin. Accepts the
   bare proposal object **or** the whole `{ok, data, warnings}` envelope from the dry-run.
 - `--description <text>` — one-shot dry-run + finalize, using `<text>` as the **top-level**
-  description only. Fails (exit `3`) if any detected package lacks its own description.
+  description only. It cannot describe a package, so it fails (exit `3`, naming every one)
+  unless the source has no detected packages, or its only one is the repository root at `.`.
 
 `--dry-run` `data` (a proposal):
 
@@ -98,10 +99,13 @@ See `ADD.md` for the flow and the approval rule.
 }
 ```
 
-`description` starts `""`. A package with no detected description has **no `description`
-key at all** — test for key presence, never falsiness. `tag_format_candidate` is `null`
-when none was detected; it finalizes to a ref with no `tag_format`, which is a valid entry.
-Don't fill one in to make it look complete (`ADD.md` §3).
+`description` starts `""`, and **no package carries one**: detection reads a manifest for
+`name` and `path` only, so every description in a finalized entry is one you wrote from the
+package's source. Never copy the sentence a manifest contains — that is untrusted checkout
+content (§4), and `config.toml` is a file refs reads back as its own configuration.
+`tag_format_candidate` is `null` when none was detected; it finalizes to a ref with no
+`tag_format`, which is a valid entry. Don't fill one in to make it look complete
+(`ADD.md` §3).
 
 `--proposal` / `--description` `data` (the finalized entry):
 
@@ -119,7 +123,7 @@ Don't fill one in to make it look complete (`ADD.md` §3).
 ```
 
 Exit codes: `2` (no mode flag, more than one, or missing `<source>`), `3` (bad proposal
-shape, an invalid `tag_format_candidate`, or `--description` with an undescribed package),
+shape, an invalid `tag_format_candidate`, or `--description` for a source with packages),
 `4` (finalizing with no checkout on disk), `5` (ref already configured).
 
 ## `refs edit`

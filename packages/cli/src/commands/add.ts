@@ -1,4 +1,8 @@
-import { buildFinalPackages, finalProposalPackages, requireAllDescribed } from './add-packages.ts';
+import {
+  buildFinalPackages,
+  finalProposalPackages,
+  requireDescribablePackages,
+} from './add-packages.ts';
 import {
   checkoutPath,
   isGitCheckout,
@@ -77,14 +81,19 @@ const runAddProposal = async (ctx: CliContext, location: string): Promise<AddOut
   return { data: { entry, key }, human: finalizeHuman(key), warnings: [] };
 };
 
-// `requireAllDescribed` runs FIRST, before anything else here and before `finalizeRef` is ever
-// reached — the one-shot `--description` text is the top-level ref's own description and not a
-// fallback for any CHILD package, so any of those still missing a detected description must fail
-// closed here, with no config/state write having happened yet. The root package registered at `.`
-// is the single exception, and not really an exception at all: it is this repository, so the ref's
-// description describes it exactly (see `withRootDescription`).
-const buildDescriptionRef = (outcome: DryRunOutcome, description: string): FinalizedRefInput => {
-  requireAllDescribed(outcome.proposal.packages, outcome.rootPackageName);
+// `requireDescribablePackages` runs FIRST, before anything else here and before `finalizeRef` is
+// ever reached — the one-shot `--description` text is the top-level ref's own description and not
+// a fallback for any CHILD package, and detection supplies none (a manifest's own description does
+// not survive the scan), so any child package must fail closed here, with no config/state write
+// having happened yet. The root package registered at `.` is the single exception, and not really
+// an exception at all: it is this repository, so the ref's description describes it exactly (see
+// `withRootDescription`).
+const buildDescriptionRef = (
+  outcome: DryRunOutcome,
+  description: string,
+  source: string,
+): FinalizedRefInput => {
+  requireDescribablePackages(outcome.proposal.packages, source, outcome.rootPackageName);
   const ref: FinalizedRefInput = {
     default_branch: outcome.proposal.default_branch,
     description,
@@ -111,7 +120,7 @@ const runAddDescription = async (
 ): Promise<AddOutcome> => {
   const outcome = await runDryRunCore(ctx, source);
   const home = resolveHome(ctx.env);
-  const ref = buildDescriptionRef(outcome, description);
+  const ref = buildDescriptionRef(outcome, description, source);
   const finalizeOpts: FinalizeOpts = { dest: outcome.dest, home, ref };
   if (outcome.effectiveCloneMode !== undefined) {
     finalizeOpts.effectiveCloneMode = outcome.effectiveCloneMode;

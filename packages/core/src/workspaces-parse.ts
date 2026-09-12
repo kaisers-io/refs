@@ -95,14 +95,4 @@ const extractPackageName = (data: Record<string, unknown>): string | undefined =
   return undefined;
 };
 
-// Extract description field from package data
-const extractPackageDescription = (data: Record<string, unknown>): string | undefined => {
-  const { description } = data;
-  if (typeof description === 'string') {
-    return description;
-  }
-
-  return undefined;
-};
-
-export { collectPnpmPatterns, extractPackageDescription, extractPackageName, parseNpmWorkspaces };
+export { collectPnpmPatterns, extractPackageName, parseNpmWorkspaces };

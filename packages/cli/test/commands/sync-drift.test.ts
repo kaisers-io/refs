@@ -1,4 +1,4 @@
-import { addRefViaDescription, gitFor, runSyncJson } from '../helpers/sync-support.ts';
+import { addRefViaProposal, gitFor, runSyncJson } from '../helpers/sync-support.ts';
 import { describe, expect, it } from 'vitest';
 import {
   initHome,
@@ -22,12 +22,13 @@ type DriftFixture = {
 };
 
 /** A real `file://` monorepo remote with `@fixture/a` and `@fixture/b`, added as a configured ref
- * (both packages described, so `refs add`'s one-shot flow registers them both). */
+ * through the two-phase flow — the only one that registers workspace members, since a description
+ * for each has to be written rather than detected. */
 const setupMonorepoRef = async (homeDir: string): Promise<DriftFixture> => {
   const { ctx, stdout } = realContextFor(homeDir);
   await initHome(ctx);
   const fixture = await createFixtureRepo({ monorepo: true, monorepoAllDescribed: true });
-  const added = await addRefViaDescription(ctx, stdout, fixture.url);
+  const added = await addRefViaProposal({ ctx, homeDir, source: fixture.url, stdout });
   return { ctx, key: added.key, stdout, upstream: fixture.dir };
 };
 

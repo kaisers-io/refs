@@ -87,41 +87,35 @@ describe('candidate package dir selection', () => {
 });
 
 describe('manifest shaping', () => {
-  it('shapes a manifest with name and description into a package entry', () => {
+  it('shapes a named manifest into a package entry — identity only', () => {
     expect.hasAssertions();
-    expect(
-      toWorkspacePackage('packages/a', { description: 'Package A', name: '@mono/a' }),
-    ).toStrictEqual({ description: 'Package A', name: '@mono/a', path: 'packages/a' });
-  });
-
-  it('keeps a missing description as `undefined`', () => {
-    expect.hasAssertions();
-    expect(
-      toWorkspacePackage('packages/b', { description: undefined, name: '@mono/b' }),
-    ).toStrictEqual({ description: undefined, name: '@mono/b', path: 'packages/b' });
+    expect(toWorkspacePackage('packages/a', { name: '@mono/a' })).toStrictEqual({
+      name: '@mono/a',
+      path: 'packages/a',
+    });
   });
 
   it('rejects a missing manifest and a missing or empty name', () => {
     expect.hasAssertions();
     expect(toWorkspacePackage('packages/a')).toBeUndefined();
-    expect(toWorkspacePackage('packages/a', { description: 'x', name: undefined })).toBeUndefined();
-    expect(toWorkspacePackage('packages/a', { description: 'x', name: '' })).toBeUndefined();
+    expect(toWorkspacePackage('packages/a', { name: undefined })).toBeUndefined();
+    expect(toWorkspacePackage('packages/a', { name: '' })).toBeUndefined();
   });
 });
 
 describe('dedupe and sort', () => {
   it('deduplicates by path (last entry wins) and sorts by path', () => {
     expect.hasAssertions();
-    const first = { description: 'first', name: '@mono/first', path: 'packages/a' };
-    const last = { description: 'last', name: '@mono/last', path: 'packages/a' };
-    const other = { description: undefined, name: '@mono/b', path: 'docs/site' };
+    const first = { name: '@mono/first', path: 'packages/a' };
+    const last = { name: '@mono/last', path: 'packages/a' };
+    const other = { name: '@mono/b', path: 'docs/site' };
     expect(deduplicateAndSort([first, other, last])).toStrictEqual([other, last]);
   });
 
   it('does not mutate its input', () => {
     expect.hasAssertions();
-    const pkgA = { description: undefined, name: '@mono/a', path: 'packages/b' };
-    const pkgB = { description: undefined, name: '@mono/b', path: 'packages/a' };
+    const pkgA = { name: '@mono/a', path: 'packages/b' };
+    const pkgB = { name: '@mono/b', path: 'packages/a' };
     const input = [pkgA, pkgB];
     expect(deduplicateAndSort(input)).toStrictEqual([pkgB, pkgA]);
     expect(input).toStrictEqual([pkgA, pkgB]);

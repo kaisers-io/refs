@@ -1,7 +1,13 @@
 import type { RefEntry, RefsHome } from '@kaisers-io/refs-core';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { SpawnRunner, readConfig, readState, resolveHome } from '@kaisers-io/refs-core';
-import { initHome, parseLastEnvelope, realContextFor } from './add-support.ts';
+import {
+  finalizeViaProposalFile,
+  initHome,
+  parseLastEnvelope,
+  realContextFor,
+  runAddDryRunJson,
+} from './add-support.ts';
 import type { CliContext } from '../../src/context.ts';
 import type { FixtureRepo } from './fixture-repo.ts';
 import type { StructureReport } from '../../src/commands/drift-report.ts';
@@ -57,12 +63,9 @@ type AddedRef = {
 /** Runs `refs add <source> --description <description> --json` and returns the finalized
  * `{key, entry}` plus the real local checkout path — the common "get a real configured ref with a
  * real checkout" setup step every `sync.test.ts` case needs. */
-const addRefViaDescription = async (
-  ctx: CliContext,
-  stdout: string[],
-  source: string,
-): Promise<AddedRef> => {
-  await run(ctx, ['node', 'refs', 'add', source, '--description', 'A fixture repo.', '--json']);
+/** Reads the finalize envelope back out of `stdout` and pairs it with the config entry the write
+ * actually produced — shared by both add paths below, so neither trusts the envelope alone. */
+const readAddedRef = async (ctx: CliContext, stdout: string[]): Promise<AddedRef> => {
   const envelope = parseLastEnvelope(stdout) as { data: { entry: RefEntry; key: string } };
   const home = resolveHome(ctx.env);
   const config = await readConfig(home);
@@ -72,6 +75,45 @@ const addRefViaDescription = async (
   }
   const dest = join(home.sourcesDir, ...envelope.data.key.split('/'));
   return { dest, entry, key: envelope.data.key };
+};
+
+/** Runs `refs add <source> --description <description> --json` and returns the finalized
+ * `{key, entry}` plus the real local checkout path. Only for a fixture with no workspace members
+ * — see `addRefViaProposal` for the rest. */
+const addRefViaDescription = async (
+  ctx: CliContext,
+  stdout: string[],
+  source: string,
+): Promise<AddedRef> => {
+  await run(ctx, ['node', 'refs', 'add', source, '--description', 'A fixture repo.', '--json']);
+  return readAddedRef(ctx, stdout);
+};
+
+type ProposalAddOpts = {
+  ctx: CliContext;
+  homeDir: string;
+  source: string;
+  stdout: string[];
+};
+
+/** The two-phase flow, as an agent runs it: dry-run, write a description for the ref and for every
+ * detected package, finalize. Needed wherever a fixture has workspace members — `refs add
+ * --description` refuses those on purpose, because detection carries no description for them and
+ * the one-shot has none to give (see `requireDescribablePackages`). */
+const addRefViaProposal = async (opts: ProposalAddOpts): Promise<AddedRef> => {
+  const proposal = await runAddDryRunJson(opts.ctx, opts.stdout, opts.source);
+  const packages = Object.fromEntries(
+    Object.entries(proposal.packages).map(([name, pkg]) => [
+      name,
+      { ...pkg, description: `The ${name} package.` },
+    ]),
+  );
+  await finalizeViaProposalFile(opts.ctx, opts.homeDir, {
+    ...proposal,
+    description: 'A fixture repo.',
+    packages,
+  });
+  return readAddedRef(opts.ctx, opts.stdout);
 };
 
 type SyncedRefFixture = {
@@ -214,6 +256,7 @@ const expectOriginMismatchFailed = async (
 
 export {
   addRefViaDescription,
+  addRefViaProposal,
   commitNewFileTo,
   expectGoodSyncedBadFailed,
   expectOriginMismatchFailed,

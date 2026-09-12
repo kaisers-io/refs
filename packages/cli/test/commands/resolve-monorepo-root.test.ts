@@ -8,7 +8,7 @@ import {
 } from '../helpers/add-support.ts';
 import type { CliContext } from '../../src/context.ts';
 import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
-import { addRefViaDescription } from '../helpers/sync-support.ts';
+import { addRefViaProposal } from '../helpers/sync-support.ts';
 import { createFixtureRepo } from '../helpers/fixture-repo.ts';
 import { run } from '../../src/main.ts';
 
@@ -49,7 +49,7 @@ describe('refs resolve: a monorepo by the name its own root declares', () => {
             monorepo: true,
             monorepoAllDescribed: true,
           });
-          const added = await addRefViaDescription(ctx, stdout, fixture.url);
+          const added = await addRefViaProposal({ ctx, homeDir, source: fixture.url, stdout });
 
           const data = await resolveWithin(ctx, stdout, 'fixture-root');
 
@@ -80,7 +80,7 @@ describe('refs resolve: the workspace members alongside the root', () => {
             monorepo: true,
             monorepoAllDescribed: true,
           });
-          await addRefViaDescription(ctx, stdout, fixture.url);
+          await addRefViaProposal({ ctx, homeDir, source: fixture.url, stdout });
 
           const data = await resolveWithin(ctx, stdout, '@fixture/a');
 

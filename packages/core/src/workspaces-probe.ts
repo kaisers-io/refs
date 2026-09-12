@@ -6,13 +6,13 @@ import type {
   WorkspaceDiagnostic,
   WorkspacePackage,
 } from './workspaces-patterns.ts';
-import { extractPackageDescription, extractPackageName } from './workspaces-parse.ts';
 import { join, posix } from 'node:path';
 import { readFile, readdir } from 'node:fs/promises';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { selectPackageDirs, toWorkspacePackage } from './workspaces-patterns.ts';
 import { CURRENT_DIR_SEGMENT } from './workspaces-shapes.ts';
 import type { Dirent } from 'node:fs';
+import { extractPackageName } from './workspaces-parse.ts';
 import { resolveInside } from './fs-containment.ts';
 
 type ProbedDir = {
@@ -20,8 +20,8 @@ type ProbedDir = {
   pkg?: WorkspacePackage;
 };
 
-// Reads a candidate's package.json and extracts name/description. Resolution happens before the
-// read, so a manifest symlinked out of the repo is refused without its contents being touched.
+// Reads a candidate's package.json and extracts its name. Resolution happens before the read, so
+// a manifest symlinked out of the repo is refused without its contents being touched.
 const readPackageInfo = async (
   repoDir: string,
   packageDir: string,
@@ -32,10 +32,7 @@ const readPackageInfo = async (
   }
   try {
     const data = JSON.parse(await readFile(located.real, 'utf8')) as Record<string, unknown>;
-    return {
-      description: extractPackageDescription(data),
-      name: extractPackageName(data),
-    };
+    return { name: extractPackageName(data) };
   } catch {
     return undefined;
   }

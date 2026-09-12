@@ -5,17 +5,18 @@
 import { isAbsolute, posix, sep } from 'node:path';
 import { PARENT_DIR_SEGMENT } from './workspaces-shapes.ts';
 
+// Identity only. A manifest's `description` is deliberately NOT carried: it is prose written by
+// whoever owns the upstream repository, and a scan's consumers write what they get here into
+// `config.toml`, which refs reads back as its own configuration. Dropping it at the source is
+// what keeps that crossing closed — a guard at each consumer would be one place to forget it.
+// Names and paths still cross, and may: both are verifiable against the checkout.
 type WorkspacePackage = {
-  // Missing description is `undefined` (omitted in JSON), matching the proposal schema's
-  // optional description (`zPackageEntry.partial({ description: true })` in proposal.ts).
-  description: string | undefined;
   name: string;
   path: string;
 };
 
-// Name/description probed from a package manifest; a non-string field is `undefined`.
+// Name probed from a package manifest; a non-string field is `undefined`.
 type PackageManifestInfo = {
-  description: string | undefined;
   name: string | undefined;
 };
 
@@ -114,8 +115,7 @@ const selectPackageDirs = (
 const toWorkspacePackage = (
   packageDir: string,
   info?: PackageManifestInfo,
-): WorkspacePackage | undefined =>
-  info?.name ? { description: info.description, name: info.name, path: packageDir } : undefined;
+): WorkspacePackage | undefined => (info?.name ? { name: info.name, path: packageDir } : undefined);
 
 // Deduplicate by path (last entry wins) and sort by path
 const deduplicateAndSort = (packages: WorkspacePackage[]): WorkspacePackage[] => {

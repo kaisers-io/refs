@@ -6,6 +6,7 @@ import type {
   TagFormat,
   WorkspacePackage,
 } from '@kaisers-io/refs-core';
+import { shellQuote } from '../shell-quote.ts';
 import { validationError } from '@kaisers-io/refs-core';
 
 // `packages`/`tag_format` shaping between the proposal shape (partial, machine-detected) and the
@@ -17,12 +18,12 @@ const ROOT_PACKAGE_PATH = '.';
 type ProposalPackages = Proposal['packages'];
 type ProposalPackageEntry = ProposalPackages[string];
 
-const toProposalEntry = (pkg: WorkspacePackage): ProposalPackageEntry => {
-  if (pkg.description === undefined) {
-    return { path: pkg.path };
-  }
-  return { description: pkg.description, path: pkg.path };
-};
+/** Detection carries identity and nothing else (`WorkspacePackage` in core), so a proposal entry
+ * is a path. A manifest's own `description` deliberately does not survive the scan: it is prose
+ * from an unvetted repository, and everything in this file ends up in `config.toml`. Every
+ * description in a finalized entry is therefore written by someone who read the source — a worker
+ * on the two-phase path, or the caller's own `--description` for the root. */
+const toProposalEntry = (pkg: WorkspacePackage): ProposalPackageEntry => ({ path: pkg.path });
 
 /** Shapes the proposal's `packages` record: real workspace detection wins when it finds anything;
  * otherwise, for an `npm:<pkg>` source, seeds a single entry for the package itself — at its
@@ -69,25 +70,20 @@ const buildProposalPackages = (
   // here would silently drop the package named in `npm:<pkg>`, which is the whole reason the
   // source was given. The root rides along when it named itself.
   if (npmPkgName !== undefined) {
-    const npmEntry = { path: npmDirectory ?? ROOT_PACKAGE_PATH };
-    const detectedAtSamePath = rootEntry[npmPkgName];
-    // Same name AND same path: the packument is naming the very package detection already read.
-    // Overwriting with the bare locator would throw away the manifest's own description and let
-    // the ref's stand in for it — the opposite of the rule that a package describing itself keeps
-    // its own words. A DIFFERENT path is a different package, and the locator wins there.
-    return {
-      ...rootEntry,
-      [npmPkgName]: detectedAtSamePath?.path === npmEntry.path ? detectedAtSamePath : npmEntry,
-    };
+    // The locator simply wins under its own name. It used to be preferred only at a DIFFERENT
+    // path, so that a packument naming the package detection had already read could not displace
+    // that manifest's own description; with no description to preserve, both branches now produce
+    // the same entry and the distinction is gone.
+    return { ...rootEntry, [npmPkgName]: { path: npmDirectory ?? ROOT_PACKAGE_PATH } };
   }
   return rootEntry;
 };
 
-/** Only called once `requireAllDescribed` has already guaranteed every package carries a detected
- * NON-EMPTY description (see `isMissingDescription`) — `pkg.description` is therefore never
- * actually `undefined` here, but the proposal shape (`ProposalPackageEntry`) still types it
- * optional, so the empty-string fallback is purely a type-level escape hatch, never a real value
- * in practice. */
+/** Only called once `requireDescribablePackages` has already rejected every entry but the
+ * repository root, whose description `withRootDescription` has just filled in from the caller's
+ * own `--description` — `pkg.description` is therefore never actually `undefined` here, but the
+ * proposal shape (`ProposalPackageEntry`) still types it optional, so the empty-string fallback is
+ * purely a type-level escape hatch, never a real value in practice. */
 const toFinalPackageEntry = (pkg: ProposalPackageEntry): PackageEntry => {
   const description = pkg.description ?? '';
   if (pkg.tag_format === undefined) {
@@ -97,11 +93,11 @@ const toFinalPackageEntry = (pkg: ProposalPackageEntry): PackageEntry => {
 };
 
 /** An empty `packages` record means a plain reference repo — omitted entirely (`undefined`), not
- * `{}`. Callers (the `--description` one-shot flow) must call `requireAllDescribed` on the same
- * `proposalPackages` first: unlike the `--proposal` flow (whose packages already went through
- * human review as full `zPackageEntry`s), a one-shot has no per-package description input, so any
- * package still missing one at this point would otherwise silently finalize with an empty
- * description string. */
+ * `{}`. Callers (the `--description` one-shot flow) must call `requireDescribablePackages` on the
+ * same `proposalPackages` first: unlike the `--proposal` flow (whose packages already went through
+ * human review as full `zPackageEntry`s), a one-shot has no per-package description input at all,
+ * so any package other than the root would otherwise silently finalize with an empty description
+ * string. */
 const buildFinalPackages = (
   proposalPackages: Record<string, ProposalPackageEntry>,
   opts: { refDescription: string; rootPackageName?: string },
@@ -119,15 +115,6 @@ const buildFinalPackages = (
     ]),
   );
 };
-
-/** An absent description AND an empty-string one both count as missing, mirroring
- * `zPackageEntry.description`'s `min(1)` rule exactly (no whitespace-trimming beyond that):
- * core's `extractPackageDescription` passes ANY manifest string through — including the `""` that
- * `npm init -y` scaffolds — so an empty string here would otherwise slip past the guard only to
- * die later in finalize's schema validation with exactly the degraded generic error the guard
- * exists to prevent. */
-const isMissingDescription = (pkg: ProposalPackageEntry): boolean =>
-  pkg.description === undefined || pkg.description === '';
 
 /** The name under which the repository root is actually REGISTERED, if it is — read from the
  * record that was BUILT, not from raw detection.
@@ -154,50 +141,56 @@ const registeredRootName = (
   return packages[rootName]?.path === ROOT_PACKAGE_PATH ? rootName : undefined;
 };
 
-/** The root package's description falls back to the REF's, and only the root's.
+/** The repository root's description is the REF's, and only the root's.
  *
  * `buildDescriptionRef`'s rule — the one-shot `--description` is the ref's own text, never a
  * per-package fallback — exists because a child package is a different thing from the repository
  * and deserves its own words. The root is not a different thing: it is that repository, at that
- * path. Almost no workspace root carries a `description` (they are private and unpublished), so
- * without this the one-shot flow would start refusing nearly every monorepo and forcing the
- * two-phase proposal on it — a regression on the common path in exchange for asking someone to
- * restate what they had just typed. A manifest that DOES describe itself keeps its own text. */
+ * path, so the text the caller just typed about the repository describes it exactly. It is also
+ * the only description on this path that anyone wrote deliberately: nothing else here has one. */
 const withRootDescription = (
   pkg: ProposalPackageEntry,
   refDescription: string,
-): ProposalPackageEntry =>
-  isMissingDescription(pkg) ? { ...pkg, description: refDescription } : pkg;
+): ProposalPackageEntry => ({ ...pkg, description: refDescription });
 
-/** Lists package names (sorted) missing a detected description — the `--description` one-shot has
- * no per-package description input (unlike the two-phase `--proposal` flow's human review step),
- * so it cannot silently fill these in; see `requireAllDescribed`. */
-const packagesMissingDescription = (
+/** Lists (sorted) every detected package the one-shot cannot describe — all of them except the
+ * repository root. Detection reads a manifest for identity only, so no entry arrives carrying a
+ * description, and `--description` is one string about the repository rather than per-package
+ * input; see `requireDescribablePackages`. */
+const packagesNeedingDescription = (
   proposalPackages: Record<string, ProposalPackageEntry>,
   rootPackageName: string | undefined,
 ): string[] =>
-  Object.entries(proposalPackages)
-    .filter(([name, pkg]) => isMissingDescription(pkg) && name !== rootPackageName)
-    .map(([name]) => name)
+  Object.keys(proposalPackages)
+    .filter((name) => name !== rootPackageName)
     .toSorted();
 
-/** Fails closed — before any write — when the `--description` one-shot's detected packages include
- * any missing a description, naming ALL of them (the repo's established "list every offending key"
+/** Fails closed — before any write — when the `--description` one-shot detected any package other
+ * than the repository root, naming ALL of them (the repo's established "list every offending key"
  * precedent — see `resolve.ts`'s multi-ref ambiguity message) rather than just the first. Validates
  * before finalize: called from `add.ts#buildDescriptionRef` before `finalizeRef` ever runs, so a
- * rejection here writes nothing to config or state. */
-const requireAllDescribed = (
+ * rejection here writes nothing to config or state (the dry-run's checkout is already on disk).
+ *
+ * The suggested commands carry the caller's own `source`, shell-quoted, rather than a `<source>`
+ * placeholder: a printed command that cannot be run as printed is a bug here (`CLAUDE.md`). They
+ * name the REF's description too — a dry-run proposal carries `description: ''`, which
+ * `zFinalProposal` rejects, so "describe every package" alone would send the reader into a second
+ * failure. Each runnable command is on its own indented line; the prose between them never is. */
+const requireDescribablePackages = (
   proposalPackages: Record<string, ProposalPackageEntry>,
+  source: string,
   rootPackageName?: string,
 ): void => {
-  const missing = packagesMissingDescription(proposalPackages, rootPackageName);
-  if (missing.length === 0) {
+  const undescribed = packagesNeedingDescription(proposalPackages, rootPackageName);
+  if (undescribed.length === 0) {
     return;
   }
   throw validationError(
-    `packages without a detected description: ${missing.join(', ')} — run the two-phase flow ` +
-      'instead: refs add <source> --dry-run --json > proposal.json, fill in the package ' +
-      'descriptions, then refs add --proposal proposal.json',
+    `packages need a description written from their own source: ${undescribed.join(', ')} — ` +
+      'refs add --description has none to give them. Run the two-phase flow instead:\n' +
+      `  refs add ${shellQuote(source)} --dry-run --json > proposal.json\n` +
+      "Fill in the ref's own description and one for every package, then:\n" +
+      '  refs add --proposal proposal.json',
   );
 };
 
@@ -249,8 +242,8 @@ export {
   buildProposalPackages,
   buildRefEntry,
   finalProposalPackages,
-  packagesMissingDescription,
+  packagesNeedingDescription,
   registeredRootName,
-  requireAllDescribed,
+  requireDescribablePackages,
 };
 export type { FinalizedRefInput };

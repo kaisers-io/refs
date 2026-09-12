@@ -1,4 +1,4 @@
-import { addRefViaDescription, gitFor, runSyncJson } from '../helpers/sync-support.ts';
+import { addRefViaProposal, gitFor, runSyncJson } from '../helpers/sync-support.ts';
 import { describe, expect, it } from 'vitest';
 import {
   initHome,
@@ -32,7 +32,7 @@ const setupMonorepoRef = async (homeDir: string): Promise<ArrivalFixture> => {
   const { ctx, stdout } = realContextFor(homeDir);
   await initHome(ctx);
   const fixture = await createFixtureRepo({ monorepo: true, monorepoAllDescribed: true });
-  const added = await addRefViaDescription(ctx, stdout, fixture.url);
+  const added = await addRefViaProposal({ ctx, homeDir, source: fixture.url, stdout });
   return { ctx, key: added.key, stdout, upstream: fixture.dir };
 };
 
@@ -212,7 +212,7 @@ describe('refs sync: a package that was never registered and never arrived', () 
           const { ctx, stdout } = realContextFor(homeDir);
           await initHome(ctx);
           const fixture = await createFixtureRepo({ monorepo: true, monorepoAllDescribed: true });
-          const added = await addRefViaDescription(ctx, stdout, fixture.url);
+          const added = await addRefViaProposal({ ctx, homeDir, source: fixture.url, stdout });
           await deregisterPackage(ctx, added.key, '@fixture/b');
           await gitFor(fixture.dir, ['commit', '-q', '--allow-empty', '-m', 'unrelated']);
 

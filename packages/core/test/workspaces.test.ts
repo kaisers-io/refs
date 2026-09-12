@@ -21,15 +21,15 @@ vi.mock(import('node:fs/promises'), async (importOriginal) => {
 const readdirMock = vi.mocked(readdir);
 
 describe('npm workspaces', () => {
-  it('reads the array form, sorts by path, missing description → undefined', async () => {
+  it('reads the array form and sorts by path', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
     writeJson(join(repo, 'package.json'), { workspaces: ['packages/*'] });
     addPackage(repo, 'packages/b', { name: '@mono/b', version: '1.0.0' });
     addPackage(repo, 'packages/a', { description: 'Package A', name: '@mono/a' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: 'Package A', name: '@mono/a', path: 'packages/a' },
-      { description: undefined, name: '@mono/b', path: 'packages/b' },
+      { name: '@mono/a', path: 'packages/a' },
+      { name: '@mono/b', path: 'packages/b' },
     ]);
   });
 
@@ -41,7 +41,7 @@ describe('npm workspaces', () => {
     });
     addPackage(repo, 'packages/a', { description: 'Package A', name: '@mono/a' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: 'Package A', name: '@mono/a', path: 'packages/a' },
+      { name: '@mono/a', path: 'packages/a' },
     ]);
   });
 
@@ -54,7 +54,7 @@ describe('npm workspaces', () => {
     });
     addPackage(repo, 'packages/a', { name: '@mono/a', version: '1.0.0' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: undefined, name: '@mono/a', path: 'packages/a' },
+      { name: '@mono/a', path: 'packages/a' },
     ]);
   });
 });
@@ -74,7 +74,7 @@ describe('pnpm workspaces', () => {
     // Leaving it in registered packages the repository declared out of scope, and made every
     // package in such a repository unreportable.
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: 'Package A', name: '@mono/a', path: 'packages/a' },
+      { name: '@mono/a', path: 'packages/a' },
     ]);
   });
 
@@ -85,7 +85,7 @@ describe('pnpm workspaces', () => {
     writeFileSync(join(repo, 'pnpm-workspace.yaml'), 'packages:\n  - packages/* # workspaces\n');
     addPackage(repo, 'packages/a', { description: 'Package A', name: '@mono/a' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: 'Package A', name: '@mono/a', path: 'packages/a' },
+      { name: '@mono/a', path: 'packages/a' },
     ]);
   });
 
@@ -99,7 +99,7 @@ describe('pnpm workspaces', () => {
     );
     addPackage(repo, 'packages/a', { name: '@mono/a', version: '1.0.0' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: undefined, name: '@mono/a', path: 'packages/a' },
+      { name: '@mono/a', path: 'packages/a' },
     ]);
   });
 });
@@ -116,7 +116,7 @@ describe('pnpm workspaces header placement', () => {
     addPackage(repo, 'packages/a', { name: '@mono/a', version: '1.0.0' });
     addPackage(repo, 'packages/b', { name: '@mono/b', version: '1.0.0' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: undefined, name: '@mono/a', path: 'packages/a' },
+      { name: '@mono/a', path: 'packages/a' },
     ]);
   });
 });
@@ -158,7 +158,7 @@ describe('literal pattern normalization', () => {
     writeJson(join(repo, 'package.json'), { workspaces: ['packages/new/'] });
     addPackage(repo, 'packages/new', { name: '@mono/new', version: '1.0.0' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: undefined, name: '@mono/new', path: 'packages/new' },
+      { name: '@mono/new', path: 'packages/new' },
     ]);
   });
 
@@ -171,7 +171,7 @@ describe('literal pattern normalization', () => {
     writeJson(join(repo, 'package.json'), { workspaces: ['packages//new/'] });
     addPackage(repo, 'packages/new', { name: '@mono/new', version: '1.0.0' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: undefined, name: '@mono/new', path: 'packages/new' },
+      { name: '@mono/new', path: 'packages/new' },
     ]);
   });
 });
@@ -183,7 +183,7 @@ describe('glob expansion, continued', () => {
     writeJson(join(repo, 'package.json'), { workspaces: ['docs/site'] });
     addPackage(repo, 'docs/site', { description: 'Documentation site', name: 'docs' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: 'Documentation site', name: 'docs', path: 'docs/site' },
+      { name: 'docs', path: 'docs/site' },
     ]);
   });
 
@@ -194,8 +194,8 @@ describe('glob expansion, continued', () => {
     addPackage(repo, 'pkg-b', { name: '@flat/b', version: '1.0.0' });
     addPackage(repo, 'pkg-a', { description: 'Package A', name: '@flat/a' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: 'Package A', name: '@flat/a', path: 'pkg-a' },
-      { description: undefined, name: '@flat/b', path: 'pkg-b' },
+      { name: '@flat/a', path: 'pkg-a' },
+      { name: '@flat/b', path: 'pkg-b' },
     ]);
   });
 });
@@ -208,7 +208,7 @@ describe('package validation', () => {
     addPackage(repo, 'packages/a', { name: '@mono/a', version: '1.0.0' });
     addPackage(repo, 'packages/b', { version: '1.0.0' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: undefined, name: '@mono/a', path: 'packages/a' },
+      { name: '@mono/a', path: 'packages/a' },
     ]);
   });
 });
@@ -223,8 +223,8 @@ describe('deduplication', () => {
     addPackage(repo, 'packages/a', { name: '@mono/a', version: '1.0.0' });
     addPackage(repo, 'packages/b', { name: '@mono/b', version: '1.0.0' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: undefined, name: '@mono/a', path: 'packages/a' },
-      { description: undefined, name: '@mono/b', path: 'packages/b' },
+      { name: '@mono/a', path: 'packages/a' },
+      { name: '@mono/b', path: 'packages/b' },
     ]);
   });
 });

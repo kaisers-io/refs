@@ -59,8 +59,21 @@ redirect the agent is reported to the user instead of acted on.
 
 That is an instruction-level mitigation, not a sandbox. Indirect prompt injection through a tracked
 dependency is a real residual risk and prose in a skill does not remove it. What is enforced in code
-is narrower: `refs` never runs a checkout's own code (the `core.hooksPath` note above), and it never
-reads checkout content as configuration.
+is narrower, and worth stating exactly:
+
+- `refs` never runs a checkout's own code (the `core.hooksPath` note above).
+- **No prose from a checkout becomes configuration.** A package `description` is the one free-text
+  field in `config.toml`, and `refs` never reads one out of a manifest: workspace detection carries
+  a package's name and path and nothing else. Every description is written by whoever ran `refs add`
+  or by an agent that read the source, and `refs add --description` refuses a package rather than
+  supply text it did not write.
+- Other checkout-derived values do reach `config.toml` — package names and paths, the default
+  branch, and a `tag_format` derived from a tag that exists in the repository. Each is structural:
+  it names something, and it can be checked against the checkout. None is prose.
+
+The bundled workflow goes further than the CLI can — a description written from source evidence,
+then human approval before anything is written. `refs` validates what it is handed; it cannot verify
+that the review happened.
 
 Automated skill scanners flag this shape. Snyk Agent Scan reports it against the skill on every run
 as `third_party_content_exposure`: refs clones the repository it was pointed at and reads it. That is
