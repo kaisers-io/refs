@@ -1,8 +1,9 @@
 import { addPackage, freshRepo, writeJson } from './helpers/workspace-fixture.ts';
 import { describe, expect, it } from 'vitest';
 import { detectWorkspacePackagesDetailed, scanIsReliable } from '../src/workspaces.ts';
-import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 // What a pattern that can match at more than one depth actually finds.
 //
@@ -138,5 +139,86 @@ describe('a base directory that is not there', () => {
 
     expect(scan.diagnostics).toStrictEqual([]);
     expect(scanIsReliable(scan)).toBe(true);
+  });
+});
+
+describe('a base directory that leaves the checkout', () => {
+  it('is refused rather than walked', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    const outside = mkdtempSync(join(tmpdir(), 'refs-outside-'));
+    addPackage(outside, 'secret', { name: '@outside/secret', version: '1.0.0' });
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/**/*'] });
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    symlinkSync(outside, join(repo, 'packages'), 'dir');
+
+    const scan = await detectWorkspacePackagesDetailed(repo);
+
+    // `readdir` FOLLOWS a symlinked base, so without a containment check the whole tree out there
+    // is walked. The manifest probe refuses each file it finds, which turns an escape into a list
+    // of complaints about paths that are not in the repository — and into silence when the target
+    // holds no manifests at all.
+    expect(scan.packages).toStrictEqual([]);
+    expect(scan.diagnostics).toStrictEqual([
+      { kind: 'workspace_dir_unreadable', path: 'packages' },
+    ]);
+  });
+});
+
+describe('symlinks that are not missed candidates', () => {
+  it('says nothing about a symlinked file', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/**/*'] });
+    addPackage(repo, 'packages/real', { name: '@deep/real', version: '1.0.0' });
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    writeFileSync(join(repo, 'README.md'), '# hi');
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    symlinkSync(join(repo, 'README.md'), join(repo, 'packages', 'README.md'));
+
+    const scan = await detectWorkspacePackagesDetailed(repo);
+
+    // A link to a file is not a package the walk missed, and an unreliable scan turns the whole
+    // unregistered-package pass off — a repository with one symlinked README would lose it
+    // permanently.
+    expect(scan.diagnostics).toStrictEqual([]);
+    expect(scanIsReliable(scan)).toBe(true);
+  });
+
+  it('says nothing about a symlinked node_modules', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/**/*'] });
+    addPackage(repo, 'packages/real', { name: '@deep/real', version: '1.0.0' });
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    mkdirSync(join(repo, 'elsewhere'), { recursive: true });
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    symlinkSync(join(repo, 'elsewhere'), join(repo, 'packages', 'node_modules'), 'dir');
+
+    const scan = await detectWorkspacePackagesDetailed(repo);
+
+    // A directory that is never walked cannot be a directory the walk failed to inspect.
+    expect(scan.diagnostics).toStrictEqual([]);
+    expect(scanIsReliable(scan)).toBe(true);
+  });
+});
+
+describe('a symlink that leaves the checkout', () => {
+  it('says nothing about a link pointing out of the checkout', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    const outside = mkdtempSync(join(tmpdir(), 'refs-outside-'));
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/**/*'] });
+    addPackage(repo, 'packages/real', { name: '@deep/real', version: '1.0.0' });
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    symlinkSync(outside, join(repo, 'packages', 'linked-out'), 'dir');
+
+    const scan = await detectWorkspacePackagesDetailed(repo);
+
+    // An outside path is one `resolve` would refuse anyway, so nothing in the repository was
+    // missed by not walking it.
+    expect(scan.diagnostics).toStrictEqual([]);
   });
 });

@@ -7,6 +7,7 @@ import type { ExcludedDirs } from './workspaces-expand.ts';
 import type { ExpandResult } from './workspaces-probe.ts';
 import { Minimatch } from 'minimatch';
 import type { WorkspaceDiagnostic } from './workspaces-patterns.ts';
+import { resolveInside } from './fs-containment.ts';
 
 // Walking a pattern that can match at more than one depth — the `packages/**` family, the most
 // common pnpm spelling, and the one shape `wildcardSegmentPlan` cannot serve because there is no single level
@@ -73,15 +74,35 @@ const inspect = async (walk: Walk, relPath: string, excluded: ExcludedDirs): Pro
  * A symlinked directory is not `isDirectory()` under `readdir`'s lstat semantics, so it can never
  * be walked here — and one that could have held a match makes the scan incomplete rather than
  * simply absent, the same rule `probeChildren` applies one level down. */
-const descendable = (walk: Walk, entry: Dirent, relPath: string): boolean => {
-  if (!walk.couldHold(relPath)) {
+const descendable = async (walk: Walk, entry: Dirent, relPath: string): Promise<boolean> => {
+  if (!walk.couldHold(relPath) || NEVER_WALKED.has(entry.name)) {
     return false;
   }
   if (entry.isSymbolicLink()) {
-    walk.diagnostics.push({ kind: 'candidate_not_inspected', path: relPath });
+    await reportLinkedDir(walk, relPath);
     return false;
   }
-  return entry.isDirectory() && !NEVER_WALKED.has(entry.name);
+  return entry.isDirectory();
+};
+
+/** A symlink is reported only when it points at a DIRECTORY, which is the only shape that could
+ * have held a package the walk then missed. A link to a file is not a missed candidate — a
+ * repository with a symlinked `README.md` under `packages/` would otherwise have an unreliable
+ * scan forever, and an unreliable scan turns the whole unregistered-package pass off. A broken
+ * link points at nothing and is silent for the same reason. */
+const reportLinkedDir = async (walk: Walk, relPath: string): Promise<void> => {
+  const target = await resolveInside(walk.repoDir, join(walk.repoDir, relPath));
+  if (target.kind !== 'inside') {
+    // Outside the checkout, or pointing at nothing. Neither is a package this walk lost: an
+    // outside path is one `resolve` would refuse anyway, and a broken link holds nothing.
+    return;
+  }
+  // `readdir` is the directory test: it is the operation that would have been performed here, so
+  // it answers exactly the question — could this link have been walked?
+  const listed = await tryReaddir(target.real);
+  if (!('code' in listed)) {
+    walk.diagnostics.push({ kind: 'candidate_not_inspected', path: relPath });
+  }
 };
 
 /** This directory's entries, or the reason there are none to walk. Spending the entry budget is
@@ -136,7 +157,8 @@ const descendAll = async (
 ): Promise<void> => {
   for (const entry of at.entries) {
     const relPath = childPath(at.relPath, entry.name);
-    if (descendable(walk, entry, relPath)) {
+    // eslint-disable-next-line no-await-in-loop -- sequential by design; see the doc comment
+    if (await descendable(walk, entry, relPath)) {
       // eslint-disable-next-line no-await-in-loop -- sequential by design; see the doc comment
       await inspect(walk, relPath, excluded);
       if (at.depth + 1 > MAX_DEPTH) {
@@ -156,6 +178,20 @@ const expandRecursive = async (
   plan: { baseDir: string; pattern: string },
   context: { budget: ScanBudget; excluded: ExcludedDirs },
 ): Promise<ExpandResult> => {
+  const located = await resolveInside(repoDir, join(repoDir, plan.baseDir));
+  if (located.kind === 'missing') {
+    // A declared tree the repository does not have is ordinary — `smoke/**/*` in a clone with no
+    // `smoke/` — and is the one absence that says nothing about the scan.
+    return { diagnostics: [], dirs: [] };
+  }
+  if (located.kind !== 'inside') {
+    // The same guard the single-level expander applies, and for a reason recursion makes sharper:
+    // `readdir` FOLLOWS a symlinked base, so without this a `packages` link pointing out of the
+    // checkout would be walked in full. The probe at the end refuses each manifest it finds out
+    // there, which turns an escape into a list of `manifest_unreadable` lines about paths that
+    // are not in the repository — and into silence when the target holds no manifests at all.
+    return { diagnostics: [{ kind: 'workspace_dir_unreadable', path: plan.baseDir }], dirs: [] };
+  }
   const matcher = new Minimatch(normalizeSeparators(plan.pattern));
   const walk: Walk = {
     budget: context.budget,

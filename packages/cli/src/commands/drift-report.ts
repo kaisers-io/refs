@@ -246,24 +246,32 @@ const discoveryLine = (reason: string): string =>
  * needs the list rather than the message. */
 const MAX_LINES_PER_REF = 10;
 
-const overflowLine = (hidden: number): string =>
-  `…and ${hidden} more finding(s) — 'refs sync <ref> --json' carries the full list under ` +
-  '`structure.packages`';
+// The key is interpolated, not left as `<ref>`: a placeholder in a printed command is the defect
+// that shipped once already — a shell reads `<ref>` as an input redirection, so the line cannot be
+// pasted, and a test that rebuilds the argv by hand never notices.
+const overflowLine = (hidden: number, key: string): string =>
+  `…and ${hidden} more finding(s) — refs sync ${shellQuote(key)} --json carries the full list ` +
+  'under `structure.packages`';
 
 /** The findings, capped, with what the cap hid stated rather than silently dropped. Which ones
  * survive is the order they came in: configured entries are classified before discovery runs, so
  * a problem with a package the ref actually tracks is never crowded out by a list of ones it does
  * not. */
-const cap = (lines: readonly string[]): string[] => {
+const cap = (lines: readonly string[], key: string): string[] => {
   const hidden = lines.length - MAX_LINES_PER_REF;
-  return hidden <= 0 ? [...lines] : [...lines.slice(0, MAX_LINES_PER_REF), overflowLine(hidden)];
+  return hidden <= 0
+    ? [...lines]
+    : [...lines.slice(0, MAX_LINES_PER_REF), overflowLine(hidden, key)];
 };
 
 const driftLines = (report: StructureReport, key: string): string[] => {
   if (report.reason !== undefined) {
     return [`could not be checked — ${report.reason}`];
   }
-  const issues = cap((report.packages ?? []).map((issue) => issueLine(issue, key)));
+  const issues = cap(
+    (report.packages ?? []).map((issue) => issueLine(issue, key)),
+    key,
+  );
   return report.discovery_incomplete === undefined
     ? issues
     : [...issues, discoveryLine(report.discovery_incomplete)];
