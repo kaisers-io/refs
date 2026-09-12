@@ -35,6 +35,11 @@ type StructureIssue = {
  * establishes. `reason` appears only on a whole-probe `unknown`, where no per-package answer
  * exists at all. */
 type StructureReport = {
+  /** Why the unregistered-package pass did not run, when it did not. The scan it needs may have
+   * missed a package, so its silence is not evidence — and a check that declined to look must not
+   * answer `ok`. Distinct from `reason`, which is a whole-probe failure with no per-package answer
+   * at all: here the CONFIGURED entries were checked normally and only discovery stood down. */
+  discovery_incomplete?: string;
   packages?: StructureIssue[];
   reason?: string;
   status: DriftStatus;
@@ -60,15 +65,33 @@ const DRIFT_STATUSES: ReadonlySet<IssueStatus> = new Set<IssueStatus>([
 /** `drift` outranks `unknown`: a ref with one confirmed relocation and one unreadable manifest has
  * definitely drifted, and reporting it as merely "could not check" would bury the fact that was
  * established. Both packages still appear in `packages`. */
-const rollUp = (issues: readonly StructureIssue[]): StructureReport => {
+/** `ok` means "looked, and everything is where the configuration says". An incomplete discovery
+ * pass cannot support the second half of that, so it downgrades a silent report to `unknown` —
+ * "nothing was found" and "the search was called off" are different answers, and this file's whole
+ * vocabulary exists to keep them apart (see the header's second property).
+ *
+ * A report that already carries findings keeps whatever those findings make it. Today that is
+ * always `unknown` in practice — `package-location.ts` refuses to settle any location against an
+ * incomplete scan, so every verdict that would be drift becomes `unverifiable` first — but the
+ * branch is written for what the types allow rather than for what currently reaches it. */
+const rollUp = (
+  issues: readonly StructureIssue[],
+  discoveryIncomplete?: string,
+): StructureReport => {
   const [first] = issues;
   if (first === undefined) {
-    return { status: 'ok' };
+    return discoveryIncomplete === undefined
+      ? { status: 'ok' }
+      : { discovery_incomplete: discoveryIncomplete, status: 'unknown' };
   }
-  return {
+  const report: StructureReport = {
     packages: [...issues],
     status: issues.some((issue) => DRIFT_STATUSES.has(issue.status)) ? 'drift' : 'unknown',
   };
+  if (discoveryIncomplete !== undefined) {
+    report.discovery_incomplete = discoveryIncomplete;
+  }
+  return report;
 };
 
 const UNKNOWN_REASON = '(no reason given)';
@@ -160,11 +183,17 @@ const issueLine = (issue: StructureIssue, key: string): string =>
  *
  * `key` is the ref these findings are about; the `unregistered` line puts it into the command it
  * prints, which is what makes that command runnable as it stands. */
+const discoveryLine = (reason: string): string =>
+  `could not check for unregistered packages — ${reason}`;
+
 const driftLines = (report: StructureReport, key: string): string[] => {
   if (report.reason !== undefined) {
     return [`could not be checked — ${report.reason}`];
   }
-  return (report.packages ?? []).map((issue) => issueLine(issue, key));
+  const issues = (report.packages ?? []).map((issue) => issueLine(issue, key));
+  return report.discovery_incomplete === undefined
+    ? issues
+    : [...issues, discoveryLine(report.discovery_incomplete)];
 };
 
 export { DRIFT_STATUSES, driftLines, isIssueStatus, rollUp };

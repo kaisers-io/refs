@@ -1,4 +1,9 @@
-import type { PackagesBefore, WorkspacePackage, WorkspaceScan } from '@kaisers-io/refs-core';
+import type {
+  PackagesBefore,
+  WorkspaceDiagnostic,
+  WorkspacePackage,
+  WorkspaceScan,
+} from '@kaisers-io/refs-core';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import {
   detectWorkspacePackagesDetailed,
@@ -46,6 +51,21 @@ const scanOnceFor = (checkoutDir: string): ScanOnce => {
  * place is new under a name nobody had, and a package merely MOVED is not new at all. */
 type MemberDiscovery = { kind: 'all' } | ({ kind: 'arrivals' } & PackagesBefore);
 
+/** What a discovery pass found, and — when it found nothing because it could not look — why.
+ *
+ * The two are reported together rather than collapsed into an empty array, because they are
+ * different answers: "nothing is unregistered" and "the scan could have missed something" send the
+ * reader to different places, and `doctor` answering `ok` for the second is the defect this shape
+ * exists to prevent.
+ *
+ * Both passes carry it, and each has to. They gate on the same scan but run on different
+ * conditions: the members pass stands down for an arrivals probe whose range changed no member
+ * manifest, without scanning at all, while the root pass still scans and can still refuse. A sync
+ * that changed only the root manifest hits exactly that combination — so leaving the root pass
+ * silent would have kept the false `ok` for it. The caller reports whichever obstacle it gets,
+ * once (`probeRefStructure`): one memoised scan produces one obstacle. */
+type DiscoveryResult = { incomplete?: string; issues: StructureIssue[] };
+
 /** The repository's own root package, when it declares a name the configuration does not register.
  *
  * This is the migration half of #88. `refs add` registers a named root now, but a ref added before
@@ -62,10 +82,10 @@ const unregisteredRoot = async (
   checkoutDir: string,
   configured: readonly LocationQuery[],
   scanOnce: ScanOnce,
-): Promise<StructureIssue[]> => {
+): Promise<DiscoveryResult> => {
   const root = await readRootPackage(checkoutDir);
   if (root === undefined || configured.some((query) => query.packageName === root.name)) {
-    return [];
+    return { issues: [] };
   }
   // Only now, and only because there is something to report: the cheap read says a name is
   // missing, but not where registering it would put it. A workspace member may declare the same
@@ -81,18 +101,65 @@ const unregisteredRoot = async (
   // ambiguity, not something to resolve by taking the first: `refs add` itself keeps the LAST,
   // so picking either here would be prescribing something registration does not do.
   if (!scanIsReliable(scan)) {
-    return [];
+    return { incomplete: discoveryObstacle(scan), issues: [] };
   }
   const lookup = lookupPackagePath(scan.packages, root.name);
   if (lookup.kind === 'ambiguous') {
-    return [{ candidates: lookup.paths, name: root.name, status: 'unregistered' }];
+    return { issues: [{ candidates: lookup.paths, name: root.name, status: 'unregistered' }] };
   }
-  return lookup.kind === 'found'
-    ? [{ name: root.name, path: lookup.path, status: 'unregistered' }]
-    : [];
+  return {
+    issues:
+      lookup.kind === 'found'
+        ? [{ name: root.name, path: lookup.path, status: 'unregistered' }]
+        : [],
+  };
 };
 
 const ROOT_PACKAGE_PATH = '.';
+const OBSTACLE_SEPARATOR = ', ';
+
+/** What a diagnostic is ABOUT — a path for most kinds, a pattern for `unsupported_pattern`, and
+ * nothing at all for the one kind that describes the repository rather than a place in it.
+ *
+ * Exhaustive on purpose, with no `default`: a new diagnostic kind then fails to typecheck here
+ * until someone decides how it reads, rather than silently rendering as a bare kind name. */
+const diagnosticSubject = (diagnostic: WorkspaceDiagnostic): string | undefined => {
+  switch (diagnostic.kind) {
+    case 'candidate_not_inspected':
+    case 'manifest_missing_name':
+    case 'manifest_unreadable':
+    case 'workspace_dir_unreadable': {
+      return diagnostic.path;
+    }
+    case 'workspace_declaration_unparsed':
+    case 'workspace_file_unreadable': {
+      return diagnostic.file;
+    }
+    case 'unsupported_pattern': {
+      return diagnostic.pattern;
+    }
+    case 'no_workspace_declaration': {
+      return undefined;
+    }
+  }
+};
+
+/** Why the discovery passes stood down, named so the reader can act on it — `packages/c:
+ * manifest_unreadable` tells someone which file to fix, where silence tells them nothing and
+ * `ok` actively misleads.
+ *
+ * Only the kinds that make a scan unreliable appear. `scanIsReliable` is the authority on which
+ * those are, so this filters by asking it about each diagnostic alone rather than keeping a second
+ * copy of that set to drift. */
+const discoveryObstacle = (scan: WorkspaceScan): string =>
+  scan.diagnostics
+    .filter((diagnostic) => !scanIsReliable({ diagnostics: [diagnostic], packages: [] }))
+    .map((diagnostic) => {
+      const subject = diagnosticSubject(diagnostic);
+      return subject === undefined ? diagnostic.kind : `${subject}: ${diagnostic.kind}`;
+    })
+    .toSorted()
+    .join(OBSTACLE_SEPARATOR);
 
 /** Groups a scan's packages by name, so a name declared twice is reported as the ambiguity it is
  * rather than as a registration at whichever copy came first. `refs add` keeps the LAST of a
@@ -155,25 +222,31 @@ const unregisteredMembers = async (
   configured: readonly LocationQuery[],
   discovery: MemberDiscovery,
   scanOnce: ScanOnce,
-): Promise<StructureIssue[]> => {
+): Promise<DiscoveryResult> => {
   if (discovery.kind === 'arrivals' && discovery.changedDirs.length === 0) {
-    return [];
+    // Nothing to discover, so nothing to report about a scan that was never run. Note what this
+    // does NOT say: `changedDirs` excludes the repository root (`changedDirsOf`), and an arrivals
+    // probe that could not read history at all arrives here the same way — so "no member manifest
+    // in this range" is the claim, not "the range changed no manifest". The root pass covers the
+    // first of those; the second is `arrivals.ts`'s own conservatism and predates this.
+    return { issues: [] };
   }
   const scan = await scanOnce();
   if (!scanIsReliable(scan)) {
-    return [];
+    return { incomplete: discoveryObstacle(scan), issues: [] };
   }
   const registered = new Set(configured.map((query) => query.packageName));
   const members = scan.packages.filter((pkg) => pkg.path !== ROOT_PACKAGE_PATH);
   const existed = discovery.kind === 'all' ? undefined : namesThatExisted(discovery, members);
   // Grouped over EVERY member, then filtered — a name is ambiguous because of where it is
   // declared, not because of which declaration this fetch happened to touch.
-  return [...byName(members)]
+  const issues = [...byName(members)]
     .filter(([name]) => !registered.has(name))
     .filter(([name]) => existed === undefined || !existed.has(name))
     .map(([name, paths]) => memberIssue(name, paths))
     .toSorted((left, right) => left.name.localeCompare(right.name));
+  return { issues };
 };
 
 export { scanOnceFor, unregisteredMembers, unregisteredRoot };
-export type { MemberDiscovery, ScanOnce };
+export type { DiscoveryResult, MemberDiscovery, ScanOnce };

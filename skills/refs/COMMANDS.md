@@ -395,7 +395,9 @@ ref filtered out by `--stale-only` produces no item at all.
 `structure` is on every non-`failed` item: whether the ref's configured package paths still
 match the checkout that was just synced. Nothing is persisted, and only refs that actually
 sync are probed. `structure.status` is `ok` (no `packages` key at all), `drift`, or
-`unknown`. Each entry in `packages` says what to do about one package:
+`unknown`. A `discovery_incomplete` key means the search for UNREGISTERED packages was called
+off, and names what stopped it; the `packages` findings, if any, are unaffected. Each entry in
+`packages` says what to do about one package:
 
 | `status`       | Means                                                               | Tell the user                                           |
 | -------------- | ------------------------------------------------------------------- | ------------------------------------------------------- |
@@ -418,10 +420,15 @@ declares its name somewhere else, so renaming it changes a file no package direc
 the sync sees nothing new. `refs doctor` reports it — ask for one whenever a repository's packages
 look out of step and sync has been quiet.
 
-Both go quiet where workspace detection could have MISSED something — an unreadable manifest, an
-unexpanded `**` — because the path they would name cannot be established from a partial scan. A
-negated pattern (`!examples/vue/2*`) is the exception: it hides nothing, it only leaves in what
-the repository meant to exclude, so it silences the paths beneath it and nothing else.
+Both stop naming packages where workspace detection could have MISSED something — an unreadable
+manifest, an unexpanded `**` — because the path they would name cannot be established from a
+partial scan. They **say so** rather than going quiet: the report carries
+`discovery_incomplete` naming what stopped them (`packages/c: manifest_unreadable`), and its
+`status` is `unknown`, never `ok`. Treat that as "not checked", not as "nothing to report" —
+and pass the named file or pattern to the user, since fixing it is what restores the check; it
+is also what makes the `doctor` run above able to answer. A negated pattern (`!examples/vue/2*`)
+is not one of these: it hides nothing, it only leaves in what the repository meant to exclude, so
+it silences the paths beneath it and nothing else.
 
 **Never register one on your own initiative.** Show the user what was found and what you would
 run, and wait for them to say yes:

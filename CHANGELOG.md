@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A drift probe that could not finish looking says so, instead of reporting `ok`.** The pass that
+  finds packages a checkout declares and the configuration does not have stands down whenever
+  workspace detection may have missed something — an unreadable manifest, a pattern the classifier
+  cannot expand. That conservatism is right: a second declaration of the same name could be behind
+  the obstacle, and naming one path from a partial view would prescribe something registration
+  might not do. What was wrong is that it then said nothing at all, so `refs doctor` answered
+  `config-drift: ok — every configured package path resolves` while an unregistered package sat in
+  the checkout. One malformed `package.json` anywhere in a monorepo was enough, permanently.
+
+  Both discovery passes now report the obstacle. `structure` gains `discovery_incomplete`, naming
+  what stopped them (`packages/c: manifest_unreadable`), and its `status` is `unknown` rather than
+  `ok`. The findings about configured entries are unaffected — that half never needed the scan to
+  begin.
+
+### Fixed
+
 - **A ref whose key carries `@`, a space or any non-ASCII character can be locked, and therefore
   synced.** `zRefKey` admits every character but `/`, `\`, `%` and `:`; the lock alphabet is far
   narrower, and the derived lock name was passed through unchanged. Such a ref could be added and

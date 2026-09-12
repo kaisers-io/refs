@@ -1,11 +1,11 @@
 import { addPackage, freshRepo, writeJson } from '../helpers/workspace-fixture.ts';
 import { describe, expect, it } from 'vitest';
-import { mkdirSync, writeFileSync } from 'node:fs';
 import type { MemberDiscovery } from '../../src/commands/drift-discovery.ts';
 import type { PackageEntry } from '@kaisers-io/refs-core';
 import { driftLines } from '../../src/commands/drift-report.ts';
 import { join } from 'node:path';
 import { probeRefStructure } from '../../src/commands/drift-probe.ts';
+import { writeFileSync } from 'node:fs';
 
 const FIXTURE_REF = 'github.com/acme/alpha';
 
@@ -64,10 +64,9 @@ describe('probeRefStructure: a scan that could not inspect everything', () => {
   it('says nothing about a package the repository explicitly excluded', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
-    // Negated patterns are not supported — the scan emits `unsupported_pattern` and expands the
-    // directory anyway — so `@fixture/excluded` IS in the scan despite the repository having said
-    // not to treat it as a member. Recommending its registration would be advice contradicting
-    // the repository's own declaration, derived from a pattern the scanner admits it cannot read.
+    // A negation with a literal prefix is APPLIED, not reported unsupported, so `packages/excluded`
+    // is subtracted from the selection and never becomes a member. The scan stays reliable and the
+    // report stays `ok` — silence here is an answer, not a declined search.
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     writeFileSync(
       join(repo, 'pnpm-workspace.yaml'),
@@ -105,25 +104,6 @@ describe('probeRefStructure: a repository that declares a negation', () => {
     expect(report.packages).toStrictEqual([
       { name: '@fixture/new', path: 'packages/new', status: 'unregistered' },
     ]);
-  });
-
-  it('says nothing while an unreadable manifest could still hide a duplicate name', async () => {
-    expect.hasAssertions();
-    const repo = freshRepo();
-    writeJson(join(repo, 'package.json'), { workspaces: ['packages/*'] });
-    addPackage(repo, 'packages/a', { name: '@fixture/a', version: '1.0.0' });
-    addPackage(repo, 'packages/b', { name: '@fixture/b', version: '1.0.0' });
-    // A second declaration of `@fixture/b` could be sitting behind this. `refs add` keeps the
-    // LAST of a duplicate pair, so naming `packages/b` from a partial view would prescribe
-    // something registration might not do.
-    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
-    mkdirSync(join(repo, 'packages/broken'), { recursive: true });
-    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
-    writeFileSync(join(repo, 'packages/broken/package.json'), '{ not json');
-
-    const report = await probeRefStructure(repo, CONFIGURED, ALL);
-
-    expect(report).toStrictEqual({ status: 'ok' });
   });
 });
 

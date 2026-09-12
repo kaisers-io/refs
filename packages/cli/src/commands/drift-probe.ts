@@ -137,15 +137,18 @@ const probeRefStructure = async (
   }
   const scanOnce = scanOnceFor(checkoutDir);
   try {
-    const [settled, rootIssue, memberIssues] = await Promise.all([
+    const [settled, root, members] = await Promise.all([
       classifyAll(checkoutDir, queries, scanOnce),
       unregisteredRoot(checkoutDir, queries, scanOnce),
       unregisteredMembers(queries, discovery, scanOnce),
     ]);
-    return rollUp([
-      ...settled.flatMap((item) => toIssue(item)),
-      ...discovered(rootIssue, memberIssues),
-    ]);
+    return rollUp(
+      [...settled.flatMap((item) => toIssue(item)), ...discovered(root.issues, members.issues)],
+      // Whichever pass got there. They share one memoised scan, so when both looked they computed
+      // the same obstacle — and when only one looked, only one has it. Reporting the first present
+      // states it once rather than twice.
+      members.incomplete ?? root.incomplete,
+    );
   } catch (error) {
     return { reason: errorMessageOf(error), status: 'unknown' };
   }
