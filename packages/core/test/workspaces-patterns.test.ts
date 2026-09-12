@@ -2,7 +2,6 @@ import {
   deduplicateAndSort,
   isRelPathContained,
   scanIsReliable,
-  selectPackageDirs,
   sortDiagnostics,
   toWorkspacePackage,
 } from '../src/workspaces-patterns.ts';
@@ -53,36 +52,6 @@ describe('containment decision over relative paths', () => {
     expect.hasAssertions();
     expect(isRelPathContained(`${sep}other`, false)).toBe(false);
     expect(isRelPathContained(`${sep}other`, true)).toBe(false);
-  });
-});
-
-describe('candidate package dir selection', () => {
-  it('keeps only the dirs whose manifest probe succeeded, in input order', () => {
-    expect.hasAssertions();
-    expect(selectPackageDirs('packages', ['b', 'a', 'c'], [true, false, true])).toStrictEqual([
-      'packages/b',
-      'packages/c',
-    ]);
-  });
-
-  it('always emits /-separated package paths (platform-independent identifiers)', () => {
-    expect.hasAssertions();
-    const dirs = selectPackageDirs('packages', ['a', 'b'], [true, true]);
-    expect(dirs).toStrictEqual(['packages/a', 'packages/b']);
-    for (const dir of dirs) {
-      expect(dir).not.toContain('\\');
-    }
-  });
-
-  it('produces root-relative names for the bare `*` base dir `.`', () => {
-    expect.hasAssertions();
-    expect(selectPackageDirs('.', ['pkg-a'], [true])).toStrictEqual(['pkg-a']);
-  });
-
-  it('returns [] when no probe succeeded or there are no dirs', () => {
-    expect.hasAssertions();
-    expect(selectPackageDirs('packages', ['a'], [false])).toStrictEqual([]);
-    expect(selectPackageDirs('packages', [], [])).toStrictEqual([]);
   });
 });
 

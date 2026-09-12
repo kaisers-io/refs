@@ -12,6 +12,7 @@ describe('workspace pattern classification', () => {
       baseDir: 'packages',
       kind: 'expand-children',
       pattern: 'packages/*',
+      suffix: '',
     });
   });
 
@@ -21,6 +22,7 @@ describe('workspace pattern classification', () => {
       baseDir: '.',
       kind: 'expand-children',
       pattern: '*',
+      suffix: '',
     });
   });
 
@@ -71,17 +73,36 @@ describe('unsupported workspace pattern forms', () => {
       baseDir: '.',
       kind: 'expand-children',
       pattern: 'pkg-*',
+      suffix: '',
     });
     expect(classifyWorkspacePattern('examples/vue/2*')).toStrictEqual({
       baseDir: 'examples/vue',
       kind: 'expand-children',
       pattern: 'examples/vue/2*',
+      suffix: '',
     });
   });
+});
 
-  it('ignores a wildcard in an earlier segment, which would mean expanding two levels', () => {
+describe('a wildcard that is not in the last segment', () => {
+  it('expands its base one level, with the rest as a literal suffix', () => {
     expect.hasAssertions();
-    expect(classifyWorkspacePattern('packages/*/test')).toStrictEqual({ kind: 'ignore' });
+    // One `readdir` of `packages/` plus a literal probe per child — the same work `packages/*`
+    // does, which is why the wildcard's position never justified rejecting this. `vercel/next.js`
+    // declares `crates/*/js` and `turbopack/crates/*/js`, and four published packages sat behind
+    // them unseen.
+    expect(classifyWorkspacePattern('packages/*/test')).toStrictEqual({
+      baseDir: 'packages',
+      kind: 'expand-children',
+      pattern: 'packages/*/test',
+      suffix: 'test',
+    });
+    expect(classifyWorkspacePattern('turbopack/crates/*/js')).toStrictEqual({
+      baseDir: 'turbopack/crates',
+      kind: 'expand-children',
+      pattern: 'turbopack/crates/*/js',
+      suffix: 'js',
+    });
   });
 
   it('ignores absolute, leading-.. and mid-pattern .. patterns', () => {

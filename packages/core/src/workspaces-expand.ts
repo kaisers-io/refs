@@ -15,6 +15,8 @@ import { join, posix } from 'node:path';
 import type { Dirent } from 'node:fs';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { ExpandResult } from './workspaces-probe.ts';
+// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
+import type { WildcardPlan } from './workspaces-shapes.ts';
 import { resolveInside } from './fs-containment.ts';
 
 // Turning one classified pattern into directories: reading a base dir, selecting its children, and
@@ -26,16 +28,25 @@ import { resolveInside } from './fs-containment.ts';
  * never opened, and cannot contribute a diagnostic about a package nobody asked for. */
 type ExcludedDirs = { has: (dir: string) => boolean };
 
+/** The repo-relative path a child of the base directory stands for: the base, the child's name,
+ * and the pattern's literal suffix.
+ *
+ * Selection and exclusion both ask this, so they cannot disagree about which path is being decided
+ * on. `probeChildren` builds the same string again for its diagnostics and its results, and
+ * `probeAll` joins the filesystem path from the same three parts — three assemblies of one identity
+ * is what makes forgetting the suffix in one of them possible, and the tests pin each separately
+ * for that reason. */
+const candidatePath = (plan: WildcardPlan, name: string): string =>
+  posix.join(plan.baseDir === CURRENT_DIR_SEGMENT ? '' : plan.baseDir, name, plan.suffix);
+
 /** Whether one child of the base directory is selected by the pattern that opened it.
  *
  * Matched as the repo-relative PATH rather than as a bare name, because that is what the pattern
  * is written against — `examples/vue/2*` keeps `2.6-basic` and drops `nuxt3`, and the matcher
- * decides that, not this file. */
-const selected = (entry: Dirent, plan: { baseDir: string; pattern: string }): boolean =>
-  matchesPattern(
-    posix.join(plan.baseDir === CURRENT_DIR_SEGMENT ? '' : plan.baseDir, entry.name),
-    plan.pattern,
-  );
+ * decides that, not this file. With a suffix the path carries it too, which is what lets
+ * `crates/*` + `js` be matched against `crates/*` + `/js` as one string. */
+const selected = (entry: Dirent, plan: WildcardPlan): boolean =>
+  matchesPattern(candidatePath(plan, entry.name), plan.pattern);
 
 // One-level glob expansion. Reports the two ways it can come up empty for a reason — a base
 // directory that resolves outside the repo, and one that exists but cannot be read — instead of
@@ -79,7 +90,7 @@ const readBaseDir = async (
 
 const expandGlobSingleLevel = async (
   repoDir: string,
-  plan: { baseDir: string; pattern: string },
+  plan: WildcardPlan,
   excluded: ExcludedDirs,
 ): Promise<ExpandResult> => {
   const { baseDir } = plan;
@@ -87,15 +98,18 @@ const expandGlobSingleLevel = async (
   if ('result' in read) {
     return read.result;
   }
-  const base = baseDir === CURRENT_DIR_SEGMENT ? '' : baseDir;
+  // The exclusion is asked about the SAME path selection produced — with the suffix. Asking about
+  // the parent would let an excluded `crates/foo/js` be probed anyway, and an unreadable manifest
+  // under it would then make the whole scan unreliable for a directory the repository excluded.
   const takes = (entry: Dirent): boolean =>
-    selected(entry, plan) && !excluded.has(posix.join(base, entry.name));
+    selected(entry, plan) && !excluded.has(candidatePath(plan, entry.name));
   const listed = { entries: read.entries };
   return probeChildren({
     baseDir,
     dirs: listed.entries.filter((entry) => entry.isDirectory() && takes(entry)),
     fullPath: join(repoDir, baseDir),
     repoDir,
+    suffix: plan.suffix,
     // `readdir` uses lstat semantics, so a symlinked directory is not `isDirectory()` and never
     // becomes a candidate — it is invisible to detection, inside or outside the repo alike. That
     // was harmless while the scan only fed `add`'s best-effort proposal; now that callers infer

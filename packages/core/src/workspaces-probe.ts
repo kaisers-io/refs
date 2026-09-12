@@ -8,12 +8,12 @@ import type {
 } from './workspaces-patterns.ts';
 import { join, posix } from 'node:path';
 import { readFile, readdir } from 'node:fs/promises';
-// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
-import { selectPackageDirs, toWorkspacePackage } from './workspaces-patterns.ts';
 import { CURRENT_DIR_SEGMENT } from './workspaces-shapes.ts';
 import type { Dirent } from 'node:fs';
 import { extractPackageName } from './workspaces-parse.ts';
 import { resolveInside } from './fs-containment.ts';
+// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
+import { toWorkspacePackage } from './workspaces-patterns.ts';
 
 type ProbedDir = {
   diagnostic?: WorkspaceDiagnostic;
@@ -122,12 +122,20 @@ const tryReaddir = async (path: string): Promise<{ code: string } | { entries: D
 // rejected for containment IS reported — it is a directory the pattern selected that we refused
 // to look inside, so the scan may be missing a package. A candidate that simply holds no
 // manifest is not a package at all and reports nothing.
-const probeAll = (
-  repoDir: string,
-  fullPath: string,
-  entries: readonly Dirent[],
-): Promise<CandidateProbe[]> =>
-  Promise.all(entries.map((entry) => probeCandidateDir(repoDir, join(fullPath, entry.name))));
+/** An options object rather than four positional arguments: the suffix joined the other three when
+ * a wildcard stopped having to sit in the last segment, and four positionals exceed the repo's
+ * parameter limit. */
+const probeAll = (opts: {
+  entries: readonly Dirent[];
+  fullPath: string;
+  repoDir: string;
+  suffix: string;
+}): Promise<CandidateProbe[]> =>
+  Promise.all(
+    opts.entries.map((entry) =>
+      probeCandidateDir(opts.repoDir, join(opts.fullPath, entry.name, opts.suffix)),
+    ),
+  );
 
 // The entry names whose probe result satisfies `keep`, in input order.
 const pick = (
@@ -141,15 +149,19 @@ const probeChildren = async (opts: {
   dirs: readonly Dirent[];
   fullPath: string;
   repoDir: string;
+  suffix: string;
   symlinks: readonly Dirent[];
 }): Promise<ExpandResult> => {
-  const { baseDir, dirs, fullPath, repoDir, symlinks } = opts;
+  const { baseDir, dirs, fullPath, repoDir, suffix, symlinks } = opts;
+  // The one place a candidate's repo-relative path is built here — used for the diagnostics AND
+  // for the directories handed back. Two constructions of the same string is how a suffix gets
+  // applied to one and forgotten by the other.
   const relPath = (name: string): string =>
-    posix.join(baseDir === CURRENT_DIR_SEGMENT ? '' : baseDir, name);
+    posix.join(baseDir === CURRENT_DIR_SEGMENT ? '' : baseDir, name, suffix);
 
   const [probes, linkProbes] = await Promise.all([
-    probeAll(repoDir, fullPath, dirs),
-    probeAll(repoDir, fullPath, symlinks),
+    probeAll({ entries: dirs, fullPath, repoDir, suffix }),
+    probeAll({ entries: symlinks, fullPath, repoDir, suffix }),
   ]);
 
   return {
@@ -165,11 +177,7 @@ const probeChildren = async (opts: {
         (name): WorkspaceDiagnostic => ({ kind: 'candidate_not_inspected', path: relPath(name) }),
       ),
     ],
-    dirs: selectPackageDirs(
-      baseDir,
-      dirs.map((entry) => entry.name),
-      probes.map((probe) => probe === 'manifest'),
-    ),
+    dirs: pick(dirs, probes, (probe) => probe === 'manifest').map((name) => relPath(name)),
   };
 };
 
