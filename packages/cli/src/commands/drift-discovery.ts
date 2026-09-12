@@ -1,9 +1,4 @@
-import type {
-  PackagesBefore,
-  WorkspaceDiagnostic,
-  WorkspacePackage,
-  WorkspaceScan,
-} from '@kaisers-io/refs-core';
+import type { PackagesBefore, WorkspacePackage, WorkspaceScan } from '@kaisers-io/refs-core';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import {
   detectWorkspacePackagesDetailed,
@@ -13,6 +8,7 @@ import {
 } from '@kaisers-io/refs-core';
 import type { LocationQuery } from './package-location.ts';
 import type { StructureIssue } from './drift-report.ts';
+import { discoveryObstacle } from './workspace-diagnostics.ts';
 
 // The half of the drift probe that asks the opposite question: not "is this configured entry
 // still right?" but "is anything missing from the list?".
@@ -116,51 +112,6 @@ const unregisteredRoot = async (
 };
 
 const ROOT_PACKAGE_PATH = '.';
-const OBSTACLE_SEPARATOR = ', ';
-
-/** What a diagnostic is ABOUT — a path for most kinds, a pattern for `unsupported_pattern`, and
- * nothing at all for the one kind that describes the repository rather than a place in it.
- *
- * Exhaustive on purpose, with no `default`: a new diagnostic kind then fails to typecheck here
- * until someone decides how it reads, rather than silently rendering as a bare kind name. */
-const diagnosticSubject = (diagnostic: WorkspaceDiagnostic): string | undefined => {
-  switch (diagnostic.kind) {
-    case 'candidate_not_inspected':
-    case 'manifest_missing_name':
-    case 'manifest_unreadable':
-    case 'workspace_dir_unreadable': {
-      return diagnostic.path;
-    }
-    case 'workspace_declaration_unparsed':
-    case 'workspace_file_unreadable': {
-      return diagnostic.file;
-    }
-    case 'unsupported_pattern': {
-      return diagnostic.pattern;
-    }
-    case 'no_workspace_declaration': {
-      return undefined;
-    }
-  }
-};
-
-/** Why the discovery passes stood down, named so the reader can act on it — `packages/c:
- * manifest_unreadable` tells someone which file to fix, where silence tells them nothing and
- * `ok` actively misleads.
- *
- * Only the kinds that make a scan unreliable appear. `scanIsReliable` is the authority on which
- * those are, so this filters by asking it about each diagnostic alone rather than keeping a second
- * copy of that set to drift. */
-const discoveryObstacle = (scan: WorkspaceScan): string =>
-  scan.diagnostics
-    .filter((diagnostic) => !scanIsReliable({ diagnostics: [diagnostic], packages: [] }))
-    .map((diagnostic) => {
-      const subject = diagnosticSubject(diagnostic);
-      return subject === undefined ? diagnostic.kind : `${subject}: ${diagnostic.kind}`;
-    })
-    .toSorted()
-    .join(OBSTACLE_SEPARATOR);
-
 /** Groups a scan's packages by name, so a name declared twice is reported as the ambiguity it is
  * rather than as a registration at whichever copy came first. `refs add` keeps the LAST of a
  * duplicate pair, so prescribing either path here would prescribe something registration does not

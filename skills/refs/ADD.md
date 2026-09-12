@@ -27,6 +27,15 @@ Writing each description is your job, from the source. Save this JSON payload to
 (`{ok, data, warnings}`) as-is, or just its `data` object; `--proposal` accepts both. It's
 what you'll edit and eventually pass back via `--proposal`.
 
+**Read the `warnings` array before you compose the proposal.** One of them says that detection
+could not fully inspect the repository's declared workspaces — `workspace detection could not
+fully inspect the declared workspaces (packages/**: unsupported_pattern)`. It fires for an
+unexpandable pattern, an unreadable member manifest, or a candidate directory that could not be
+inspected. When it appears, `packages` may be short, and a thin `packages` record is NOT evidence
+the repository has no more: a detected root makes even a memberless result look complete. Read
+the declaration yourself and tell the user what you found, rather than approving a proposal that
+silently leaves packages out.
+
 `tag_format_candidate` is `null` when refs could derive no format from the repo's tags —
 either it has none, or they follow no pattern a format can express. **Leave it `null`.** It
 finalizes to a ref with no `tag_format`, which is the accurate record. §3 covers what to say.

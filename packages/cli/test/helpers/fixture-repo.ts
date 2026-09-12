@@ -21,6 +21,12 @@ type FixtureOpts = {
   // whose `@fixture/b` ships WITHOUT one (see `packageBSpec`'s own comment).
   monorepoAllDescribed?: boolean;
   objectFormat?: 'sha256';
+  // When `true` (alongside `monorepo: true`), the root declares `packages/**` instead of
+  // `packages/*`. The classifier cannot expand a doubled wildcard, so the scan selects no member and
+  // reports `unsupported_pattern` — an ordinary spelling that used to produce a proposal missing
+  // every member, with no indication why (#106). The named root is still detected, so the result
+  // looks complete rather than empty.
+  unsupportedPattern?: boolean;
   // When `true`, the repo declares workspaces that select NOTHING (no `packages/` directory) and
   // its root manifest names a package and describes itself. Boundary coverage rather than a
   // common upstream shape: it is the narrow case where detection registers a root and no member,
@@ -103,12 +109,12 @@ const packageBSpec = (opts: FixtureOpts | undefined): PackageSpec =>
  * what lands in config: the caller's `--description` is. */
 const SOLO_MANIFEST_DESCRIPTION = 'What the fixture manifest says about itself.';
 
-const seedMonorepo = async (dir: string, packageB: PackageSpec): Promise<void> => {
+const seedMonorepo = async (dir: string, packageB: PackageSpec, pattern: string): Promise<void> => {
   await writePackageJson(dir, {
     name: 'fixture-root',
     private: true,
     version: '0.0.0',
-    workspaces: ['packages/*'],
+    workspaces: [pattern],
   });
   await writePackage(dir, { description: 'Fixture package A', folder: 'a', pkgName: '@fixture/a' });
   await writePackage(dir, packageB);
@@ -118,7 +124,11 @@ const seedMonorepo = async (dir: string, packageB: PackageSpec): Promise<void> =
  * packages, or a workspace root whose patterns select nothing. */
 const seedManifests = async (dir: string, opts: FixtureOpts | undefined): Promise<void> => {
   if (opts?.monorepo === true) {
-    await seedMonorepo(dir, packageBSpec(opts));
+    await seedMonorepo(
+      dir,
+      packageBSpec(opts),
+      opts.unsupportedPattern === true ? 'packages/**' : 'packages/*',
+    );
   }
   if (opts?.rootOnlyWorkspace === true) {
     await writePackageJson(dir, {
