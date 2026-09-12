@@ -141,7 +141,15 @@ const expandSelection = async (
   budget: ScanBudget,
 ): Promise<ExpandResult> => {
   const { negations, patterns } = selection;
-  const excluded = { has: (dir: string): boolean => excludedBy(negations, dir) };
+  const excluded = {
+    // Whether EVERYTHING below `dir` is excluded, which is a stronger claim than `has` and the
+    // only one that justifies not walking a subtree at all. Only the `<dir>/**` form of a
+    // negation makes it: excluding a package directory is not the same as excluding what is
+    // under it, and refs follows the resolvers on that.
+    coversSubtree: (dir: string): boolean =>
+      negations.some((negation) => matchesPattern(`${dir}/**`, negatedBody(negation))),
+    has: (dir: string): boolean => excludedBy(negations, dir),
+  };
   const chosen = collect(
     await Promise.all(
       patterns.map((pattern) =>

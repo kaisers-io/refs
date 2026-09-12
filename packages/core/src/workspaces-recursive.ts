@@ -44,6 +44,11 @@ const NEVER_WALKED: ReadonlySet<string> = new Set(['.git', 'node_modules']);
 
 type Walk = {
   budget: ScanBudget;
+  /** How deep a match can sit, when the pattern bounds it at all. A wildcard-only pattern has a
+   * fixed segment count, so a directory at that depth cannot hold a selected DESCENDANT — and
+   * listing it would spend entries on a subtree that could never contribute. `**` matches any
+   * number of segments, so it bounds nothing. */
+  maxDepth: number | undefined;
   /** Whether anything BELOW this path could still match — minimatch's partial mode, which is what
    * makes pruning the matcher's decision rather than a rule of thumb. */
   couldHold: (path: string) => boolean;
@@ -84,6 +89,12 @@ const descendable = async (
   at: { excluded: ExcludedDirs; relPath: string },
 ): Promise<boolean> => {
   if (!walk.couldHold(at.relPath) || NEVER_WALKED.has(entry.name)) {
+    return false;
+  }
+  if (at.excluded.coversSubtree(at.relPath)) {
+    // Nothing under it can be selected, so walking it can only spend budget that the packages
+    // this scan IS looking for would otherwise get. A repository excluding a large generated
+    // tree would otherwise lose real packages to it.
     return false;
   }
   if (entry.isSymbolicLink()) {
@@ -163,8 +174,14 @@ const walkDir = async (
   }
   walk.budget.dirs -= 1;
   // This directory first, then its children. A trailing `**` selects its own base, so a walk that
-  // only ever inspected children dropped exactly the package `packages/core/**` names.
+  // only ever inspected children dropped exactly the package that pattern names.
   await inspect(walk, at.relPath, excluded);
+  if (walk.maxDepth !== undefined && depthOf(at.relPath) >= walk.maxDepth) {
+    // Every path this pattern can select has been inspected. Listing this directory anyway spends
+    // entries — and a package holding 200 000 files would then report the scan incomplete, having
+    // in fact looked everywhere the pattern reaches.
+    return;
+  }
   const entries = await entriesOf(walk, at.relPath);
   if (entries !== undefined) {
     await descendAll(walk, { depth: at.depth, entries, relPath: at.relPath }, excluded);
@@ -228,6 +245,16 @@ const baseFault = async (repoDir: string, baseDir: string): Promise<ExpandResult
  * cannot, so the whole valid subtree below that ancestor is skipped while the scan still reports
  * itself complete. (No glob is written out here: a wildcard followed by a slash closes a doc
  * block early.) */
+/** The deepest a match can sit under a pattern with no `**`, counted in segments. `undefined`
+ * where `**` makes it unbounded. */
+const boundedDepthOf = (pattern: string): number | undefined => {
+  const segments = normalizeSeparators(pattern).split('/');
+  return segments.includes('**') ? undefined : segments.length;
+};
+
+const depthOf = (relPath: string): number =>
+  relPath === CURRENT_DIR_SEGMENT ? 0 : relPath.split('/').length;
+
 const matchersFor = (pattern: string): Pick<Walk, 'couldHold' | 'selects'> => {
   const normalized = normalizeSeparators(pattern);
   const selecting = new Minimatch(`${normalized}/${MANIFEST_FILE}`);
@@ -253,6 +280,7 @@ const expandRecursive = async (
     budget: context.budget,
     diagnostics: [],
     dirs: [],
+    maxDepth: boundedDepthOf(plan.pattern),
     pattern: plan.pattern,
     repoDir,
   };

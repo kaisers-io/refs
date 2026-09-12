@@ -29,7 +29,7 @@ import { resolveInside } from './fs-containment.ts';
 /** Which directories a surviving negation rules out. A predicate rather than a set, because the
  * answer comes from comparing plans and needs no listing — so an excluded directory's manifest is
  * never opened, and cannot contribute a diagnostic about a package nobody asked for. */
-type ExcludedDirs = { has: (dir: string) => boolean };
+type ExcludedDirs = { coversSubtree: (dir: string) => boolean; has: (dir: string) => boolean };
 
 /** The repo-relative path a child of the base directory stands for: the base, the child's name,
  * and the pattern's literal suffix.
