@@ -175,7 +175,12 @@ const packagesNeedingDescription = (
  * placeholder: a printed command that cannot be run as printed is a bug here (`CLAUDE.md`). They
  * name the REF's description too — a dry-run proposal carries `description: ''`, which
  * `zFinalProposal` rejects, so "describe every package" alone would send the reader into a second
- * failure. Each runnable command is on its own indented line; the prose between them never is. */
+ * failure. Each runnable command is on its own indented line; the prose between them never is.
+ *
+ * The list comes LAST, unlike `resolve.ts`'s ambiguity message, and for the opposite reason: there
+ * every name is a choice the reader has to make between, so the names ARE the message. Here every
+ * name leads to the same two commands, and a real monorepo contributes a hundred of them — so the
+ * part worth reading if anything truncates is the recovery, not the inventory. */
 const requireDescribablePackages = (
   proposalPackages: Record<string, ProposalPackageEntry>,
   source: string,
@@ -186,11 +191,13 @@ const requireDescribablePackages = (
     return;
   }
   throw validationError(
-    `packages need a description written from their own source: ${undescribed.join(', ')} — ` +
-      'refs add --description has none to give them. Run the two-phase flow instead:\n' +
+    'refs add --description cannot describe a package: it has one description, about the ' +
+      'repository. Run the two-phase flow instead:\n' +
       `  refs add ${shellQuote(source)} --dry-run --json > proposal.json\n` +
-      "Fill in the ref's own description and one for every package, then:\n" +
-      '  refs add --proposal proposal.json',
+      "Fill in the ref's own description and one for every package below, written from its own " +
+      'source, then:\n' +
+      '  refs add --proposal proposal.json\n' +
+      `packages needing a description: ${undescribed.join(', ')}`,
   );
 };
 

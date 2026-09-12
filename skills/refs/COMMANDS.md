@@ -83,8 +83,10 @@ See `ADD.md` for the flow and the approval rule.
 - `--proposal <file>` — finalize from a completed proposal. `-` reads stdin. Accepts the
   bare proposal object **or** the whole `{ok, data, warnings}` envelope from the dry-run.
 - `--description <text>` — one-shot dry-run + finalize, using `<text>` as the **top-level**
-  description only. It cannot describe a package, so it fails (exit `3`, naming every one)
-  unless the source has no detected packages, or its only one is the repository root at `.`.
+  description only. It cannot describe a package, so it fails (exit `3`, naming every package that
+  needs one) unless the source has no detected packages, or its only one is the repository root at
+  `.`. A refusal registers nothing, but the checkout it cloned stays and is recorded as a pending
+  add — the two-phase commands it prints reuse it.
 
 `--dry-run` `data` (a proposal):
 

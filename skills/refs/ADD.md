@@ -128,7 +128,8 @@ Simple, non-agent shortcut (for the record, not the default agent path):
 top-level description. It cannot describe a package, so it only finalizes a source with no
 detected packages, or one whose sole detected package is the repository root at `.` (which
 IS that repository, so the text applies to it). Anything else fails (exit 3), naming every
-package and printing the two-phase commands to run instead. Use the two-phase flow for a
+package that needs a description and printing the two-phase commands to run instead — the
+checkout it already cloned stays and those commands reuse it. Use the two-phase flow for a
 monorepo — it is the only way to give each package a description written from its source.
 
 ## 5. Report

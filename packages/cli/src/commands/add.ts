@@ -113,6 +113,19 @@ const buildDescriptionRef = (
   return ref;
 };
 
+// `writePendingProposal` runs BEFORE the guard, exactly as `--dry-run` does, because by this point
+// this flow has done a dry-run's work: the checkout exists. Two things then follow from it that a
+// refusal cannot provide afterwards.
+//
+// The clone's effective mode lives only in the clone's own output — a checkout that fell back to a
+// full clone is indistinguishable on disk from a real partial one, since git records
+// `remote.origin.promisor` and `partialclonefilter` for both. The recovery this refusal PRINTS
+// reuses that checkout and never re-clones, so the mode is either persisted here or lost, and the
+// finalize would record a full clone as `blobless`.
+//
+// And `doctor` reads the same state: without it the checkout is an orphan it offers to `rm -rf`,
+// while the printed recovery tells the reader to reuse it. Recording the pending add makes those
+// two agree.
 const runAddDescription = async (
   ctx: CliContext,
   source: string,
@@ -120,6 +133,7 @@ const runAddDescription = async (
 ): Promise<AddOutcome> => {
   const outcome = await runDryRunCore(ctx, source);
   const home = resolveHome(ctx.env);
+  await writePendingProposal(home, outcome.proposal.key, outcome.effectiveCloneMode);
   const ref = buildDescriptionRef(outcome, description, source);
   const finalizeOpts: FinalizeOpts = { dest: outcome.dest, home, ref };
   if (outcome.effectiveCloneMode !== undefined) {

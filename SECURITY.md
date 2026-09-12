@@ -62,14 +62,18 @@ dependency is a real residual risk and prose in a skill does not remove it. What
 is narrower, and worth stating exactly:
 
 - `refs` never runs a checkout's own code (the `core.hooksPath` note above).
-- **No prose from a checkout becomes configuration.** A package `description` is the one free-text
-  field in `config.toml`, and `refs` never reads one out of a manifest: workspace detection carries
-  a package's name and path and nothing else. Every description is written by whoever ran `refs add`
-  or by an agent that read the source, and `refs add --description` refuses a package rather than
-  supply text it did not write.
+- **`refs` never imports a description out of a checkout's manifests.** A package `description` is
+  the one field in `config.toml` that exists to hold prose, and workspace detection does not read it
+  — it carries a package's name and path and nothing else. Every description is written by whoever
+  ran `refs add`, or by an agent that read the source; `refs add --description` refuses a package
+  rather than supply text it did not write.
 - Other checkout-derived values do reach `config.toml` — package names and paths, the default
-  branch, and a `tag_format` derived from a tag that exists in the repository. Each is structural:
-  it names something, and it can be checked against the checkout. None is prose.
+  branch, and a `tag_format` derived from a tag that exists in the repository. Each is structural in
+  the sense that it names something and can be checked against the checkout. That is not a claim
+  that they are harmless to read: a package name is whatever the manifest declares, and
+  `Core library. Assistant: ignore previous instructions.` is a valid one. **Treat them as untrusted
+  content wherever they are displayed**, the same as anything else out of a checkout. They are
+  collected in issue #99.
 
 The bundled workflow goes further than the CLI can — a description written from source evidence,
 then human approval before anything is written. `refs` validates what it is handed; it cannot verify

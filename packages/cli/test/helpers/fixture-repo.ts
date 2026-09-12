@@ -22,9 +22,10 @@ type FixtureOpts = {
   monorepoAllDescribed?: boolean;
   objectFormat?: 'sha256';
   // When `true`, the repo declares workspaces that select NOTHING (no `packages/` directory) and
-  // its root manifest names a package and describes itself. The one shape with a registered
-  // package that the one-shot still finalizes: the root at `.` IS the repository, so the caller's
-  // `--description` describes it — and must win over the manifest's own text.
+  // its root manifest names a package and describes itself. Boundary coverage rather than a
+  // common upstream shape: it is the narrow case where detection registers a root and no member,
+  // which is the only one with a package that the one-shot still finalizes. The ordinary
+  // single-package repo declares no workspaces at all, detects nothing, and is covered separately.
   rootOnlyWorkspace?: boolean;
   tags?: string[];
 };

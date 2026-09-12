@@ -64,7 +64,7 @@ describe('listing the packages the one-shot cannot describe', () => {
 });
 
 describe('the description guard', () => {
-  it('names every package and prints commands carrying the caller’s own source', () => {
+  it('names every package it cannot describe, sorted, and points at the two-phase flow', () => {
     expect.hasAssertions();
     const detected: WorkspacePackage[] = [
       { name: 'zeta', path: 'packages/zeta' },
@@ -73,7 +73,7 @@ describe('the description guard', () => {
     const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
 
     expect(() => requireDescribablePackages(packages, SOURCE)).toThrow(
-      /their own source: beta, zeta.*two-phase flow/su,
+      /two-phase flow.*packages needing a description: beta, zeta/su,
     );
   });
 

@@ -128,18 +128,52 @@ describe('refs add --description: refuses a package it cannot describe', () => {
 
 describe('refs add --description: what a refusal leaves behind', () => {
   it(
-    '(l3) writes nothing to config or state',
+    '(l3) registers no ref',
     async () => {
       expect.hasAssertions();
       await withResetExitCode(() =>
         withTempHome(async (homeDir) => {
-          const { ctx } = await runOneShot(homeDir, { monorepo: true });
+          const { ctx, stdout } = await runOneShot(homeDir, {
+            monorepo: true,
+            monorepoAllDescribed: true,
+          });
 
-          const home = resolveHome(ctx.env);
-          const config = await readConfig(home);
-          const state = await readState(home);
+          // Asserted alongside the refusal itself, never alone: "config is empty" also holds for a
+          // run that failed on its way to the clone, and would pin nothing.
+          expect(process.exitCode).toBe(EXIT.VALIDATION);
+          expect(messageOf(parseLastEnvelope(stdout) as ErrorEnvelope)).toContain('@fixture/a');
+          const config = await readConfig(resolveHome(ctx.env));
           expect(Object.keys(config.refs)).toHaveLength(NO_REFS);
-          expect(Object.keys(state.refs)).toHaveLength(NO_REFS);
+        }),
+      );
+    },
+    SLOW_IO_TIMEOUT_MS,
+  );
+});
+
+describe('refs add --description: the clone a refusal leaves behind', () => {
+  it(
+    '(l4) records it as a pending add, carrying the clone mode actually used',
+    async () => {
+      expect.hasAssertions();
+      await withResetExitCode(() =>
+        withTempHome(async (homeDir) => {
+          // The refusal happens after the clone, and the clone's real mode exists nowhere but in
+          // its output: a checkout that fell back to a full clone is indistinguishable on disk
+          // from a real partial one (git records `promisor`/`partialclonefilter` either way). So
+          // the recovery this refusal PRINTS — dry-run, then finalize, both reusing this very
+          // checkout — would finalize a full clone as `blobless` unless the mode is persisted
+          // here. A plain `file://` fixture remote never honours `--filter=blob:none`, which is
+          // what makes `full` the expected value (see `git/repo.ts#cloneRepo`).
+          const { ctx } = await runOneShot(homeDir, {
+            monorepo: true,
+            monorepoAllDescribed: true,
+          });
+
+          const state = await readState(resolveHome(ctx.env));
+          const [entry] = Object.values(state.refs);
+          expect(entry?.effective_clone_mode).toBe('full');
+          expect(entry?.pending_proposal_at).toBeDefined();
         }),
       );
     },

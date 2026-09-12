@@ -22,9 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   finalizes a source with no detected packages, or one whose only detected package is the
   repository root at `.` — and there the text now wins over whatever the root manifest said about
   itself. For anything else it exits `3`, naming every package and printing the two-phase commands
-  to run instead, with the source it was given quoted into them. Nothing is written to config or
-  state when it refuses; the dry-run's checkout is still on disk, and `refs add --proposal` will
-  finalize against it.
+  to run instead, with the source it was given quoted into them. A refusal registers no ref. The
+  checkout it cloned stays, and is now recorded as a pending add — so `doctor` reports it as one
+  instead of offering to delete a checkout the printed recovery is about to reuse, and the clone
+  mode actually used survives into the finalize (it exists nowhere but the clone's own output: a
+  fallback to a full clone is indistinguishable on disk from a real partial one).
 
   Existing entries are untouched. A description imported from a manifest before this release stays
   exactly as it is — nothing distinguishes it from one written by hand, so nothing rewrites it. To
@@ -35,8 +37,10 @@ description "…"` to replace one.
 
 - `SECURITY.md` claimed refs "never reads checkout content as configuration", which was not true of
   manifest descriptions and is still not true of package names, paths, the default branch, or a
-  `tag_format` derived from real tags. The claim is now stated exactly: no prose from a checkout
-  becomes configuration, and the structural values that do cross are named.
+  `tag_format` derived from real tags. The claim is now stated as what the code enforces: refs never
+  imports a description out of a manifest. The values that do still cross are named, along with the
+  fact that being structural does not make them safe to read — a package name is whatever the
+  manifest declares.
 
 ## [0.12.0] - 2026-09-08
 
