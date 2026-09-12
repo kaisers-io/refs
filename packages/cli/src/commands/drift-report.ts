@@ -139,8 +139,15 @@ const UNKNOWN_PATH = '(unknown)';
  * `packages/100%`, and the scan reports it correctly, while `zRefEntry` rejects both. Printing a
  * command that fails validation is worse than printing none — the finding is still true, so it is
  * reported with the reason instead. */
-const registrable = (issue: StructureIssue): boolean =>
-  isRegistrablePackageName(issue.name) && zPackagePath.safeParse(issue.path).success;
+/** Whether the DECISION can be recorded, which is a weaker question than whether the package can
+ * be registered. `packages` is a record keyed by name, so a member legitimately called
+ * `constructor` cannot be a key; `declined_packages` is an array of records, so that name is no
+ * obstacle at all. The path is: a decline stores one, under the same schema a registration uses.
+ *
+ * Splitting the two matters most exactly where it is easiest to miss. A finding with no command
+ * is the one that recurs forever, so the package whose name cannot be registered is precisely the
+ * one that most needs the answer "no, and stop asking". */
+const declinable = (issue: StructureIssue): boolean => zPackagePath.safeParse(issue.path).success;
 
 const unregisteredLine = (issue: StructureIssue, key: string): string => {
   const head = `${issue.name}: declared in this checkout but not registered — it cannot be resolved by name until it is`;
@@ -149,10 +156,24 @@ const unregisteredLine = (issue: StructureIssue, key: string): string => {
     // lookup. Naming the candidates is the most this can honestly do.
     return `${head}. Declared at several paths (${(issue.candidates ?? []).join(', ')}) — pick one`;
   }
-  if (!registrable(issue)) {
+  if (!declinable(issue)) {
     return (
-      `${head}. Its name or path is one the configuration cannot hold, so there is no command ` +
-      `for it — report it and leave it unregistered`
+      `${head}. Its path is one the configuration cannot hold, so there is no command for it — ` +
+      `report it and leave it unregistered`
+    );
+  }
+  // Both answers, because both are answers. Registering is the one that needs a human decision
+  // (SKILL.md: never on your own initiative), and declining is what stops the finding returning
+  // on every run once that decision was "no" — without it the only way to quieten this line was
+  // to register something nobody wanted.
+  const decline = editCommand(
+    [`--package=${shellQuote(issue.name)}`, '--decline', `--path=${shellQuote(issue.path)}`],
+    [key],
+  );
+  if (!isRegistrablePackageName(issue.name)) {
+    return (
+      `${head}. Its name is one the packages table cannot hold, so it cannot be registered — ` +
+      `if that is the answer, record it: ${decline}`
     );
   }
   const register = editCommand(
@@ -162,14 +183,6 @@ const unregisteredLine = (issue: StructureIssue, key: string): string => {
       `--path=${shellQuote(issue.path)}`,
       '--description="<what it is>"',
     ],
-    [key],
-  );
-  // Both answers, because both are answers. Registering is the one that needs a human decision
-  // (SKILL.md: never on your own initiative), and declining is what stops the finding returning
-  // on every run once that decision was "no" — without it the only way to quieten this line was
-  // to register something nobody wanted.
-  const decline = editCommand(
-    [`--package=${shellQuote(issue.name)}`, '--decline', `--path=${shellQuote(issue.path)}`],
     [key],
   );
   return `${head}. To register it: ${register}. If it should not be: ${decline}`;

@@ -77,11 +77,13 @@ describe.skipIf(posixOnly)('the printed repair command, through a shell', () => 
 });
 
 describe('a package the configuration cannot hold', () => {
-  it('prints no command for a prototype-shaped name', () => {
+  it('prints only the decline command for a prototype-shaped name', () => {
     expect.hasAssertions();
 
-    // A workspace member may legitimately be named `constructor`; the record schema rejects it as
-    // a key. Printing a command that fails validation is worse than printing none.
+    // A workspace member may legitimately be named `constructor`; the packages RECORD rejects it
+    // as a key, and the declined LIST does not. The registration command would fail validation,
+    // so it is not printed — but the decision still has to be recordable, or this finding recurs
+    // forever with no answer.
     const [line] = driftLines(
       {
         packages: [{ name: 'constructor', path: 'packages/x', status: 'unregistered' }],
@@ -91,9 +93,12 @@ describe('a package the configuration cannot hold', () => {
     );
 
     expect(line).toContain('cannot hold');
-    expect(line).not.toContain('refs edit');
+    expect(line).toContain('--decline');
+    expect(line).not.toContain('--create');
   });
+});
 
+describe('a path the configuration cannot hold', () => {
   it('prints no command for a path the schema rejects', () => {
     expect.hasAssertions();
 
