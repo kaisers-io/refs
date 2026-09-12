@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **A package's description is never read out of a manifest.** Workspace detection carried each
+  package's `description` from its `package.json`, and `refs add <source> --description "…"`
+  persisted it into `config.toml` — text written by whoever owns the upstream repository, crossing
+  into a file refs reads back as its own configuration and replays on every `refs list` and
+  `refs show`. Detection now carries a package's name and path and nothing else, which is what
+  `refs sync`'s `unregistered` finding has done since 0.12.0. Every description in a config entry
+  is written by someone who read the source.
+
+  The one-shot `refs add <source> --description "…"` therefore no longer registers workspace
+  members: it has one description, about the repository, and none for a package. It still
+  finalizes a source with no detected packages, or one whose only detected package is the
+  repository root at `.` — and there the text now wins over whatever the root manifest said about
+  itself. For anything else it exits `3`, naming every package and printing the two-phase commands
+  to run instead, with the source it was given quoted into them, and listing every package the
+  proposal will need a description for — the repository root included, which is not the set the
+  refusal is about but is the set `refs add --proposal` requires.
+
+  A refusal registers no ref. The checkout it cloned stays, and is now recorded as a pending add —
+  so for the next 24 hours `doctor` reports it as one instead of offering to delete a checkout the
+  printed recovery is about to reuse, and the clone mode actually used survives into the finalize.
+  That mode cannot be recovered from the checkout afterwards: git records
+  `remote.origin.promisor` and `partialclonefilter` from the requested filter, whether or not the
+  server honoured it.
+
+  Existing entries are untouched. A description imported from a manifest before this release stays
+  exactly as it is — nothing distinguishes it from one written by hand, so nothing rewrites it. To
+  review them: `refs show <ref> --packages --json`, and `refs edit <ref> --package <name>
+description "…"` to replace one.
+
+### Security
+
+- `SECURITY.md` claimed refs "never reads checkout content as configuration", which was not true of
+  manifest descriptions and is still not true of package names, paths, the default branch, or a
+  `tag_format` derived from real tags. The claim is now stated as what the code enforces: refs never
+  imports a description out of a manifest. The values that do still cross are named, along with the
+  fact that being structural does not make them safe to read — a package name is whatever the
+  manifest declares.
+
 ## [0.12.0] - 2026-09-08
 
 ### Upgrading

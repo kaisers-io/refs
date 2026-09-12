@@ -83,7 +83,7 @@ describe("pnpm's rule, which is not npm's", () => {
     addPackage(repo, 'packages/core', { name: '@mono/core', version: '1.0.0' });
 
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: undefined, name: '@mono/core', path: 'packages/core' },
+      { name: '@mono/core', path: 'packages/core' },
     ]);
   });
 

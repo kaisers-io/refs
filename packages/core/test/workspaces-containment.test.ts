@@ -39,7 +39,7 @@ describe('symlink containment', () => {
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     symlinkSync(outside, join(repo, 'packages', 'b'));
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: 'Package A', name: '@mono/a', path: 'packages/a' },
+      { name: '@mono/a', path: 'packages/a' },
     ]);
   });
 
@@ -102,7 +102,7 @@ describe('containment fixes (round 3)', () => {
     writeJson(join(repo, 'package.json'), { workspaces: ['..packages'] });
     addPackage(repo, '..packages', { description: 'Dotdot-prefixed dir', name: '@mono/dotdot' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: 'Dotdot-prefixed dir', name: '@mono/dotdot', path: '..packages' },
+      { name: '@mono/dotdot', path: '..packages' },
     ]);
   });
 });

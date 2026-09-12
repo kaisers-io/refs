@@ -1,19 +1,21 @@
 import {
   buildFinalPackages,
   buildProposalPackages,
-  packagesMissingDescription,
+  packagesNeedingDescription,
   registeredRootName,
-  requireAllDescribed,
+  requireDescribablePackages,
 } from '../../src/commands/add-packages.ts';
 import { describe, expect, it } from 'vitest';
 import type { WorkspacePackage } from '@kaisers-io/refs-core';
 
-// Pure unit coverage for `add-packages.ts`'s description-requirement guard, split out of the
-// integration suites (`add-description-required.test.ts`, `add-guards.test.ts`) because the
-// single-package `npm:<pkg>` source case cannot be exercised end-to-end: like `add.test.ts`'s own
-// npm: unit test notes, there is no way to make an `npm:<pkg>` source resolve to a local `file://`
-// fixture, and `buildProposalPackages`'s npm branch (see that file) never carries a description at
-// all — it is built purely from the resolved `{name, directory}`, never a cloned manifest.
+// Pure unit coverage for `add-packages.ts`'s description guard, split out of the integration
+// suites (`add-description-required.test.ts`, `add-guards.test.ts`) because the single-package
+// `npm:<pkg>` source case cannot be exercised end-to-end: like `add.test.ts`'s own npm: unit test
+// notes, there is no way to make an `npm:<pkg>` source resolve to a local `file://` fixture.
+//
+// The fixtures below carry no descriptions because detection no longer produces any: a
+// `WorkspacePackage` is identity only (see the type's comment in core). That is the point of the
+// guard — every description in a finalized entry was written by someone who read the source.
 
 const ONE_PACKAGE = 1;
 // `buildProposalPackages`'s 2nd/3rd params are required (typed `string | undefined`, not
@@ -24,43 +26,32 @@ const NO_NPM_PKG_NAME: string | undefined = undefined;
 // Most fixtures here declare no workspace root package at all.
 const NO_ROOT: string | undefined = undefined;
 const REF_DESCRIPTION = 'The Acme toolkit repository.';
+const SOURCE = 'https://github.com/acme/toolkit.git';
 
-describe('listing packages missing a description', () => {
-  it('lists nothing when every package already has a description', () => {
+describe('listing the packages the one-shot cannot describe', () => {
+  it('names every detected package, sorted, when no root is registered', () => {
     expect.hasAssertions();
     const detected: WorkspacePackage[] = [
-      { description: 'A', name: 'a', path: 'packages/a' },
-      { description: 'B', name: 'b', path: 'packages/b' },
+      { name: 'zeta', path: 'packages/zeta' },
+      { name: 'alpha', path: 'packages/alpha' },
+      { name: 'beta', path: 'packages/beta' },
     ];
 
     const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
 
-    expect(packagesMissingDescription(packages, NO_ROOT)).toStrictEqual([]);
+    expect(packagesNeedingDescription(packages, NO_ROOT)).toStrictEqual(['alpha', 'beta', 'zeta']);
   });
 
-  it('names only the packages missing a description in a mixed set, sorted', () => {
-    expect.hasAssertions();
-    const detected: WorkspacePackage[] = [
-      { description: undefined, name: 'zeta', path: 'packages/zeta' },
-      { description: 'Alpha package', name: 'alpha', path: 'packages/alpha' },
-      { description: undefined, name: 'beta', path: 'packages/beta' },
-    ];
-
-    const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
-
-    expect(packagesMissingDescription(packages, NO_ROOT)).toStrictEqual(['beta', 'zeta']);
-  });
-
-  it('lists a single-package npm: source with no manifest description — no special case for "."', () => {
+  it('names a single-package npm: source — no special case for "."', () => {
     expect.hasAssertions();
     // Mirrors `buildProposalPackages`'s npm: singleton branch: no workspace packages detected (a
     // genuinely single-package repo), so the only entry is synthesized from the resolved npm
-    // package name/directory alone — it never carries a description.
+    // package name/directory alone. It is not a DETECTED root, so it takes no exemption.
     const packages = buildProposalPackages([], NO_NPM_DIRECTORY, 'demo-package');
 
     expect(Object.keys(packages)).toHaveLength(ONE_PACKAGE);
     expect(packages['demo-package']?.path).toBe('.');
-    expect(packagesMissingDescription(packages, NO_ROOT)).toStrictEqual(['demo-package']);
+    expect(packagesNeedingDescription(packages, NO_ROOT)).toStrictEqual(['demo-package']);
   });
 
   it('lists nothing for an empty packages record (a plain, non-workspace git source)', () => {
@@ -68,94 +59,79 @@ describe('listing packages missing a description', () => {
     const packages = buildProposalPackages([], NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
 
     expect(packages).toStrictEqual({});
-    expect(packagesMissingDescription(packages, NO_ROOT)).toStrictEqual([]);
+    expect(packagesNeedingDescription(packages, NO_ROOT)).toStrictEqual([]);
   });
 });
 
-describe('an empty-string manifest description counts as missing', () => {
-  it("treats '' as missing, mirroring zPackageEntry's min(1) rule", () => {
+describe('the description guard', () => {
+  it('lists every package the proposal needs a description for, sorted, INCLUDING the root', () => {
     expect.hasAssertions();
-    // `extractPackageDescription` (core) returns ANY string from the manifest, including `""` —
-    // exactly what `npm init -y` scaffolds. `zPackageEntry.description` requires `min(1)`, so an
-    // empty string must count as missing here too, or the one-shot would bypass the guard and die
-    // later in finalize with the degraded generic schema error this guard exists to prevent.
+    // The root is exempt from the guard (the ref's own text describes it) but not from
+    // `zFinalProposal`, which requires a description on every entry. Listing only what the guard
+    // rejected on sent the reader to finalize a proposal still missing the root's.
     const detected: WorkspacePackage[] = [
-      { description: '', name: 'scaffolded', path: 'packages/scaffolded' },
-      { description: 'Real description', name: 'described', path: 'packages/described' },
+      { name: 'zeta', path: 'packages/zeta' },
+      { name: '@acme/toolkit', path: '.' },
+      { name: 'beta', path: 'packages/beta' },
     ];
-
     const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
 
-    expect(packagesMissingDescription(packages, NO_ROOT)).toStrictEqual(['scaffolded']);
-    expect(() => requireAllDescribed(packages)).toThrow(
-      /packages without a detected description: scaffolded/u,
+    expect(() =>
+      requireDescribablePackages(packages, SOURCE, registeredRootName(detected, packages)),
+    ).toThrow(/two-phase flow.*packages to describe: @acme\/toolkit, beta, zeta/su);
+  });
+
+  it('shell-quotes the source into the printed command rather than a <source> placeholder', () => {
+    expect.hasAssertions();
+    // `zRefKey`/source strings permit spaces and `$()`; a printed command is meant to be run as
+    // printed, so the value has to survive a shell verbatim. See `shell-quote.ts`.
+    const detected: WorkspacePackage[] = [{ name: 'a', path: 'packages/a' }];
+    const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
+
+    expect(() => requireDescribablePackages(packages, 'file:///tmp/a repo')).toThrow(
+      /refs add 'file:\/\/\/tmp\/a repo' --dry-run --json > proposal\.json/u,
+    );
+  });
+
+  it("tells the reader to fill in the ref's own description too", () => {
+    expect.hasAssertions();
+    // A dry-run proposal carries `description: ''`, which `zFinalProposal` rejects. A message that
+    // only said "describe every package" would walk the reader into a second failure.
+    const detected: WorkspacePackage[] = [{ name: 'a', path: 'packages/a' }];
+    const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
+
+    expect(() => requireDescribablePackages(packages, SOURCE)).toThrow(
+      /fill in the ref's own description/iu,
     );
   });
 });
 
-describe('the description-required guard', () => {
-  it('does not throw once every package has a description', () => {
-    expect.hasAssertions();
-    const detected: WorkspacePackage[] = [{ description: 'A', name: 'a', path: 'packages/a' }];
-    const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
-
-    expect(() => requireAllDescribed(packages)).not.toThrow();
-  });
-
-  it('names every package still missing a description and points at the two-phase flow', () => {
-    expect.hasAssertions();
-    const detected: WorkspacePackage[] = [
-      { description: undefined, name: 'zeta', path: 'packages/zeta' },
-      { description: undefined, name: 'beta', path: 'packages/beta' },
-    ];
-    const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
-
-    expect(() => requireAllDescribed(packages)).toThrow(
-      /packages without a detected description: beta, zeta.*run the two-phase flow instead/su,
-    );
-  });
-
+describe('the shapes the guard lets through', () => {
   it('does not throw for an empty packages record', () => {
     expect.hasAssertions();
     const packages = buildProposalPackages([], NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
 
-    expect(() => requireAllDescribed(packages)).not.toThrow();
+    expect(() => requireDescribablePackages(packages, SOURCE)).not.toThrow();
+  });
+
+  it('does not throw when the only entry is the registered root', () => {
+    expect.hasAssertions();
+    const detected: WorkspacePackage[] = [{ name: '@acme/toolkit', path: '.' }];
+    const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
+
+    expect(() =>
+      requireDescribablePackages(packages, SOURCE, registeredRootName(detected, packages)),
+    ).not.toThrow();
   });
 });
 
 describe('shaping the final packages record', () => {
-  it('carries each package’s own description through once all are present', () => {
+  it("gives the root the ref's own description", () => {
     expect.hasAssertions();
-    const detected: WorkspacePackage[] = [
-      { description: 'A package', name: 'a', path: 'packages/a' },
-      { description: 'B package', name: 'b', path: 'packages/b' },
-    ];
-    const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
-
-    const finalPackages = buildFinalPackages(packages, { refDescription: REF_DESCRIPTION });
-
-    expect(finalPackages?.['a']).toStrictEqual({ description: 'A package', path: 'packages/a' });
-    expect(finalPackages?.['b']).toStrictEqual({ description: 'B package', path: 'packages/b' });
-  });
-
-  it('returns undefined for an empty packages record', () => {
-    expect.hasAssertions();
-    const packages = buildProposalPackages([], NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
-
-    expect(buildFinalPackages(packages, { refDescription: REF_DESCRIPTION })).toBeUndefined();
-  });
-});
-
-describe('the workspace root entry', () => {
-  it("gives the root the ref's own description when its manifest has none", () => {
-    expect.hasAssertions();
-    // A workspace root is private and almost never carries a `description`. It is not a different
-    // thing from the repository, though — it IS the repository, at `.` — so the text the caller
-    // just wrote about the repo describes it exactly, and the one-shot flow keeps working.
-    const detected: WorkspacePackage[] = [
-      { description: undefined, name: '@acme/toolkit', path: '.' },
-      { description: 'A package', name: 'a', path: 'packages/a' },
-    ];
+    // The root is not a different thing from the repository — it IS the repository, at `.` — so
+    // the text the caller just wrote about the repo describes it exactly, and the one-shot keeps
+    // working for a single-package repo.
+    const detected: WorkspacePackage[] = [{ name: '@acme/toolkit', path: '.' }];
     const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
 
     const finalPackages = buildFinalPackages(packages, {
@@ -169,22 +145,11 @@ describe('the workspace root entry', () => {
     });
   });
 
-  it('leaves a root that describes itself alone', () => {
+  it('returns undefined for an empty packages record', () => {
     expect.hasAssertions();
-    const detected: WorkspacePackage[] = [
-      { description: 'The toolkit monorepo', name: '@acme/toolkit', path: '.' },
-    ];
-    const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
+    const packages = buildProposalPackages([], NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
 
-    const finalPackages = buildFinalPackages(packages, {
-      refDescription: REF_DESCRIPTION,
-      rootPackageName: '@acme/toolkit',
-    });
-
-    expect(finalPackages?.['@acme/toolkit']).toStrictEqual({
-      description: 'The toolkit monorepo',
-      path: '.',
-    });
+    expect(buildFinalPackages(packages, { refDescription: REF_DESCRIPTION })).toBeUndefined();
   });
 });
 
@@ -195,8 +160,8 @@ describe('a root whose name a member already claims', () => {
     // `react-router` from `packages/`. Detection dedupes by path, so both arrive here; the record
     // is keyed by name and would otherwise keep whichever came last.
     const detected: WorkspacePackage[] = [
-      { description: 'The monorepo', name: '@acme/toolkit', path: '.' },
-      { description: 'A package', name: '@acme/toolkit', path: 'packages/toolkit' },
+      { name: '@acme/toolkit', path: '.' },
+      { name: '@acme/toolkit', path: 'packages/toolkit' },
     ];
 
     const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
@@ -207,33 +172,33 @@ describe('a root whose name a member already claims', () => {
     expect(Object.keys(packages)).toHaveLength(ONE_PACKAGE);
   });
 
-  it('does not let the dropped root lend the member its description exemption', () => {
+  it('does not let the dropped root lend the member its exemption', () => {
     expect.hasAssertions();
-    // The member has no description of its own. Only the ROOT may take the ref's description, and
-    // the root here was dropped — so the surviving entry is an ordinary child package and must
-    // still be rejected, rather than quietly receiving text written about the repository.
+    // Only the ROOT may take the ref's description, and the root here was dropped — so the
+    // surviving entry is an ordinary child package and must still be rejected, rather than
+    // quietly receiving text written about the repository.
     const detected: WorkspacePackage[] = [
-      { description: 'The monorepo', name: '@acme/toolkit', path: '.' },
-      { description: undefined, name: '@acme/toolkit', path: 'packages/toolkit' },
+      { name: '@acme/toolkit', path: '.' },
+      { name: '@acme/toolkit', path: 'packages/toolkit' },
     ];
     const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
 
     expect(
-      packagesMissingDescription(packages, registeredRootName(detected, packages)),
+      packagesNeedingDescription(packages, registeredRootName(detected, packages)),
     ).toStrictEqual(['@acme/toolkit']);
   });
 
   it('still exempts a root that survives', () => {
     expect.hasAssertions();
     const detected: WorkspacePackage[] = [
-      { description: undefined, name: '@acme/toolkit', path: '.' },
-      { description: 'A package', name: '@acme/a', path: 'packages/a' },
+      { name: '@acme/toolkit', path: '.' },
+      { name: '@acme/a', path: 'packages/a' },
     ];
     const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
 
     expect(
-      packagesMissingDescription(packages, registeredRootName(detected, packages)),
-    ).toStrictEqual([]);
+      packagesNeedingDescription(packages, registeredRootName(detected, packages)),
+    ).toStrictEqual(['@acme/a']);
   });
 });
 
@@ -242,43 +207,25 @@ describe('an npm fallback that lands on the root name', () => {
     expect.hasAssertions();
     // No member selected, and the requested npm package happens to carry the root's own name — but
     // the packument places it in `packages/toolkit`. What survives under that name is an ordinary
-    // package in a subdirectory, so it must declare its own description like any other.
-    const detected: WorkspacePackage[] = [
-      { description: 'The monorepo', name: '@acme/toolkit', path: '.' },
-    ];
+    // package in a subdirectory, so it must be described from its own source like any other.
+    const detected: WorkspacePackage[] = [{ name: '@acme/toolkit', path: '.' }];
     const packages = buildProposalPackages(detected, 'packages/toolkit', '@acme/toolkit');
 
     expect(packages['@acme/toolkit']?.path).toBe('packages/toolkit');
     expect(
-      packagesMissingDescription(packages, registeredRootName(detected, packages)),
+      packagesNeedingDescription(packages, registeredRootName(detected, packages)),
     ).toStrictEqual(['@acme/toolkit']);
   });
 
   it('does exempt it when the packument points at the root itself', () => {
     expect.hasAssertions();
     // Same name, same directory, same manifest: this IS the root, however it was reached.
-    const detected: WorkspacePackage[] = [
-      { description: undefined, name: '@acme/toolkit', path: '.' },
-    ];
+    const detected: WorkspacePackage[] = [{ name: '@acme/toolkit', path: '.' }];
     const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, '@acme/toolkit');
 
     expect(
-      packagesMissingDescription(packages, registeredRootName(detected, packages)),
+      packagesNeedingDescription(packages, registeredRootName(detected, packages)),
     ).toStrictEqual([]);
-  });
-
-  it('keeps the manifest description detection already read', () => {
-    expect.hasAssertions();
-    // The packument names the package detection found, at the same path. Replacing that entry with
-    // the bare locator would drop the manifest's own words and let the ref's description stand in
-    // for them — the opposite of the rule that a package describing itself keeps its own.
-    const detected: WorkspacePackage[] = [
-      { description: 'What the manifest says', name: '@acme/toolkit', path: '.' },
-    ];
-
-    const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, '@acme/toolkit');
-
-    expect(packages['@acme/toolkit']?.description).toBe('What the manifest says');
   });
 });
 
@@ -288,9 +235,7 @@ describe('a workspace declaration that selects nothing', () => {
     // A repository declaring `packages/**`, which the pattern classifier does not support: the
     // root is found by looking, no member is selected. Seeding only the root would silently drop
     // the package named in `npm:<pkg>` — the entire reason that source was given.
-    const detected: WorkspacePackage[] = [
-      { description: 'The monorepo', name: '@acme/toolkit', path: '.' },
-    ];
+    const detected: WorkspacePackage[] = [{ name: '@acme/toolkit', path: '.' }];
 
     const packages = buildProposalPackages(detected, 'packages/widget', '@acme/widget');
 

@@ -151,9 +151,7 @@ describe('incomplete expansion', () => {
     });
     addPackage(repo, 'packages/a', { name: '@mono/a' });
     const scan = await detectWorkspacePackagesDetailed(repo);
-    expect(scan.packages).toStrictEqual([
-      { description: undefined, name: '@mono/a', path: 'packages/a' },
-    ]);
+    expect(scan.packages).toStrictEqual([{ name: '@mono/a', path: 'packages/a' }]);
     expect(scan.diagnostics).toStrictEqual([
       { kind: 'unsupported_pattern', pattern: 'libs/**/deep' },
     ]);
@@ -172,9 +170,7 @@ describe('unusable package candidates', () => {
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     writeFileSync(join(repo, 'packages', 'bad', 'package.json'), '{ broken');
     const scan = await detectWorkspacePackagesDetailed(repo);
-    expect(scan.packages).toStrictEqual([
-      { description: undefined, name: '@mono/good', path: 'packages/good' },
-    ]);
+    expect(scan.packages).toStrictEqual([{ name: '@mono/good', path: 'packages/good' }]);
     expect(scan.diagnostics).toStrictEqual([{ kind: 'manifest_unreadable', path: 'packages/bad' }]);
     expect(scanIsReliable(scan)).toBe(false);
   });
@@ -217,9 +213,7 @@ describe('candidates behind symlinks', () => {
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     symlinkSync(join(outside, 'package.json'), join(repo, 'packages', 'b', 'package.json'));
     const scan = await detectWorkspacePackagesDetailed(repo);
-    expect(scan.packages).toStrictEqual([
-      { description: undefined, name: '@mono/a', path: 'packages/a' },
-    ]);
+    expect(scan.packages).toStrictEqual([{ name: '@mono/a', path: 'packages/a' }]);
     expect(scan.diagnostics).toStrictEqual([{ kind: 'manifest_unreadable', path: 'packages/b' }]);
     expect(scanIsReliable(scan)).toBe(false);
   });
@@ -235,9 +229,7 @@ describe('candidates behind symlinks', () => {
     // is that the omission is now VISIBLE: callers infer "this package is gone" and "this is its
     // one new home" from a scan, and neither conclusion is safe while a possible package sits
     // unexamined behind a link.
-    expect(scan.packages).toStrictEqual([
-      { description: undefined, name: '@mono/a', path: 'packages/a' },
-    ]);
+    expect(scan.packages).toStrictEqual([{ name: '@mono/a', path: 'packages/a' }]);
     expect(scan.diagnostics).toStrictEqual([
       { kind: 'candidate_not_inspected', path: 'packages/b' },
     ]);
@@ -268,7 +260,7 @@ describe('the plain wrapper add consumes', () => {
     writeJson(join(repo, 'package.json'), { workspaces: ['packages/*'] });
     addPackage(repo, 'packages/a', { name: '@mono/a' });
     await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
-      { description: undefined, name: '@mono/a', path: 'packages/a' },
+      { name: '@mono/a', path: 'packages/a' },
     ]);
   });
 });

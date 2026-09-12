@@ -45,22 +45,15 @@ type ErrorEnvelope = {
   ok: boolean;
 };
 
-// Fills in the top-level `description` and every package's description (falling back to a
-// placeholder for `@fixture/b`, which the fixture deliberately ships without one) — the human
-// review step the real two-phase workflow expects between `--dry-run` and `--proposal`. A plain
-// top-level function (not inline in a test body) so its `??` fallback never runs afoul of
-// `vitest/no-conditional-in-test`.
+// Writes the top-level `description` and one per package — the step the real two-phase workflow
+// expects between `--dry-run` and `--proposal`, where a worker reads each package's source. No
+// proposal ever arrives carrying a description: detection reads a manifest for identity only.
 type ProposalPackageEntry = ReturnType<typeof zProposal.parse>['packages'][string];
 
 const withDescription = (
   name: string,
   pkg: ProposalPackageEntry,
-): ProposalPackageEntry & { description: string } => {
-  if (pkg.description === undefined) {
-    return { ...pkg, description: `${name} package` };
-  }
-  return { ...pkg, description: pkg.description };
-};
+): ProposalPackageEntry & { description: string } => ({ ...pkg, description: `${name} package` });
 
 const completeProposal = (proposal: ReturnType<typeof zProposal.parse>): unknown => ({
   ...proposal,
@@ -89,6 +82,35 @@ describe('refs add --dry-run', () => {
           const home = resolveHome(ctx.env);
           await expectPendingProposal(home, proposal.key);
           await expect(access(checkoutPath(home, proposal.key))).resolves.toBeUndefined();
+        }),
+      );
+    },
+    SLOW_IO_TIMEOUT_MS,
+  );
+});
+
+describe('refs add --dry-run: what a proposal may carry', () => {
+  it(
+    '(a2) hands back every package identity and not one manifest description',
+    async () => {
+      expect.hasAssertions();
+      await withResetExitCode(() =>
+        withTempHome(async (homeDir) => {
+          const { ctx, stdout } = realContextFor(homeDir);
+          await initHome(ctx);
+          // Every manifest in this fixture describes itself, `@fixture/a`'s included. None of that
+          // text may appear in refs' own output: it is untrusted checkout content, and a proposal
+          // is what becomes `config.toml`.
+          const fixture = await createFixtureRepo({
+            monorepo: true,
+            monorepoAllDescribed: true,
+          });
+
+          const proposal = await runAddDryRunJson(ctx, stdout, fixture.url);
+
+          expect(proposal.packages['@fixture/a']).toStrictEqual({ path: 'packages/a' });
+          expect(proposal.packages['@fixture/b']).toStrictEqual({ path: 'packages/b' });
+          expect(JSON.stringify(proposal)).not.toContain('Fixture package');
         }),
       );
     },

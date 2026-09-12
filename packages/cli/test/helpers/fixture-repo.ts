@@ -15,17 +15,18 @@ const setupRunner = new SpawnRunner();
 
 type FixtureOpts = {
   monorepo?: boolean;
-  // When `true` (alongside `monorepo: true`), `@fixture/b` also ships a description — the "the
-  // one-shot succeeds because every detected package already has one" fixture. Default
-  // (`false`/omitted) keeps the original asymmetric monorepo, whose `@fixture/b` deliberately
-  // ships WITHOUT one (see `packageBSpec`'s own comment).
+  // When `true` (alongside `monorepo: true`), `@fixture/b` also ships a description. Now a
+  // NEGATIVE control: every manifest carrying one must not help the one-shot, because refs no
+  // longer reads any of them. Default (`false`/omitted) keeps the original asymmetric monorepo,
+  // whose `@fixture/b` ships WITHOUT one (see `packageBSpec`'s own comment).
   monorepoAllDescribed?: boolean;
-  // When `true` (alongside `monorepo: true`), `@fixture/b` ships `"description": ""` — the
-  // `npm init -y` scaffold shape, which core's `extractPackageDescription` passes through as a
-  // real (empty) string rather than `undefined`. Exercises the "empty string counts as missing"
-  // half of the one-shot's description guard end-to-end.
-  monorepoEmptyDescription?: boolean;
   objectFormat?: 'sha256';
+  // When `true`, the repo declares workspaces that select NOTHING (no `packages/` directory) and
+  // its root manifest names a package and describes itself. Boundary coverage rather than a
+  // common upstream shape: it is the narrow case where detection registers a root and no member,
+  // which is the only one with a package that the one-shot still finalizes. The ordinary
+  // single-package repo declares no workspaces at all, detects nothing, and is covered separately.
+  rootOnlyWorkspace?: boolean;
   tags?: string[];
 };
 
@@ -90,19 +91,17 @@ const writePackage = async (root: string, spec: PackageSpec): Promise<void> => {
 };
 
 // `@fixture/b` deliberately ships WITHOUT a description by default, mirroring core's fixture —
-// `add.test.ts` relies on this exact asymmetry to exercise the "fill in the missing description"
-// step of the two-phase proposal flow. `monorepoAllDescribed` gives it a real one (the one-shot
-// `--description` flow should succeed outright); `monorepoEmptyDescription` gives it `""` (the
-// `npm init -y` scaffold shape — must count as missing, same as no key at all).
-const packageBSpec = (opts: FixtureOpts | undefined): PackageSpec => {
-  if (opts?.monorepoAllDescribed === true) {
-    return { description: 'Fixture package B', folder: 'b', pkgName: '@fixture/b' };
-  }
-  if (opts?.monorepoEmptyDescription === true) {
-    return { description: '', folder: 'b', pkgName: '@fixture/b' };
-  }
-  return { folder: 'b', pkgName: '@fixture/b' };
-};
+// `add.test.ts` relies on this exact asymmetry to exercise the "write a description for each
+// package" step of the two-phase proposal flow. `monorepoAllDescribed` gives it a real one, which
+// must change nothing: a manifest description never reaches refs at all.
+const packageBSpec = (opts: FixtureOpts | undefined): PackageSpec =>
+  opts?.monorepoAllDescribed === true
+    ? { description: 'Fixture package B', folder: 'b', pkgName: '@fixture/b' }
+    : { folder: 'b', pkgName: '@fixture/b' };
+
+/** The text a single-package fixture's root manifest says about itself. A test asserts it is NOT
+ * what lands in config: the caller's `--description` is. */
+const SOLO_MANIFEST_DESCRIPTION = 'What the fixture manifest says about itself.';
 
 const seedMonorepo = async (dir: string, packageB: PackageSpec): Promise<void> => {
   await writePackageJson(dir, {
@@ -113,6 +112,22 @@ const seedMonorepo = async (dir: string, packageB: PackageSpec): Promise<void> =
   });
   await writePackage(dir, { description: 'Fixture package A', folder: 'a', pkgName: '@fixture/a' });
   await writePackage(dir, packageB);
+};
+
+/** The root manifest a fixture carries, if any: a monorepo's workspace root plus its two member
+ * packages, or a workspace root whose patterns select nothing. */
+const seedManifests = async (dir: string, opts: FixtureOpts | undefined): Promise<void> => {
+  if (opts?.monorepo === true) {
+    await seedMonorepo(dir, packageBSpec(opts));
+  }
+  if (opts?.rootOnlyWorkspace === true) {
+    await writePackageJson(dir, {
+      description: SOLO_MANIFEST_DESCRIPTION,
+      name: 'fixture-solo',
+      version: '1.0.0',
+      workspaces: ['packages/*'],
+    });
+  }
 };
 
 /** Creates a throwaway local git repo (`git init -b main`, LOCAL user.email/name only) that acts as
@@ -129,9 +144,7 @@ const createFixtureRepo = async (opts?: FixtureOpts): Promise<FixtureRepo> => {
   // assertions become platform-dependent.
   await writeFile(join(dir, '.gitattributes'), '* -text\n');
   await writeFile(join(dir, 'README.md'), '# fixture repo\n');
-  if (opts?.monorepo === true) {
-    await seedMonorepo(dir, packageBSpec(opts));
-  }
+  await seedManifests(dir, opts);
   await commitAll(dir, 'init');
   await Promise.all((opts?.tags ?? []).map((tag) => git(dir, ['tag', tag])));
   // `pathToFileURL`, not string concatenation: on Windows `dir` contains `\` and a drive letter,
@@ -139,5 +152,5 @@ const createFixtureRepo = async (opts?: FixtureOpts): Promise<FixtureRepo> => {
   return { dir, url: pathToFileURL(dir).href };
 };
 
-export { createFixtureRepo };
+export { SOLO_MANIFEST_DESCRIPTION, createFixtureRepo };
 export type { FixtureRepo };
