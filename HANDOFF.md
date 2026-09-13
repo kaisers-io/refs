@@ -27,8 +27,10 @@ Written 2026-09-13, after releasing 0.16.0. Next up: **#124, the eval suite for 
   `plugin.json` carrying a `version` would be a **third** version site beside
   `packages/cli/package.json` and `SKILL.md`; `scripts/versions.mjs` exists because two already
   drift. Must be tested in both Claude Code and Codex.
-- **#126 — a symlink the walk cannot follow.** Reduced to a narrow remaining case; read the issue
-  comment before reopening it, it records four counterexamples that killed the obvious fix.
+Closed today, but worth reading before anyone touches that code again: **#126** records five
+counterexamples that killed the obvious fix for symlinked workspace directories — "the target is
+below the base, so the walk covers it" asks about reachability, and the question is whether the two
+paths SELECT the same thing. 0.14.1 answers it by looking instead.
 
 ## What shipped today
 
