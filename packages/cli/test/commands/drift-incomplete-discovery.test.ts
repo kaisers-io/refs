@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import type { MemberDiscovery } from '../../src/commands/drift-discovery.ts';
 import type { PackageEntry } from '@kaisers-io/refs-core';
-import { driftLines } from '../../src/commands/drift-report.ts';
+import { driftLines } from '../../src/commands/drift-lines.ts';
 import { join } from 'node:path';
 import { probeRefStructure } from '../../src/commands/drift-probe.ts';
 

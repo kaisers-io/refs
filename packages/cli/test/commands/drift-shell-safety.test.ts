@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SpawnRunner } from '@kaisers-io/refs-core';
-import { driftLines } from '../../src/commands/drift-report.ts';
+import { driftLines } from '../../src/commands/drift-lines.ts';
 
 // What the printed repair command survives when a package name or path needs quoting.
 //

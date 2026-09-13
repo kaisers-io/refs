@@ -5,7 +5,7 @@ import type { StructureIssue, StructureReport } from './drift-report.ts';
 import type { CheckResult } from './doctor-types.ts';
 import type { ExistingCheckout } from './doctor-checks-checkouts.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
-import { driftLines } from './drift-report.ts';
+import { driftLines } from './drift-lines.ts';
 import { existingCheckouts } from './doctor-checks-checkouts.ts';
 import { probeRefStructure } from './drift-probe.ts';
 import { refLockName } from './add-source.ts';
@@ -70,28 +70,34 @@ const SEPARATOR = '; ';
 const declinedNote = (declined: number): string =>
   declined === 0 ? '' : ` (${declined} declined package(s) not reported)`;
 
+/** The health line, which is about the CONFIGURED entries and nothing else. */
+const healthDetail = (found: ProbeFindings, checkoutCount: number): string =>
+  found.unhealthy.length === 0
+    ? `every configured package path resolves in ${checkoutCount} checkout(s)`
+    : found.unhealthy.join(SEPARATOR);
+
 const buildResult = (found: ProbeFindings, checkoutCount: number): CheckResult => {
-  const { declined, findings, lines } = found;
-  const [first] = lines;
-  if (first === undefined) {
-    return {
-      detail: `every configured package path resolves in ${checkoutCount} checkout(s)${declinedNote(declined)}`,
-      name: CHECK_NAME,
-      status: 'ok',
-    };
-  }
-  // `warn`, not `fail`: nothing in refs is broken. The configuration has fallen behind the
-  // upstream repository, which is a thing to fix, not a thing that stops working — the same
-  // reading `orphans` applies to its own findings. A `warn` also keeps `doctor`'s exit code at 0,
-  // so drift never breaks a script that runs `refs doctor` as a gate.
-  // `findings` is UNCAPPED where `detail` is not. A finding no command can repair is never
-  // cleared by acting on the ones printed before it, so a capped list would put it permanently
-  // out of reach of the one caller that wants the list rather than the message.
+  const { declined, discovery, findings } = found;
+  // `warn` follows the configured entries alone. An unregistered candidate is not a defect in this
+  // configuration: nothing in it points anywhere for that package, so there is nothing to be
+  // wrong. Reporting them as drift made the check assert that every package a repository declares
+  // must have been decided about — which nothing justifies, and which a repository declaring 554
+  // of them turns into a permanent warning nobody can read.
+  //
+  // `warn`, not `fail`, where there IS drift: nothing in refs is broken. The configuration has
+  // fallen behind the upstream repository, which is a thing to fix, not a thing that stops
+  // working — and a `warn` keeps `doctor`'s exit code at 0, so drift never breaks a script that
+  // runs `refs doctor` as a gate.
+  const detail = [healthDetail(found, checkoutCount) + declinedNote(declined), ...discovery].join(
+    SEPARATOR,
+  );
+  // `findings` is UNCAPPED where `detail` is not, and carries the discovery candidates too: a
+  // grouped line names a count, and the caller that wants the members has to be able to get them.
   return {
-    detail: `${lines.join(SEPARATOR)}${declinedNote(declined)}`,
-    findings,
+    detail,
+    ...(findings.length === 0 ? {} : { findings }),
     name: CHECK_NAME,
-    status: 'warn',
+    status: found.unhealthy.length === 0 ? 'ok' : 'warn',
   };
 };
 
@@ -104,7 +110,16 @@ const buildResult = (found: ProbeFindings, checkoutCount: number): CheckResult =
  * Recursive rather than a loop, mirroring `doctor.ts#runStepsInOrder`: every await stays a plain
  * sequential step, and async recursion does not grow the stack. */
 type RefFindings = { key: string; packages: StructureIssue[] };
-type ProbeFindings = { declined: number; findings: RefFindings[]; lines: string[] };
+type ProbeFindings = {
+  declined: number;
+  /** Lines about what the checkouts declare and the configuration does not have. Reported, never
+   * counted towards health. */
+  discovery: string[];
+  findings: RefFindings[];
+  /** Lines about configured entries that are wrong or could not be checked. These decide the
+   * check's status. */
+  unhealthy: string[];
+};
 
 const probeInOrder = async (
   home: RefsHome,
@@ -113,20 +128,47 @@ const probeInOrder = async (
 ): Promise<ProbeFindings> => {
   const [item, ...rest] = checkouts;
   if (item === undefined) {
-    return { declined: 0, findings: [], lines: [] };
+    return { declined: 0, discovery: [], findings: [], unhealthy: [] };
   }
   const report = await probeUnderLock(home, config, item);
   const remaining = await probeInOrder(home, config, rest);
-  const packages = report.packages ?? [];
+  return mergeFindings(remaining, { key: item.key, report });
+};
+
+/** One ref's report, folded into the ones after it. The split is by WHICH REPORT a line came out
+ * of, not by reading the line: `driftLines` is asked twice, once with only the configured half of
+ * the report and once with only the discovery half, so neither has to be recognised by its text. */
+const mergeFindings = (
+  rest: ProbeFindings,
+  item: { key: string; report: StructureReport },
+): ProbeFindings => {
+  const { key, report } = item;
+  const prefixed = (lines: readonly string[]): string[] => lines.map((line) => `${key}: ${line}`);
+  const candidates = report.discovery ?? [];
+  const configured = report.packages ?? [];
+  const found = [...configured, ...candidates];
   return {
-    declined: (report.declined ?? []).length + remaining.declined,
-    findings:
-      packages.length === 0
-        ? remaining.findings
-        : [{ key: item.key, packages }, ...remaining.findings],
-    lines: [
-      ...driftLines(report, item.key).map((line) => `${item.key}: ${line}`),
-      ...remaining.lines,
+    declined: (report.declined ?? []).length + rest.declined,
+    discovery: [
+      ...prefixed(driftLines({ discovery: candidates, status: 'ok' }, key)),
+      ...rest.discovery,
+    ],
+    findings: found.length === 0 ? rest.findings : [{ key, packages: found }, ...rest.findings],
+    unhealthy: [
+      ...prefixed(
+        driftLines(
+          {
+            ...(report.discovery_incomplete === undefined
+              ? {}
+              : { discovery_incomplete: report.discovery_incomplete }),
+            ...(report.reason === undefined ? {} : { reason: report.reason }),
+            packages: configured,
+            status: report.status,
+          },
+          key,
+        ),
+      ),
+      ...rest.unhealthy,
     ],
   };
 };

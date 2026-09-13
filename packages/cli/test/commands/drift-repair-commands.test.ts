@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
 import type { StructureIssue } from '../../src/commands/drift-report.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
-import { driftLines } from '../../src/commands/drift-report.ts';
+import { driftLines } from '../../src/commands/drift-lines.ts';
 import { run } from '../../src/main.ts';
 
 // Every drift finding that HAS a repair now prints it as a runnable command, not as a description

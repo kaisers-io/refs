@@ -2,7 +2,7 @@ import type { CliContext } from '../../src/context.ts';
 import { SpawnRunner } from '@kaisers-io/refs-core';
 import type { StructureReport } from '../../src/commands/drift-report.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
-import { driftLines } from '../../src/commands/drift-report.ts';
+import { driftLines } from '../../src/commands/drift-lines.ts';
 import { expect } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { shellQuote } from '../../src/shell-quote.ts';
