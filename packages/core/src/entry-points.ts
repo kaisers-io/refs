@@ -67,10 +67,15 @@ const MAX_DEPTH = 8;
  * fragment and an absolute or protocol-ish form are the same answer for the same reason: claiming
  * something about the wrong filename is worse than saying the shape was not interpreted.
  *
- * This costs a little over-caution on the legacy fields, where `%` is an ordinary character. A
+ * Whitespace is excluded for the same reason: URL resolution strips a trailing space, so
+ * `./package.json ` names `package.json` and probing the literal reports an absence about a file
+ * that is there.
+ *
+ * This costs a little over-caution on the legacy fields, where `%` and a space are ordinary
+ * characters in a filename. A
  * `not_checked` there is a shape nobody looked at, which is true; the alternative is a confident
  * claim about a name that was never resolved. */
-const PROBEABLE = /^\.\/[^%?#\\]*$/u;
+const PROBEABLE = /^\.\/[^\s%?#\\]*$/u;
 
 const RELATIVE_PREFIX = './'.length;
 

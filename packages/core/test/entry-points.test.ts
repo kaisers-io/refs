@@ -141,6 +141,21 @@ describe('targets whose shape is not interpreted', () => {
     });
   });
 
+  it('does not probe a target whose URL form differs by whitespace', async () => {
+    expect.hasAssertions();
+    const dir = freshPackage({ exports: { '.': './package.json ' }, name: 'p' });
+
+    const { entries } = await readEntryPoints(dir, 'p');
+
+    // URL resolution strips the trailing space, so that names `package.json` — which exists.
+    // Probing the literal would report an absence about a file that is right there.
+    expect(entries[0]?.value).toStrictEqual({
+      kind: 'target',
+      observed: 'not_checked',
+      target: './package.json ',
+    });
+  });
+
   it('does not probe a target carrying a query or fragment', async () => {
     expect.hasAssertions();
     const dir = freshPackage({ exports: { '.': './i.js?v=2' }, name: 'p' });
