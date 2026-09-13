@@ -70,8 +70,15 @@ const packageDataFor = async (opts: {
     return unverifiedPackage(opts.packageName, opts.checkoutReason);
   }
   const outcome = await verifyPackageLocation(opts);
+  // Gated on the VERDICT, not on whether a path came back. `unverifiable` keeps its path — a
+  // containment rejection, an incomplete scan and lock contention all produce one — and reading a
+  // manifest there attaches another package's declarations to the one that was asked for. That is
+  // the failure verification exists to prevent, reintroduced one field along.
+  const identified = outcome.status === 'verified' || outcome.status === 'relocated';
   const entryPoints =
-    outcome.path === null ? undefined : await readEntryPoints(join(opts.checkoutDir, outcome.path));
+    identified && outcome.path !== null
+      ? await readEntryPoints(join(opts.checkoutDir, outcome.path))
+      : undefined;
   return {
     ...(outcome.candidates === undefined ? {} : { candidates: outcome.candidates }),
     ...(outcome.configuredPath === undefined ? {} : { configured_path: outcome.configuredPath }),
@@ -110,16 +117,37 @@ const PRESENT_SHOWN = 3;
  *
  * Deliberately not a resolution, and deliberately not a defect: an absent target says what is in
  * this checkout and nothing about the package. */
+/** The summary for a declaration where nothing was found present.
+ *
+ * "None is present" is a claim about every target, and it is only true of the ones that were
+ * actually inspected. A pattern is never probed and an unreadable target was never seen, so
+ * folding those into an absence would report a fact about something nobody looked at. */
+const nothingPresentLine = (targets: readonly { observed: string }[]): string[] => {
+  if (targets.length === 0) {
+    return [];
+  }
+  const uninspected = targets.filter(
+    (target) => target.observed === 'not_checked' || target.observed === 'unverifiable',
+  ).length;
+  const absent = targets.length - uninspected;
+  const note = uninspected === 0 ? '' : `, ${uninspected} not inspected`;
+  return absent === 0
+    ? [`entry points: none of the ${targets.length} declared target(s) was inspected`]
+    : [`entry points: ${absent} declared target(s) absent here${note}`];
+};
+
 const entryPointLines = (entries: EntryPoints): string[] => {
   if (entries.status !== 'complete') {
     return [`entry points: could not be read (${entries.reason ?? 'unknown'})`];
   }
   const targets = entries.entries.flatMap((entry) => targetsOf(entry.value));
-  const present = targets.filter((target) => target.observed === 'file');
+  // A directory counts as found: an `exports` target may legitimately name one, and calling it
+  // absent would be wrong in the same way as calling a pattern absent.
+  const present = targets.filter(
+    (target) => target.observed === 'file' || target.observed === 'directory',
+  );
   if (present.length === 0) {
-    return targets.length === 0
-      ? []
-      : [`entry points: none of the ${targets.length} declared target(s) is present here`];
+    return nothingPresentLine(targets);
   }
   const shown = present.slice(0, PRESENT_SHOWN).map((target) => target.target);
   const more = present.length - shown.length;
