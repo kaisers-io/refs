@@ -39,7 +39,7 @@ describe('conditions', () => {
     });
     touch(dir, 'src/index.ts');
 
-    const { entries } = await readEntryPoints(dir);
+    const { entries } = await readEntryPoints(dir, 'p');
 
     // The shape measured on a real checkout: the standard conditions point at files a source tree
     // does not have, and the ONE that exists is non-standard. Reporting only known condition names
@@ -66,7 +66,7 @@ describe('conditions', () => {
       name: 'p',
     });
 
-    const { entries } = await readEntryPoints(dir);
+    const { entries } = await readEntryPoints(dir, 'p');
 
     expect(entries[0]?.value).toMatchObject({
       branches: [{ condition: 'default' }, { condition: 'types' }],
@@ -80,7 +80,7 @@ describe('alternatives', () => {
     const dir = freshPackage({ exports: { '.': ['./missing.js', './there.js'] }, name: 'p' });
     touch(dir, 'there.js');
 
-    const { entries } = await readEntryPoints(dir);
+    const { entries } = await readEntryPoints(dir, 'p');
 
     // `["./missing.js", "./there.js"]` does NOT mean "the first one that exists": Node takes the
     // first string, and an absent file does not fall through to the second. Flattening the two
@@ -102,7 +102,7 @@ describe('shapes that are not a plain target', () => {
     const excluded = null;
     const dir = freshPackage({ exports: { '.': './i.js', './internal/*': excluded }, name: 'p' });
 
-    const { entries } = await readEntryPoints(dir);
+    const { entries } = await readEntryPoints(dir, 'p');
 
     // Dropping it would report the opposite of what the manifest says: that subpath is ruled out.
     expect(entries.find((entry) => entry.subpath === './internal/*')?.value).toStrictEqual({
@@ -114,7 +114,7 @@ describe('shapes that are not a plain target', () => {
     expect.hasAssertions();
     const dir = freshPackage({ exports: { './lib/*': './src/*.js' }, name: 'p' });
 
-    const { entries } = await readEntryPoints(dir);
+    const { entries } = await readEntryPoints(dir, 'p');
 
     // Statting `./src/*.js` literally would report `absent` about a filename nobody declared.
     expect(entries[0]?.value).toStrictEqual({
@@ -130,7 +130,7 @@ describe('targets whose shape is not interpreted', () => {
     expect.hasAssertions();
     const dir = freshPackage({ exports: { '.': './package%2Ejson' }, name: 'p' });
 
-    const { entries } = await readEntryPoints(dir);
+    const { entries } = await readEntryPoints(dir, 'p');
 
     // Export targets are relative URLs: that one names `package.json`, which exists. Statting the
     // literal would report an absence about a file that is right there.
@@ -145,7 +145,7 @@ describe('targets whose shape is not interpreted', () => {
     expect.hasAssertions();
     const dir = freshPackage({ exports: { '.': './i.js?v=2' }, name: 'p' });
 
-    const { entries } = await readEntryPoints(dir);
+    const { entries } = await readEntryPoints(dir, 'p');
 
     expect(entries[0]?.value).toStrictEqual({
       kind: 'target',
@@ -160,7 +160,7 @@ describe('legacy fields', () => {
     expect.hasAssertions();
     const dir = freshPackage({ exports: { '.': './e.js' }, main: 'dist/main.js', name: 'p' });
 
-    const { entries } = await readEntryPoints(dir);
+    const { entries } = await readEntryPoints(dir, 'p');
 
     // Suppressing them because `exports` exists would enforce a resolver's precedence — a claim
     // about what a consumer does, and the consumer here reads source. `main` is also written
@@ -182,7 +182,7 @@ describe('a manifest that cannot be read', () => {
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     writeFileSync(join(dir, 'package.json'), '{ not json');
 
-    const report = await readEntryPoints(dir);
+    const report = await readEntryPoints(dir, 'p');
 
     // An empty `entries` with `complete` would assert this package declares no entry points, which
     // is a different fact and one this never established.
@@ -202,7 +202,7 @@ describe('a target that leaves the package', () => {
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     symlinkSync(outside, join(dir, 'link'), 'dir');
 
-    const { entries } = await readEntryPoints(dir);
+    const { entries } = await readEntryPoints(dir, 'p');
 
     // The containment rule the rest of refs applies: a path that resolves outside the tree it was
     // read from is not something this reports as present.
@@ -219,7 +219,7 @@ describe('declarations this does not interpret', () => {
     expect.hasAssertions();
     const dir = freshPackage({ main: '/package.json', name: 'p' });
 
-    const { entries } = await readEntryPoints(dir);
+    const { entries } = await readEntryPoints(dir, 'p');
 
     // Prefixing it would produce `.//package.json`, which resolves to the package's own manifest
     // and would be reported as present: a declared location silently changed into another one,
@@ -236,7 +236,7 @@ describe('declarations this does not interpret', () => {
     const UNSUPPORTED = 42;
     const dir = freshPackage({ exports: UNSUPPORTED, name: 'p' });
 
-    const report = await readEntryPoints(dir);
+    const report = await readEntryPoints(dir, 'p');
 
     // Dropping it would assert this package declares no entry points, which is a different fact —
     // and the same value nested under `"."` already reports itself as unsupported.
@@ -244,5 +244,20 @@ describe('declarations this does not interpret', () => {
       kind: 'unsupported',
       reason: 'unexpected number',
     });
+  });
+});
+
+describe('the manifest that supplies the declarations', () => {
+  it('has to be the one that names this package', async () => {
+    expect.hasAssertions();
+    const dir = freshPackage({ exports: { '.': './src/index.ts' }, name: 'other' });
+
+    const report = await readEntryPoints(dir, 'p');
+
+    // Verification read this manifest a moment earlier; these are two reads, not one snapshot. A
+    // sync replacing the package in between would otherwise return another package's entry points
+    // under a `verified` verdict.
+    expect(report.status).toBe('unverifiable');
+    expect(report.entries).toStrictEqual([]);
   });
 });

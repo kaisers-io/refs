@@ -77,7 +77,7 @@ const packageDataFor = async (opts: {
   const identified = outcome.status === 'verified' || outcome.status === 'relocated';
   const entryPoints =
     identified && outcome.path !== null
-      ? await readEntryPoints(join(opts.checkoutDir, outcome.path))
+      ? await readEntryPoints(join(opts.checkoutDir, outcome.path), opts.packageName)
       : undefined;
   return {
     ...(outcome.candidates === undefined ? {} : { candidates: outcome.candidates }),

@@ -202,14 +202,31 @@ const exportEntries = async (packageDir: string, exported: unknown): Promise<Ent
  *
  * `packageDir` is the VERIFIED package directory — the one `resolve` established by reading the
  * manifest's name, not the configured path it started from. Attaching declarations to a directory
- * whose identity was never confirmed would describe some other package. */
-const readEntryPoints = async (packageDir: string): Promise<EntryPoints> => {
+ * whose identity was never confirmed would describe some other package.
+ *
+ * `expectedName` re-establishes that identity from the same parsed document the declarations come
+ * out of. Verification's read and this one are two reads, not one snapshot: a sync in between can
+ * replace the package, and without this the answer would be another package's entry points under a
+ * `verified` verdict. */
+const readEntryPoints = async (packageDir: string, expectedName: string): Promise<EntryPoints> => {
   const located = await resolveInside(packageDir, join(packageDir, MANIFEST_FILE));
   if (located.kind !== 'inside') {
     return { entries: [], manifest: MANIFEST_FILE, reason: located.kind, status: 'unverifiable' };
   }
   try {
     const manifest = JSON.parse(await readFile(located.real, 'utf8')) as Record<string, unknown>;
+    if (manifest['name'] !== expectedName) {
+      // The SAME parsed document that supplies the declarations has to be the one that identifies
+      // the package. Verification read this manifest a moment earlier; a sync replacing it between
+      // the two reads would otherwise hand back another package's entry points under a `verified`
+      // answer — the two reads are not one snapshot, and only this check makes them agree.
+      return {
+        entries: [],
+        manifest: MANIFEST_FILE,
+        reason: 'manifest no longer names this package',
+        status: 'unverifiable',
+      };
+    }
     return {
       entries: [
         ...(await exportEntries(packageDir, manifest['exports'])),
