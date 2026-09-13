@@ -1,11 +1,16 @@
+import type { DeclinedPackage, PackageEntry, WorkspaceScan } from '@kaisers-io/refs-core';
 import type { LocationQuery, VerifyOutcome } from './package-location.ts';
 import type { MemberDiscovery, ScanOnce } from './drift-discovery.ts';
-import type { PackageEntry, WorkspaceScan } from '@kaisers-io/refs-core';
 import type { StructureIssue, StructureReport } from './drift-report.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
-import { isIssueStatus, rollUp } from './drift-report.ts';
+import {
+  applyDeclines,
+  scanOnceFor,
+  unregisteredMembers,
+  unregisteredRoot,
+} from './drift-discovery.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
-import { scanOnceFor, unregisteredMembers, unregisteredRoot } from './drift-discovery.ts';
+import { isIssueStatus, rollUp } from './drift-report.ts';
 import { classifyAgainstScan } from './package-location.ts';
 import { errorMessageOf } from '../output.ts';
 import { probePackageIdentity } from '@kaisers-io/refs-core';
@@ -127,10 +132,13 @@ const discovered = (
  * the packages. */
 const probeRefStructure = async (
   checkoutDir: string,
-  packages: Record<string, PackageEntry> | undefined,
+  ref: {
+    declined_packages?: readonly DeclinedPackage[] | undefined;
+    packages?: Record<string, PackageEntry> | undefined;
+  },
   discovery: MemberDiscovery,
 ): Promise<StructureReport> => {
-  const queries = toQueries(packages);
+  const queries = toQueries(ref.packages);
   const [first] = queries;
   if (first === undefined) {
     return { status: 'ok' };
@@ -142,13 +150,19 @@ const probeRefStructure = async (
       unregisteredRoot(checkoutDir, queries, scanOnce),
       unregisteredMembers(queries, discovery, scanOnce),
     ]);
-    return rollUp(
+    const found = applyDeclines(
       [...settled.flatMap((item) => toIssue(item)), ...discovered(root.issues, members.issues)],
+      ref.declined_packages ?? [],
+    );
+    return rollUp(found.issues, {
+      declined: found.suppressed,
       // Whichever pass got there. They share one memoised scan, so when both looked they computed
       // the same obstacle — and when only one looked, only one has it. Reporting the first present
       // states it once rather than twice.
-      members.incomplete ?? root.incomplete,
-    );
+      ...((members.incomplete ?? root.incomplete) === undefined
+        ? {}
+        : { discoveryIncomplete: members.incomplete ?? root.incomplete }),
+    });
   } catch (error) {
     return { reason: errorMessageOf(error), status: 'unknown' };
   }

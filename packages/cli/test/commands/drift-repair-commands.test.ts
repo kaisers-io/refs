@@ -211,3 +211,28 @@ describe.skipIf(posixOnly)('the printed command, run against the CLI', () => {
     );
   });
 });
+
+// A name the packages RECORD cannot hold is still a name the declined LIST can: one is keyed, the
+// other is an array of records. Gating both commands on registrability left exactly the findings
+// that recur forever — a workspace member legitimately named `constructor` — with no answer at
+// all, which is the problem the decline was added to solve.
+describe('a package the configuration cannot register', () => {
+  it('still offers the decision, when only the name is the obstacle', () => {
+    expect.hasAssertions();
+
+    const line = lineFor({ name: 'constructor', path: 'packages/ctor', status: 'unregistered' });
+
+    expect(line).toContain('--decline');
+    expect(line).not.toContain('--create');
+  });
+
+  it('offers nothing when the PATH is the obstacle', () => {
+    expect.hasAssertions();
+
+    // A decline is stored with the same `zPackagePath` a registration uses, so a path the schema
+    // rejects has no command either — and printing one that fails validation is worse than none.
+    const line = lineFor({ name: '@acme/ok', path: 'packages/100%', status: 'unregistered' });
+
+    expect(line).not.toContain('refs edit');
+  });
+});

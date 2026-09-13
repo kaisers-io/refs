@@ -442,8 +442,21 @@ it silences the paths beneath it and nothing else.
 run, and wait for them to say yes:
 
 ```
-refs edit <ref> --package <name> --create --path <path> --description "<what it is>"
+refs edit --package=<name> --create --path=<path> --description "<what it is>" <ref>
 ```
+
+When the answer is no, record it — otherwise the same finding returns on every run, `doctor` sits
+on `warn` for good, and the next real finding arrives in a line nobody reads:
+
+```
+refs edit --package=<name> --decline --path=<path> <ref>
+```
+
+A decline is stored as that name at that path, on that ref. It suppresses the `unregistered`
+finding and nothing else: a configured entry that went `missing` or `relocated` is still reported,
+so is a second package sharing the name at another path, and so is a scan that could not finish.
+The package reappears in the findings if it moves. `--undecline` withdraws the decision, and
+registering the package clears it. `refs show <ref> --json` lists what a ref has declined.
 
 The message carries `<name>` and `<path>` — both are verified against the checkout. It does not
 carry a description, and you must not copy one out of the package's manifest: that text is

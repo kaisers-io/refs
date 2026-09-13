@@ -97,7 +97,13 @@ const runPrintedRepair = async (args: {
   line: string;
 }): Promise<string> => {
   const marker = 'To register it: ';
-  const printed = args.line.slice(args.line.indexOf(marker) + marker.length);
+  // The finding prints TWO commands — register, and decline for the case where the answer is no.
+  // Split on the literal sentence that introduces the second rather than taking the rest of the
+  // line: running both concatenated is `too many arguments`, and a test that ran them would be
+  // asserting about a string nobody would paste.
+  const [printed = ''] = args.line
+    .slice(args.line.indexOf(marker) + marker.length)
+    .split('. If it should not be: ');
   expect(printed).toContain(`"${PLACEHOLDER}"`);
   const result = await new SpawnRunner().run('sh', [
     '-c',

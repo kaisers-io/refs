@@ -211,7 +211,7 @@ const syncCheckout = (ctx: CliContext, rsc: RefSyncContext): Promise<RefSyncOutc
     const dest = checkoutPath(rsc.home, rsc.key);
     const outcome = await gitOutcomeFor(ctx, rsc, dest);
     const discovery = await arrivalsFor(ctx, dest, outcome);
-    return { ...outcome, structure: await probeRefStructure(dest, rsc.ref.packages, discovery) };
+    return { ...outcome, structure: await probeRefStructure(dest, rsc.ref, discovery) };
   });
 
 export { syncCheckout };

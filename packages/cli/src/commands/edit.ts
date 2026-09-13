@@ -1,6 +1,8 @@
 import { cliOptsOf, emit, wrapAction } from '../output.ts';
-import { createPackageEntry, removePackageEntry } from './edit-package.ts';
+import { packageModeOf, runPackageMode } from './edit-modes.ts';
 import type { CliContext } from '../context.ts';
+// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
+import type { CreateOptions } from './edit-modes.ts';
 import type { RefsCommand } from './registry.ts';
 import { runEditRef } from './edit-ref.ts';
 import { runEditSettings } from './edit-settings.ts';
@@ -48,6 +50,9 @@ type EditData = {
   /** Present only on `--create`, where `old` is null and `new` is the whole new entry — the one
    * mode whose human line is a registration rather than a field transition. */
   created?: boolean;
+  /** Present only on `--decline`/`--undecline`: `true` when the decision was recorded, `false`
+   * when it was withdrawn. The record itself is in `new` or `old` accordingly. */
+  declined?: boolean;
   field: string;
   key: string;
   new: unknown;
@@ -61,15 +66,6 @@ type EditOptions = {
   packageName?: string;
 };
 
-/** The mode flags and their fields. `create` and `remove` are the two modes that take no
- * positional `<field> <value>` pair; `description`/`path` belong to `create` alone. */
-type CreateOptions = {
-  create?: boolean;
-  description?: string;
-  path?: string;
-  remove?: boolean;
-};
-
 type EditResult = {
   data: EditData;
   warnings: string[];
@@ -79,16 +75,9 @@ const SETTINGS_MODE_KEYWORD = 'settings';
 const NO_WARNINGS: string[] = [];
 const PACKAGE_OPTION_USAGE_MESSAGE =
   "--package is not valid with 'refs edit settings ...' — it only applies to ref/package edits";
-const REMOVE_USAGE_MESSAGE =
-  '--remove unregisters a package: it needs --package <name>, and takes no <field> <value> ' +
-  'arguments, no --path and no --description';
-
-const CREATE_USAGE_MESSAGE =
-  '--create registers a new package: it needs --package <name>, --path <path> and ' +
-  '--description <text>, and takes no <field> <value> arguments';
 const CREATE_ONLY_OPTION_MESSAGE =
-  '--path and --description only apply to --create — to change one field of a registered ' +
-  'package use: refs edit <ref> <field> <value> --package <name>';
+  '--path and --description only apply to the package modes — to change one field of a ' +
+  'registered package use: refs edit <ref> <field> <value> --package <name>';
 const MISSING_FIELD_MESSAGE = "missing <field> and <value> — see 'refs edit --help'";
 
 // `exactOptionalPropertyTypes` forbids assigning a possibly-`undefined` value directly onto an
@@ -111,28 +100,7 @@ type EditArgs = {
   value: string | undefined;
 };
 
-/** `--create`'s four requirements, checked together so a partial invocation names everything that
- * is missing at once rather than one flag per attempt. The positional check is part of it: with
- * `<field> <value>` present the caller has written two mutually exclusive forms, and guessing
- * which one they meant is how a field edit turns into a silent registration. */
-const requireCreateShape = (
-  args: EditArgs,
-): { description: string; packageName: string; path: string } => {
-  const { description, path } = args.create;
-  const { packageName } = args.opts;
-  if (
-    packageName === undefined ||
-    description === undefined ||
-    path === undefined ||
-    args.second !== undefined ||
-    args.value !== undefined
-  ) {
-    throw usageError(CREATE_USAGE_MESSAGE);
-  }
-  return { description, packageName, path };
-};
-
-/** The positional pair every non-`--create` mode still requires. Commander enforced this when the
+/** The positional pair every non-package mode still requires. Commander enforced this when the
  * arguments were declared `<field> <value>`; they are `[field] [value]` now, so it is enforced
  * here for exactly the modes that did not opt out of it. */
 const requireFieldAndValue = (args: EditArgs): { field: string; value: string } => {
@@ -140,40 +108,6 @@ const requireFieldAndValue = (args: EditArgs): { field: string; value: string } 
     throw usageError(MISSING_FIELD_MESSAGE);
   }
   return { field: args.second, value: args.value };
-};
-
-/** `--remove`'s shape, checked the way `--create`'s is: a partial or contradictory invocation
- * names everything wrong with it at once, and a `<field> <value>` pair alongside would be two
- * mutually exclusive forms in one command. */
-const requireRemoveShape = (args: EditArgs): { packageName: string } => {
-  const { packageName } = args.opts;
-  if (
-    packageName === undefined ||
-    args.second !== undefined ||
-    args.value !== undefined ||
-    args.create.path !== undefined ||
-    args.create.description !== undefined
-  ) {
-    throw usageError(REMOVE_USAGE_MESSAGE);
-  }
-  return { packageName };
-};
-
-const runRemove = async (ctx: CliContext, args: EditArgs): Promise<EditResult> => {
-  const { packageName } = requireRemoveShape(args);
-  const data = await removePackageEntry(ctx, { packageName, query: args.first });
-  return { data, warnings: NO_WARNINGS };
-};
-
-const runCreate = async (ctx: CliContext, args: EditArgs): Promise<EditResult> => {
-  const { description, packageName, path } = requireCreateShape(args);
-  const data = await createPackageEntry(ctx, {
-    description,
-    packageName,
-    path,
-    query: args.first,
-  });
-  return { data, warnings: NO_WARNINGS };
 };
 
 const runSettings = (
@@ -187,22 +121,7 @@ const runSettings = (
   return runEditSettings(ctx, setting);
 };
 
-const BOTH_MODES_MESSAGE =
-  'use either --create or --remove, not both: one registers a package and the other unregisters it';
-
-/** The mode a set of flags selects, or `undefined` for the ordinary `<field> <value>` form. Both
- * at once is refused here rather than resolved: they are opposites, and picking one would guess. */
-const packageModeOf = (create: CreateOptions): 'create' | 'remove' | undefined => {
-  if (create.create === true && create.remove === true) {
-    throw usageError(BOTH_MODES_MESSAGE);
-  }
-  if (create.create === true) {
-    return 'create';
-  }
-  return create.remove === true ? 'remove' : undefined;
-};
-
-/** The `<field> <value>` form, once the two package modes have declined it. Split out only so
+/** The `<field> <value>` form, once the package modes have declined it. Split out only so
  * `runEdit` stays a dispatch. */
 const runFieldEdit = async (ctx: CliContext, args: EditArgs): Promise<EditResult> => {
   if (args.create.description !== undefined || args.create.path !== undefined) {
@@ -221,12 +140,19 @@ const runFieldEdit = async (ctx: CliContext, args: EditArgs): Promise<EditResult
   return { data, warnings: NO_WARNINGS };
 };
 
-const runEdit = (ctx: CliContext, args: EditArgs): Promise<EditResult> => {
+const runEdit = async (ctx: CliContext, args: EditArgs): Promise<EditResult> => {
   const mode = packageModeOf(args.create);
-  if (mode === 'create') {
-    return runCreate(ctx, args);
+  if (mode === undefined) {
+    return runFieldEdit(ctx, args);
   }
-  return mode === 'remove' ? runRemove(ctx, args) : runFieldEdit(ctx, args);
+  const data = await runPackageMode(ctx, mode, {
+    create: args.create,
+    first: args.first,
+    packageName: args.opts.packageName,
+    second: args.second,
+    value: args.value,
+  });
+  return { data, warnings: NO_WARNINGS };
 };
 
 const UNSET_DISPLAY = '(unset)';
@@ -245,16 +171,34 @@ const formatEditValue = (value: unknown): string => {
  * value, which is why it needs a line of its own rather than `formatEditValue`. */
 type CreatedEntry = { description: string; name: string; path: string };
 
-const editHuman = (data: EditData): string[] => {
+/** A decision recorded or withdrawn. Both the name and the path are named, because both are what
+ * the decision is about: the same name at another path is a different question. */
+const declineLine = (data: EditData, declined: boolean): string => {
+  const record = (declined ? data.new : data.old) as { name: string; path: string };
+  const verb = declined ? 'declined' : 'no longer declining';
+  return `${data.key}: ${verb} '${record.name}' at ${record.path}`;
+};
+
+/** The modes whose line is about a whole entry rather than a field transition, or `undefined`
+ * when this was an ordinary field edit. */
+const packageModeLine = (data: EditData): string | undefined => {
   if (data.created === true) {
     const created = data.new as CreatedEntry;
-    return [`${data.key}: registered '${created.name}' at ${created.path}`];
+    return `${data.key}: registered '${created.name}' at ${created.path}`;
   }
   if (data.removed === true) {
     // The path is named because it is the only thing that identifies WHICH entry went, and a
     // removal is the one edit nothing else records.
     const removed = data.old as CreatedEntry;
-    return [`${data.key}: unregistered '${removed.name}' (was at ${removed.path})`];
+    return `${data.key}: unregistered '${removed.name}' (was at ${removed.path})`;
+  }
+  return data.declined === undefined ? undefined : declineLine(data, data.declined);
+};
+
+const editHuman = (data: EditData): string[] => {
+  const line = packageModeLine(data);
+  if (line !== undefined) {
+    return [line];
   }
   return [
     `${data.key}: ${data.field} '${formatEditValue(data.old)}' -> '${formatEditValue(data.new)}'`,
@@ -268,7 +212,8 @@ const registerEdit = (program: RefsCommand, ctx: CliContext): void => {
       "Edit one field: 'refs edit settings <key> <value>' for a global setting, or " +
         "'refs edit <ref> <field> <value> [--package <name>]' for a ref or package field. " +
         'With --create, registers a package the config does not have yet; with --remove, ' +
-        'unregisters one it has.',
+        'unregisters one it has; with --decline, records that a package the checkout declares ' +
+        'is deliberately not registered, so drift stops reporting it.',
     )
     .argument('<ref-or-settings>', "a ref key/unique suffix, or the literal 'settings'")
     .argument('[field-or-key]', 'field to edit (or, in settings mode, the setting key)')
@@ -276,7 +221,12 @@ const registerEdit = (program: RefsCommand, ctx: CliContext): void => {
     .option('--package <name>', "edit this package's field instead of a top-level ref field")
     .option('--create', 'register --package as a new package on this ref')
     .option('--remove', 'unregister --package from this ref, leaving the checkout alone')
-    .option('--path <path>', 'with --create: the package path, relative to the checkout root')
+    .option('--decline', 'record that --package at --path is deliberately not registered')
+    .option('--undecline', 'withdraw a decline, so the package is reported again')
+    .option(
+      '--path <path>',
+      'with --create/--decline/--undecline: the package path, relative to the checkout root',
+    )
     .option('--description <text>', 'with --create: what the package is')
     // eslint-disable-next-line max-params -- fixed 5-arg shape commander gives a 3-argument command
     .action((first, second, value, localOpts, command) => {

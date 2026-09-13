@@ -46,7 +46,7 @@ const probeUnderLock = async (
     return await withLock(
       home,
       refLockName(item.key),
-      () => probeRefStructure(item.dest, config.refs[item.key]?.packages, { kind: 'all' }),
+      () => probeRefStructure(item.dest, config.refs[item.key] ?? {}, { kind: 'all' }),
       { timeoutMs: DOCTOR_LOCK_TIMEOUT_MS },
     );
   } catch (error) {
@@ -60,11 +60,21 @@ const probeUnderLock = async (
 const CHECK_NAME = 'config-drift';
 const SEPARATOR = '; ';
 
-const buildResult = (lines: readonly string[], checkoutCount: number): CheckResult => {
+/** What the decisions add to the line, when there were any.
+ *
+ * Quiet is not the same as hidden: a check that reports `ok` on a repository with ten declined
+ * packages should say that ten findings were answered, not imply there was nothing to find. It
+ * stays a count rather than a list — the entries are in `config.toml` and in `refs show`, and
+ * repeating them here would rebuild the noise the decisions removed. */
+const declinedNote = (declined: number): string =>
+  declined === 0 ? '' : ` (${declined} declined package(s) not reported)`;
+
+const buildResult = (found: ProbeFindings, checkoutCount: number): CheckResult => {
+  const { declined, lines } = found;
   const [first] = lines;
   if (first === undefined) {
     return {
-      detail: `every configured package path resolves in ${checkoutCount} checkout(s)`,
+      detail: `every configured package path resolves in ${checkoutCount} checkout(s)${declinedNote(declined)}`,
       name: CHECK_NAME,
       status: 'ok',
     };
@@ -73,7 +83,11 @@ const buildResult = (lines: readonly string[], checkoutCount: number): CheckResu
   // upstream repository, which is a thing to fix, not a thing that stops working — the same
   // reading `orphans` applies to its own findings. A `warn` also keeps `doctor`'s exit code at 0,
   // so drift never breaks a script that runs `refs doctor` as a gate.
-  return { detail: lines.join(SEPARATOR), name: CHECK_NAME, status: 'warn' };
+  return {
+    detail: lines.join(SEPARATOR) + declinedNote(declined),
+    name: CHECK_NAME,
+    status: 'warn',
+  };
 };
 
 /** One ref at a time, never `Promise.all` — the same rule `doctor.ts` applies to its own steps.
@@ -84,18 +98,26 @@ const buildResult = (lines: readonly string[], checkoutCount: number): CheckResu
  *
  * Recursive rather than a loop, mirroring `doctor.ts#runStepsInOrder`: every await stays a plain
  * sequential step, and async recursion does not grow the stack. */
+type ProbeFindings = { declined: number; lines: string[] };
+
 const probeInOrder = async (
   home: RefsHome,
   config: Config,
   checkouts: readonly ExistingCheckout[],
-): Promise<string[]> => {
+): Promise<ProbeFindings> => {
   const [item, ...rest] = checkouts;
   if (item === undefined) {
-    return [];
+    return { declined: 0, lines: [] };
   }
   const report = await probeUnderLock(home, config, item);
   const remaining = await probeInOrder(home, config, rest);
-  return [...driftLines(report, item.key).map((line) => `${item.key}: ${line}`), ...remaining];
+  return {
+    declined: (report.declined ?? []).length + remaining.declined,
+    lines: [
+      ...driftLines(report, item.key).map((line) => `${item.key}: ${line}`),
+      ...remaining.lines,
+    ],
+  };
 };
 
 const checkConfigDrift = async (home: RefsHome, config: Config): Promise<CheckResult> => {

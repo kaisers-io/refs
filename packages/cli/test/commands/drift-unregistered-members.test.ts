@@ -46,7 +46,7 @@ describe('probeRefStructure: unregistered members, doctor', () => {
   it('lists every member the configuration does not have', async () => {
     expect.hasAssertions();
 
-    const report = await probeRefStructure(monorepo(), CONFIGURED, ALL);
+    const report = await probeRefStructure(monorepo(), { packages: CONFIGURED }, ALL);
 
     expect(report.status).toBe('drift');
     expect(report.packages).toStrictEqual([
@@ -57,7 +57,7 @@ describe('probeRefStructure: unregistered members, doctor', () => {
   it('names the command that registers it, not a config fragment', async () => {
     expect.hasAssertions();
 
-    const report = await probeRefStructure(monorepo(), CONFIGURED, ALL);
+    const report = await probeRefStructure(monorepo(), { packages: CONFIGURED }, ALL);
 
     // The whole reason `refs edit --create` exists: before it, this finding's only instruction
     // was "hand-edit config.toml", because `add` refuses a tracked ref and a field edit needs an
@@ -77,7 +77,7 @@ describe('probeRefStructure: unregistered members, doctor', () => {
       name: '@fixture/b',
     });
 
-    const report = await probeRefStructure(repo, CONFIGURED, ALL);
+    const report = await probeRefStructure(repo, { packages: CONFIGURED }, ALL);
 
     // A manifest description is attacker-authored text with no way to verify it. `name` and
     // `path` are structurally checkable against the checkout and so are printed; the description
@@ -95,7 +95,7 @@ describe('probeRefStructure: unregistered members, sync', () => {
   it('stays silent about a member this fetch did not add', async () => {
     expect.hasAssertions();
 
-    const report = await probeRefStructure(monorepo(), CONFIGURED, arrivals([]));
+    const report = await probeRefStructure(monorepo(), { packages: CONFIGURED }, arrivals([]));
 
     // `@fixture/b` is unregistered and has been for as long as the ref existed. Absent from the
     // configuration is not the same as accidentally missing — it may be a fixture, an example, or
@@ -106,7 +106,11 @@ describe('probeRefStructure: unregistered members, sync', () => {
   it('reports one whose manifest this fetch DID add', async () => {
     expect.hasAssertions();
 
-    const report = await probeRefStructure(monorepo(), CONFIGURED, arrivals(['packages/b']));
+    const report = await probeRefStructure(
+      monorepo(),
+      { packages: CONFIGURED },
+      arrivals(['packages/b']),
+    );
 
     expect(report.packages).toStrictEqual([
       { name: '@fixture/b', path: 'packages/b', status: 'unregistered' },
@@ -118,7 +122,11 @@ describe('probeRefStructure: unregistered members, sync', () => {
 
     // A manifest can change at a path the config already tracks. Registration is what matters,
     // not whether the range touched the file.
-    const report = await probeRefStructure(monorepo(), CONFIGURED, arrivals(['packages/a']));
+    const report = await probeRefStructure(
+      monorepo(),
+      { packages: CONFIGURED },
+      arrivals(['packages/a']),
+    );
 
     expect(report).toStrictEqual({ status: 'ok' });
   });
@@ -133,7 +141,7 @@ describe('probeRefStructure: what a name already existing means', () => {
     // and the one that would otherwise nag about a package the owner never wanted on every move.
     const report = await probeRefStructure(
       monorepo(),
-      CONFIGURED,
+      { packages: CONFIGURED },
       arrivals(['packages/b', 'packages/old'], ['@fixture/b']),
     );
 
@@ -148,7 +156,7 @@ describe('probeRefStructure: what a name already existing means', () => {
     // `@fixture/b` is a name this repository did not have.
     const report = await probeRefStructure(
       monorepo(),
-      CONFIGURED,
+      { packages: CONFIGURED },
       arrivals(['packages/b'], ['@fixture/old']),
     );
 
@@ -167,7 +175,7 @@ describe('probeRefStructure: an unregistered name declared twice', () => {
     addPackage(repo, 'packages/dup', { name: '@fixture/dup', version: '1.0.0' });
     addPackage(repo, 'tools/dup', { name: '@fixture/dup', version: '1.0.0' });
 
-    const report = await probeRefStructure(repo, CONFIGURED, ALL);
+    const report = await probeRefStructure(repo, { packages: CONFIGURED }, ALL);
 
     // `refs add` keeps the LAST of a duplicate pair, so prescribing either path here would
     // prescribe something registration does not do — the same rule `unregisteredRoot` applies.
@@ -190,7 +198,7 @@ describe('probeRefStructure: an unregistered name declared twice', () => {
 
     const report = await probeRefStructure(
       repo,
-      CONFIGURED,
+      { packages: CONFIGURED },
       arrivals(['packages/dup', 'tools/dup']),
     );
 
@@ -215,7 +223,7 @@ describe('probeRefStructure: a duplicate of a name that already existed', () => 
     // `packages/dup` is untouched, so `@fixture/dup` is a name the repository already had. A
     // second copy appearing elsewhere is a duplicate of something existing, not a new package —
     // and it is exactly the shape of an upstream migration mid-flight.
-    const report = await probeRefStructure(repo, CONFIGURED, arrivals(['tools/dup']));
+    const report = await probeRefStructure(repo, { packages: CONFIGURED }, arrivals(['tools/dup']));
 
     expect(report).toStrictEqual({ status: 'ok' });
   });
@@ -232,7 +240,7 @@ describe('probeRefStructure: the root is not a member', () => {
     });
     addPackage(repo, 'packages/a', { name: '@fixture/a', version: '1.0.0' });
 
-    const report = await probeRefStructure(repo, CONFIGURED, ALL);
+    const report = await probeRefStructure(repo, { packages: CONFIGURED }, ALL);
 
     // `unregisteredRoot` owns the root: it needs a manifest read to find it and no diff to report
     // it. Letting member discovery see `.` as well would report the same name twice.

@@ -14,6 +14,7 @@ import type { CliContext } from '../context.ts';
 import type { EditData } from './edit.ts';
 import { matchRefKey } from './list.ts';
 import { normalizeEditValue } from './edit-envelope.ts';
+import { withoutDecline } from './edit-decline.ts';
 import { z } from 'zod';
 
 // `refs edit <ref> <field> <value> --package <name>` — mutates one field on a package registered
@@ -132,8 +133,11 @@ const createPackageEntry = (ctx: CliContext, args: CreatePackageArgs): Promise<E
     if (Object.hasOwn(entry.packages ?? {}, args.packageName)) {
       throw validationError(alreadyRegisteredMessage(args.packageName, key));
     }
+    // Registering answers the question a decline had answered the other way, so the decision goes
+    // in the same write. Left behind it would be a trap for whoever unregisters the package later:
+    // the finding would come back suppressed, by a decision nobody remembers making.
     const parsed = zRefEntry.safeParse({
-      ...entry,
+      ...withoutDecline(entry, { name: args.packageName, path: args.path }),
       packages: {
         ...entry.packages,
         [args.packageName]: { description: args.description, path: args.path },
@@ -171,8 +175,9 @@ const notRegisteredMessage = (name: string, key: RefKey): string =>
  * why the removed entry comes back as `old` for the caller to show.
  *
  * Unregistering is not suppression: a package still declared in the checkout will be reported as
- * `unregistered` by the next full discovery. That is correct, and a standing "never mention this
- * again" would be a different feature. */
+ * `unregistered` by the next full discovery. That is correct — recording a standing decision not
+ * to register it is `--decline`'s job (`edit-decline.ts`), and conflating the two would turn a
+ * repair into a policy. */
 const removePackageEntry = (
   ctx: CliContext,
   args: { packageName: string; query: string },
