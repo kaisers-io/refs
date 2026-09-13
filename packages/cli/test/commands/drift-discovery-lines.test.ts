@@ -78,7 +78,7 @@ describe('more directories than the line holds', () => {
     // so the overflow has to name both units or the count misleads.
     expect(lines).toHaveLength(CAP + 1);
     expect(lines.at(LAST)).toContain(
-      `${DIRS - CAP} more director(ies) holding ${(DIRS - CAP) * PER_DIR} unregistered package(s)`,
+      `${(DIRS - CAP) * PER_DIR} more unregistered package(s) in ${DIRS - CAP} director(ies)`,
     );
   });
 
@@ -114,7 +114,7 @@ describe('overflow where the groups are small', () => {
     // Six directories of two print twelve lines, so two are held back — and both belong to the
     // same directory. Counting lines would report two directories where there is one.
     expect(lines).toHaveLength(CAP + 1);
-    expect(lines.at(LAST)).toContain('1 more director(ies) holding 2 unregistered package(s)');
+    expect(lines.at(LAST)).toContain('2 more unregistered package(s) in 1 director(ies)');
   });
 });
 
@@ -158,5 +158,25 @@ describe('several names each declared in more than one place', () => {
     // directory name and every second location would be gone.
     expect(lines).toHaveLength(AMBIGUOUS);
     expect(lines[0]).toContain('packages/a0, tools/a0');
+  });
+});
+
+describe('overflow where the hidden candidates have no single directory', () => {
+  it('counts the packages and claims no directories', () => {
+    expect.hasAssertions();
+    const AMBIGUOUS = 12;
+    const CAP = 10;
+    const candidates = Array.from({ length: AMBIGUOUS }, (_unused, index) => ({
+      candidates: [`packages/a${index}`, `tools/a${index}`],
+      name: `@acme/a${index}`,
+      status: 'unregistered' as const,
+    }));
+
+    const lines = driftLines({ discovery: candidates, status: 'ok' }, KEY);
+
+    // Each of these spans two directory trees. Naming one number for them would be a count that
+    // is not true of anything.
+    expect(lines.at(LAST)).toContain(`${AMBIGUOUS - CAP} more unregistered package(s) —`);
+    expect(lines.at(LAST)).not.toContain('director(ies)');
   });
 });

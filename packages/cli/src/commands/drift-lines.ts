@@ -204,7 +204,10 @@ const isAmbiguous = (issue: StructureIssue): boolean => issue.path === undefined
 /** One printed line, and what it stands for. `dir` is carried because a small directory prints one
  * line per package: counting LINES as directories in the overflow then reports two of them where
  * there is one. */
-type DiscoveryGroup = { candidates: number; dir: string; line: string };
+/** One printed line, and what it stands for. `dir` is absent for a name declared in several
+ * places: it has no single directory, and inventing one puts a count in the overflow that is not
+ * true of anything. */
+type DiscoveryGroup = { candidates: number; dir?: string; line: string };
 
 const groupOf = (found: readonly StructureIssue[], key: string, top: string): DiscoveryGroup[] => {
   if (found.length < GROUP_AT) {
@@ -228,9 +231,11 @@ const groupOf = (found: readonly StructureIssue[], key: string, top: string): Di
  * can stand for any number of packages. */
 const discoveryOverflow = (groups: readonly DiscoveryGroup[]): string => {
   const packages = groups.reduce((total, group) => total + group.candidates, 0);
-  const dirs = new Set(groups.map((group) => group.dir)).size;
+  const dirs = new Set(groups.flatMap((group) => (group.dir === undefined ? [] : [group.dir])))
+    .size;
+  const where = dirs === 0 ? '' : ` in ${dirs} director(ies)`;
   return (
-    `…and ${dirs} more director(ies) holding ${packages} unregistered package(s) — ` +
+    `…and ${packages} more unregistered package(s)${where} — ` +
     "'refs doctor --json' lists every candidate"
   );
 };
@@ -247,7 +252,7 @@ const discoveryOverflow = (groups: readonly DiscoveryGroup[]): string => {
 const discoveryLines = (candidates: readonly StructureIssue[], key: string): string[] => {
   const alone = candidates
     .filter((issue) => isAmbiguous(issue))
-    .map((issue) => ({ candidates: 1, dir: CURRENT_DIR, line: unregisteredLine(issue, key) }));
+    .map((issue) => ({ candidates: 1, line: unregisteredLine(issue, key) }));
   const grouped = [...byTopLevel(candidates.filter((issue) => !isAmbiguous(issue)))]
     .toSorted(([left], [right]) => left.localeCompare(right))
     .flatMap(([top, found]) => groupOf(found, key, top));
