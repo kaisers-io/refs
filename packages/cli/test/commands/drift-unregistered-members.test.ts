@@ -2,7 +2,7 @@ import { addPackage, freshRepo, writeJson } from '../helpers/workspace-fixture.t
 import { describe, expect, it } from 'vitest';
 import type { MemberDiscovery } from '../../src/commands/drift-discovery.ts';
 import type { PackageEntry } from '@kaisers-io/refs-core';
-import { driftLines } from '../../src/commands/drift-report.ts';
+import { driftLines } from '../../src/commands/drift-lines.ts';
 import { join } from 'node:path';
 import { probeRefStructure } from '../../src/commands/drift-probe.ts';
 
@@ -48,8 +48,10 @@ describe('probeRefStructure: unregistered members, doctor', () => {
 
     const report = await probeRefStructure(monorepo(), { packages: CONFIGURED }, ALL);
 
-    expect(report.status).toBe('drift');
-    expect(report.packages).toStrictEqual([
+    // `ok`: an unregistered candidate says what the checkout declares, not that a configured
+    // route is wrong. The candidates themselves are in `discovery`.
+    expect(report.status).toBe('ok');
+    expect(report.discovery).toStrictEqual([
       { name: '@fixture/b', path: 'packages/b', status: 'unregistered' },
     ]);
   });
@@ -83,7 +85,7 @@ describe('probeRefStructure: unregistered members, doctor', () => {
     // `path` are structurally checkable against the checkout and so are printed; the description
     // is left for the caller to write from source evidence. See SKILL.md §4.
     expect(driftLines(report, FIXTURE_REF).join('\n')).not.toContain('IGNORE PREVIOUS');
-    expect(report.packages?.[0]).toStrictEqual({
+    expect(report.discovery?.[0]).toStrictEqual({
       name: '@fixture/b',
       path: 'packages/b',
       status: 'unregistered',
@@ -112,7 +114,7 @@ describe('probeRefStructure: unregistered members, sync', () => {
       arrivals(['packages/b']),
     );
 
-    expect(report.packages).toStrictEqual([
+    expect(report.discovery).toStrictEqual([
       { name: '@fixture/b', path: 'packages/b', status: 'unregistered' },
     ]);
   });
@@ -160,7 +162,7 @@ describe('probeRefStructure: what a name already existing means', () => {
       arrivals(['packages/b'], ['@fixture/old']),
     );
 
-    expect(report.packages).toStrictEqual([
+    expect(report.discovery).toStrictEqual([
       { name: '@fixture/b', path: 'packages/b', status: 'unregistered' },
     ]);
   });
@@ -179,7 +181,7 @@ describe('probeRefStructure: an unregistered name declared twice', () => {
 
     // `refs add` keeps the LAST of a duplicate pair, so prescribing either path here would
     // prescribe something registration does not do — the same rule `unregisteredRoot` applies.
-    expect(report.packages).toStrictEqual([
+    expect(report.discovery).toStrictEqual([
       {
         candidates: ['packages/dup', 'tools/dup'],
         name: '@fixture/dup',
@@ -204,7 +206,7 @@ describe('probeRefStructure: an unregistered name declared twice', () => {
 
     // A name is ambiguous because of where it is declared, not because of which declaration the
     // range happened to touch — so the filter must run AFTER grouping, never before.
-    expect(report.packages?.[0]).toMatchObject({
+    expect(report.discovery?.[0]).toMatchObject({
       candidates: ['packages/dup', 'tools/dup'],
       name: '@fixture/dup',
     });
@@ -244,7 +246,7 @@ describe('probeRefStructure: the root is not a member', () => {
 
     // `unregisteredRoot` owns the root: it needs a manifest read to find it and no diff to report
     // it. Letting member discovery see `.` as well would report the same name twice.
-    expect(report.packages).toStrictEqual([
+    expect(report.discovery).toStrictEqual([
       { name: '@fixture/toolkit', path: '.', status: 'unregistered' },
     ]);
   });

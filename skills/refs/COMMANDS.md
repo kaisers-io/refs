@@ -428,12 +428,18 @@ declares its name somewhere else, so renaming it changes a file no package direc
 the sync sees nothing new. `refs doctor` reports it — ask for one whenever a repository's packages
 look out of step and sync has been quiet.
 
+**`unregistered` does not make a ref unhealthy.** It travels in `structure.discovery`, separate
+from `structure.packages`, and `structure.status` is decided by the configured entries alone. A
+configuration says "every registered route is valid"; it never said "every package this repository
+declares has been decided about", and a repository declaring 554 packages for a ref that tracks 37
+is not 517 oversights.
+
 A repository whose patterns reach many levels can declare hundreds of members — astro declares
-`packages/**/*` and has 554, every one of them real. `doctor` prints the first ten findings and a
-count of the rest — act on those (register or repoint) and run it again for the next batch.
-`refs doctor --json` carries the complete list on the check itself, under `findings`. Do not reach
-for `refs sync --json` for it: sync reports only what ARRIVED in the range it fetched, so on an
-unchanged ref it answers with nothing at all.
+`packages/**/*` and has 554, every one of them real. The human report groups the candidates by the
+directory they sit under (`packages/astro/test/fixtures: 256 unregistered package(s)`) rather than
+listing them. `refs doctor --json` carries every candidate on the check itself, under `findings`.
+Do not reach for `refs sync --json` for that list: sync reports only what ARRIVED in the range it
+fetched, so on an unchanged ref it answers with nothing at all.
 
 Both stop naming packages where workspace detection could have MISSED something — an unreadable
 manifest, an unexpanded `**` — because the path they would name cannot be established from a

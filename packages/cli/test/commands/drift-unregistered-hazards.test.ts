@@ -2,7 +2,7 @@ import { addPackage, freshRepo, writeJson } from '../helpers/workspace-fixture.t
 import { describe, expect, it } from 'vitest';
 import type { MemberDiscovery } from '../../src/commands/drift-discovery.ts';
 import type { PackageEntry } from '@kaisers-io/refs-core';
-import { driftLines } from '../../src/commands/drift-report.ts';
+import { driftLines } from '../../src/commands/drift-lines.ts';
 import { join } from 'node:path';
 import { probeRefStructure } from '../../src/commands/drift-probe.ts';
 import { writeFileSync } from 'node:fs';
@@ -57,7 +57,7 @@ describe('probeRefStructure: a member claiming the root name', () => {
 
     const report = await probeRefStructure(repo, { packages: CONFIGURED }, ALL);
 
-    expect(report.packages).toStrictEqual([
+    expect(report.discovery).toStrictEqual([
       { name: '@fixture/toolkit', path: 'packages/toolkit', status: 'unregistered' },
     ]);
   });
@@ -104,7 +104,7 @@ describe('probeRefStructure: a repository that declares a negation', () => {
     const report = await probeRefStructure(repo, { packages: CONFIGURED }, ALL);
 
     // The package under the negation stays silent; the one outside it is reported.
-    expect(report.packages).toStrictEqual([
+    expect(report.discovery).toStrictEqual([
       { name: '@fixture/new', path: 'packages/new', status: 'unregistered' },
     ]);
   });

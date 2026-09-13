@@ -104,9 +104,11 @@ describe('refs sync: a package that arrived upstream', () => {
 
           const [item] = result.data.results;
           expect(item?.status).toBe('updated');
+          // `discovery`, and `ok`: a package the checkout declares and the configuration does not
+          // have says what arrived, not that a configured route is wrong.
           expect(item?.structure).toStrictEqual({
-            packages: [{ name: '@fixture/c', path: 'packages/c', status: 'unregistered' }],
-            status: 'drift',
+            discovery: [{ name: '@fixture/c', path: 'packages/c', status: 'unregistered' }],
+            status: 'ok',
           });
         }),
       );
@@ -192,7 +194,7 @@ describe('refs sync: a package renamed in place', () => {
 
           const result = await runSyncJson(ctx, stdout, { refKeys: [key] });
 
-          expect(result.data.results[0]?.structure?.packages).toStrictEqual([
+          expect(result.data.results[0]?.structure?.discovery).toStrictEqual([
             { name: '@fixture/renamed', path: 'packages/b', status: 'unregistered' },
           ]);
         }),

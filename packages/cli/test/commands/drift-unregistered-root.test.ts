@@ -2,7 +2,7 @@ import { addPackage, freshRepo, writeJson } from '../helpers/workspace-fixture.t
 import { describe, expect, it } from 'vitest';
 import type { MemberDiscovery } from '../../src/commands/drift-discovery.ts';
 import type { PackageEntry } from '@kaisers-io/refs-core';
-import { driftLines } from '../../src/commands/drift-report.ts';
+import { driftLines } from '../../src/commands/drift-lines.ts';
 import { join } from 'node:path';
 import { probeRefStructure } from '../../src/commands/drift-probe.ts';
 import { writeFileSync } from 'node:fs';
@@ -51,8 +51,8 @@ describe('probeRefStructure: a root the configuration never registered', () => {
 
     const report = await probe(repo, { '@fixture/a': entry('packages/a') });
 
-    expect(report.status).toBe('drift');
-    expect(report.packages).toContainEqual({
+    expect(report.status).toBe('ok');
+    expect(report.discovery).toContainEqual({
       name: '@fixture/toolkit',
       path: '.',
       status: 'unregistered',
@@ -128,7 +128,7 @@ describe('probeRefStructure: a root whose name a member also claims', () => {
 
     const report = await probe(repo, { '@fixture/a': entry('packages/a') });
 
-    expect(report.packages).toContainEqual({
+    expect(report.discovery).toContainEqual({
       name: '@fixture/toolkit',
       path: 'packages/toolkit',
       status: 'unregistered',
@@ -191,7 +191,7 @@ describe('probeRefStructure: a root name several paths declare', () => {
 
     const report = await probe(repo, { '@fixture/a': entry('packages/a') });
 
-    expect(report.packages).toContainEqual({
+    expect(report.discovery).toContainEqual({
       candidates: ['packages/one', 'packages/two'],
       name: '@fixture/toolkit',
       status: 'unregistered',

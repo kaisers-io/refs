@@ -130,12 +130,14 @@ describe('refs doctor: config-drift under contention', () => {
   });
 });
 
-const CAP = 10;
 const MEMBER_COUNT = 12;
-// The fixture's own registered package, which is `missing` here, and the repository root.
-const EXTRA_FINDINGS = 2;
+// The repository root, found by looking rather than by a pattern.
+const ROOT_CANDIDATE = 1;
+// The fixture's own registered package, which is `missing` in this layout.
+const CONFIGURED_FINDING = 1;
 
-/** A checkout declaring twelve unregistered members — more than the printed line holds. */
+/** A checkout declaring twelve unregistered members, with the ref's own registered package
+ * missing — so the report carries both kinds of finding at once. */
 const seedManyMembers = async (home: RefsHome): Promise<string> => {
   await seedConfig(home, { [ALPHA_KEY]: refEntry('packages/a') });
   const dest = checkoutPath(home, zRefKey.parse(ALPHA_KEY));
@@ -148,8 +150,8 @@ const seedManyMembers = async (home: RefsHome): Promise<string> => {
   return dest;
 };
 
-describe('refs doctor: more findings than the line holds', () => {
-  it('caps the prose and says how many it held back', async () => {
+describe('refs doctor: a repository with far more packages than the ref tracks', () => {
+  it('reports the candidates as one grouped line, not one line each', async () => {
     expect.hasAssertions();
     await withResetExitCode(() =>
       withTempHome(async (homeDir) => {
@@ -159,15 +161,16 @@ describe('refs doctor: more findings than the line holds', () => {
 
         const envelope = await runDoctorJson(setup.ctx, setup.stdout);
 
+        // Grouped by the directory they sit in — structurally, never by what they look like.
         expectCheck(envelope, 'config-drift', {
-          detailContains: 'more finding(s)',
+          detailContains: `packages: ${MEMBER_COUNT + ROOT_CANDIDATE} unregistered package(s)`,
           status: 'warn',
         });
       }),
     );
   });
 
-  it('carries every finding in the JSON, uncapped', async () => {
+  it('carries every candidate in the JSON, uncapped', async () => {
     expect.hasAssertions();
     await withResetExitCode(() =>
       withTempHome(async (homeDir) => {
@@ -177,13 +180,56 @@ describe('refs doctor: more findings than the line holds', () => {
 
         const envelope = await runDoctorJson(setup.ctx, setup.stdout);
 
-        // A finding no command can repair is never cleared by acting on the ones printed before
-        // it, so a capped list would put it permanently out of reach.
+        // A grouped line names a count. The caller that wants its members has to be able to get
+        // them, or the group becomes a summary of something unreachable.
         const check = findCheck(envelope, 'config-drift');
-        const printed = String(check?.detail).split('; ');
-        expect(printed).toHaveLength(CAP + 1);
-        expect(check?.findings?.[0]?.packages).toHaveLength(MEMBER_COUNT + EXTRA_FINDINGS);
+        expect(check?.findings?.[0]?.packages).toHaveLength(
+          MEMBER_COUNT + ROOT_CANDIDATE + CONFIGURED_FINDING,
+        );
       }),
     );
   });
 });
+
+describe('refs doctor: a repository whose extra packages are only candidates', () => {
+  it('stays healthy when the only findings are candidates', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const setup = await setupInitializedHome(homeDir);
+        const dest = await seedOnlyCandidates(setup.home);
+        expectCheckoutGit(setup, dest);
+
+        const envelope = await runDoctorJson(setup.ctx, setup.stdout);
+
+        // An unregistered package is not a defect in this configuration: nothing in it points
+        // anywhere for that package, so there is nothing to be wrong. It is reported all the same.
+        expectCheck(envelope, 'config-drift', {
+          detailContains: 'every configured package path resolves',
+          status: 'ok',
+        });
+      }),
+    );
+  });
+});
+
+/** The same checkout, with the ref's registered package where the configuration says it is: every
+ * finding is then a discovery candidate and nothing is wrong. */
+const seedOnlyCandidates = async (home: RefsHome): Promise<string> => {
+  await seedConfig(home, {
+    [ALPHA_KEY]: {
+      default_branch: 'main',
+      description: 'Alpha lib',
+      packages: { '@acme/a': { description: 'Package A.', path: 'packages/a' } },
+      url: ALPHA_URL,
+    },
+  });
+  const dest = checkoutPath(home, zRefKey.parse(ALPHA_KEY));
+  await markCheckoutPresent(dest, { hooksDir: home.hooksDir, url: ALPHA_URL });
+  writeJson(join(dest, 'package.json'), { workspaces: ['packages/*'] });
+  addPackage(dest, 'packages/a', { name: '@acme/a', version: '1.0.0' });
+  for (let index = 0; index < MEMBER_COUNT; index += 1) {
+    addPackage(dest, `packages/m${index}`, { name: `@acme/m${index}`, version: '1.0.0' });
+  }
+  return dest;
+};

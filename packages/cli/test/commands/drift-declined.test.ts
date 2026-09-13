@@ -78,7 +78,7 @@ describe('a declined package, beside the ones that are not', () => {
       ALL,
     );
 
-    expect(report.packages).toStrictEqual([
+    expect(report.discovery).toStrictEqual([
       { name: '@fixture/c', path: 'packages/c', status: 'unregistered' },
     ]);
   });
@@ -94,7 +94,7 @@ describe('a declined package, beside the ones that are not', () => {
       ALL,
     );
 
-    expect(report.packages).toContainEqual({
+    expect(report.discovery).toContainEqual({
       name: '@fixture/b',
       path: 'packages/b',
       status: 'unregistered',
@@ -143,7 +143,7 @@ describe('what a decline must not silence', () => {
 
     // Declining one path of a duplicated name leaves a real finding about the other. Collapsing
     // the whole name would hide a package nobody was asked about.
-    expect(report.packages).toStrictEqual([
+    expect(report.discovery).toStrictEqual([
       { name: '@fixture/twin', path: 'packages/two', status: 'unregistered' },
     ]);
   });

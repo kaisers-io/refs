@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **`config-drift` warns about broken routes, not about every package nobody registered.** The
+  check reported two different kinds of finding and derived one status from both: entries that are
+  wrong (`missing`, `relocated`, `ambiguous`, `unverifiable`) and packages the checkout declares
+  that the configuration does not have. Those are separate assertions. A refs configuration
+  expresses "every registered route is valid"; the warning silently demanded "every declared
+  package has received a registration decision", which nothing justifies — registering 37 packages
+  of a repository that declares 554 is not 517 oversights, and the probe has no evidence either
+  way.
+
+  Only findings about configured entries decide the status now. Discovery candidates are still
+  reported, in their own `discovery` key and grouped by the directory they sit under —
+  structurally, never under a label like "fixtures" that refs would have to guess at. On a ref
+  tracking 37 of astro's 554 packages the check goes from `warn` with 517 findings, ten printed
+  and 507 hidden, to:
+
+  ```
+  [OK] config-drift: every configured package path resolves in 1 checkout(s);
+    examples: 24 unregistered package(s) the configuration does not have;
+    packages: 493 unregistered package(s) the configuration does not have
+  ```
+
+  An incomplete discovery pass keeps its own prominence and still downgrades `ok` — "could not
+  look" never becomes "zero candidates". `refs doctor --json` carries every candidate, so a
+  grouped count is never a summary of something unreachable. The per-package
+  `refs edit --decline` stays: it is still the right answer for a candidate someone reviewed, and
+  it stops being mandatory bookkeeping for a healthy result.
+
+  What this costs, stated plainly: a package genuinely forgotten is easier to overlook, because it
+  appears under discovery rather than in a warning. The root-package migration case (#88) is
+  exactly such a finding and loses warning-level prominence.
+
 ## [0.14.1] - 2026-09-13
 
 ### Fixed

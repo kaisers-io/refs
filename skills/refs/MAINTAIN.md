@@ -89,7 +89,9 @@ lock:
 Never delete a lock directory by hand on the strength of this check alone — the recorded pid is not
 proof of identity, only of absence when it says "not running".
 
-A `warn` on `config-drift` means the configuration and the checkout disagree. The `detail` names
+A `warn` on `config-drift` means a CONFIGURED entry and the checkout disagree. A package the
+checkout declares and the configuration has never registered is reported beside the health line,
+not as part of it: it is information about the repository, not a defect in the configuration. The `detail` names
 each affected ref and package, says which repair it needs — unregister the entry (the package is
 gone from the repo's workspaces), change its path (it moved within them), or register a package
 the checkout declares and the config never had (`unregistered`) — and prints the `refs edit`
