@@ -9,6 +9,7 @@ import { driftLines } from '../../src/commands/drift-lines.ts';
 // same thing without a guess, and it is the repository's own layout that supplies it.
 
 const KEY = 'github.com/acme/alpha';
+const LAST = -1;
 
 const under = (dir: string, count: number): StructureIssue[] =>
   Array.from({ length: count }, (_unused, index) => ({
@@ -58,5 +59,42 @@ describe('discovery, grouped by where the candidates sit', () => {
       `examples: ${MANY} unregistered package(s) the configuration does not have`,
       `packages/test: ${MANY} unregistered package(s) the configuration does not have`,
     ]);
+  });
+});
+
+describe('more directories than the line holds', () => {
+  it('counts the hidden directories AND the packages in them', () => {
+    expect.hasAssertions();
+    const DIRS = 12;
+    const PER_DIR = 3;
+    const CAP = 10;
+    const candidates = Array.from({ length: DIRS }, (_unused, index) =>
+      under(`top${index}`, PER_DIR),
+    ).flat();
+
+    const lines = driftLines({ discovery: candidates, status: 'ok' }, KEY);
+
+    // A hidden GROUP is not a hidden finding: one of them can stand for any number of packages,
+    // so the overflow has to name both units or the count misleads.
+    expect(lines).toHaveLength(CAP + 1);
+    expect(lines.at(LAST)).toContain(
+      `${DIRS - CAP} more director(ies) holding ${(DIRS - CAP) * PER_DIR} unregistered package(s)`,
+    );
+  });
+
+  it('points at the report that actually has them', () => {
+    expect.hasAssertions();
+    const DIRS = 12;
+    const PER_DIR = 3;
+    const candidates = Array.from({ length: DIRS }, (_unused, index) =>
+      under(`top${index}`, PER_DIR),
+    ).flat();
+
+    const lines = driftLines({ discovery: candidates, status: 'ok' }, KEY);
+
+    // "Act on the ones above" is the instruction for repairs. A grouped count carries no package
+    // name and no command, so there is nothing above to act on.
+    expect(lines.at(LAST)).toContain("'refs doctor --json'");
+    expect(lines.at(LAST)).not.toContain('act on the ones above');
   });
 });

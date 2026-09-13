@@ -229,16 +229,53 @@ const byTopLevel = (candidates: readonly StructureIssue[]): Map<string, Structur
  *
  * A group with only a couple of candidates keeps its per-package lines, commands and all: those
  * are the ones somebody may actually want to register. */
-const discoveryLines = (candidates: readonly StructureIssue[], key: string): string[] =>
-  [...byTopLevel(candidates)]
+type DiscoveryGroup = { candidates: number; line: string };
+
+const groupOf = (found: readonly StructureIssue[], key: string): DiscoveryGroup[] => {
+  if (found.length < GROUP_AT) {
+    return found.map((issue) => ({ candidates: 1, line: unregisteredLine(issue, key) }));
+  }
+  const dir = commonDir(found.map((issue) => dirOf(issue.path ?? issue.candidates?.[0])));
+  return [
+    {
+      candidates: found.length,
+      line: `${dir}: ${found.length} unregistered package(s) the configuration does not have`,
+    },
+  ];
+};
+
+/** What the cap held back HERE, which is a different sentence from the one about findings.
+ *
+ * "Act on the ones above" is the instruction for repairs, and a grouped count is not something to
+ * act on: it carries no package name and no command. The honest pointer is the machine-readable
+ * report, which carries every candidate — and the unit has to be right too, since one hidden group
+ * can stand for any number of packages. */
+const discoveryOverflow = (groups: readonly DiscoveryGroup[]): string => {
+  const packages = groups.reduce((total, group) => total + group.candidates, 0);
+  return (
+    `…and ${groups.length} more director(ies) holding ${packages} unregistered package(s) — ` +
+    "'refs doctor --json' lists every candidate"
+  );
+};
+
+/** Discovery, grouped by the directory the candidates sit under.
+ *
+ * Structurally, never by what they look like: a repository's fixtures are packages by every rule
+ * the resolvers apply, and refs does not get to label them. The directory says the same thing
+ * without a guess — 256 under `packages/astro/test/fixtures` is a reader's answer, and it is the
+ * repository's own layout that supplies it.
+ *
+ * A group with only a couple of candidates keeps its per-package lines, commands and all: those
+ * are the ones somebody may actually want to register. */
+const discoveryLines = (candidates: readonly StructureIssue[], key: string): string[] => {
+  const groups = [...byTopLevel(candidates)]
     .toSorted(([left], [right]) => left.localeCompare(right))
-    .flatMap(([, found]) => {
-      if (found.length < GROUP_AT) {
-        return found.map((issue) => unregisteredLine(issue, key));
-      }
-      const dir = commonDir(found.map((issue) => dirOf(issue.path ?? issue.candidates?.[0])));
-      return [`${dir}: ${found.length} unregistered package(s) the configuration does not have`];
-    });
+    .flatMap(([, found]) => groupOf(found, key));
+  const hidden = groups.slice(MAX_LINES_PER_REF);
+  return hidden.length === 0
+    ? groups.map((group) => group.line)
+    : [...groups.slice(0, MAX_LINES_PER_REF).map((group) => group.line), discoveryOverflow(hidden)];
+};
 
 /** One line per thing worth saying, and EMPTY for a clean ref — so a caller can append the result
  * unconditionally and stay silent by construction rather than by remembering to check. */
@@ -248,7 +285,7 @@ const driftLines = (report: StructureReport, key: string): string[] => {
   }
   return [
     ...cap((report.packages ?? []).map((issue) => issueLine(issue, key))),
-    ...cap(discoveryLines(report.discovery ?? [], key)),
+    ...discoveryLines(report.discovery ?? [], key),
     ...(report.discovery_incomplete === undefined
       ? []
       : [discoveryLine(report.discovery_incomplete)]),
