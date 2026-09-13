@@ -28,10 +28,10 @@ graders:
   # move the `path` field as a positional pair. `--path=` or a missing ref exits 2.
   - name: removal-for-the-missing-package
     type: regex
-    pattern: 'refs edit(?=[^\n]*\s''?(?:local/fixtures/)?toolkit''?(?:\s|$|`))(?=[^\n]*--package[= ]''?@toolkit/slugify''?(?:\s|$|`))(?=[^\n]*\s--remove(?:\s|$|`))'
+    pattern: 'refs edit(?=[^\n]*\s["'']?(?:local/fixtures/)?toolkit["'']?(?:\s|$|`))(?=[^\n]*--package[= ]["'']?@toolkit/slugify["'']?(?:\s|$|`))(?=[^\n]*\s--remove(?:\s|$|`))'
   - name: path-edit-for-the-relocated-package
     type: regex
-    pattern: 'refs edit(?=[^\n]*\s''?(?:local/fixtures/)?toolkit''?(?:\s|$|`))(?=[^\n]*--package[= ]''?@toolkit/retry''?(?:\s|$|`))(?=[^\n]*\s''?path''?\s+''?packages/retry-policy''?(?:\s|$|`))'
+    pattern: 'refs edit(?=[^\n]*\s["'']?(?:local/fixtures/)?toolkit["'']?(?:\s|$|`))(?=[^\n]*--package[= ]["'']?@toolkit/retry["'']?(?:\s|$|`))(?=[^\n]*\s["'']?path["'']?\s+["'']?packages/retry-policy["'']?(?:\s|$|`))'
   - name: relocated-package-not-removed
     type: regex
     pattern: 'refs edit(?=[^\n]*@toolkit/retry)(?=[^\n]*--remove)'
