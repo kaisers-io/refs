@@ -9,6 +9,7 @@ import type { ExpandResult } from './workspaces-probe.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { PatternPlan } from './workspaces-pattern-plan.ts';
 import type { WorkspaceDiagnostic } from './workspaces-patterns.ts';
+import { reportLinkedDir } from './workspaces-symlinks.ts';
 import { resolveInside } from './fs-containment.ts';
 
 // Walking a pattern that can match at more than one depth — the `packages/**` family, the most
@@ -27,9 +28,6 @@ import { resolveInside } from './fs-containment.ts';
  * with the number of declarations, which is the opposite of a bound. */
 type ScanBudget = { dirs: number; entries: number };
 
-// `readdir` on something that is not a directory. Both spellings occur: Linux and macOS answer
-// ENOTDIR, Windows answers ENOENT for the same shape.
-const NOT_A_DIRECTORY_CODES: ReadonlySet<string> = new Set(['ENOENT', 'ENOTDIR']);
 const MAX_DEPTH = 32;
 const MAX_DIRS = 20_000;
 const MAX_ENTRIES = 200_000;
@@ -43,6 +41,8 @@ const newScanBudget = (): ScanBudget => ({ dirs: MAX_DIRS, entries: MAX_ENTRIES 
 // (Line comments, not a doc block: a `**` glob written out closes one early.)
 const NEVER_WALKED: ReadonlySet<string> = new Set(['.git', 'node_modules']);
 
+/** The mutable state of one pattern's walk. Exported for `workspaces-symlinks.ts`, which spends
+ * the same budget when it looks behind a link. */
 type Walk = PatternPlan & {
   budget: ScanBudget;
   /** Whether this pattern names a hidden segment outright. A `<prefix>` + wildcard exclusion does
@@ -133,27 +133,6 @@ const descendable = async (
  * repository with a symlinked `README.md` under `packages/` would otherwise have an unreliable
  * scan forever, and an unreliable scan turns the whole unregistered-package pass off. A broken
  * link points at nothing and is silent for the same reason. */
-const reportLinkedDir = async (walk: Walk, relPath: string): Promise<void> => {
-  const target = await resolveInside(walk.repoDir, join(walk.repoDir, relPath));
-  if (target.kind === 'outside' || target.kind === 'missing') {
-    // Neither is a package this walk lost: an outside path is one `resolve` would refuse anyway,
-    // and a broken link holds nothing.
-    return;
-  }
-  if (target.kind === 'unreadable') {
-    // A failure to look is never evidence. Staying quiet here would let an unreadable link
-    // establish that the scan was complete, and callers draw "this package is gone" from that.
-    walk.diagnostics.push({ kind: 'candidate_not_inspected', path: relPath });
-    return;
-  }
-  // `readdir` is the directory test: it is the operation that would have been performed here, so
-  // it answers exactly the question — could this link have been walked? A refusal (EACCES, EIO)
-  // is not the same answer as "not a directory", and only the second one is silent.
-  const listed = await tryReaddir(target.real);
-  if (!('code' in listed) || !NOT_A_DIRECTORY_CODES.has(listed.code)) {
-    walk.diagnostics.push({ kind: 'candidate_not_inspected', path: relPath });
-  }
-};
 
 /** This directory's entries, or the reason there are none to walk. Spending the entry budget is
  * part of reading: a directory that was listed has been paid for whether or not anything below it
@@ -286,4 +265,4 @@ const expandRecursive = async (
 };
 
 export { expandRecursive, newScanBudget };
-export type { ScanBudget };
+export type { ScanBudget, Walk };
