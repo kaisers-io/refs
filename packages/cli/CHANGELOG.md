@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **A symlink with no package behind it no longer makes the scan unreliable.** A symlinked
+  directory can never be walked — `readdir` uses lstat semantics — so one that could have held a
+  package was reported as an uninspected candidate, and a single one of those turns the
+  unregistered-package pass off for the whole ref. `withastro/astro` carries two fixture links
+  whose targets hold markdown and JSON and no manifest at any depth: its scan reported two
+  obstacles and stood discovery down permanently, over directories where there was nothing to
+  find.
+
+  The question is now answered by LOOKING rather than by reasoning about the pattern: is there a
+  `package.json` anywhere below the link's target? If there is not, no pattern selects a package
+  there and the link hid nothing from anyone. If there is one — at any depth — it is reported
+  exactly as before. The search spends the scan's own budget and reports the obstacle when it runs
+  out, because an unfinished look is not a look.
+
+  An earlier attempt tried to prove instead that the target's own path selects whatever the link
+  path selects. It cannot be proven from the pattern's shape: a pattern selecting by position, an
+  exclusion naming the target or one of its descendants, a pattern matching the alias but not the
+  real path, and a link pointing at the base all break it in different ways. Each of those five
+  keeps being reported.
+
 ## [0.14.0] - 2026-09-13
 
 ### Upgrading

@@ -211,3 +211,43 @@ describe('a symlink that cannot be read', () => {
     expect(scanIsReliable(scan)).toBe(false);
   });
 });
+
+describe('a symlink with no package behind it', () => {
+  it('says nothing, because the look found nothing to say', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/**/*'] });
+    addPackage(repo, 'packages/real', { name: '@deep/real', version: '1.0.0' });
+    // astro's shape: the link points at fixture content — markdown and json, no manifest at any
+    // depth. Nothing any pattern could select is behind it, so not walking it hid nothing.
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    mkdirSync(join(repo, 'content', 'nested'), { recursive: true });
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    writeFileSync(join(repo, 'content', 'nested', 'first.md'), '# hi');
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    symlinkSync(join(repo, 'content'), join(repo, 'packages', 'linked'), 'dir');
+
+    const scan = await detectWorkspacePackagesDetailed(repo);
+
+    expect(scan.diagnostics).toStrictEqual([]);
+    expect(scanIsReliable(scan)).toBe(true);
+  });
+
+  it('reports one whose target holds a manifest further down', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/**/*'] });
+    addPackage(repo, 'packages/real', { name: '@deep/real', version: '1.0.0' });
+    addPackage(repo, 'elsewhere/deep/down/pkg', { name: '@deep/hidden', version: '1.0.0' });
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    symlinkSync(join(repo, 'elsewhere'), join(repo, 'packages', 'linked'), 'dir');
+
+    const scan = await detectWorkspacePackagesDetailed(repo);
+
+    // Three levels down is still behind the link. Checking only the target's own directory would
+    // answer a different question from the one being asked.
+    expect(scan.diagnostics).toStrictEqual([
+      { kind: 'candidate_not_inspected', path: 'packages/linked' },
+    ]);
+  });
+});
