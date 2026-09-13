@@ -16,6 +16,7 @@ import { test } from 'node:test';
 import { tmpdir } from 'node:os';
 
 const DRY_RUN_MARKER = String.raw`\\"tag_format_candidate\\":(?:\\"|null)`;
+const EXECUTABLE = 0o755;
 const AT_COMMAND = String.raw`(?:"command":\s*"\s*|[\s;&|(]|\\n)`;
 
 const passes = async (grader, run) => {
@@ -178,7 +179,8 @@ test('a timeout kills commands running in a process group of their own', async (
 test('a scaffold that prints a lot does not block the suite', async () => {
   const root = await mkdtemp(join(tmpdir(), 'scaffold-'));
   await mkdir(join(root, 'evals', 'noisy'), { recursive: true });
-  await writeFile(join(root, 'evals', 'noisy', 'scaffold.sh'), 'head -c 2000000 /dev/zero\n');
+  const script = join(root, 'evals', 'noisy', 'scaffold.sh');
+  await writeFile(script, '#!/usr/bin/env bash\nhead -c 2000000 /dev/zero\n', { mode: EXECUTABLE });
   const run = { cwd: root, home: root };
   const testCase = { context: { scaffold_script: 'scaffold.sh' }, name: 'noisy' };
   strictEqual(await scaffold(root, testCase, run), undefined);

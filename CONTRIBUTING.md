@@ -174,6 +174,7 @@ Where it differs from the Claude run, on purpose:
 So a difference in score is a difference between the two agents with this skill. It is not a
 controlled comparison of two models.
 
-To add a case, create `evals/<name>/case.yaml` and a `scaffold.sh` that sources `../lib.sh`.
+To add a case, create `evals/<name>/case.yaml` and an executable `scaffold.sh` that sources
+`../lib.sh`.
 Before you trust a grader, feed it a wrong answer and check that it fails. A grader that passes
 on an empty run pins nothing.

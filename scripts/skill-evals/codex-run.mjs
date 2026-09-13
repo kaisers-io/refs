@@ -66,7 +66,8 @@ const execWithTimeout = async (command, args, options) => {
 const scaffold = async (root, testCase, run) => {
   const script = join(root, 'evals', testCase.name, testCase.context.scaffold_script);
   const stderr = [];
-  const { code, timedOut } = await execWithTimeout('bash', [script], {
+  // Run through its shebang rather than `bash <path>`, so no shell ever receives the path.
+  const { code, timedOut } = await execWithTimeout(script, [], {
     cwd: run.cwd,
     env: childEnv(run.home),
     // Scaffold output is not read, so it goes nowhere rather than into a pipe that can fill up.
