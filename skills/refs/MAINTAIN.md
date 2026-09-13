@@ -115,8 +115,8 @@ looked:
 
 - **Something about that ref could not be checked.** A `config-drift` `status` of `fail`
   (`check crashed: …`), or any `could not check` or `could not be checked` in the `detail` for that
-  ref, means refs did not finish looking. Two you
-  will meet: `could not check for unregistered packages — <path>: <reason>` means discovery stopped at
+  ref, means refs did not finish looking. Two you will meet:
+  `could not check for unregistered packages — <path>: <reason>` means discovery stopped at
   `<path>`. Say so and name `<path>`, because fixing it is what lets refs answer.
   `could not be checked — another refs process is holding this ref` means the ref was busy, so run
   doctor again. If you read the workspace declaration yourself and find an unregistered member,
