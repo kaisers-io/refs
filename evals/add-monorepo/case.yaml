@@ -37,6 +37,13 @@ graders:
     input_match: '(?:"command":\s*"\s*|[\s;&|(]|\\n)refs add [^;&|]*--proposal'
     min: 0
     max: 0
+  # The top-level description and one per package: a proposal with any of them empty cannot be
+  # finalized.
+  - name: every-description-filled
+    type: regex
+    pattern: '"description"\s*:\s*"[^"\s]'
+    match: 'count:4'
+    target: { source: file, path: proposal.json }
   - name: slugify-described-from-source
     type: regex
     pattern: '"@toolkit/slugify"\s*:\s*\{[^}]*"description"\s*:\s*"[^"]*(url|dash|hyphen)'
