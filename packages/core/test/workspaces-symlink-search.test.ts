@@ -104,3 +104,26 @@ describe('what the search behind a link will not rule out', () => {
     ]);
   });
 });
+
+describe('manifest names the filesystem may fold', () => {
+  it('does not rule out a target holding a differently-cased manifest', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/**/*'] });
+    addPackage(repo, 'packages/real', { name: '@deep/real', version: '1.0.0' });
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    mkdirSync(join(repo, 'content'), { recursive: true });
+    writeJson(join(repo, 'content', 'Package.json'), { name: '@deep/cased', version: '1.0.0' });
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    symlinkSync(join(repo, 'content'), join(repo, 'packages', 'linked'), 'dir');
+
+    const scan = await detectWorkspacePackagesDetailed(repo);
+
+    // On a case-insensitive filesystem the manifest probe opens that file by its lowercase name
+    // and reads a real package. On a case-sensitive one this is a file that is not a manifest and
+    // the link stays marked uninspected — over-reporting, which is the direction to err in.
+    expect(scan.diagnostics).toStrictEqual([
+      { kind: 'candidate_not_inspected', path: 'packages/linked' },
+    ]);
+  });
+});

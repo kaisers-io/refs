@@ -21,11 +21,19 @@ const NOT_A_DIRECTORY_CODES: ReadonlySet<string> = new Set(['ENOENT', 'ENOTDIR']
 // Never walked, under any pattern, so never searched for a manifest either.
 const NEVER_WALKED: ReadonlySet<string> = new Set(['.git', 'node_modules']);
 
-/** A manifest here, by the name and by not being a directory — `isFile()` is false for a
- * SYMLINKED `package.json`, and the manifest probe accepts that shape, so testing for a regular
- * file would answer "no manifest" about a package that resolves perfectly well. */
+/** A manifest here, by the name and by not being a directory.
+ *
+ * `isFile()` is false for a SYMLINKED `package.json`, and the manifest probe accepts that shape,
+ * so testing for a regular file would answer "no manifest" about a package that resolves
+ * perfectly well.
+ *
+ * Compared case-insensitively, because the probe this stands in for opens `<dir>/package.json` by
+ * name: on a case-insensitive filesystem a directory holding `Package.json` has a manifest the
+ * probe reads happily, while an exact comparison here would report there is none. On a
+ * case-sensitive one this over-reports — a link is left marked uninspected — which is the
+ * direction to err in. */
 const manifestIn = (entries: readonly Dirent[]): boolean =>
-  entries.some((entry) => entry.name === MANIFEST_FILE && !entry.isDirectory());
+  entries.some((entry) => entry.name.toLowerCase() === MANIFEST_FILE && !entry.isDirectory());
 
 /** A link inside the subtree being searched. Nothing below it can be ruled out without following
  * it, and following links from inside a link is how a search stops being cheap and starts needing
