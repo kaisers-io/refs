@@ -45,12 +45,13 @@ stuck with it.
 
 ## Other environment variables
 
-`REFS_HOME` is the only one meant for everyday use. Four others are read:
+`REFS_HOME` is the only one meant for everyday use. Five others are read:
 
 | Variable                | Read by                | Effect                                                                                                                                       |
 | ----------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | `CLAUDE_CONFIG_DIR`     | `refs doctor` only     | Moves where the `skill` check looks for a Claude Code install, replacing `~/.claude`. Set by the skill installer's own convention, not by refs. |
 | `CODEX_HOME`            | `refs doctor` only     | The same, for Codex, replacing `~/.codex`.                                                                                                     |
+| `REFS_PROGRESS`         | `refs sync`, `refs doctor` | `0` turns off the progress spinner these commands draw on stderr while they work. It is already off with `--json`, when stderr is not a terminal, with `TERM=dumb`, and in CI. |
 | `REFS_UPDATE_CHECK`     | `refs sync`, `refs doctor` | `0` never contacts the npm registry, `1` always does. Overrides `[updates].check`; any other value is ignored. See [`[updates]`](#updates). |
 | `REFS_ALLOW_FILE_URLS`  | `refs add`, `refs sync` | Set to `1` to accept `file://` sources. **A test-only escape hatch** — real remotes are `https`/`ssh`, and this exists so the suite and the packaged-CLI smoke tests can work against a local fixture repository without a network. Do not set it in normal use. |
 

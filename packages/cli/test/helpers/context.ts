@@ -32,9 +32,14 @@ const testContext = (): {
   runner: FakeRunner;
   stderr: string[];
   stdout: string[];
+  timeline: string[];
 } => {
   const stdout: string[] = [];
   const stderr: string[] = [];
+  // Spinner calls and output in the order they happened (`spinner: <label>`, `spinner: stop`,
+  // `out: <line>`, `err: <line>`), so a test can assert that the spinner stopped before anything
+  // was printed, which a final flag could not show.
+  const timeline: string[] = [];
   const runner = new FakeRunner();
   const ctx: CliContext = {
     // Defaults to a fixed version so every non-`skill`-check test keeps working unmodified;
@@ -45,6 +50,7 @@ const testContext = (): {
     env: {},
     errLine: (line: string) => {
       stderr.push(line);
+      timeline.push(`err: ${line}`);
     },
     fetcher: unstubbedFetcher,
     homedir: ABSENT_HOME,
@@ -54,11 +60,20 @@ const testContext = (): {
     nodeVersion: process.version,
     out: (line: string) => {
       stdout.push(line);
+      timeline.push(`out: ${line}`);
     },
     readStdin: stubbedReadStdin,
     runner,
+    spinner: () => ({
+      stop: () => {
+        timeline.push('spinner: stop');
+      },
+      update: (text: string) => {
+        timeline.push(`spinner: ${text}`);
+      },
+    }),
   };
-  return { ctx, runner, stderr, stdout };
+  return { ctx, runner, stderr, stdout, timeline };
 };
 
 export { testContext };

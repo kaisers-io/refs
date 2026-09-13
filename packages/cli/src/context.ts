@@ -1,5 +1,7 @@
 import type { Fetcher, Runner } from '@kaisers-io/refs-core';
 import { SpawnRunner } from '@kaisers-io/refs-core';
+import type { Spinner } from './spinner.ts';
+import { createSpinner } from './spinner.ts';
 import { homedir } from 'node:os';
 // eslint-disable-next-line import/no-relative-parent-imports -- package.json lives at the package root, one level above src/
 import pkg from '../package.json' with { type: 'json' };
@@ -44,6 +46,10 @@ type CliContext = {
   // needs (spec: `--proposal <file|->`, `-` meaning "read the proposal JSON from stdin").
   readStdin: () => Promise<string>;
   runner: Runner;
+  // A fresh stderr spinner for one command (`createSpinner` in `realContext()`). It draws only when
+  // stderr is a terminal a person is watching; commands still skip it themselves under `--json`,
+  // which the context cannot see because it is built before the arguments are parsed.
+  spinner: () => Spinner;
 };
 
 const readRealStdin = async (): Promise<string> => {
@@ -88,6 +94,8 @@ const realContext = (): CliContext => ({
   },
   readStdin: readRealStdin,
   runner: new SpawnRunner(),
+  spinner: () =>
+    createSpinner({ env: process.env, platform: process.platform, stream: process.stderr }),
 });
 
 export { realContext };

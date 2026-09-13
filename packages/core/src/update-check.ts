@@ -202,6 +202,7 @@ export {
   CACHE_TTL_MS,
   updateCheckDecision,
   isBehind,
+  isCi,
   loadLatestVersion,
   readUpdateCache,
   REGISTRY_LATEST_URL,

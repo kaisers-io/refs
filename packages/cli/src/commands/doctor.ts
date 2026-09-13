@@ -13,7 +13,7 @@ import {
 } from './doctor-checks-basic.ts';
 import { checkDirtyCheckouts, checkHooksGuard } from './doctor-checks-checkouts.ts';
 import { checkOrphans, loadStateSafely } from './doctor-checks-orphans.ts';
-import { cliOptsOf, emit, errorMessageOf, wrapAction } from '../output.ts';
+import { cliOptsOf, emit, errorMessageOf, withSpinner, wrapAction } from '../output.ts';
 import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
 import type { ConfigLoad } from './doctor-checks-basic.ts';
@@ -52,17 +52,38 @@ const runStepSafely = async (step: CheckStep): Promise<CheckResult | undefined> 
   }
 };
 
+// What the spinner says while each check runs, for a person watching a terminal.
+const STEP_LABELS: Readonly<Record<string, string>> = {
+  'cli-update': 'Checking for a newer refs release',
+  config: 'Checking the config',
+  'config-drift': 'Comparing registered packages with the checkouts',
+  'dirty-checkouts': 'Looking for local changes in checkouts',
+  git: 'Checking Git',
+  'hooks-guard': 'Checking the checkout protection hooks',
+  locks: 'Checking locks',
+  node: 'Checking Node.js',
+  orphans: 'Looking for orphaned checkouts',
+  skill: 'Checking the installed skill',
+  'ssh-auth': 'Checking SSH authentication',
+};
+
 /** Runs `steps` one at a time, strictly in order — never `Promise.all`, so two checks that both
  * shell out via the same injected `Runner` (e.g. `hooks-guard`'s and `dirty-checkouts`' per-checkout
  * git calls) produce a deterministic, spec-ordered call sequence instead of an interleaving that
  * would depend on each check's own internal await shape. */
-const runStepsInOrder = async (steps: readonly CheckStep[]): Promise<CheckResult[]> => {
+type Spinner = ReturnType<CliContext['spinner']>;
+
+const runStepsInOrder = async (
+  steps: readonly CheckStep[],
+  spinner: Spinner,
+): Promise<CheckResult[]> => {
   const [step, ...rest] = steps;
   if (step === undefined) {
     return [];
   }
+  spinner.update(STEP_LABELS[step.name] ?? `Running the ${step.name} check`);
   const result = await runStepSafely(step);
-  const remaining = await runStepsInOrder(rest);
+  const remaining = await runStepsInOrder(rest, spinner);
   if (result === undefined) {
     return remaining;
   }
@@ -93,11 +114,12 @@ const buildCheckSteps = (load: DoctorLoad): CheckStep[] => {
   ];
 };
 
-const runDoctor = async (ctx: CliContext): Promise<CheckResult[]> => {
+const runDoctor = async (ctx: CliContext, spinner: Spinner): Promise<CheckResult[]> => {
+  spinner.update('Reading config and state');
   const home = resolveHome(ctx.env);
   const configLoad = await loadConfigSafely(home);
   const state = await loadStateSafely(home);
-  return runStepsInOrder(buildCheckSteps({ configLoad, ctx, home, state }));
+  return runStepsInOrder(buildCheckSteps({ configLoad, ctx, home, state }), spinner);
 };
 
 const STATUS_LABEL: Record<CheckResult['status'], string> = {
@@ -121,7 +143,7 @@ const registerDoctor = (program: RefsCommand, ctx: CliContext): void => {
     .action((_localOpts, command) => {
       const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
-        const checks = await runDoctor(ctx);
+        const checks = await withSpinner(ctx, opts, (spinner) => runDoctor(ctx, spinner));
         emit(ctx, opts, doctorHuman(checks), { checks });
         // `wrapAction` only sets `process.exitCode` on a THROWN error; a check reporting `fail` is
         // not one (the envelope itself is still `ok: true`, mirroring `sync.ts`'s own per-item
