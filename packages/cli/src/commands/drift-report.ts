@@ -237,11 +237,39 @@ const issueLine = (issue: StructureIssue, key: string): string =>
 const discoveryLine = (reason: string): string =>
   `could not check for unregistered packages — ${reason}`;
 
+/** How many findings are worth printing in full before the list stops being read.
+ *
+ * Not a hypothetical limit. A repository declaring `packages/**` can legitimately have hundreds of
+ * workspace members — astro has 554, every one of them real, and pnpm agrees — so a ref tracking
+ * three of them would otherwise print 551 repair commands into one `doctor` line. The cap is on
+ * the PROSE: a report's own `packages` array is untouched, and so is every caller that reads it. */
+const MAX_LINES_PER_REF = 10;
+
+/** What the cap held back, and how to reach it.
+ *
+ * Deliberately NOT a command. The obvious candidate is `refs sync <ref> --json`, and it would be
+ * wrong: sync reports only the packages that ARRIVED in the range it fetched, so on an unchanged
+ * ref it returns nothing at all and the reader concludes the findings evaporated. `doctor` is the
+ * pass that sees everything, and its own output is what was just capped. Acting on the findings
+ * above is what reveals the rest, so that is what this says. */
+const overflowLine = (hidden: number): string =>
+  `…and ${hidden} more finding(s) — act on the ones above (register, repoint or decline) and ` +
+  'run the check again to see the rest';
+
+/** The findings, capped, with what the cap hid stated rather than silently dropped. Which ones
+ * survive is the order they came in: configured entries are classified before discovery runs, so
+ * a problem with a package the ref actually tracks is never crowded out by a list of ones it does
+ * not. */
+const cap = (lines: readonly string[]): string[] => {
+  const hidden = lines.length - MAX_LINES_PER_REF;
+  return hidden <= 0 ? [...lines] : [...lines.slice(0, MAX_LINES_PER_REF), overflowLine(hidden)];
+};
+
 const driftLines = (report: StructureReport, key: string): string[] => {
   if (report.reason !== undefined) {
     return [`could not be checked — ${report.reason}`];
   }
-  const issues = (report.packages ?? []).map((issue) => issueLine(issue, key));
+  const issues = cap((report.packages ?? []).map((issue) => issueLine(issue, key)));
   return report.discovery_incomplete === undefined
     ? issues
     : [...issues, discoveryLine(report.discovery_incomplete)];

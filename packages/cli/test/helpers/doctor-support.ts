@@ -46,6 +46,7 @@ const expectGitVersion = (runner: FakeRunner): void => {
 
 type CheckResultLike = {
   detail: string;
+  findings?: { key: string; packages: { name: string }[] }[];
   name: string;
   status: string;
 };

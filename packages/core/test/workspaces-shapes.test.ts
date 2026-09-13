@@ -53,14 +53,25 @@ describe('unsupported workspace pattern forms', () => {
     expect(classifyWorkspacePattern('!packages/b')).toStrictEqual({ kind: 'ignore' });
   });
 
-  it('ignores deeper glob patterns like ** (v1 simplification)', () => {
+  it('walks a pattern whose wildcard can match at more than one depth', () => {
     expect.hasAssertions();
-    expect(classifyWorkspacePattern('src/**/pkg')).toStrictEqual({ kind: 'ignore' });
+    // The base is everything the pattern names outright, which is where a walk has to start.
+    expect(classifyWorkspacePattern('src/**/pkg')).toStrictEqual({
+      baseDir: 'src',
+      kind: 'expand-recursive',
+      pattern: 'src/**/pkg',
+    });
   });
 
-  it('ignores a pattern above the single-wildcard budget even when it ends with `/*`', () => {
+  it('walks a pattern with two wildcard segments', () => {
     expect.hasAssertions();
-    expect(classifyWorkspacePattern('packages/*/nested/*')).toStrictEqual({ kind: 'ignore' });
+    // Two wildcards mean two unknown levels, which is the same problem `**` poses and the same
+    // answer: the walk decides where to stop, the matcher decides what counts.
+    expect(classifyWorkspacePattern('packages/*/nested/*')).toStrictEqual({
+      baseDir: 'packages',
+      kind: 'expand-recursive',
+      pattern: 'packages/*/nested/*',
+    });
   });
 
   it('expands a wildcard inside the last segment, carrying the pattern for matching', () => {

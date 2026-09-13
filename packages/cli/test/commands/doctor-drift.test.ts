@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   expectCheck,
   expectGitVersion,
+  findCheck,
   runDoctorJson,
   setupInitializedHome,
   withResetExitCode,
@@ -124,6 +125,64 @@ describe('refs doctor: config-drift under contention', () => {
           detailContains: 'another refs process is holding this ref',
           status: 'warn',
         });
+      }),
+    );
+  });
+});
+
+const CAP = 10;
+const MEMBER_COUNT = 12;
+// The fixture's own registered package, which is `missing` here, and the repository root.
+const EXTRA_FINDINGS = 2;
+
+/** A checkout declaring twelve unregistered members — more than the printed line holds. */
+const seedManyMembers = async (home: RefsHome): Promise<string> => {
+  await seedConfig(home, { [ALPHA_KEY]: refEntry('packages/a') });
+  const dest = checkoutPath(home, zRefKey.parse(ALPHA_KEY));
+  await markCheckoutPresent(dest, { hooksDir: home.hooksDir, url: ALPHA_URL });
+  writeJson(join(dest, 'package.json'), { workspaces: ['packages/*'] });
+  addPackage(dest, 'packages/a', { name: '@acme/a', version: '1.0.0' });
+  for (let index = 0; index < MEMBER_COUNT; index += 1) {
+    addPackage(dest, `packages/m${index}`, { name: `@acme/m${index}`, version: '1.0.0' });
+  }
+  return dest;
+};
+
+describe('refs doctor: more findings than the line holds', () => {
+  it('caps the prose and says how many it held back', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const setup = await setupInitializedHome(homeDir);
+        const dest = await seedManyMembers(setup.home);
+        expectCheckoutGit(setup, dest);
+
+        const envelope = await runDoctorJson(setup.ctx, setup.stdout);
+
+        expectCheck(envelope, 'config-drift', {
+          detailContains: 'more finding(s)',
+          status: 'warn',
+        });
+      }),
+    );
+  });
+
+  it('carries every finding in the JSON, uncapped', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const setup = await setupInitializedHome(homeDir);
+        const dest = await seedManyMembers(setup.home);
+        expectCheckoutGit(setup, dest);
+
+        const envelope = await runDoctorJson(setup.ctx, setup.stdout);
+
+        // A finding no command can repair is never cleared by acting on the ones printed before
+        // it, so a capped list would put it permanently out of reach.
+        const check = findCheck(envelope, 'config-drift');
+        const printed = String(check?.detail).split('; ');
+        expect(printed).toHaveLength(CAP + 1);
+        expect(check?.findings?.[0]?.packages).toHaveLength(MEMBER_COUNT + EXTRA_FINDINGS);
       }),
     );
   });

@@ -127,7 +127,10 @@ const seedManifests = async (dir: string, opts: FixtureOpts | undefined): Promis
     await seedMonorepo(
       dir,
       packageBSpec(opts),
-      opts.unsupportedPattern === true ? 'packages/**' : 'packages/*',
+      // `{a,b}` rather than `packages/**`: recursive patterns are expanded now, and brace
+      // expansion is the shape that is still refused — read as a directory literally named
+      // `{a,b}`, which is why it has to be reported rather than silently matching nothing.
+      opts.unsupportedPattern === true ? 'packages/{a,b}' : 'packages/*',
     );
   }
   if (opts?.rootOnlyWorkspace === true) {

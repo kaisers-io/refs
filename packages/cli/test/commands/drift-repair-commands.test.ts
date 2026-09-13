@@ -17,6 +17,7 @@ import { run } from '../../src/main.ts';
 // instead was editing config.toml by hand.
 
 const KEY = "github.com/acme/o'brien";
+const LAST = -1;
 const SUCCESS = 0;
 const runner = new SpawnRunner();
 
@@ -234,5 +235,61 @@ describe('a package the configuration cannot register', () => {
     const line = lineFor({ name: '@acme/ok', path: 'packages/100%', status: 'unregistered' });
 
     expect(line).not.toContain('refs edit');
+  });
+});
+
+// A repository declaring a recursive workspace pattern can legitimately have hundreds of members
+// — astro has 554, and pnpm agrees — so a ref tracking three of them would otherwise print 551
+// repair commands into one `doctor` line.
+const many = (count: number): StructureIssue[] =>
+  Array.from({ length: count }, (_unused, index) => ({
+    name: `@acme/pkg-${index}`,
+    path: `packages/pkg-${index}`,
+    status: 'unregistered' as const,
+  }));
+
+describe('a ref with more findings than anyone will read', () => {
+  it('stops printing after ten and says how many it held back', () => {
+    expect.hasAssertions();
+    const ELEVEN = 11;
+    const CAPPED = 11;
+
+    const lines = driftLines({ packages: many(ELEVEN), status: 'drift' }, KEY);
+
+    expect(lines).toHaveLength(CAPPED);
+    expect(lines.at(LAST)).toContain('…and 1 more finding(s)');
+    // No command. `refs sync <ref> --json` was the obvious one and would be wrong: sync reports
+    // only what ARRIVED in the range it fetched, so on an unchanged ref it returns nothing and
+    // the reader concludes the findings evaporated.
+    expect(lines.at(LAST)).not.toContain('refs sync');
+  });
+
+  it('prints every finding when there are few enough to read', () => {
+    expect.hasAssertions();
+    const THREE = 3;
+
+    const lines = driftLines({ packages: many(THREE), status: 'drift' }, KEY);
+
+    expect(lines).toHaveLength(THREE);
+  });
+
+  it('never lets the cap crowd out a problem with a package the ref tracks', () => {
+    expect.hasAssertions();
+    const MANY = 30;
+
+    // Configured entries are classified before discovery runs, so they arrive first — a `missing`
+    // package must not be the one that falls off the end.
+    const lines = driftLines(
+      {
+        packages: [
+          { configured_path: 'packages/gone', name: '@acme/gone', status: 'missing' },
+          ...many(MANY),
+        ],
+        status: 'drift',
+      },
+      KEY,
+    );
+
+    expect(lines[0]).toContain('@acme/gone');
   });
 });

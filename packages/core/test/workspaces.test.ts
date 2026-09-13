@@ -139,12 +139,14 @@ describe('plain repositories', () => {
 // `workspaces-containment.test.ts`, which needs the `readFile` spy this file does not.
 
 describe('glob expansion', () => {
-  it('ignores deeper glob patterns like ** (v1 simplification)', async () => {
+  it('finds a package behind a pattern that matches at an unknown depth', async () => {
     expect.hasAssertions();
     const repo = freshRepo();
     writeJson(join(repo, 'package.json'), { workspaces: ['src/**/pkg'] });
     addPackage(repo, 'src/deep/pkg', { name: '@deep/pkg', version: '1.0.0' });
-    await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([]);
+    await expect(detectWorkspacePackages(repo)).resolves.toStrictEqual([
+      { name: '@deep/pkg', path: 'src/deep/pkg' },
+    ]);
   });
 });
 

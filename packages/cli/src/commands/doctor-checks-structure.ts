@@ -1,8 +1,9 @@
 import type { Config, RefsHome } from '@kaisers-io/refs-core';
 import { RefsError, withLock } from '@kaisers-io/refs-core';
+// eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
+import type { StructureIssue, StructureReport } from './drift-report.ts';
 import type { CheckResult } from './doctor-types.ts';
 import type { ExistingCheckout } from './doctor-checks-checkouts.ts';
-import type { StructureReport } from './drift-report.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { driftLines } from './drift-report.ts';
 import { existingCheckouts } from './doctor-checks-checkouts.ts';
@@ -70,7 +71,7 @@ const declinedNote = (declined: number): string =>
   declined === 0 ? '' : ` (${declined} declined package(s) not reported)`;
 
 const buildResult = (found: ProbeFindings, checkoutCount: number): CheckResult => {
-  const { declined, lines } = found;
+  const { declined, findings, lines } = found;
   const [first] = lines;
   if (first === undefined) {
     return {
@@ -83,8 +84,12 @@ const buildResult = (found: ProbeFindings, checkoutCount: number): CheckResult =
   // upstream repository, which is a thing to fix, not a thing that stops working — the same
   // reading `orphans` applies to its own findings. A `warn` also keeps `doctor`'s exit code at 0,
   // so drift never breaks a script that runs `refs doctor` as a gate.
+  // `findings` is UNCAPPED where `detail` is not. A finding no command can repair is never
+  // cleared by acting on the ones printed before it, so a capped list would put it permanently
+  // out of reach of the one caller that wants the list rather than the message.
   return {
-    detail: lines.join(SEPARATOR) + declinedNote(declined),
+    detail: `${lines.join(SEPARATOR)}${declinedNote(declined)}`,
+    findings,
     name: CHECK_NAME,
     status: 'warn',
   };
@@ -98,7 +103,8 @@ const buildResult = (found: ProbeFindings, checkoutCount: number): CheckResult =
  *
  * Recursive rather than a loop, mirroring `doctor.ts#runStepsInOrder`: every await stays a plain
  * sequential step, and async recursion does not grow the stack. */
-type ProbeFindings = { declined: number; lines: string[] };
+type RefFindings = { key: string; packages: StructureIssue[] };
+type ProbeFindings = { declined: number; findings: RefFindings[]; lines: string[] };
 
 const probeInOrder = async (
   home: RefsHome,
@@ -107,12 +113,17 @@ const probeInOrder = async (
 ): Promise<ProbeFindings> => {
   const [item, ...rest] = checkouts;
   if (item === undefined) {
-    return { declined: 0, lines: [] };
+    return { declined: 0, findings: [], lines: [] };
   }
   const report = await probeUnderLock(home, config, item);
   const remaining = await probeInOrder(home, config, rest);
+  const packages = report.packages ?? [];
   return {
     declined: (report.declined ?? []).length + remaining.declined,
+    findings:
+      packages.length === 0
+        ? remaining.findings
+        : [{ key: item.key, packages }, ...remaining.findings],
     lines: [
       ...driftLines(report, item.key).map((line) => `${item.key}: ${line}`),
       ...remaining.lines,
