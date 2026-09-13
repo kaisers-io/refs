@@ -1,0 +1,46 @@
+schema_version: '1.1'
+name: drift-repairs
+description: >-
+  After a sync, one registered package is missing and another relocated. They need different
+  repairs: unregistering a package that merely moved loses it. Report-only, so the grade is the
+  diagnosis and the commands, not their execution.
+plugins: ['../../skills/refs']
+runs: 3
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 30
+  timeout_seconds: 600
+  append_system_prompt: >-
+    Only your last message is read. Finish any background work before you write it, and make it
+    the complete answer.
+  allowed_tools: [Bash, Read, Glob, Grep]
+  prompt: >-
+    /refs Sync my refs. Explain any drift and give me the exact repair commands. Do not apply
+    repairs or change the configuration.
+graders:
+  # Compact JSON in the transcript is refs' own output, not a mention in the docs.
+  - name: synced
+    type: regex
+    pattern: '\\"structure\\":\{'
+    target: trace
+  # A repair counts only in a form refs accepts: the ref (key or suffix), --package, and for the
+  # move the `path` field as a positional pair. `--path=` or a missing ref exits 2.
+  - name: removal-for-the-missing-package
+    type: regex
+    pattern: 'refs edit(?=[^\n]*\s''?(?:local/fixtures/)?toolkit''?(?:\s|$|`))(?=[^\n]*--package[= ]''?@toolkit/slugify''?(?:\s|$|`))(?=[^\n]*\s--remove(?:\s|$|`))'
+  - name: path-edit-for-the-relocated-package
+    type: regex
+    pattern: 'refs edit(?=[^\n]*\s''?(?:local/fixtures/)?toolkit''?(?:\s|$|`))(?=[^\n]*--package[= ]''?@toolkit/retry''?(?:\s|$|`))(?=[^\n]*\s''?path''?\s+''?packages/retry-policy''?(?:\s|$|`))'
+  - name: relocated-package-not-removed
+    type: regex
+    pattern: 'refs edit(?=[^\n]*@toolkit/retry)(?=[^\n]*--remove)'
+    match: not_contains
+  - name: missing-package-still-registered
+    type: regex
+    pattern: '\."@toolkit/slugify"\]\ndescription = "[^"]*"\npath = "packages/slugify"\n'
+    target: { source: file, path: .refs-home/refs/config.toml }
+  - name: relocated-package-path-unchanged
+    type: regex
+    pattern: '\."@toolkit/retry"\]\ndescription = "[^"]*"\npath = "packages/retry"\n'
+    target: { source: file, path: .refs-home/refs/config.toml }
