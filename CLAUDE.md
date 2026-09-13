@@ -33,7 +33,9 @@ Why this is a rule: a feature once shipped with 988 green tests, including end-t
 ## Tests
 
 - A test that pins a fix must FAIL when the fix is reverted. Check it: revert, run, restore.
-  A test that passes either way pins nothing.
+  A test that passes either way pins nothing. Two ways tests here have survived the revert: the
+  effect only showed under budget pressure the test never applied, and a lone ambiguous candidate
+  fell out of the grouping anyway. Give the test the shape that makes the rule matter.
 - That check proves the TESTS do not distinguish a change — never that nothing does. It is evidence
   for writing a test, not for deleting code. Logic removed on that basis here turned out to be
   load-bearing on a shape no test covered.
@@ -70,6 +72,12 @@ reach. Every run also costs money, so running it on each push is not an option.
   Check it against a wrong artifact, a deliberately wrong run, or a kept transcript.
 - **Never add the suite to a workflow**, and do not start full runs casually.
 
+## Claims about other tools
+
+Check what a third-party tool, file format or API does against its current documentation, or run
+it, before building on it. Memory and issue text have been wrong here: a planned eval suite
+assumed grader types the tool does not have.
+
 ## Review findings
 
 Verify every finding against the code before acting on it, and reproduce it before fixing it.
@@ -88,6 +96,11 @@ surface has no natural end. The stopping rule is the DIRECTION a divergence errs
 
 Known divergences of the tolerated kind are listed in that file's header. A review finding in that
 direction belongs on the list, not in a fix.
+
+Ground truth for workspace membership comes from the resolvers themselves: `pnpm ls -r --json` and
+`@npmcli/map-workspaces` on a fresh clone. Neither refs nor a fixture counts. Before touching how
+symlinked workspace directories are handled, read #126: it records the counterexamples that ruled
+out the obvious fix.
 
 ## Design constraints
 
@@ -113,6 +126,15 @@ oxlint enforces these, and they are cheaper to design for than to hit:
 
 Run `pnpm fmt` before `pnpm check`. The root `CHANGELOG.md` is outside the formatter's scope:
 copy it to `packages/cli/`, run `pnpm fmt`, copy it back.
+
+## Known traps
+
+- **`npx skills add` run from the repository root** replaces the tracked `.agents/skills/refs`
+  symlink with a real directory and writes `skills-lock.json`. Run it from a neutral directory.
+- **A glob inside a `/** */` doc comment ends the comment early**, because `*/` closes it. Use line
+  comments, or describe the pattern without spelling it out.
+- **A rebase can silently drop changelog entries** added on both sides. Check the `Unreleased`
+  section after every rebase.
 
 ## Commits, PRs, issues
 
