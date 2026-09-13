@@ -63,7 +63,7 @@ graders:
     pattern: '^(?=[\s\S]*toolkit-root)(?=[\s\S]*packages/slugify)(?=[\s\S]*packages/retry)'
   - name: shows-root-path-and-description
     type: regex
-    pattern: '^(?=[^\n]*toolkit-root)[^\n]*[\s`(|''"]\.[\s`)|''"][^\n]*[a-z]{4,}'
+    pattern: '^(?=[^\n]*toolkit-root)[^\n]*[\s`(|''"]\.[\s`)|''"][^\n]*[a-z]{4,}|"toolkit-root"\s*:\s*\{(?=[^}]*"path"\s*:\s*"\.")(?=[^}]*"description"\s*:\s*"[^"\s])'
     flags: im
   - name: shows-url-branch-and-description
     type: regex
