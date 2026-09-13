@@ -113,8 +113,9 @@ unregistered package never turns it into `warn`. The answer is the entries under
 but only when neither of the first two points below applies. Silence is not evidence that refs
 looked:
 
-- **Something about that ref could not be checked.** Any `could not check` or
-  `could not be checked` in the `detail` for that ref means refs did not finish looking. Two you
+- **Something about that ref could not be checked.** A `config-drift` `status` of `fail`
+  (`check crashed: …`), or any `could not check` or `could not be checked` in the `detail` for that
+  ref, means refs did not finish looking. Two you
   will meet: `could not check for unregistered packages — <path>: <reason>` means discovery stopped at
   `<path>`. Say so and name `<path>`, because fixing it is what lets refs answer.
   `could not be checked — another refs process is holding this ref` means the ref was busy, so run
@@ -125,9 +126,11 @@ looked:
   or `packages_count` 0. For such a ref an `ok` says nothing about undeclared packages. Say that,
   and read the declaration yourself if the user wants an answer.
 - **Otherwise** the findings list every member nobody has decided about. Packages the user
-  already declined are left out of them: `doctor` counts them in its `detail`, and
-  `refs show <ref> --json` lists them under `declined_packages`. Declined is not registered, so
-  mention them too when the question is about everything unregistered.
+  already declined are left out of them, and `doctor` counts them in its `detail`. Declined is not
+  registered, so mention them too when the question is about everything unregistered.
+  `refs show <ref> --json` names them under `declined_packages`, but that is every decline ever
+  recorded, including ones for packages since removed upstream. Check a name against the current
+  declaration before you call it declared.
 
 Offer to register what you found only the way COMMANDS.md describes: show it, then wait for a yes.
 
