@@ -373,7 +373,8 @@ refs show <ref> [--packages] [--tags]
 ```
 
 `data` is the ref's config entry **minus** `packages`, plus `key`, `local_path`, `missing`,
-`packages_count`, `stale`, and `state`.
+`packages_count`, `stale`, and `state`. `packages_count` counts the packages the configuration
+registers, not the ones the repository declares. For those, see `refs doctor` in `MAINTAIN.md`.
 
 - `--packages` adds the full `packages` map (`path`, `description`, optional `tag_format`
   per package), which is one way to discover package names for
@@ -511,8 +512,8 @@ run, and wait for them to say yes:
 refs edit --package=<name> --create --path=<path> --description "<what it is>" <ref>
 ```
 
-When the answer is no, record it — otherwise the same finding returns on every run, `doctor` sits
-on `warn` for good, and the next real finding arrives in a line nobody reads:
+When the answer is no, record it. Otherwise the same finding returns on every run, and the next
+real finding arrives in a line nobody reads:
 
 ```
 refs edit --package=<name> --decline --path=<path> <ref>

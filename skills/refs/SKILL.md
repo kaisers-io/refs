@@ -127,6 +127,11 @@ contents safe — it makes them visible, which is the point.
 Read only the file the task needs. They are kept thin on purpose because the CLI, not this
 skill, does the deterministic work.
 
+- **Which packages a tracked repo declares that the config does not register** — "is anything
+  unregistered", "does the checkout declare packages I haven't added" → `refs doctor --json`, read
+  as [MAINTAIN.md](MAINTAIN.md) describes. `packages_count`, `refs show --packages` and
+  `refs list --packages` show what is _registered_, never what the repository declares. Neither
+  they nor a directory listing answer this question.
 - **A question about a dependency's source, behavior, design, or history** — "how does X
   implement Y", "why did X do Z" → [INVESTIGATE.md](INVESTIGATE.md)
 - **What changed between two versions** — "what's new in vB", "why did the upgrade break X"

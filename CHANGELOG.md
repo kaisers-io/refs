@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **The skill answers "which packages are not registered?" with `refs doctor`.** Asked whether a
+  tracked repository declares packages the configuration does not register, agents often never ran
+  doctor. They read `packages_count` from `refs show`, counted directories, and inferred an answer,
+  which turned into a confident wrong one when discovery could not finish. `SKILL.md` now routes
+  the question to `refs doctor --json`. It also says that `packages_count`, `refs show --packages`
+  and `refs list --packages` describe what is registered, not what the repository declares.
+  `MAINTAIN.md` explains how to read the answer: the `config-drift` findings regardless of its
+  status, the "could not check" case, and declined packages. The claim that an undecided package
+  keeps `config-drift` on `warn` is gone. It stopped being true in 0.15.0.
+
 ## [0.16.0] - 2026-09-13
 
 ### Added
