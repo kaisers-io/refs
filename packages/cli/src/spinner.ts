@@ -16,7 +16,7 @@ type Spinner = {
 /** The part of a `tty.WriteStream` the renderer uses, so tests can hand it a fake. */
 type SpinnerStream = {
   columns?: number;
-  hasColors?: (env: NodeJS.ProcessEnv) => boolean;
+  getColorDepth?: (env: NodeJS.ProcessEnv) => number;
   isTTY?: boolean;
   write: (chunk: string) => unknown;
 };
@@ -40,7 +40,13 @@ const LINE = { frames: ['-', '\\', '|', '/'], interval: 130 };
 // A command that finishes this fast never shows a spinner at all.
 const FIRST_FRAME_DELAY_MS = 100;
 const CLEAR_LINE = '\r\u001B[K';
-const CYAN = '\u001B[36m';
+// The green of the refs logo, #07D256, as close as the terminal can show it: exact in true colour,
+// entry 41 (#00D75F) of the 256-colour palette, plain green with 16 colours, nothing without colour.
+const LOGO_GREEN_BY_DEPTH: Readonly<Record<number, string>> = {
+  24: '\u001B[38;2;7;210;86m',
+  4: '\u001B[32m',
+  8: '\u001B[38;5;41m',
+};
 const DEFAULT_FOREGROUND = '\u001B[39m';
 const DEFAULT_COLUMNS = 80;
 // The frame, the space after it, and one spare column so the line never wraps.
@@ -79,23 +85,24 @@ const supportsUnicode = (env: NodeJS.ProcessEnv, platform: NodeJS.Platform): boo
   );
 };
 
+// Spelled out after a space, the same on every terminal.
+const ELLIPSIS = ' ...';
+
 /** `text`, made safe and fitted into `width` cells, ellipsis included. */
-const fitted = (text: string, width: number, unicode: boolean): string => {
-  const ellipsis = unicode ? '…' : '...';
+const fitted = (text: string, width: number): string => {
   const safe = text.replaceAll(NOT_PRINTABLE_ASCII, '?');
-  const room = width - ellipsis.length;
+  const room = width - ELLIPSIS.length;
   if (room <= 0) {
     return '';
   }
-  return `${safe.length > room ? safe.slice(0, room) : safe}${ellipsis}`;
+  return `${safe.length > room ? safe.slice(0, room) : safe}${ELLIPSIS}`;
 };
 
 const lineFor = (options: SpinnerOptions, frame: string, text: string): string => {
-  const unicode = supportsUnicode(options.env, options.platform);
   const width = (options.stream.columns ?? DEFAULT_COLUMNS) - RESERVED_COLUMNS;
-  const colored = options.stream.hasColors?.(options.env) === true;
-  const painted = colored ? `${CYAN}${frame}${DEFAULT_FOREGROUND}` : frame;
-  return `${CLEAR_LINE}${painted} ${fitted(text, width, unicode)}`;
+  const green = LOGO_GREEN_BY_DEPTH[options.stream.getColorDepth?.(options.env) ?? 1];
+  const painted = green === undefined ? frame : `${green}${frame}${DEFAULT_FOREGROUND}`;
+  return `${CLEAR_LINE}${painted} ${fitted(text, width)}`;
 };
 
 /** A spinner that draws on `stream`, or one that does nothing when this is not a terminal a

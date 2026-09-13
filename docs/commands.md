@@ -25,7 +25,7 @@ read one stream. In human mode, output goes to stdout, warnings go to stderr as
 `refs: warning: <text>`, and errors go to stderr as `refs: <message>`.
 
 While `refs doctor` and `refs sync` work, a terminal shows a one-line spinner on stderr saying what
-is running, for example `⠹ Checking SSH authentication…`. It is cleared before any output, so what
+is running, for example `⠹ Checking SSH authentication ...`. It is cleared before any output, so what
 the command prints does not change. It never appears with `--json`, when stderr is not a terminal,
 with `TERM=dumb`, in CI, or with `REFS_PROGRESS=0`.
 

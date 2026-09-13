@@ -7,7 +7,11 @@ import type { SpinnerStream } from '../src/spinner.ts';
 // leaves a cleared line, and a label can neither wrap the line nor move the cursor.
 
 const CLEAR_LINE = '\r\u001B[K';
-const CYAN = '\u001B[36m';
+const TRUE_COLOR = 24;
+const NO_COLOR = 1;
+const PALETTE_256 = 8;
+const BASIC_16 = 4;
+const LOGO_GREEN = '\u001B[38;2;7;210;86m';
 const BEFORE_FIRST_FRAME_MS = 99;
 const FIRST_FRAME_MS = 100;
 const DOTS_INTERVAL_MS = 80;
@@ -23,7 +27,7 @@ const terminal = (overrides: Partial<SpinnerStream> = {}): FakeTerminal => {
   const writes: string[] = [];
   const stream: SpinnerStream = {
     columns: 80,
-    hasColors: () => true,
+    getColorDepth: () => TRUE_COLOR,
     isTTY: true,
     write: (chunk) => writes.push(chunk),
     ...overrides,
@@ -65,7 +69,7 @@ describe('createSpinner: when it draws at all', () => {
 });
 
 describe('createSpinner: drawing', () => {
-  it('shows nothing for the first 100 ms, then the first dots frame in cyan with the label', () => {
+  it('shows nothing for the first 100 ms, then the first dots frame in logo green with the label', () => {
     expect.hasAssertions();
     const fake = terminal();
     const spinner = createSpinner({ env: XTERM, platform: MAC, stream: fake.stream });
@@ -73,23 +77,23 @@ describe('createSpinner: drawing', () => {
     vi.advanceTimersByTime(BEFORE_FIRST_FRAME_MS);
     expect(fake.writes).toStrictEqual([]);
     vi.advanceTimersByTime(1);
-    expect(fake.writes).toStrictEqual([`${CLEAR_LINE}${CYAN}⠋\u001B[39m Checking Git…`]);
+    expect(fake.writes).toStrictEqual([`${CLEAR_LINE}${LOGO_GREEN}⠋\u001B[39m Checking Git ...`]);
   });
 
   it('advances a frame every 80 ms and shows the latest label', () => {
     expect.hasAssertions();
-    const fake = terminal({ hasColors: () => false });
+    const fake = terminal({ getColorDepth: () => NO_COLOR });
     const spinner = createSpinner({ env: XTERM, platform: MAC, stream: fake.stream });
     spinner.update('Checking Git');
     vi.advanceTimersByTime(FIRST_FRAME_MS);
     spinner.update('Checking locks');
     vi.advanceTimersByTime(DOTS_INTERVAL_MS);
-    expect(fake.writes.at(LAST)).toBe(`${CLEAR_LINE}⠙ Checking locks…`);
+    expect(fake.writes.at(LAST)).toBe(`${CLEAR_LINE}⠙ Checking locks ...`);
   });
 
-  it('falls back to the line frames and three dots where Unicode may not render', () => {
+  it('falls back to the line frames where Unicode may not render', () => {
     expect.hasAssertions();
-    const fake = terminal({ hasColors: () => false });
+    const fake = terminal({ getColorDepth: () => NO_COLOR });
     const spinner = createSpinner({
       env: { TERM: 'linux' },
       platform: 'linux',
@@ -97,7 +101,21 @@ describe('createSpinner: drawing', () => {
     });
     spinner.update('Checking Git');
     vi.advanceTimersByTime(FIRST_FRAME_MS);
-    expect(fake.writes).toStrictEqual([`${CLEAR_LINE}- Checking Git...`]);
+    expect(fake.writes).toStrictEqual([`${CLEAR_LINE}- Checking Git ...`]);
+  });
+});
+
+describe('createSpinner: colour', () => {
+  it.each([
+    [PALETTE_256, '\u001B[38;5;41m'],
+    [BASIC_16, '\u001B[32m'],
+  ])('uses the nearest logo green a %i-bit terminal can show', (depth, code) => {
+    expect.hasAssertions();
+    const fake = terminal({ getColorDepth: () => depth });
+    const spinner = createSpinner({ env: XTERM, platform: MAC, stream: fake.stream });
+    spinner.update('Checking Git');
+    vi.advanceTimersByTime(FIRST_FRAME_MS);
+    expect(fake.writes).toStrictEqual([`${CLEAR_LINE}${code}⠋\u001B[39m Checking Git ...`]);
   });
 });
 
@@ -129,20 +147,20 @@ describe('createSpinner: stopping', () => {
 describe('fitting a label into the terminal width', () => {
   it('fits the label and its ellipsis into the width', () => {
     expect.hasAssertions();
-    expect(fitted('Syncing refs (3/8 done): github.com/vercel/next.js', NARROW, true)).toBe(
-      'Syncing refs (3/8 d…',
+    expect(fitted('Syncing refs (3/8 done): github.com/vercel/next.js', NARROW)).toBe(
+      'Syncing refs (3/ ...',
     );
-    expect(fitted('Syncing refs', NARROW, false)).toBe('Syncing refs...');
+    expect(fitted('Syncing refs', NARROW)).toBe('Syncing refs ...');
   });
 
   it('keeps a label from moving the cursor or taking two cells per character', () => {
     expect.hasAssertions();
-    expect(fitted('a\u001B[2Jb\r\nc漢', NARROW, true)).toBe('a?[2Jb??c?…');
+    expect(fitted('a\u001B[2Jb\r\nc漢', NARROW)).toBe('a?[2Jb??c? ...');
   });
 
   it('gives up on the label rather than wrapping in a very narrow terminal', () => {
     expect.hasAssertions();
-    expect(fitted('Checking Git', 1, true)).toBe('');
+    expect(fitted('Checking Git', 1)).toBe('');
   });
 });
 

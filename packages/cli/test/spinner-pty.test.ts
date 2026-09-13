@@ -101,7 +101,7 @@ describe.skipIf(process.platform === 'win32')('the spinner on a real terminal', 
       const env = await setup(SLOW_STEP_SECONDS);
       const { output } = await runInPty({ argv: ['node', BIN, 'doctor'], env });
       expect(output).toMatch(BRAILLE);
-      expect(output).toContain('Checking Git…');
+      expect(output).toContain('Checking Git ...');
       expect(afterLastClear(output)).not.toMatch(BRAILLE);
       expect(afterLastClear(output)).toContain('[OK] git:');
     },

@@ -12,8 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`refs doctor` and `refs sync` show what they are doing while they work.** Both used to print
   nothing until they were done: about 4 and 9 seconds on a home with 8 refs, long enough to look
   stuck. A terminal now gets a one-line spinner on stderr naming the running step. For `doctor`
-  that is each check (`Checking SSH authentication…`), for `sync` the progress and a ref in flight
-  (`Syncing refs (3/8 done): github.com/vercel/next.js, +2…`). The line is cleared before any
+  that is each check (`Checking SSH authentication ...`), for `sync` the progress and a ref in flight
+  (`Syncing refs (3/8 done): github.com/vercel/next.js, +2 ...`). The line is cleared before any
   output, so what the commands print, their `--json` envelopes and their exit codes are unchanged.
 
   Agents never see it. It is off under `--json` whatever the terminal is, and off when stderr is
