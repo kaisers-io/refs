@@ -93,6 +93,9 @@ jobs:
       # failure paths. These do: node's built-in runner (not vitest — that would need an install,
       # and it only collects packages/*) over throwaway fixture trees, never the real five files.
       - run: node --test scripts/versions.test.mjs
+      # The Codex eval runner's grader adapter, which needs no install either. The eval suite itself
+      # never runs in CI: it needs a personal login, and every run costs money.
+      - run: node --test scripts/skill-evals/graders.test.mjs
   bundle-determinism:
     runs-on: ubuntu-latest
     steps:
