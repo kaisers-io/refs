@@ -2,9 +2,9 @@ schema_version: '1.1'
 name: discovery-incomplete
 description: >-
   The scan for unregistered packages cannot finish because a member manifest is unreadable. The
-  answer must not turn that into "none": it either says it cannot tell or finds the unregistered
-  package itself, and either way it names the file that stopped the scan, since fixing that file
-  is what lets refs check again.
+  answer must not turn that into "none": after consulting refs doctor, which COMMANDS.md names as
+  the inventory, it either says it cannot tell or finds the unregistered package itself, and either
+  way it names the file that stopped the scan, since fixing that file is what lets refs check again.
 plugins: ['../../skills/refs']
 runs: 3
 context:
@@ -28,6 +28,12 @@ graders:
   - name: verdict-is-not-a-false-no
     type: regex
     pattern: '^\W*(CANNOT TELL|YES[\s\S]*(@toolkit/cache|packages/cache))'
+    flags: m
+  - name: no-line-says-no
+    type: regex
+    pattern: '^\W*NO\b'
+    flags: m
+    match: not_contains
   - name: names-what-stopped-the-scan
     type: regex
     pattern: 'packages/broken'
