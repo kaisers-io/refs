@@ -57,11 +57,20 @@ const MANIFEST_FILE = 'package.json';
 // walking further.
 const MAX_DEPTH = 8;
 
-/** A relative target this will inspect: `./` plus a path, with nothing that would make a naive
- * join look somewhere else. A URL query, a fragment or an absolute or protocol-ish form is
- * reported as declared and NOT probed — statting the wrong filename confidently is worse than
- * saying the shape was not interpreted. */
-const PROBEABLE = /^\.\/[^?#\\]*$/u;
+/** A relative target this will inspect: `./` plus a path, with nothing that would make a naive join
+ * look somewhere else.
+ *
+ * Export targets are relative URLs, not filesystem paths — `./package%2Ejson` names
+ * `package.json`, and statting the literal would report an absence about a file that is there.
+ * Decoding one correctly means taking on the rest of URL target semantics, including the forms
+ * Node rejects outright, so an encoded target is reported as declared and NOT probed. A query, a
+ * fragment and an absolute or protocol-ish form are the same answer for the same reason: claiming
+ * something about the wrong filename is worse than saying the shape was not interpreted.
+ *
+ * This costs a little over-caution on the legacy fields, where `%` is an ordinary character. A
+ * `not_checked` there is a shape nobody looked at, which is true; the alternative is a confident
+ * claim about a name that was never resolved. */
+const PROBEABLE = /^\.\/[^%?#\\]*$/u;
 
 const RELATIVE_PREFIX = './'.length;
 

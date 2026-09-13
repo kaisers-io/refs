@@ -123,6 +123,23 @@ describe('shapes that are not a plain target', () => {
       target: './src/*.js',
     });
   });
+});
+
+describe('targets whose shape is not interpreted', () => {
+  it('does not probe a percent-encoded target', async () => {
+    expect.hasAssertions();
+    const dir = freshPackage({ exports: { '.': './package%2Ejson' }, name: 'p' });
+
+    const { entries } = await readEntryPoints(dir);
+
+    // Export targets are relative URLs: that one names `package.json`, which exists. Statting the
+    // literal would report an absence about a file that is right there.
+    expect(entries[0]?.value).toStrictEqual({
+      kind: 'target',
+      observed: 'not_checked',
+      target: './package%2Ejson',
+    });
+  });
 
   it('does not probe a target carrying a query or fragment', async () => {
     expect.hasAssertions();
