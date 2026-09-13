@@ -2,8 +2,9 @@ schema_version: '1.1'
 name: discovery-incomplete
 description: >-
   The scan for unregistered packages cannot finish because a member manifest is unreadable. The
-  answer must not turn that into "none": either it says it cannot tell and names what stopped the
-  scan, or it finds the unregistered package itself.
+  answer must not turn that into "none": it either says it cannot tell or finds the unregistered
+  package itself, and either way it names the file that stopped the scan, since fixing that file
+  is what lets refs check again.
 plugins: ['../../skills/refs']
 runs: 3
 context:

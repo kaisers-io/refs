@@ -61,6 +61,10 @@ graders:
   - name: shows-every-package
     type: regex
     pattern: '^(?=[\s\S]*toolkit-root)(?=[\s\S]*packages/slugify)(?=[\s\S]*packages/retry)'
+  - name: shows-root-path-and-description
+    type: regex
+    pattern: '^(?=[^\n]*toolkit-root)[^\n]*[\s`(|''"]\.[\s`)|''"][^\n]*[a-z]{4,}'
+    flags: im
   - name: shows-url-branch-and-description
     type: regex
     pattern: '^(?=[\s\S]*file://)(?=[\s\S]*\bmain\b)(?=[\s\S]*Toolkit monorepo)'
