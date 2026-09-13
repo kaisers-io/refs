@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Runs the eval suite in evals/ against skills/refs, with the CLI built from this checkout.
+# Runs the eval suite in evals/ against skills/refs, with the CLI built from this checkout, under
+# Claude Code (default) or Codex (`codex` as the first argument).
 #
 # Every case drives `refs` through Bash, and Bash in an eval run is sandboxed: the child sees the
 # operator's PATH but none of the other variables refs reads. So this puts a directory of wrappers
@@ -31,6 +32,12 @@ if command -v xcrun >/dev/null; then
   for tool in git git-upload-pack git-receive-pack git-upload-archive; do
     wrap "$tool" "exec $(printf %q "$(xcrun --find "$tool")") \"\$@\""
   done
+fi
+
+# `codex` as the first argument runs the same cases under Codex instead: scripts/skill-evals-codex.mjs.
+if [[ "${1:-}" == codex ]]; then
+  shift
+  PATH="$bin:$PATH" exec node "$root/scripts/skill-evals-codex.mjs" "$@"
 fi
 
 PATH="$bin:$PATH" exec claude plugin eval "$root" "$@" \

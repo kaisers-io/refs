@@ -145,6 +145,36 @@ If the sandbox refuses to start because the Docker credential store holds symbol
 Desktop creates them), run the suite with `HOME` pointing at an empty directory and a token from
 `claude setup-token` in `CLAUDE_CODE_OAUTH_TOKEN`.
 
-To add a case, create `evals/<name>/case.yaml` and a `scaffold.sh` that sources `../lib.sh`.
+### The same cases under Codex
+
+The skill is installed into Codex too, so the same cases run there:
+
+```bash
+CODEX_HOME=~/.config/refs-eval-codex codex login   # once: a login used only by the evals
+pnpm skill:eval:codex                               # every case, gpt-5.6-terra, reasoning medium
+pnpm skill:eval:codex --case drift-repairs --runs 1 --compare evals/results/<run>/aggregate-result.json
+```
+
+Codex has no `plugin eval`, so `scripts/skill-evals-codex.mjs` runs each case with `codex exec`.
+It uses the same `case.yaml` and scaffold, and the same workspace layout. The prompt's `/refs`
+becomes `$refs`, and the skill is copied into the run's `~/.agents/skills`. The graders are
+evaluated over Codex's JSON events. A grader type the adapter does not implement stops the run
+before anything starts, so no grader is skipped quietly.
+
+Where it differs from the Claude run, on purpose:
+
+- **A separate login, in its own `CODEX_HOME`.** Your own `~/.codex` would bring its
+  configuration, `AGENTS.md` and skills into every run. Codex refreshes that login and writes it
+  back, so runs are serial rather than parallel.
+- **Workspaces go under the system temp directory.** Inside this repository, Codex would load the
+  repository's own `AGENTS.md`. The path of every run is printed and kept.
+- **`allowed_tools` and `max_turns` do not map.** Codex runs with `--sandbox workspace-write` and
+  the case's timeout. The skills and plugin list that ship with Codex itself still load.
+
+So a difference in score is a difference between the two agents with this skill. It is not a
+controlled comparison of two models.
+
+To add a case, create `evals/<name>/case.yaml` and an executable `scaffold.sh` that sources
+`../lib.sh`.
 Before you trust a grader, feed it a wrong answer and check that it fails. A grader that passes
 on an empty run pins nothing.

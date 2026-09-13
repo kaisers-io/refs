@@ -52,7 +52,9 @@ Why this is a rule: a feature once shipped with 988 green tests, including end-t
 
 `evals/` checks that agents actually follow `skills/refs/`, which the CLI's tests cannot see. It
 has already caught the skill failing: agents asked about unregistered packages skipped
-`refs doctor` and answered from `packages_count`. See `CONTRIBUTING.md` for how to run it.
+`refs doctor` and answered from `packages_count`. See `CONTRIBUTING.md` for how to run it, under
+Claude Code (`pnpm skill:eval`) and under Codex (`pnpm skill:eval:codex`). A skill change is checked
+under both, because both agents install the skill.
 
 The suite is **local only and stays out of CI**. It runs on the developer's own Claude credential,
 and in a public repository a workflow holding that credential is a workflow a pull request can

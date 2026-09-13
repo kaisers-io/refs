@@ -17,6 +17,7 @@
     "versions": "node scripts/versions.mjs",
     "skill:audit": "uvx snyk-agent-scan@0.6.0 scan --skills --ci --dangerously-run-mcp-servers --ignore-risks third_party_content_exposure skills",
     "skill:eval": "scripts/skill-evals.sh",
+    "skill:eval:codex": "scripts/skill-evals.sh codex",
     "refs": "pnpm --filter @kaisers-io/refs build && node packages/cli/bin/refs.mjs"
   },
   "devDependencies": {
@@ -29,6 +30,7 @@
     "tsdown": "0.23.0",
     "typescript": "7.0.2",
     "vite": "8.3.0",
-    "vitest": "5.0.0"
+    "vitest": "5.0.0",
+    "yaml": "2.9.1"
   }
 }
