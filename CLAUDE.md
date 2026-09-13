@@ -120,3 +120,6 @@ copy it to `packages/cli/`, run `pnpm fmt`, copy it back.
 - No AI-attribution trailers.
 - The repository is public. Issues, PRs, commits and the changelog carry no paths under `~`, no
   local config details, and no references to `_local/*` (gitignored — issues must stand alone).
+- Session handoffs, plans, design notes and prompts for the next agent session go in `_local/`,
+  never in the repository. They record how the work was done: tools, review rounds, machine
+  quirks. None of that belongs in a public artefact. The current handoff is `_local/HANDOFF.md`.
