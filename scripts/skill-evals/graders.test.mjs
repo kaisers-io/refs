@@ -10,6 +10,7 @@
 import { assertSupported, commandOf, grade } from './graders.mjs';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { strictEqual, throws } from 'node:assert/strict';
+import { collect } from './codex-run.mjs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { tmpdir } from 'node:os';
@@ -135,4 +136,21 @@ test('an unsupported grader is rejected when the case loads', () => {
     () => assertSupported('c', { name: 'files', target: 'files', type: 'regex' }),
     /not supported/u,
   );
+  for (const match of ['equals', 'count:two']) {
+    throws(
+      () => assertSupported('c', { match, name: 'm', pattern: 'x', type: 'regex' }),
+      /not supported/u,
+    );
+  }
+});
+
+test('a truncated event line is reported as a run error, not a crash', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'collect-'));
+  const complete = JSON.stringify({
+    item: { text: 'ok', type: 'agent_message' },
+    type: 'item.completed',
+  });
+  await writeFile(join(dir, 'events.jsonl'), `${complete}\n{"type":"item.comp`);
+  const run = await collect({ cwd: dir, dir }, { code: 0, timedOut: false });
+  strictEqual(run.error, '1 unreadable event line(s)');
 });

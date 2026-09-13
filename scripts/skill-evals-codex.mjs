@@ -77,7 +77,11 @@ const loadCases = async () => {
       (await exists(join(root, 'evals', name, 'case.yaml'))) ? name : '',
     ),
   );
-  return Promise.all(withCase.filter(Boolean).map((name) => loadCase(name)));
+  const names = withCase.filter(Boolean);
+  if (names.length === 0) {
+    throw new Error(`no eval case matches ${flags.case ?? 'evals/'}`);
+  }
+  return Promise.all(names.map((name) => loadCase(name)));
 };
 
 const gradeRun = async (testCase, run) => {
@@ -95,6 +99,9 @@ const gradeRun = async (testCase, run) => {
 const runCase = async (testCase, settings) => {
   const runs = [];
   const count = Number(flags.runs ?? testCase.runs ?? DEFAULT_RUNS);
+  if (!Number.isInteger(count) || count < 1) {
+    throw new Error(`runs must be a positive integer, got ${flags.runs ?? testCase.runs}`);
+  }
   for (let index = 0; index < count; index++) {
     const dir = join(settings.workdir, `${testCase.name}-${index}`);
     // eslint-disable-next-line no-await-in-loop -- serial is the point, see the header

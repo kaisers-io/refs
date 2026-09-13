@@ -9,13 +9,17 @@ const REGEX_TARGETS = new Set(['last_message', 'trace']);
 const SHELL_WRAPPER = /^\/bin\/(?:ba|z)?sh -lc (?<script>[\s\S]+)$/u;
 const QUOTED_PART = /'(?<single>[^']*)'|"(?<double>(?:[^"\\]|\\.)*)"|(?<bare>[^'"]+)/gu;
 const COUNT_MATCH = /^count:(?<count>\d+)$/u;
+const MATCH_MODES = new Set([undefined, 'contains', 'not_contains']);
 
 /** Throws when a grader uses a type or option this adapter does not implement. */
 const assertSupported = (caseName, grader) => {
   const { target, tool, type } = grader;
   const fileTarget = typeof target === 'object' && target?.source === 'file';
+  const matchOk = MATCH_MODES.has(grader.match) || COUNT_MATCH.test(grader.match);
   const regexOk =
-    type === 'regex' && (target === undefined || REGEX_TARGETS.has(target) || fileTarget);
+    type === 'regex' &&
+    matchOk &&
+    (target === undefined || REGEX_TARGETS.has(target) || fileTarget);
   if (!regexOk && !(type === 'tool_used' && tool === 'Bash')) {
     throw new Error(`${caseName}: grader "${grader.name}" is not supported by the Codex runner`);
   }

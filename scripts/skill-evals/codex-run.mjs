@@ -66,12 +66,24 @@ const codexArgs = (testCase, run, settings) => [
   testCase.execution.prompt.replace(/^\/refs\b/u, '$refs'),
 ];
 
+// A run killed mid-write can leave a truncated last line. That line is dropped and reported, and
+// the rest of the suite carries on.
+const parseEvents = (trace) => {
+  const lines = trace.split('\n').filter(Boolean);
+  const events = lines.flatMap((line) => {
+    try {
+      return [JSON.parse(line)];
+    } catch {
+      return [];
+    }
+  });
+  const unreadable = lines.length - events.length;
+  return { events, unreadable: unreadable > 0 && `${unreadable} unreadable event line(s)` };
+};
+
 const collect = async (run, outcome) => {
-  const trace = await readFile(join(run.dir, 'events.jsonl'), 'utf8');
-  const events = trace
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => JSON.parse(line));
+  const trace = await readFile(join(run.dir, 'events.jsonl'), 'utf8').catch(() => '');
+  const { events, unreadable } = parseEvents(trace);
   const items = events
     .filter((event) => event.type === 'item.completed')
     .map((event) => event.item);
@@ -85,7 +97,8 @@ const collect = async (run, outcome) => {
   const failure =
     (outcome.timedOut && 'timed out') ||
     (outcome.code !== 0 && `codex exited ${outcome.code}`) ||
-    (turnFailed && `turn failed: ${turnFailed.error?.message}`);
+    (turnFailed && `turn failed: ${turnFailed.error?.message}`) ||
+    unreadable;
   return { ...run, commands, error: failure || undefined, lastMessage, trace, usage };
 };
 
@@ -120,4 +133,4 @@ const runOnce = async (root, testCase, { dir, settings }) => {
     : { ...run, error: scaffoldError };
 };
 
-export { runOnce };
+export { collect, runOnce };
