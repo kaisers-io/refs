@@ -98,3 +98,22 @@ describe('more directories than the line holds', () => {
     expect(lines.at(LAST)).not.toContain('act on the ones above');
   });
 });
+
+describe('overflow where the groups are small', () => {
+  it('counts directories, not the lines they printed', () => {
+    expect.hasAssertions();
+    const DIRS = 6;
+    const PER_DIR = 2;
+    const CAP = 10;
+    const candidates = Array.from({ length: DIRS }, (_unused, index) =>
+      under(`top${index}`, PER_DIR),
+    ).flat();
+
+    const lines = driftLines({ discovery: candidates, status: 'ok' }, KEY);
+
+    // Six directories of two print twelve lines, so two are held back — and both belong to the
+    // same directory. Counting lines would report two directories where there is one.
+    expect(lines).toHaveLength(CAP + 1);
+    expect(lines.at(LAST)).toContain('1 more director(ies) holding 2 unregistered package(s)');
+  });
+});

@@ -229,16 +229,20 @@ const byTopLevel = (candidates: readonly StructureIssue[]): Map<string, Structur
  *
  * A group with only a couple of candidates keeps its per-package lines, commands and all: those
  * are the ones somebody may actually want to register. */
-type DiscoveryGroup = { candidates: number; line: string };
+/** One printed line, and what it stands for. `dir` is carried because a small directory prints one
+ * line per package: counting LINES as directories in the overflow then reports two of them where
+ * there is one. */
+type DiscoveryGroup = { candidates: number; dir: string; line: string };
 
-const groupOf = (found: readonly StructureIssue[], key: string): DiscoveryGroup[] => {
+const groupOf = (found: readonly StructureIssue[], key: string, top: string): DiscoveryGroup[] => {
   if (found.length < GROUP_AT) {
-    return found.map((issue) => ({ candidates: 1, line: unregisteredLine(issue, key) }));
+    return found.map((issue) => ({ candidates: 1, dir: top, line: unregisteredLine(issue, key) }));
   }
   const dir = commonDir(found.map((issue) => dirOf(issue.path ?? issue.candidates?.[0])));
   return [
     {
       candidates: found.length,
+      dir,
       line: `${dir}: ${found.length} unregistered package(s) the configuration does not have`,
     },
   ];
@@ -252,8 +256,9 @@ const groupOf = (found: readonly StructureIssue[], key: string): DiscoveryGroup[
  * can stand for any number of packages. */
 const discoveryOverflow = (groups: readonly DiscoveryGroup[]): string => {
   const packages = groups.reduce((total, group) => total + group.candidates, 0);
+  const dirs = new Set(groups.map((group) => group.dir)).size;
   return (
-    `…and ${groups.length} more director(ies) holding ${packages} unregistered package(s) — ` +
+    `…and ${dirs} more director(ies) holding ${packages} unregistered package(s) — ` +
     "'refs doctor --json' lists every candidate"
   );
 };
@@ -270,7 +275,7 @@ const discoveryOverflow = (groups: readonly DiscoveryGroup[]): string => {
 const discoveryLines = (candidates: readonly StructureIssue[], key: string): string[] => {
   const groups = [...byTopLevel(candidates)]
     .toSorted(([left], [right]) => left.localeCompare(right))
-    .flatMap(([, found]) => groupOf(found, key));
+    .flatMap(([top, found]) => groupOf(found, key, top));
   const hidden = groups.slice(MAX_LINES_PER_REF);
   return hidden.length === 0
     ? groups.map((group) => group.line)
