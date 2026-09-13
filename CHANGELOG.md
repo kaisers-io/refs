@@ -5,7 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.14.0] - 2026-09-13
+
+### Upgrading
+
+**A repository declaring a workspace pattern like `packages/**` now reports every member behind
+it.** Those patterns were refused outright, which also stood the unregistered-package pass down for
+the whole ref — so a ref that reported nothing for months may suddenly name hundreds of packages.
+They are not new; they were invisible. `refs doctor` prints the first ten and a count of the rest,
+`refs doctor --json` carries all of them, and
+`refs edit --package=<name> --decline --path=<path> <ref>` records the ones you do not want so they
+stop coming back.
 
 ### Added
 
