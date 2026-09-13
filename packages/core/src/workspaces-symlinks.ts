@@ -21,9 +21,17 @@ const NOT_A_DIRECTORY_CODES: ReadonlySet<string> = new Set(['ENOENT', 'ENOTDIR']
 // Never walked, under any pattern, so never searched for a manifest either.
 const NEVER_WALKED: ReadonlySet<string> = new Set(['.git', 'node_modules']);
 
-/** Whether this listing settles the question on its own. */
-const manifestIn = (entries: readonly { isFile: () => boolean; name: string }[]): boolean =>
-  entries.some((entry) => entry.isFile() && entry.name === MANIFEST_FILE);
+/** A manifest here, by the name and by not being a directory — `isFile()` is false for a
+ * SYMLINKED `package.json`, and the manifest probe accepts that shape, so testing for a regular
+ * file would answer "no manifest" about a package that resolves perfectly well. */
+const manifestIn = (entries: readonly Dirent[]): boolean =>
+  entries.some((entry) => entry.name === MANIFEST_FILE && !entry.isDirectory());
+
+/** A link inside the subtree being searched. Nothing below it can be ruled out without following
+ * it, and following links from inside a link is how a search stops being cheap and starts needing
+ * cycle bookkeeping of its own. Conservative answer: something might be down there. */
+const linkIn = (entries: readonly Dirent[]): boolean =>
+  entries.some((entry) => entry.isSymbolicLink() && !NEVER_WALKED.has(entry.name));
 
 /** Whether any manifest exists anywhere below `dir` — the one question that settles what a link
  * the walk cannot follow is worth saying.
@@ -50,7 +58,7 @@ const settledHere = async (
     return { answer: NOT_A_DIRECTORY_CODES.has(listed.code) };
   }
   walk.budget.entries -= listed.entries.length;
-  if (walk.budget.entries < 0 || manifestIn(listed.entries)) {
+  if (walk.budget.entries < 0 || manifestIn(listed.entries) || linkIn(listed.entries)) {
     return { answer: false };
   }
   return { entries: listed.entries };
