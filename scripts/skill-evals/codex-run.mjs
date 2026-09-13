@@ -2,13 +2,15 @@
 // throwaway HOME, a working directory inside it, and the case's scaffold run there first.
 
 import { cp, mkdir, open, readFile, writeFile } from 'node:fs/promises';
+import { execFile, spawn } from 'node:child_process';
 import { commandOf } from './graders.mjs';
 import { join } from 'node:path';
 import { once } from 'node:events';
-import { spawn } from 'node:child_process';
+import { promisify } from 'node:util';
 
 const MS_PER_SECOND = 1000;
 const DEFAULT_TIMEOUT_SECONDS = 300;
+const SCAFFOLD_TIMEOUT_MS = 120_000;
 
 // Only what a run needs. The operator's own environment stays out, as it does under Claude.
 const childEnv = (home, extra) => ({
@@ -18,14 +20,44 @@ const childEnv = (home, extra) => ({
   ...extra,
 });
 
-const execWithTimeout = async (args, options, timeoutMs) => {
-  const child = spawn('codex', args, { ...options, detached: true });
+// Codex starts the agent's commands in process groups of their own, so killing Codex's group
+// leaves them running. On timeout, every descendant is found through `ps` and killed with it.
+const descendantsOf = async (root) => {
+  const { stdout } = await promisify(execFile)('ps', ['-A', '-o', 'pid=,ppid=']);
+  const children = Map.groupBy(
+    stdout
+      .trim()
+      .split('\n')
+      .map((line) => line.trim().split(/\s+/u).map(Number)),
+    ([, parent]) => parent,
+  );
+  const found = [];
+  for (let queue = [root]; queue.length > 0;) {
+    const next = (children.get(queue.shift()) ?? []).map(([pid]) => pid);
+    found.push(...next);
+    queue = [...queue, ...next];
+  }
+  return found;
+};
+
+const killTree = async (pid) => {
+  for (const target of [pid, ...(await descendantsOf(pid))]) {
+    try {
+      process.kill(target, 'SIGKILL');
+    } catch {
+      // Already gone.
+    }
+  }
+};
+
+const execWithTimeout = async (command, args, options) => {
+  const child = spawn(command, args, options);
+  child.stderr?.on('data', (chunk) => options.stderr.push(chunk));
   let timedOut = false;
-  const timer = setTimeout(() => {
+  const timer = setTimeout(async () => {
     timedOut = true;
-    // Kill the whole process group, so no command the agent started outlives the run.
-    process.kill(-child.pid, 'SIGKILL');
-  }, timeoutMs);
+    await killTree(child.pid);
+  }, options.timeoutMs);
   const [code] = await once(child, 'exit');
   clearTimeout(timer);
   return { code, timedOut };
@@ -33,13 +65,19 @@ const execWithTimeout = async (args, options, timeoutMs) => {
 
 const scaffold = async (root, testCase, run) => {
   const script = join(root, 'evals', testCase.name, testCase.context.scaffold_script);
-  const child = spawn('bash', [script], { cwd: run.cwd, env: childEnv(run.home) });
   const stderr = [];
-  child.stderr.on('data', (chunk) => stderr.push(chunk));
-  const [code] = await once(child, 'exit');
+  const { code, timedOut } = await execWithTimeout('bash', [script], {
+    cwd: run.cwd,
+    env: childEnv(run.home),
+    // Scaffold output is not read, so it goes nowhere rather than into a pipe that can fill up.
+    stderr,
+    stdio: ['ignore', 'ignore', 'pipe'],
+    timeoutMs: SCAFFOLD_TIMEOUT_MS,
+  });
+  const detail = timedOut ? 'timed out' : `exit ${code}`;
   return code === 0
     ? undefined
-    : `scaffold failed (exit ${code}): ${Buffer.concat(stderr).toString().trim()}`;
+    : `scaffold failed (${detail}): ${Buffer.concat(stderr).toString().trim()}`;
 };
 
 const codexArgs = (testCase, run, settings) => [
@@ -105,16 +143,12 @@ const collect = async (run, outcome) => {
 const runAgent = async (testCase, run, settings) => {
   const stdout = await open(join(run.dir, 'events.jsonl'), 'w');
   const stderr = await open(join(run.dir, 'stderr.txt'), 'w');
-  const timeoutMs = (testCase.execution.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * MS_PER_SECOND;
-  const outcome = await execWithTimeout(
-    codexArgs(testCase, run, settings),
-    {
-      cwd: run.cwd,
-      env: childEnv(run.home, { CODEX_HOME: settings.codexHome }),
-      stdio: ['ignore', stdout.fd, stderr.fd],
-    },
-    timeoutMs,
-  );
+  const outcome = await execWithTimeout('codex', codexArgs(testCase, run, settings), {
+    cwd: run.cwd,
+    env: childEnv(run.home, { CODEX_HOME: settings.codexHome }),
+    stdio: ['ignore', stdout.fd, stderr.fd],
+    timeoutMs: (testCase.execution.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * MS_PER_SECOND,
+  });
   await Promise.all([stdout.close(), stderr.close()]);
   await writeFile(join(run.dir, 'outcome.json'), JSON.stringify(outcome));
   return collect(run, outcome);
@@ -133,4 +167,4 @@ const runOnce = async (root, testCase, { dir, settings }) => {
     : { ...run, error: scaffoldError };
 };
 
-export { collect, runOnce };
+export { collect, execWithTimeout, runOnce, scaffold };

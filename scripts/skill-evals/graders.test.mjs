@@ -8,9 +8,9 @@
 // compact JSON output is told apart from the skill docs that describe it.
 
 import { assertSupported, commandOf, grade } from './graders.mjs';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { collect, execWithTimeout, scaffold } from './codex-run.mjs';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { strictEqual, throws } from 'node:assert/strict';
-import { collect } from './codex-run.mjs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { tmpdir } from 'node:os';
@@ -153,4 +153,33 @@ test('a truncated event line is reported as a run error, not a crash', async () 
   await writeFile(join(dir, 'events.jsonl'), `${complete}\n{"type":"item.comp`);
   const run = await collect({ cwd: dir, dir }, { code: 0, timedOut: false });
   strictEqual(run.error, '1 unreadable event line(s)');
+});
+
+const isAlive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+test('a timeout kills commands running in a process group of their own', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'tree-'));
+  const pidFile = join(dir, 'pid');
+  // `set -m` gives the background sleep its own process group, as Codex does for its commands.
+  const script = `set -m; sleep 30 & echo $! > ${pidFile}; wait`;
+  const outcome = await execWithTimeout('bash', ['-c', script], { stderr: [], timeoutMs: 500 });
+  const grandchild = Number(await readFile(pidFile, 'utf8'));
+  strictEqual(outcome.timedOut, true);
+  strictEqual(isAlive(grandchild), false);
+});
+
+test('a scaffold that prints a lot does not block the suite', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'scaffold-'));
+  await mkdir(join(root, 'evals', 'noisy'), { recursive: true });
+  await writeFile(join(root, 'evals', 'noisy', 'scaffold.sh'), 'head -c 2000000 /dev/zero\n');
+  const run = { cwd: root, home: root };
+  const testCase = { context: { scaffold_script: 'scaffold.sh' }, name: 'noisy' };
+  strictEqual(await scaffold(root, testCase, run), undefined);
 });
