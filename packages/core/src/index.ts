@@ -17,6 +17,7 @@ export * from './npm-resolver.ts';
 export * from './package-identity.ts';
 export * from './proc/fake-runner.ts';
 export * from './proc/runner.ts';
+export * from './entry-points.ts';
 export * from './schemas/config.ts';
 export * from './schemas/primitives.ts';
 export * from './schemas/proposal.ts';

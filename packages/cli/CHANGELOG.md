@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`refs resolve` reports the package's declared entry points, and what is actually at each
+  target.** The agent's next step after a resolve was always the same: open `package.json` and work
+  out which file to read. The manifest's own answer is frequently wrong in a source checkout,
+  because a source checkout is not built — measured on repositories refs tracks, `zod` declares
+  `types`/`import`/`require` targets that do not exist there, and `astro` declares `./dist/index.js`,
+  which does not either. The only present target in zod's case sits behind a non-standard
+  `@zod/source` condition, visible only because every condition is reported rather than the ones a
+  resolver knows.
+
+  `package.entry_points` is the declaration with an observation at each target (`file`,
+  `directory`, `absent`, `not_checked`, `unverifiable`) — **not** a resolution. Which condition is
+  right depends on who is importing, and refs is not that consumer; that is also why no resolver
+  library is involved, since `resolve.exports` and `resolve-pkg-maps` both need the caller to supply
+  the conditions. The structure is preserved because it carries meaning: conditions are ordered,
+  `alternatives` is not a list of equals (Node takes the first string; an absent file does not fall
+  through), and an explicit `null` rules a subpath out. Legacy `main`/`module`/`types`/`typings` are
+  reported beside `exports`, each naming its field, which is not a claim about precedence.
+
+  An absent target describes this checkout and says nothing about the package's health — SKILL.md
+  says so in the same words, because an agent reporting "this dependency is broken" over an unbuilt
+  `dist/` is the failure this field could most easily cause. Patterns are reported as declared and
+  not probed: statting `./src/*.js` literally would report an absence about a filename nobody
+  declared.
+
+  Payload cost, measured on real checkouts: 267 bytes for `next`, 5.3 KB for `zod` (14 entries),
+  8.7 KB for `astro` (63 entries).
+
 ## [0.15.0] - 2026-09-13
 
 ### Upgrading
