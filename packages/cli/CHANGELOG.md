@@ -9,6 +9,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A workspace pattern that matches at more than one depth is expanded.** `packages/**/*` — the
+  most common pnpm spelling — was reported as `unsupported_pattern`, which also made the whole scan
+  unreliable and stood the unregistered-package pass down for that ref. A repository declaring it
+  got no answer at all, permanently.
+
+  Such a pattern is now walked from the deepest directory it names outright. Pruning is the
+  MATCHER's decision: minimatch answers "could anything below this directory still match?", so a
+  subtree no pattern can reach is never entered, a hidden directory is skipped where a wildcard
+  would not select it and walked where a pattern names it, and a package boundary does not stop
+  the walk — nested packages are ordinary, and both resolvers glob manifest paths rather than
+  stopping at one. Selection matches the manifest path for the same reason: `packages/core/**`
+  selects `packages/core` itself, because `**` matches zero segments before the manifest.
+  `node_modules` and `.git` are never walked under any pattern — a recursive pattern matches an
+  installed dependency's path as a string, and reporting those would be reporting a repository's
+  dependencies as its own packages.
+
+  The whole scan runs under one budget shared by every pattern — 32 levels deep, 20 000
+  directories, 200 000 entries — because patterns overlap, and a per-pattern budget would charge
+  the same tree once per declaration. Reaching a limit is not itself a failure; having to leave a
+  subtree that could still match unwalked is, and that is the only condition `scan_budget_exhausted`
+  is reported under. A directory the pattern names but the repository does not have stays silent,
+  which is ordinary: astro declares `smoke/**/*` and a fresh clone has no `smoke/`.
+
+  Measured against the resolvers themselves, on fresh clones: `withastro/astro` now detects 554
+  packages where pnpm's own workspace listing reports 554 and refs previously reported 37;
+  `vercel/next.js` detects 38 where pnpm reports 38; `payloadcms/payload` 53 where pnpm reports 53.
+  Pattern semantics were checked against `@npmcli/map-workspaces` over six pattern shapes.
+
+- **A ref with hundreds of findings no longer prints all of them.** The same repositories that
+  motivated the expansion can legitimately have hundreds of workspace members, so a ref tracking
+  three of them would print 551 repair commands into one `doctor` line. Ten are printed, followed
+  by a count of what was held back — act on those and run the check again for the next batch.
+  `refs doctor --json` carries every finding on the check itself, uncapped: a finding no command
+  can repair is never cleared by acting on the ones printed before it, so a capped list would put
+  it permanently out of reach.
+
 - **A drift finding you have decided against can be recorded, so it stops coming back.**
   `refs doctor` reports every workspace member a checkout declares that the configuration does not
   have. There was no way to say "I looked, and no": the finding returned on every run forever, so
