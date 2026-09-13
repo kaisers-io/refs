@@ -213,3 +213,36 @@ describe('a target that leaves the package', () => {
     });
   });
 });
+
+describe('declarations this does not interpret', () => {
+  it('leaves an absolute legacy target where it was written', async () => {
+    expect.hasAssertions();
+    const dir = freshPackage({ main: '/package.json', name: 'p' });
+
+    const { entries } = await readEntryPoints(dir);
+
+    // Prefixing it would produce `.//package.json`, which resolves to the package's own manifest
+    // and would be reported as present: a declared location silently changed into another one,
+    // with evidence attached.
+    expect(entries[0]?.value).toStrictEqual({
+      kind: 'target',
+      observed: 'not_checked',
+      target: '/package.json',
+    });
+  });
+
+  it('keeps an exports value it cannot read, rather than reporting none', async () => {
+    expect.hasAssertions();
+    const UNSUPPORTED = 42;
+    const dir = freshPackage({ exports: UNSUPPORTED, name: 'p' });
+
+    const report = await readEntryPoints(dir);
+
+    // Dropping it would assert this package declares no entry points, which is a different fact —
+    // and the same value nested under `"."` already reports itself as unsupported.
+    expect(report.entries[0]?.value).toStrictEqual({
+      kind: 'unsupported',
+      reason: 'unexpected number',
+    });
+  });
+});

@@ -156,18 +156,32 @@ const legacyEntries = (
   );
 };
 
-/** `main` is written without the `./` that `exports` requires — `dist/index.js` and `./dist/index.js`
- * name the same file — so it is brought to the one form the target probe understands. */
+/** `main` is written without the `./` that `exports` requires — `dist/index.js` and
+ * `./dist/index.js` name the same file — so a bare relative path is brought to the one form the
+ * probe understands.
+ *
+ * An ABSOLUTE one is left exactly as written. Prefixing it produces `.//package.json`, which the
+ * probe then resolves to the package's own manifest and reports as present: a declared location
+ * changed into a different one, with evidence attached. Left alone it fails the probe's shape test
+ * and is reported as declared but not inspected, which is what it is. */
 const normalizeLegacy = (target: string): string =>
-  target.startsWith('./') || target.startsWith('../') ? target : `./${target}`;
+  target.startsWith('/') || target.startsWith('./') || target.startsWith('../')
+    ? target
+    : `./${target}`;
 
 const exportEntries = async (packageDir: string, exported: unknown): Promise<EntryPoint[]> => {
   if (typeof exported === 'string' || Array.isArray(exported)) {
     // The sugar form: `exports` is the `.` target itself.
     return [{ from: 'exports', subpath: '.', value: await nodeFor(packageDir, exported, 0) }];
   }
-  if (typeof exported !== 'object' || exported === null) {
+  if (exported === undefined) {
     return [];
+  }
+  if (typeof exported !== 'object' || exported === null) {
+    // A declaration this does not interpret is still a declaration. Dropping it would turn
+    // `"exports": 42` into the assertion that this package declares no entry points — the same
+    // shape nested under `"."` already reports itself as unsupported.
+    return [{ from: 'exports', subpath: '.', value: await nodeFor(packageDir, exported, 0) }];
   }
   const keys = Object.keys(exported);
   // A map whose keys are conditions rather than subpaths is also the `.` target. The distinction
