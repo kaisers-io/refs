@@ -1,4 +1,6 @@
 import type { CliContext } from './context.ts';
+import { NO_SPINNER } from './spinner.ts';
+import type { Spinner } from './spinner.ts';
 import { renderError } from '@kaisers-io/refs-core';
 
 // The two shapes every command reply takes on stdout in `--json` mode. Kept as types (not
@@ -106,6 +108,22 @@ const progress = (ctx: CliContext, message: string): void => {
   ctx.errLine(`refs: ${message}`);
 };
 
+// Runs a command body with a spinner for a person at a terminal, and stops it however the body
+// ends: before the command prints its result, or before `wrapAction` prints the error. `--json`
+// gets no spinner at all, whatever stderr is.
+const withSpinner = async <TResult>(
+  ctx: CliContext,
+  opts: { json: boolean },
+  work: (spinner: Spinner) => Promise<TResult>,
+): Promise<TResult> => {
+  const spinner = opts.json ? NO_SPINNER : ctx.spinner();
+  try {
+    return await work(spinner);
+  } finally {
+    spinner.stop();
+  }
+};
+
 // Shared action wrapper for every `registerX` command: run the pure action body, and on any
 // thrown error (a `RefsError` or otherwise) render it, emit the envelope, and set the process
 // exit code — exactly once, right here. Command actions themselves never touch `process` or
@@ -122,4 +140,13 @@ const wrapAction =
     }
   };
 
-export { cliOptsOf, emit, emitError, errorMessageOf, progress, warningsFor, wrapAction };
+export {
+  cliOptsOf,
+  emit,
+  emitError,
+  errorMessageOf,
+  progress,
+  warningsFor,
+  withSpinner,
+  wrapAction,
+};

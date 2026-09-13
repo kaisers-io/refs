@@ -2,9 +2,11 @@ import type { RefSyncContext, RefSyncOutcome, SyncStatus } from './sync-checkout
 import { applySyncSuccess, recordFailure } from './sync-state.ts';
 import { createSemaphore, runGated } from './sync-semaphore.ts';
 import type { CliContext } from '../context.ts';
+import type { Spinner } from '../spinner.ts';
 import type { StructureReport } from './drift-report.ts';
 import { errorMessageOf } from '../output.ts';
 import { syncCheckout } from './sync-checkout.ts';
+import { syncTracker } from './sync-progress.ts';
 
 // Batch orchestration for `refs sync`: wires one ref's start-to-finish outcome (git ops, then
 // persistence, never throwing) and the capped-concurrency batch over all targets. Per-ref git ops
@@ -112,10 +114,22 @@ const toResultItem = (
 const syncAll = async (
   ctx: CliContext,
   targets: readonly RefSyncContext[],
+  spinner?: Spinner,
 ): Promise<SyncResultItem[]> => {
   const sem = createSemaphore(SYNC_CONCURRENCY_CAP);
+  const tracker = spinner === undefined ? undefined : syncTracker(spinner, targets.length);
   const settled = await Promise.allSettled(
-    targets.map((rsc) => runGated(sem, () => syncOneKey(ctx, rsc))),
+    targets.map((rsc) =>
+      runGated(sem, async () => {
+        // Inside the gate: a ref waiting for a slot has not started.
+        tracker?.started();
+        try {
+          return await syncOneKey(ctx, rsc);
+        } finally {
+          tracker?.finished();
+        }
+      }),
+    ),
   );
   return settled.map((outcome, index) => {
     const target = targets[index];

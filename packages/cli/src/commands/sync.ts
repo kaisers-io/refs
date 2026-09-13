@@ -15,7 +15,7 @@ import {
   zRefKey,
 } from '@kaisers-io/refs-core';
 import type { SyncItemStatus, SyncResultItem } from './sync-core.ts';
-import { cliOptsOf, emit, wrapAction } from '../output.ts';
+import { cliOptsOf, emit, withSpinner, wrapAction } from '../output.ts';
 import type { CliContext } from '../context.ts';
 import type { RefSyncContext } from './sync-checkout.ts';
 import type { RefsCommand } from './registry.ts';
@@ -123,17 +123,54 @@ const scopeTargets = async (
   return filterStale(home, targets, state);
 };
 
-const runSync = async (ctx: CliContext, opts: SyncOptions): Promise<SyncOutcome> => {
+type Spinner = ReturnType<CliContext['spinner']>;
+
+type SyncRun = {
+  config: Config;
+  ctx: CliContext;
+  home: RefsHome;
+  scoped: RefSyncContext[];
+  spinner: Spinner;
+};
+
+/** The refs and the update check side by side. Once every ref is done, a check still waiting on the
+ * registry gets the spinner line instead of a finished count that looks stuck. */
+const syncWithUpdateCheck = (run: SyncRun): Promise<[SyncResultItem[], string[]]> => {
+  const { config, ctx, home, scoped, spinner } = run;
+  if (scoped.length === 0) {
+    return Promise.resolve([[], []]);
+  }
+  const check = { pending: true };
+  const checking = async (): Promise<string[]> => {
+    try {
+      return await updateWarnings(ctx, home, config);
+    } finally {
+      check.pending = false;
+    }
+  };
+  const syncing = async (): Promise<SyncResultItem[]> => {
+    const results = await syncAll(ctx, scoped, spinner);
+    if (check.pending) {
+      spinner.update('Checking for a newer refs release');
+    }
+    return results;
+  };
+  return Promise.all([syncing(), checking()]);
+};
+
+const runSync = async (
+  ctx: CliContext,
+  opts: SyncOptions,
+  spinner: Spinner,
+): Promise<SyncOutcome> => {
+  spinner.update('Reading the config');
   const home = resolveHome(ctx.env);
   const config = await readConfig(home);
   const targets = resolveTargets(home, config, opts.refs);
   const scoped = await scopeTargets(home, targets, opts.staleOnly);
   // Concurrent with the refs themselves — a sync that had nothing to do (everything inside its
   // `sync_ttl`) stays the no-op it is, and never touches the network on its own account.
-  const [results, warnings] = await Promise.all([
-    syncAll(ctx, scoped),
-    scoped.length > 0 ? updateWarnings(ctx, home, config) : Promise.resolve([]),
-  ]);
+  const [results, warnings] = await syncWithUpdateCheck({ config, ctx, home, scoped, spinner });
   const failedCount = results.filter((item) => item.status === 'failed').length;
   return { failedCount, results, warnings };
 };
@@ -227,8 +264,10 @@ const registerSync = (program: RefsCommand, ctx: CliContext): void => {
       return wrapAction(ctx, opts, async () => {
         // `runSync` is this command's pure async body (mirrors runInit/runAdd/runList/runShow) —
         // the rule fires on the `Sync` name suffix alone, not on any synchronous fs call.
-        // eslint-disable-next-line node/no-sync -- runSync is an async command body; the rule matches the name suffix only
-        const outcome = await runSync(ctx, buildSyncOptions(refs, localOpts));
+        const outcome = await withSpinner(ctx, opts, (spinner) =>
+          // eslint-disable-next-line node/no-sync -- runSync is an async command body; the rule matches the name suffix only
+          runSync(ctx, buildSyncOptions(refs, localOpts), spinner),
+        );
         emit(ctx, opts, syncHuman(outcome.results), { results: outcome.results }, outcome.warnings);
         // `wrapAction` only sets `process.exitCode` on a THROWN error; a batch with per-ref
         // failures is not one (the envelope itself is still `ok: true`), so this is the one place

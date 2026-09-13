@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`refs doctor` and `refs sync` show what they are doing while they work.** Both used to print
+  nothing until they were done: about 4 and 9 seconds on a home with 8 refs, long enough to look
+  stuck. A terminal now gets a one-line spinner on stderr naming the running step. For `doctor`
+  that is each check (`Checking SSH authentication`), for `sync` how many refs are done
+  (`Syncing refs: 3/8 done`). The line is cleared before any
+  output, so what the commands print, their `--json` envelopes and their exit codes are unchanged.
+
+  Agents never see it. It is off under `--json` whatever the terminal is, and off when stderr is
+  not a terminal, with `TERM=dumb`, in CI, and with the new `REFS_PROGRESS=0`. It adds no
+  dependency. A spinner library would add 6 to 46 KB to the bundle, and the small ones install
+  SIGINT handlers that call `process.exit`, cutting across how refs stops its git processes on
+  Ctrl-C. The cursor stays visible, so an interrupted run cannot leave it hidden.
+
 ## [0.16.1] - 2026-09-13
 
 ### Changed
