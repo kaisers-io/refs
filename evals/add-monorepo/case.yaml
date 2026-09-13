@@ -20,11 +20,12 @@ execution:
     "Toolkit monorepo." Save the proposal JSON as proposal.json before
     you ask me to approve anything.
 graders:
-  # refs prints compact JSON and the skill's docs are pretty-printed, so a compact key in the
-  # transcript is refs' own output: proof the command ran, however it was spelled.
+  # refs prints compact JSON and the skill's docs are pretty-printed, so a compact key-value pair in
+  # the transcript is refs' own output: proof the command ran, however it was spelled. Match the
+  # value too, not just the key: the docs' `"key": value` also starts with `"key":`.
   - name: ran-a-dry-run
     type: regex
-    pattern: '\\"tag_format_candidate\\":'
+    pattern: '\\"tag_format_candidate\\":(?:\\"|null)'
     target: trace
   - name: never-finalized
     type: regex
