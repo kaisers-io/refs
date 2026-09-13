@@ -121,8 +121,9 @@ pnpm skill:eval                            # every case, 3 runs each
 pnpm skill:eval --runs 1 --case 'drift-*'  # one case, one run
 ```
 
-Every run is a real agent session on your own Claude credential, and it costs like one. Reports
-stay local, under `evals/results/`. The first run asks you to trust the directory. Under `--json`
+Every run is a real agent session on your own Claude credential, and it costs like one. That is
+why the suite is not part of CI and will not become part of it. Reports stay local, under
+`evals/results/`. The first run asks you to trust the directory. Under `--json`
 nothing can ask, so pass `--trust-plugin` there. A report says which grader failed but not what
 the agent did. Add `--keep-temp` to keep each run's transcript, and read that before you decide
 whether the skill or the grader is wrong.
