@@ -34,7 +34,7 @@ graders:
   - name: never-ran-finalize
     type: tool_used
     tool: Bash
-    input_match: '(?:"command":\s*"\s*|[;&|(]\s*|\\n\s*)refs add [^;&|]*--proposal'
+    input_match: '(?:"command":\s*"\s*|[\s;&|(]|\\n)refs add [^;&|]*--proposal'
     min: 0
     max: 0
   - name: slugify-described-from-source
@@ -61,9 +61,9 @@ graders:
   - name: shows-every-package
     type: regex
     pattern: '^(?=[\s\S]*toolkit-root)(?=[\s\S]*packages/slugify)(?=[\s\S]*packages/retry)'
-  - name: shows-url-and-branch
+  - name: shows-url-branch-and-description
     type: regex
-    pattern: '^(?=[\s\S]*file://)(?=[\s\S]*\bmain\b)'
+    pattern: '^(?=[\s\S]*file://)(?=[\s\S]*\bmain\b)(?=[\s\S]*Toolkit monorepo)'
   - name: shows-descriptions-from-source
     type: regex
     pattern: '^(?=[\s\S]*@toolkit/slugify[\s\S]{0,300}?(url|dash|hyphen))(?=[\s\S]*@toolkit/retry[\s\S]{0,300}?(backoff|attempt|delay|reject))'
