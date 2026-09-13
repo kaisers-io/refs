@@ -5,7 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.15.0] - 2026-09-13
+
+### Upgrading
+
+**`refs doctor` no longer warns about packages a repository declares and your configuration has
+never registered.** They are still reported, grouped by directory, beside a health line that is now
+about your configured entries alone. A ref tracking 37 packages of a repository that declares 554
+goes from a permanent `warn` to `ok`. If you were treating a `warn` on `config-drift` as "every
+package has been decided about", that is the assertion that is gone — the check never had evidence
+for it. `refs doctor --json` carries every candidate.
 
 ### Changed
 
