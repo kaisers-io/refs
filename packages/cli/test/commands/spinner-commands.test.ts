@@ -115,9 +115,9 @@ describe('refs sync: spinner', () => {
           await rm(badFixture.dir, { force: true, recursive: true });
           const timeline = recordTimeline(ctx);
           await run(ctx, ['node', 'refs', 'sync', good.key, bad.key]);
-          const counts = timeline.filter((entry) => entry.startsWith('spinner: Syncing refs ('));
-          expect(counts.at(0)).toMatch(/^spinner: Syncing refs \(0\/2 done\): /u);
-          expect(counts.at(LAST)).toBe('spinner: Syncing refs (2/2 done)');
+          const counts = timeline.filter((entry) => entry.startsWith('spinner: Syncing refs: '));
+          expect(counts.at(0)).toBe('spinner: Syncing refs: 0/2 done');
+          expect(counts.at(LAST)).toBe('spinner: Syncing refs: 2/2 done');
           expect(timeline.indexOf('spinner: stop')).toBeLessThan(firstOutput(timeline));
           expect(firstOutput(timeline)).not.toBe(NOT_FOUND);
         }),

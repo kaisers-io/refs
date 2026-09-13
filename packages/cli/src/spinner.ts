@@ -85,18 +85,9 @@ const supportsUnicode = (env: NodeJS.ProcessEnv, platform: NodeJS.Platform): boo
   );
 };
 
-// Spelled out after a space, the same on every terminal.
-const ELLIPSIS = ' ...';
-
-/** `text`, made safe and fitted into `width` cells, ellipsis included. */
-const fitted = (text: string, width: number): string => {
-  const safe = text.replaceAll(NOT_PRINTABLE_ASCII, '?');
-  const room = width - ELLIPSIS.length;
-  if (room <= 0) {
-    return '';
-  }
-  return `${safe.length > room ? safe.slice(0, room) : safe}${ELLIPSIS}`;
-};
+/** \`text\`, made safe and cut to \`width\` cells. */
+const fitted = (text: string, width: number): string =>
+  text.replaceAll(NOT_PRINTABLE_ASCII, '?').slice(0, Math.max(0, width));
 
 const lineFor = (options: SpinnerOptions, frame: string, text: string): string => {
   const width = (options.stream.columns ?? DEFAULT_COLUMNS) - RESERVED_COLUMNS;

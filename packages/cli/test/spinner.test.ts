@@ -77,7 +77,7 @@ describe('createSpinner: drawing', () => {
     vi.advanceTimersByTime(BEFORE_FIRST_FRAME_MS);
     expect(fake.writes).toStrictEqual([]);
     vi.advanceTimersByTime(1);
-    expect(fake.writes).toStrictEqual([`${CLEAR_LINE}${LOGO_GREEN}⠋\u001B[39m Checking Git ...`]);
+    expect(fake.writes).toStrictEqual([`${CLEAR_LINE}${LOGO_GREEN}⠋\u001B[39m Checking Git`]);
   });
 
   it('advances a frame every 80 ms and shows the latest label', () => {
@@ -88,7 +88,7 @@ describe('createSpinner: drawing', () => {
     vi.advanceTimersByTime(FIRST_FRAME_MS);
     spinner.update('Checking locks');
     vi.advanceTimersByTime(DOTS_INTERVAL_MS);
-    expect(fake.writes.at(LAST)).toBe(`${CLEAR_LINE}⠙ Checking locks ...`);
+    expect(fake.writes.at(LAST)).toBe(`${CLEAR_LINE}⠙ Checking locks`);
   });
 
   it('falls back to the line frames where Unicode may not render', () => {
@@ -101,7 +101,7 @@ describe('createSpinner: drawing', () => {
     });
     spinner.update('Checking Git');
     vi.advanceTimersByTime(FIRST_FRAME_MS);
-    expect(fake.writes).toStrictEqual([`${CLEAR_LINE}- Checking Git ...`]);
+    expect(fake.writes).toStrictEqual([`${CLEAR_LINE}- Checking Git`]);
   });
 });
 
@@ -115,7 +115,7 @@ describe('createSpinner: colour', () => {
     const spinner = createSpinner({ env: XTERM, platform: MAC, stream: fake.stream });
     spinner.update('Checking Git');
     vi.advanceTimersByTime(FIRST_FRAME_MS);
-    expect(fake.writes).toStrictEqual([`${CLEAR_LINE}${code}⠋\u001B[39m Checking Git ...`]);
+    expect(fake.writes).toStrictEqual([`${CLEAR_LINE}${code}⠋\u001B[39m Checking Git`]);
   });
 });
 
@@ -145,22 +145,22 @@ describe('createSpinner: stopping', () => {
 });
 
 describe('fitting a label into the terminal width', () => {
-  it('fits the label and its ellipsis into the width', () => {
+  it('cuts the label to the width', () => {
     expect.hasAssertions();
     expect(fitted('Syncing refs (3/8 done): github.com/vercel/next.js', NARROW)).toBe(
-      'Syncing refs (3/ ...',
+      'Syncing refs (3/8 do',
     );
-    expect(fitted('Syncing refs', NARROW)).toBe('Syncing refs ...');
+    expect(fitted('Syncing refs', NARROW)).toBe('Syncing refs');
   });
 
   it('keeps a label from moving the cursor or taking two cells per character', () => {
     expect.hasAssertions();
-    expect(fitted('a\u001B[2Jb\r\nc漢', NARROW)).toBe('a?[2Jb??c? ...');
+    expect(fitted('a\u001B[2Jb\r\nc漢', NARROW)).toBe('a?[2Jb??c?');
   });
 
   it('gives up on the label rather than wrapping in a very narrow terminal', () => {
     expect.hasAssertions();
-    expect(fitted('Checking Git', 1)).toBe('');
+    expect(fitted('Checking Git', 0)).toBe('');
   });
 });
 

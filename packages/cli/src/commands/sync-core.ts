@@ -122,11 +122,11 @@ const syncAll = async (
     targets.map((rsc) =>
       runGated(sem, async () => {
         // Inside the gate: a ref waiting for a slot has not started.
-        tracker?.started(rsc.key);
+        tracker?.started();
         try {
           return await syncOneKey(ctx, rsc);
         } finally {
-          tracker?.finished(rsc.key);
+          tracker?.finished();
         }
       }),
     ),
