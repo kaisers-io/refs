@@ -59,6 +59,9 @@ It needs [uv](https://docs.astral.sh/uv/getting-started/installation/) and a `SN
 free Snyk account, because the analysis runs server-side. `.github/workflows/skill-audit.yml`
 documents every flag it passes and the one risk that is waived.
 
+If you changed what the skill tells an agent to do, run the skill evals as well. See
+[Skill evals](#skill-evals).
+
 For a faster inner loop, run `pnpm dev` inside `packages/cli` and call the stub directly. From
 that directory it is `node bin/refs.mjs <args>`; from the repository root,
 `node packages/cli/bin/refs.mjs <args>`.
@@ -104,3 +107,44 @@ word things differently, but they must never disagree about what happened.
 `docs/commands.md` documents CLI output, including exact strings. If you change what a command
 prints, update the documented example to match character for character. An example that merely
 resembles the real output is worse than none.
+
+## Skill evals
+
+`skills/refs/` decides whether an agent uses the CLI correctly, and the CLI's tests cannot see it.
+`evals/` holds an eval suite for it, run by `claude plugin eval` (Claude Code 2.1.270 or later).
+Each case gives an agent a `/refs` task against a local fixture repository and grades what it
+did: the commands it ran, the files it left behind, and its final reply. Every grader is
+deterministic, so no judge model disagrees with itself between runs.
+
+```bash
+pnpm skill:eval                            # every case, 3 runs each
+pnpm skill:eval --runs 1 --case 'drift-*'  # one case, one run
+```
+
+Every run is a real agent session on your own Claude credential, and it costs like one. That is
+why the suite is not part of CI and will not become part of it. Reports stay local, under
+`evals/results/`. The first run asks you to trust the directory. Under `--json`
+nothing can ask, so pass `--trust-plugin` there. A report says which grader failed but not what
+the agent did. Add `--keep-temp` to keep each run's transcript, and read that before you decide
+whether the skill or the grader is wrong.
+
+`scripts/skill-evals.sh` builds the CLI and puts wrappers first on `PATH`, because the sandbox the
+agent's shell runs in passes very little through. The `refs` wrapper runs the bundle you just
+built and allows the `file://` fixtures. On macOS, the `git` wrappers bypass the `/usr/bin` stubs,
+which fail inside the sandbox.
+
+Two limits are deliberate:
+
+- **No baseline arm.** The skill is only ever invoked explicitly. Without it a `/refs` prompt is
+  an unknown command, so a no-plugin arm has nothing to measure.
+- **Scores are bounded evidence.** Three runs of a case say that the instructions held on those
+  three runs, for that model. They do not prove the skill is reliable, and a regex over the reply
+  checks what the reply says, not whether the agent understood it.
+
+If the sandbox refuses to start because the Docker credential store holds symbolic links (Docker
+Desktop creates them), run the suite with `HOME` pointing at an empty directory and a token from
+`claude setup-token` in `CLAUDE_CODE_OAUTH_TOKEN`.
+
+To add a case, create `evals/<name>/case.yaml` and a `scaffold.sh` that sources `../lib.sh`.
+Before you trust a grader, feed it a wrong answer and check that it fails. A grader that passes
+on an empty run pins nothing.

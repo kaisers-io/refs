@@ -46,6 +46,30 @@ Why this is a rule: a feature once shipped with 988 green tests, including end-t
   internal calls — when the thing under test is git's or the CLI's behaviour.
 - `pnpm check` before pushing; `pnpm test:coverage` at the end. Coverage ratchet: 96/90/98/96.
 
+## Skill evals
+
+`evals/` checks that agents actually follow `skills/refs/`, which the CLI's tests cannot see. It
+has already caught the skill failing: agents asked about unregistered packages skipped
+`refs doctor` and answered from `packages_count`. See `CONTRIBUTING.md` for how to run it.
+
+The suite is **local only and stays out of CI**. It runs on the developer's own Claude credential,
+and in a public repository a workflow holding that credential is a workflow a pull request can
+reach. Every run also costs money, so running it on each push is not an option.
+
+- **Changing what the skill tells an agent**, whether under `skills/refs/` or in CLI output the
+  skill teaches agents to read: run the cases that cover it. Iterate with
+  `pnpm skill:eval --runs 1 --case <name>`, run the full suite before the PR, and report the scores
+  in the PR.
+- **Adding skill behaviour:** add a case when the behaviour can be graded deterministically, such as
+  a command that ran, a value in a file, or a path the reply names. Not every change earns one. Say
+  so in the PR when it does not.
+- **A failing run is not yet a verdict.** Keep the transcripts (`--keep-temp`) and read them before
+  deciding whether the skill or the grader is wrong. Graders here have failed correct answers and
+  passed wrong ones.
+- **A new grader must fail on a wrong answer** before it is trusted, the same rule as for tests.
+  Check it against a wrong artifact, a deliberately wrong run, or a kept transcript.
+- **Never add the suite to a workflow**, and do not start full runs casually.
+
 ## Review findings
 
 Verify every finding against the code before acting on it, and reproduce it before fixing it.

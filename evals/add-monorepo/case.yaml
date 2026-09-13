@@ -1,0 +1,87 @@
+schema_version: '1.1'
+name: add-monorepo
+description: >-
+  A monorepo offered with a one-shot --description. The skill must take the two-phase flow, write
+  every package description from source rather than from its manifest, show the full proposal and
+  stop: a headless run has nobody to approve it.
+plugins: ['../../skills/refs']
+runs: 3
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 40
+  timeout_seconds: 900
+  append_system_prompt: >-
+    Only your last message is read. Finish any background work before you write it, and make it
+    the complete answer.
+  allowed_tools: [Bash, Read, Glob, Grep, Write, Edit, Agent]
+  prompt: >-
+    /refs Add the repository whose URL is in fixtures/toolkit.url as a ref, with the description
+    "Toolkit monorepo." Save the proposal JSON as proposal.json before
+    you ask me to approve anything.
+graders:
+  # refs prints compact JSON and the skill's docs are pretty-printed, so a compact key in the
+  # transcript is refs' own output: proof the command ran, however it was spelled.
+  - name: ran-a-dry-run
+    type: regex
+    pattern: '\\"tag_format_candidate\\":'
+    target: trace
+  - name: never-finalized
+    type: regex
+    pattern: '\\"entry\\":\{'
+    match: not_contains
+    target: trace
+  - name: never-ran-finalize
+    type: tool_used
+    tool: Bash
+    input_match: '(?:"command":\s*"\s*|[\s;&|(]|\\n)refs add [^;&|]*--proposal'
+    min: 0
+    max: 0
+  # The top-level description and one per package: a proposal with any of them empty cannot be
+  # finalized.
+  - name: every-description-filled
+    type: regex
+    pattern: '"description"\s*:\s*"[^"\s]'
+    match: 'count:4'
+    target: { source: file, path: proposal.json }
+  - name: slugify-described-from-source
+    type: regex
+    pattern: '"@toolkit/slugify"\s*:\s*\{[^}]*"description"\s*:\s*"[^"]*(url|dash|hyphen)'
+    flags: i
+    target: { source: file, path: proposal.json }
+  - name: retry-described-from-source
+    type: regex
+    pattern: '"@toolkit/retry"\s*:\s*\{[^}]*"description"\s*:\s*"[^"]*(backoff|attempt|delay|reject)'
+    flags: i
+    target: { source: file, path: proposal.json }
+  - name: root-described
+    type: regex
+    pattern: '"toolkit-root"\s*:\s*\{[^}]*"description"\s*:\s*"[^"\s][^"]*"'
+    target: { source: file, path: proposal.json }
+  - name: no-manifest-text-in-proposal
+    type: regex
+    pattern: 'color palette|date formatting'
+    flags: i
+    match: not_contains
+    target: { source: file, path: proposal.json }
+  # The approval request has to show the whole proposal, not a summary of it.
+  - name: shows-every-package
+    type: regex
+    pattern: '^(?=[\s\S]*toolkit-root)(?=[\s\S]*packages/slugify)(?=[\s\S]*packages/retry)'
+  - name: shows-root-path-and-description
+    type: regex
+    pattern: '^(?=[^\n]*toolkit-root)[^\n]*[\s`(|''"]\.[\s`)|''"][^\n]*[a-z]{4,}|"toolkit-root"\s*:\s*\{(?=[^}]*"path"\s*:\s*"\.")(?=[^}]*"description"\s*:\s*"[^"\s])'
+    flags: im
+  - name: shows-url-branch-and-description
+    type: regex
+    pattern: '^(?=[\s\S]*file://)(?=[\s\S]*\bmain\b)(?=[\s\S]*Toolkit monorepo)'
+  - name: shows-descriptions-from-source
+    type: regex
+    pattern: '^(?=[\s\S]*@toolkit/slugify[\s\S]{0,300}?(url|dash|hyphen))(?=[\s\S]*@toolkit/retry[\s\S]{0,300}?(backoff|attempt|delay|reject))'
+    flags: i
+  - name: shows-tag-format
+    type: regex
+    pattern: 'v\{version\}'
+  - name: shows-ref-key
+    type: regex
+    pattern: 'local/fixtures/toolkit'

@@ -7,8 +7,8 @@
   "engines": { "node": ">=24.2", "pnpm": ">=11" },
   "scripts": {
     "lint": "oxlint",
-    "fmt": "oxfmt packages skills",
-    "fmt:check": "oxfmt --check packages skills",
+    "fmt": "oxfmt packages skills evals",
+    "fmt:check": "oxfmt --check packages skills evals",
     "typecheck": "pnpm -r run typecheck",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
@@ -16,6 +16,7 @@
     "check": "pnpm lint && pnpm fmt:check && pnpm typecheck && pnpm test",
     "versions": "node scripts/versions.mjs",
     "skill:audit": "uvx snyk-agent-scan@0.6.0 scan --skills --ci --dangerously-run-mcp-servers --ignore-risks third_party_content_exposure skills",
+    "skill:eval": "scripts/skill-evals.sh",
     "refs": "pnpm --filter @kaisers-io/refs build && node packages/cli/bin/refs.mjs"
   },
   "devDependencies": {
