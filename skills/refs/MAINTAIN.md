@@ -98,11 +98,30 @@ the checkout declares and the config never had (`unregistered`) — and prints t
 command for it. None is urgent, and none should be run without showing the user first.
 
 An `unregistered` package the user does not want is answered with `refs edit --package=<name>
---decline --path=<path> <ref>`, which is what stops it being reported on every future run. Without
-it `config-drift` stays on `warn` permanently and stops carrying information. `doctor` says how
-many decisions a run left unreported. `doctor` lists every unregistered member; `refs sync` mentions only the ones
-a fetch just brought in. Neither says anything about a package under a negated workspace pattern,
-or about any package at all when detection could have missed one.
+--decline --path=<path> <ref>`. That stops it being reported on every future run, where it would
+bury the next real finding. `doctor` says how many decisions a run left unreported. `refs sync`
+mentions only the unregistered members a fetch just brought in, and `doctor` lists the rest.
+Neither says anything about a package under a negated workspace pattern, or about any package at
+all when detection could have missed one.
+
+**"Does this repo declare packages I have not registered?"** is a `doctor` question. `refs show`,
+`refs list --packages` and `packages_count` describe what the configuration registers, not what the
+repository declares, and counting the directories under a workspace pattern is no substitute. Run
+`refs doctor --json` and read the `config-drift` check **whatever its `status`**, because an
+unregistered package never turns it into `warn`. The answer is the entries under
+`findings[].packages[]` for that ref with `status: "unregistered"`. With no `findings` key
+there are none, but only when the next point does not apply:
+
+- **The `detail` says `could not check for unregistered packages — <path>: <reason>`.** refs did
+  not finish looking. Say so, and name `<path>`, because fixing it is what lets refs answer. If you
+  read the workspace declaration yourself and find an unregistered member, report it as your own
+  reading, and say the list may still be incomplete.
+- **Otherwise** the findings list every member nobody has decided about. Packages the user
+  already declined are left out of them: `doctor` counts them in its `detail`, and
+  `refs show <ref> --json` lists them under `declined_packages`. Declined is not registered, so
+  mention them too when the question is about everything unregistered.
+
+Offer to register what you found only the way COMMANDS.md describes: show it, then wait for a yes.
 
 Registering is the one repair that adds something rather than correcting it, so it is also the
 one that needs the user's agreement first — see COMMANDS.md on `unregistered`. A `detail` saying another refs

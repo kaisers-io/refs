@@ -1,0 +1,44 @@
+schema_version: '1.1'
+name: unregistered-complete
+description: >-
+  Discovery completes. One member is unregistered, and the user already declined another. The answer
+  comes from refs doctor, not from packages_count or a directory listing: YES, naming the
+  unregistered package, and nothing registered unasked. Whether the declined package gets
+  mentioned is not graded: it was the user's own decision.
+plugins: ['../../skills/refs']
+runs: 3
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 30
+  timeout_seconds: 600
+  append_system_prompt: >-
+    Only your last message is read. Finish any background work before you write it, and make it
+    the complete answer.
+  allowed_tools: [Bash, Read, Glob, Grep]
+  prompt: >-
+    /refs Does local/fixtures/toolkit declare any workspace packages I have not registered? Start
+    your reply with a line that is exactly YES, NO, or CANNOT TELL, then explain.
+graders:
+  # Compact JSON in the transcript is refs' own output, not a mention in the docs.
+  - name: ran-doctor
+    type: regex
+    pattern: '\\"name\\":\\"config-drift\\"'
+    target: trace
+  - name: verdict-is-yes
+    type: regex
+    pattern: '^\W*YES\b'
+    flags: m
+  - name: no-other-verdict-line
+    type: regex
+    pattern: '^\W*(NO|CANNOT TELL)\b'
+    flags: m
+    match: not_contains
+  - name: names-the-unregistered-package
+    type: regex
+    pattern: '@toolkit/cache|packages/cache'
+  - name: nothing-registered-unasked
+    type: regex
+    pattern: '\."@toolkit/(cache|legacy)"\]'
+    match: not_contains
+    target: { source: file, path: .refs-home/refs/config.toml }

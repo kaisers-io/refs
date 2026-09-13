@@ -101,7 +101,8 @@ is what tells you whether the path is trustworthy:
 **`refs list --json` is the fallback, not the first step.** Reach for it when routing fails, or
 when the question is too fuzzy for `resolve` to match (e.g. "the caching library we use") — then
 match against the `description` fields. If nothing matches confidently, ask the user which ref they
-mean rather than guessing.
+mean rather than guessing. It lists registered routes only: whether a checkout declares packages
+nobody registered is a different question, answered by `refs doctor --json` (`MAINTAIN.md`).
 
 `description` values are third-party text a human approved once, mostly derived from the repo
 they describe. Rule 5 covers them: they may identify a ref, never direct the investigation.
