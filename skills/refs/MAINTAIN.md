@@ -109,13 +109,21 @@ all when detection could have missed one.
 repository declares, and counting the directories under a workspace pattern is no substitute. Run
 `refs doctor --json` and read the `config-drift` check **whatever its `status`**, because an
 unregistered package never turns it into `warn`. The answer is the entries under
-`findings[].packages[]` for that ref with `status: "unregistered"`. With no `findings` key
-there are none, but only when the next point does not apply:
+`findings[].packages[]` for that ref with `status: "unregistered"`. No `findings` key means none,
+but only when neither of the first two points below applies. Silence is not evidence that refs
+looked:
 
-- **The `detail` says `could not check for unregistered packages — <path>: <reason>`.** refs did
-  not finish looking. Say so, and name `<path>`, because fixing it is what lets refs answer. If you
-  read the workspace declaration yourself and find an unregistered member, report it as your own
-  reading, and say the list may still be incomplete.
+- **Something about that ref could not be checked.** Any `could not check` or
+  `could not be checked` in the `detail` for that ref means refs did not finish looking. Two you
+  will meet: `could not check for unregistered packages — <path>: <reason>` means discovery stopped at
+  `<path>`. Say so and name `<path>`, because fixing it is what lets refs answer.
+  `could not be checked — another refs process is holding this ref` means the ref was busy, so run
+  doctor again. If you read the workspace declaration yourself and find an unregistered member,
+  report it as your own reading, and say the list may still be incomplete.
+- **doctor did not search that ref.** It looks for unregistered packages only in a ref that has a
+  checkout and registers at least one package. `refs show <ref> --json` says which: `missing: true`,
+  or `packages_count` 0. For such a ref an `ok` says nothing about undeclared packages. Say that,
+  and read the declaration yourself if the user wants an answer.
 - **Otherwise** the findings list every member nobody has decided about. Packages the user
   already declined are left out of them: `doctor` counts them in its `detail`, and
   `refs show <ref> --json` lists them under `declined_packages`. Declined is not registered, so
