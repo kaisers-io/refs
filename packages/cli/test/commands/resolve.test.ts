@@ -69,6 +69,9 @@ describe('refs resolve: exact npm package name (step 2)', () => {
           local_path: dest,
           missing: false,
           package: {
+            // A fixture package declares no entry points, and saying so is not the same as not
+            // having looked — which is why the key is present with `complete` rather than absent.
+            entry_points: { entries: [], manifest: 'package.json', status: 'complete' },
             // `join`, not `/`-concatenation: the product emits a real, platform-native fs path.
             local_path: join(dest, 'packages', 'next'),
             name: 'next',

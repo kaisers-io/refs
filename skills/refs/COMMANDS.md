@@ -280,7 +280,30 @@ where applicable, package) it denotes.
     "name": "zod",
     "path": "packages/zod",
     "local_path": "/…/packages/zod",
-    "status": "verified"
+    "status": "verified",
+    "entry_points": {
+      "status": "complete",
+      "manifest": "package.json",
+      "entries": [
+        {
+          "from": "exports",
+          "subpath": ".",
+          "value": {
+            "kind": "conditions",
+            "branches": [
+              {
+                "condition": "@zod/source",
+                "value": { "kind": "target", "target": "./src/index.ts", "observed": "file" }
+              },
+              {
+                "condition": "import",
+                "value": { "kind": "target", "target": "./index.js", "observed": "absent" }
+              }
+            ]
+          }
+        }
+      ]
+    }
   },
   "installed": {
     "status": "found",
@@ -293,6 +316,36 @@ where applicable, package) it denotes.
 
 `sync` appears only when a sync ran; `installed` only with `--project`; `package` is `null` when
 the query resolves to the ref itself.
+
+### `entry_points` — which declared file is actually there
+
+Present on a package whose location was VERIFIED. It is the manifest's own declaration, with what
+was observed at each target — **not** a resolution. Which condition is right depends on who is
+importing, and refs is not that consumer.
+
+Read it for the one thing a checkout can tell you that the manifest cannot: **a source checkout is
+not built.** Measured on real repositories refs tracks, `zod`'s `types`/`import`/`require` all point
+at files that do not exist there, and `astro`'s `.` points at `dist/index.js`, which does not
+either. The only present target in zod's case sits behind a non-standard `@zod/source` condition —
+which is visible only because every condition is reported, not just the ones a resolver knows.
+
+`observed` is one of `file`, `directory`, `absent`, `not_checked` (a pattern, or a target whose
+shape this does not interpret) and `unverifiable` (it could not be inspected, or it resolves
+outside the package).
+
+**`absent` is not a defect in the dependency.** It describes this checkout. Never report it to the
+user as a broken package, and never pick a file the manifest does not name — if nothing declared is
+present, say so and ask, or look at the repository's own layout.
+
+`kind` preserves the declaration's structure, because the structure carries meaning: conditions are
+ordered (resolution walks them in order), and `alternatives` is not a list of equals — Node takes
+the first string, and an absent file does NOT fall through to the next. `excluded` is an explicit
+`null`, which rules a subpath out. Legacy `main`/`module`/`types`/`typings` are reported beside
+`exports`, each naming the field it came from; that is not a claim about precedence.
+
+`status` is about reading the declaration, never the package's health: `unverifiable` with a
+`reason` means the manifest could not be read or parsed — never an empty `entries` presented as
+"declares none".
 
 **Gate on `checkout.status` before reading anything.** `managed` means the path really is this
 ref's checkout. `unmanaged` (`reason`: `no_refs_marker`, `origin_mismatch`, `no_origin`,
