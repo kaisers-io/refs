@@ -5,7 +5,7 @@ argument-hint: 'What to look up in a tracked repo — or a refs task like add, s
 disable-model-invocation: true
 license: MIT
 metadata:
-  cli_version: '0.14.1'
+  cli_version: '0.15.0'
 ---
 
 # refs
