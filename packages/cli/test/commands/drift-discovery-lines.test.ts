@@ -117,3 +117,46 @@ describe('overflow where the groups are small', () => {
     expect(lines.at(LAST)).toContain('1 more director(ies) holding 2 unregistered package(s)');
   });
 });
+
+describe('a name declared in more than one place', () => {
+  it('keeps its own line, naming every path', () => {
+    expect.hasAssertions();
+    const MANY = 5;
+    const AMBIGUOUS_PLUS_GROUP = 2;
+
+    const lines = driftLines(
+      {
+        discovery: [
+          { candidates: ['packages/a', 'tools/a'], name: '@acme/a', status: 'unregistered' },
+          ...under('packages', MANY),
+        ],
+        status: 'ok',
+      },
+      KEY,
+    );
+
+    // Folding it into `packages: 6` would drop `tools/a` — and the ambiguity with it, which is
+    // the whole of that finding.
+    expect(lines[0]).toContain('packages/a, tools/a');
+    expect(lines).toHaveLength(AMBIGUOUS_PLUS_GROUP);
+  });
+});
+
+describe('several names each declared in more than one place', () => {
+  it('keeps every one of them on its own line', () => {
+    expect.hasAssertions();
+    const AMBIGUOUS = 4;
+    const candidates = Array.from({ length: AMBIGUOUS }, (_unused, index) => ({
+      candidates: [`packages/a${index}`, `tools/a${index}`],
+      name: `@acme/a${index}`,
+      status: 'unregistered' as const,
+    }));
+
+    const lines = driftLines({ discovery: candidates, status: 'ok' }, KEY);
+
+    // Enough of them to pass the grouping threshold. Grouped, they would collapse into one
+    // directory name and every second location would be gone.
+    expect(lines).toHaveLength(AMBIGUOUS);
+    expect(lines[0]).toContain('packages/a0, tools/a0');
+  });
+});

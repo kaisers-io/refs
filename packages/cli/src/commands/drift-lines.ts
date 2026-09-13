@@ -1,3 +1,4 @@
+import { CURRENT_DIR, GROUP_AT, commonDir, dirOf } from './drift-group.ts';
 import type { StructureIssue, StructureReport } from './drift-report.ts';
 import { editCommand, shellQuote } from '../shell-quote.ts';
 import { isRegistrablePackageName, zPackagePath } from '@kaisers-io/refs-core';
@@ -175,50 +176,21 @@ const cap = (lines: readonly string[]): string[] => {
   return hidden <= 0 ? [...lines] : [...lines.slice(0, MAX_LINES_PER_REF), overflowLine(hidden)];
 };
 
-/** How many candidates a directory has to hold before it is reported as a group rather than one by
- * one. Below it, the individual lines are the more useful answer; above it they are a wall. */
-const GROUP_AT = 3;
-
-const NOT_FOUND = -1;
-const CURRENT_DIR = '.';
-
-const dirOf = (path: string | undefined): string => {
-  const at = (path ?? '').lastIndexOf('/');
-  return at === NOT_FOUND ? CURRENT_DIR : (path ?? '').slice(0, at);
-};
-
-/** The directory to name a group of candidates by: the deepest one they all sit under.
- *
- * Rolled up rather than taken as-is, because a repository that puts one fixture per directory has
- * as many directories as candidates — astro has 256 under `packages/astro/test/fixtures`, each in
- * its own — and naming each of them is the wall the grouping exists to avoid. Descending only
- * while every candidate stays under ONE child stops at the directory where the tree actually
- * branches, which is the one a reader recognises. */
-const commonDir = (dirs: readonly string[]): string => {
-  const [first = CURRENT_DIR, ...rest] = dirs;
-  const segments = first.split('/');
-  let depth = segments.length;
-  for (const dir of rest) {
-    const other = dir.split('/');
-    let shared = 0;
-    while (shared < depth && shared < other.length && segments[shared] === other[shared]) {
-      shared += 1;
-    }
-    depth = shared;
-  }
-  return depth === 0 ? CURRENT_DIR : segments.slice(0, depth).join('/');
-};
-
 /** Candidates bucketed by their first path segment, which is where a repository's own layout puts
  * the boundary that matters: `examples` is one answer, `packages` another. */
 const byTopLevel = (candidates: readonly StructureIssue[]): Map<string, StructureIssue[]> => {
   const groups = new Map<string, StructureIssue[]>();
   for (const issue of candidates) {
-    const [top = CURRENT_DIR] = dirOf(issue.path ?? issue.candidates?.[0]).split('/');
+    const [top = CURRENT_DIR] = dirOf(issue.path).split('/');
     groups.set(top, [...(groups.get(top) ?? []), issue]);
   }
   return groups;
 };
+
+/** A name declared at SEVERAL paths, which is the whole of that finding. A group names one
+ * directory, so folding such a candidate into one drops the other places it was declared — and
+ * with them the ambiguity, which is the thing worth reading. It keeps its own line. */
+const isAmbiguous = (issue: StructureIssue): boolean => issue.path === undefined;
 
 /** Discovery, grouped by the directory the candidates sit under.
  *
@@ -238,7 +210,7 @@ const groupOf = (found: readonly StructureIssue[], key: string, top: string): Di
   if (found.length < GROUP_AT) {
     return found.map((issue) => ({ candidates: 1, dir: top, line: unregisteredLine(issue, key) }));
   }
-  const dir = commonDir(found.map((issue) => dirOf(issue.path ?? issue.candidates?.[0])));
+  const dir = commonDir(found.map((issue) => dirOf(issue.path)));
   return [
     {
       candidates: found.length,
@@ -273,9 +245,13 @@ const discoveryOverflow = (groups: readonly DiscoveryGroup[]): string => {
  * A group with only a couple of candidates keeps its per-package lines, commands and all: those
  * are the ones somebody may actually want to register. */
 const discoveryLines = (candidates: readonly StructureIssue[], key: string): string[] => {
-  const groups = [...byTopLevel(candidates)]
+  const alone = candidates
+    .filter((issue) => isAmbiguous(issue))
+    .map((issue) => ({ candidates: 1, dir: CURRENT_DIR, line: unregisteredLine(issue, key) }));
+  const grouped = [...byTopLevel(candidates.filter((issue) => !isAmbiguous(issue)))]
     .toSorted(([left], [right]) => left.localeCompare(right))
     .flatMap(([top, found]) => groupOf(found, key, top));
+  const groups = [...alone, ...grouped];
   const hidden = groups.slice(MAX_LINES_PER_REF);
   return hidden.length === 0
     ? groups.map((group) => group.line)
