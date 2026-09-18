@@ -64,7 +64,7 @@ describe('refs doctor: spinner', () => {
         expect(labels.slice(0, FIRST_THREE)).toStrictEqual([
           'spinner: Reading config and state',
           'spinner: Checking Git',
-          'spinner: Checking Node.js',
+          'spinner: Checking what Git is configured to run',
         ]);
         expect(labels).toContain('spinner: Comparing registered packages with the checkouts');
         expect(timeline.indexOf('spinner: stop')).toBe(firstOutput(timeline) - 1);
