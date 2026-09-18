@@ -75,9 +75,16 @@ const runOrThrow = async (
 
 // `git clone` into `opts.dest` (`--filter=blob:none` when blobless). Some servers (verified: a
 // plain `file://` remote without `uploadpack.allowFilter=true`) ignore the filter and warn — that
-// downgrades to `effectiveMode: 'full'` + warning. Always configures `core.hooksPath` afterwards.
+// downgrades to `effectiveMode: 'full'` + warning.
 const cloneRepo = async (runner: Runner, opts: CloneOpts): Promise<CloneResult> => {
-  const args = ['clone', '-q'];
+  // `-c core.hooksPath=…` on the clone ITSELF, not afterwards. git applies a clone's `-c` once the
+  // new repository is initialized and BEFORE it fetches and checks out, so this is the only form
+  // that covers the checkout the clone performs. Setting it afterwards leaves that checkout
+  // governed by the ambient config: a user-level RELATIVE `core.hooksPath` (`.githooks`, say)
+  // resolves inside the tree being cloned, so an upstream-tracked hook of that name runs — during
+  // `add --dry-run`, before anyone has approved the ref. `-c` also persists into the new repo's
+  // local config, which is what the `git config` call below then only re-affirms.
+  const args = ['clone', '-q', '-c', `core.hooksPath=${opts.hooksDir}`];
   if (opts.mode === 'blobless') {
     args.push('--filter=blob:none');
   }
@@ -88,6 +95,9 @@ const cloneRepo = async (runner: Runner, opts: CloneOpts): Promise<CloneResult> 
   // hold at the call itself rather than resting on something having been checked earlier.
   args.push('--', opts.cloneUrl, opts.dest);
   const cloneResult = await runOrThrow(runner, gitSpec('git clone', args));
+  // Kept deliberately, though the clone's own `-c` already wrote it: an older git that does not
+  // apply a clone `-c` before checkout would still leave the marker every later guard compares
+  // against. Re-writing the same value is idempotent.
   await runOrThrow(
     runner,
     gitSpec('git config core.hooksPath', ['config', 'core.hooksPath', opts.hooksDir], opts.dest),

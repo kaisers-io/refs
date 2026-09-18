@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **A checkout's own git hooks can no longer run during the clone that creates it.** `refs` points
+  every managed checkout's `core.hooksPath` at its own hooks directory so hooks inside a checkout
+  never run, but it set that only _after_ `git clone` returned. The clone's own checkout was
+  therefore governed by whatever git config the invoking user already had — and `core.hooksPath`
+  may be relative, in which case git resolves it inside the tree being cloned. A user with, say,
+  `core.hooksPath = .githooks` set globally would run an upstream-tracked `.githooks/post-checkout`
+  during `refs add`, before the proposal that add exists to put in front of a human. The managed
+  path is now passed on the clone invocation itself, which git applies after initializing the new
+  repository and before fetching and checking out.
+
 ## [0.17.0] - 2026-09-13
 
 ### Added

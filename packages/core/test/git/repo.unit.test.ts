@@ -199,6 +199,8 @@ describe('cloneRepo argument hygiene', () => {
     await expect(cloneWith('full')).resolves.toStrictEqual([
       'clone',
       '-q',
+      '-c',
+      'core.hooksPath=/tmp/refs-unit-hooks',
       '--',
       HOSTILE_URL,
       '/tmp/refs-unit-dest',
@@ -210,6 +212,8 @@ describe('cloneRepo argument hygiene', () => {
     await expect(cloneWith('blobless')).resolves.toStrictEqual([
       'clone',
       '-q',
+      '-c',
+      'core.hooksPath=/tmp/refs-unit-hooks',
       '--filter=blob:none',
       '--',
       HOSTILE_URL,
