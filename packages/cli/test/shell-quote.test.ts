@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rmCommand, shellQuote } from '../src/shell-quote.ts';
+import { isPasteable, rmCommand, shellQuote } from '../src/shell-quote.ts';
 import { SpawnRunner } from '@kaisers-io/refs-core';
 
 // These helpers exist because refs prints commands for a person to paste. A ref key comes from a
@@ -44,40 +44,47 @@ describe('building a removal command', () => {
   });
 });
 
-// A value carrying a control character is the case ordinary single quotes cannot serve: they
-// PRESERVE it, so the printed command spans two lines and cannot be pasted — and neutralising it
-// afterwards for display would silently change which package or path the command names. The
-// round-trip is asserted through a real shell, because the claim is about what a shell does.
-const HOSTILE_VALUES: readonly [string, string][] = [
+// A value carrying a control character cannot go into a printed command at all.
+//
+// Single quotes PRESERVE it, so the line spans two lines and cannot be pasted. ANSI-C `$'…'`
+// looked like the answer and is not: `sh` on Debian and Ubuntu is dash, which has no such syntax,
+// and measured there the command does not fail — it SUCCEEDS, against a package literally named
+// `$x\x0Ay`. A command that silently acts on the wrong thing is worse than no command.
+const UNPASTEABLE: readonly (readonly [string, string])[] = [
   ['a newline', 'a\nb'],
   ['a carriage return', 'a\rb'],
-  ['an escape sequence', 'a[2Kb'],
-  ['a delete character', 'ab'],
-  ['a C1 byte', 'ab'],
-  ['a newline beside a quote and a backslash', "a\nb'c\\d"],
+  ['an escape sequence', 'a\u001B[2Kb'],
+  ['a delete character', 'a\u007Fb'],
+  ['a C1 byte', 'a\u009Bb'],
 ];
 
-describe('a value a shell cannot be handed in single quotes', () => {
-  it.each(HOSTILE_VALUES)('survives the shell unchanged: %s', async (_label, value) => {
+const PASTEABLE: readonly (readonly [string, string])[] = [
+  ['a space', 'a b'],
+  ['a single quote', "a'b"],
+  ['a command substitution', 'a$(id)b'],
+  ['a backslash', String.raw`a\b`],
+  ['an em dash', 'a—b'],
+];
+
+describe('whether a value can go into a printed command', () => {
+  it.each(UNPASTEABLE)('refuses one carrying %s', (_label, value) => {
+    expect.hasAssertions();
+
+    expect(isPasteable(value)).toBe(false);
+  });
+
+  it.each(PASTEABLE)('accepts one carrying %s, which quoting handles', (_label, value) => {
+    expect.hasAssertions();
+
+    expect(isPasteable(value)).toBe(true);
+  });
+
+  it.each(PASTEABLE)('and the quoted form survives a real shell: %s', async (_label, value) => {
     expect.hasAssertions();
     const quoted = shellQuote(value);
 
     const result = await new SpawnRunner().run('sh', ['-c', `printf %s ${quoted}`]);
 
     expect(result.stdout).toBe(value);
-  });
-
-  it.each(HOSTILE_VALUES)('prints as one line with no control character: %s', (_label, value) => {
-    expect.hasAssertions();
-
-    // What makes the display filter and the printed command safe at once: after encoding there is
-    // nothing left for that filter to change, so the command still means what it said.
-    expect(shellQuote(value)).not.toMatch(/\p{Cc}/u);
-  });
-
-  it('leaves an ordinary value in plain single quotes', () => {
-    expect.hasAssertions();
-
-    expect(rmCommand('/tmp/a b')).toBe("rm -rf -- '/tmp/a b'");
   });
 });

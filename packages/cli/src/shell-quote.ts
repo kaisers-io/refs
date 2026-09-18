@@ -10,43 +10,21 @@
 // worst, and a command that silently operates on the wrong paths at best.
 
 const CONTROL_CHARACTER = /\p{Cc}/u;
-const ANSI_C_ESCAPE = /['\\\p{Cc}]/gu;
-const BYTE_HEX_WIDTH = 2;
-const HEX_RADIX = 16;
-const UTF8 = new TextEncoder();
 
-// `$'…'` is ANSI-C quoting: the shell parses the escapes back to the exact bytes. Verified to
-// round-trip identically under bash, zsh and the system `sh`.
-//
-// It exists here for one case, and only that case is routed through it. A value carrying a control
-// character cannot go in ordinary single quotes, because those preserve it: the printed line then
-// spans two lines and cannot be pasted, and a display filter that flattens it afterwards silently
-// changes which package or path the command names. Encoding is the only spelling that keeps the
-// line runnable AND keeps it meaning what it said.
-//
-// A shell without ANSI-C quoting reads `$'a\x0Ab'` as that literal text, so the command names
-// something that does not exist and fails — the safe direction for a value that is hostile by
-// construction anyway.
-// One `\xNN` per UTF-8 BYTE, not per code point. Two spellings were measured through a real shell
-// and rejected: `$'\x9B'` emits the bare byte 0x9B, which is not valid UTF-8 and comes back as
-// U+FFFD, and `$'\u009B'` is not understood by the `sh` on macOS, which passes it through as that
-// literal text. The byte form is the one every shell tested reads back identically.
-const escapedChar = (char: string): string => {
-  if (!CONTROL_CHARACTER.test(char)) {
-    return `\\${char}`;
-  }
-  return [...UTF8.encode(char)]
-    .map((byte) => `\\x${byte.toString(HEX_RADIX).toUpperCase().padStart(BYTE_HEX_WIDTH, '0')}`)
-    .join('');
-};
-
-const ansiCQuote = (value: string): string => `$'${value.replaceAll(ANSI_C_ESCAPE, escapedChar)}'`;
+/** Whether this value can go into a printed command at all.
+ *
+ * Single quotes preserve a control character, so a command carrying one spans two lines and cannot
+ * be pasted. Encoding it as ANSI-C `$'…'` looked like the answer and is not: `sh` on Debian and
+ * Ubuntu is dash, which has no such syntax, and measured there the command does not fail — it
+ * SUCCEEDS, against a package literally named `$x\x0Ay`. A command that silently acts on the wrong
+ * thing is worse than no command, so a caller asks this first and prints none.
+ *
+ * The value still reaches the reader: the finding is true and is reported with its name. What is
+ * withheld is the instruction. */
+const isPasteable = (value: string): boolean => !CONTROL_CHARACTER.test(value);
 
 /** Single-quotes `value` for a shell, closing and reopening the quote around any embedded `'`. */
-const shellQuote = (value: string): string =>
-  CONTROL_CHARACTER.test(value)
-    ? ansiCQuote(value)
-    : `'${value.replaceAll("'", String.raw`'\''`)}'`;
+const shellQuote = (value: string): string => `'${value.replaceAll("'", String.raw`'\''`)}'`;
 
 /** `refs edit` as a line that survives BOTH parsers it has to pass.
  *
@@ -84,4 +62,4 @@ const rmCommand = (path: string): string => `rm -rf -- ${shellQuote(path)}`;
  * would erase it without anyone finding out. */
 const rmdirCommand = (path: string): string => `rmdir -- ${shellQuote(path)}`;
 
-export { editCommand, rmCommand, rmdirCommand, shellQuote };
+export { editCommand, isPasteable, rmCommand, rmdirCommand, shellQuote };

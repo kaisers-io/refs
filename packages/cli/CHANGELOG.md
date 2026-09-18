@@ -19,13 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refs writes itself changes, and an error message keeps its own line breaks — `refs add`'s
   two-phase instructions and a `--verbose` stack trace read as before.
 
-  **A command refs prints still means what it said.** Neutralising a line for display would have
-  rewritten the command inside it: `--package='a<LF>b'` became `--package='a?b'`, which names a
-  different package, and the same machinery prints `rm -rf` for an orphaned checkout path. A value
-  carrying a control character is therefore encoded rather than quoted — `$'a\x0Ab'`, which every
-  shell tested parses back to the exact original — so the line stays on one line, stays runnable,
-  and still names what it named. Verified by running the printed command through a real shell and
-  reading back what it wrote.
+  **And no command is printed for such a value.** Neutralising a line for display would otherwise
+  rewrite the command inside it: `--package='a<LF>b'` would become `--package='a?b'`, which names a
+  different package. Quoting cannot save it either — single quotes preserve the character, so the
+  line spans two lines and cannot be pasted. So refs says why there is no command and leaves the
+  finding standing. Ordinary awkward values are unaffected: a space, a quote, a `$(…)` still get a
+  quoted command, verified by running it.
 
   The `--json` envelope was never affected, because `JSON.stringify` escapes those characters, and
   it is unchanged.
