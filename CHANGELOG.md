@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`refs doctor` no longer quotes a skill's declared CLI version back when it cannot read it.**
+  Two of the five places the check looks for a `SKILL.md` are rooted at the working directory —
+  for an agent session, whatever repository it happens to be in — and the frontmatter scan accepts
+  any quote-free, whitespace-free token of any length. A repository could therefore put
+  attacker-chosen prose, unbounded, into the `--json` detail that the bundled skill tells the agent
+  to relay verbatim to a human. Measured: a 4208-character detail carrying the planted text.
+
+  A value the version comparison cannot interpret now produces one short line naming both remedies
+  and nothing from the file. A value it CAN interpret is bounded too: version components may be
+  arbitrarily long, so four thousand digits compared fine and were quoted in full.
+
 ## [0.17.0] - 2026-09-13
 
 ### Added
