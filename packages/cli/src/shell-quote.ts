@@ -40,8 +40,13 @@ const editCommand = (opts: readonly string[], positionals: readonly string[]): s
 };
 
 /** A `rm -rf` a human or agent can paste as-is. `--` ends the option list, so a path beginning with
- * `-` is treated as a path rather than parsed as flags. */
-const rmCommand = (path: string): string => `rm -rf -- ${shellQuote(path)}`;
+ * `-` is treated as a path rather than parsed as flags. Takes several paths because a finding may
+ * name several, and one line that removes all of them is a command; a line naming the first is a
+ * command that leaves the rest behind. */
+const rmCommand = (paths: string | readonly string[]): string => {
+  const list = typeof paths === 'string' ? [paths] : paths;
+  return `rm -rf -- ${list.map((path) => shellQuote(path)).join(' ')}`;
+};
 
 /** Non-recursive, for a directory that is only ever legitimately empty (a steal claim). If
  * something else has taken that path, `rmdir` refusing is the right outcome — a recursive remove
