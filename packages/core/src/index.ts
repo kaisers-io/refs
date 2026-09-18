@@ -1,4 +1,5 @@
 export * from './config-io.ts';
+export * from './config-migrate.ts';
 export * from './errors.ts';
 export * from './fs-atomic.ts';
 export * from './fs-containment.ts';
