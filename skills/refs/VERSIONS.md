@@ -33,7 +33,9 @@ Two exits carry information rather than an error:
 
 - **`4`** — no tag exists for that version under the applicable `tag_format`. Double-check
   the version string, then list nearby tags:
-  `git tag -l '<prefix><major>.<minor>*' --sort=-version:refname`. Some releases are
+  `git tag -l '<prefix><major>.<minor>*' --sort=-version:refname` — and if the prefix itself
+  contains a single quote, close and reopen the quote around it (`'a'\''b'`), because the prefix
+  comes from the repository's own tags. Some releases are
   reachable only as version-bump commits in `git log`, never as tags.
 - **`3`** — nothing maps versions onto tags for this ref at all. Look at the real tags
   (`git tag -l`); if a pattern is there, offer it to the user.
@@ -44,7 +46,7 @@ Two exits carry information rather than an error:
 
 **Sanity-check the resolved tags.** Tags can lie: a similarly-named tag may predate the actual
 release. If a diff looks wrong for the claimed range — a zero diff, say — verify before
-trusting it. `git show refs/tags/<tag>:<path-to-manifest>` should report the version you asked
+trusting it. `git show 'refs/tags/<tag>:<path-to-manifest>'` should report the version you asked
 about.
 
 ## 3. Diff the two tags
@@ -53,16 +55,24 @@ Read-only git in the checkout, worker or inline per the dosing rule (`SKILL.md` 
 tags fully qualified as `refs/tags/<tag>` (the returned `ref_path`) — a tag starting with `-`
 would otherwise parse as an option.
 
+**Single-quote every tag and path you interpolate.** A leading `-` is an option-parser hazard and
+`--` or a `refs/tags/` prefix handles it; the shell is a separate one. git accepts a tag name
+containing a semicolon, a single quote, backticks or `$(…)` — verified: `git check-ref-format`
+accepts them, `git tag` creates them, and `git tag --sort=-version:refname` lists them back. A
+`tag_format` prefix has the same provenance: it is derived from the repository's own tag list. So
+write `'refs/tags/<tag>'`, not `refs/tags/<tag>`, and close-and-reopen the quote around any single
+quote in the value (`'a'\''b'`).
+
 ```bash
 # 1. Shape, from commit/tree metadata only — fetches nothing:
-git log refs/tags/<old-tag>..refs/tags/<new-tag> --oneline --no-merges
-git diff refs/tags/<old-tag>..refs/tags/<new-tag> --name-status --no-renames
-#    ... add -- <package-path> in monorepos
+git log 'refs/tags/<old-tag>..refs/tags/<new-tag>' --oneline --no-merges
+git diff 'refs/tags/<old-tag>..refs/tags/<new-tag>' --name-status --no-renames
+#    ... add -- '<package-path>' in monorepos
 
 # 2. Then content, where the question points (reads blobs; may fetch):
-git show refs/tags/<new-tag>:CHANGELOG.md
-git show <sha> -- <path>
-git diff refs/tags/<old-tag>..refs/tags/<new-tag> -- <path>
+git show 'refs/tags/<new-tag>:CHANGELOG.md'
+git show '<sha>' -- '<path>'
+git diff 'refs/tags/<old-tag>..refs/tags/<new-tag>' -- '<path>'
 ```
 
 If targeted content does not answer the question, a full diff is always available.

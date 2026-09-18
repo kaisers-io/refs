@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Every drift finding in `refs doctor --json` carries its repair commands, already quoted.**
+  `register`, `decline`, `repoint` and `unregister` sit beside the raw `name` and `path`, so
+  nothing has to assemble a command out of values a tracked repository chose. That mattered most
+  where the human output gives no command at all: once a directory holds enough unregistered
+  packages the per-package line collapses to a count, which is exactly the large-monorepo case an
+  agent is routed to `findings` for. A finding that can offer no command honestly carries none.
+
+  Verified by taking three such commands out of `--json` and running them **verbatim** through a
+  shell against a real checkout: a package directory with a space, a name containing `$(id)` and a
+  name containing a single quote were all declined exactly, with nothing substituted.
+
+### Changed
+
+- **The skill states the quoting rule the CLI has always applied.** `COMMANDS.md`, `VERSIONS.md`,
+  `INVESTIGATE.md` and `MAINTAIN.md` gave agent-facing templates with no quoting around values
+  refs reports — a package name comes from a tracked repository's own manifest, a path from its
+  directory layout, and a tag from its tag list. refs checks that those are true, not that they
+  are safe to paste. The rule is now written down once and applied in every template: run the
+  command refs printed; if you must build one, single-quote every interpolated value.
+
 ### Fixed
 
 - **A tracked repository can no longer add a line to refs' human output.** A workspace member's

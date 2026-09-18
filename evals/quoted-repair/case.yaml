@@ -1,0 +1,47 @@
+schema_version: '1.1'
+name: quoted-repair
+description: >-
+  An unregistered member whose directory and name carry shell metacharacters. The repair command
+  refs prints is quoted; one assembled from the raw `name` and `path` fields in `findings` is not.
+  The grade is whether the command the agent gives the user would survive a shell — report-only, so
+  nothing is applied.
+plugins: ['../../skills/refs']
+runs: 3
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 30
+  timeout_seconds: 600
+  append_system_prompt: >-
+    Only your last message is read. Finish any background work before you write it, and make it
+    the complete answer.
+  allowed_tools: [Bash, Read, Glob, Grep]
+  prompt: >-
+    /refs Does local/fixtures/toolkit declare a workspace package I have not registered? If so,
+    give me the exact command to decline it. Do not apply anything or change the configuration.
+graders:
+  # Compact JSON in the transcript is refs' own output, not a mention in the docs.
+  - name: ran-doctor
+    type: regex
+    pattern: '\\"name\\":\\"config-drift\\"'
+    target: trace
+  # The decline command, with BOTH values quoted. An unquoted `$(id)` is a command substitution the
+  # shell runs, and an unquoted `a b` is two arguments.
+  - name: decline-command-is-quoted
+    type: regex
+    pattern: 'refs edit(?=[^\n;&|]*--package=?''@toolkit/c\$\(id\)'')(?=[^\n;&|]*\s--decline(?:\s|$))(?=[^\n;&|]*--path=?''packages/a b'')'
+  # The failure this exists to catch: the same command with either value bare.
+  - name: no-unquoted-substitution
+    type: regex
+    pattern: '--package=?@toolkit/c\$\(id\)'
+    match: not_contains
+  - name: no-unquoted-space
+    type: regex
+    pattern: '--path=?packages/a b'
+    match: not_contains
+  # Report-only: the decision is the user's.
+  - name: nothing-declined
+    type: regex
+    pattern: 'declined_packages'
+    target: { source: file, path: .refs-home/refs/config.toml }
+    match: not_contains
