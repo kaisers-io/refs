@@ -8,6 +8,7 @@ import {
   zRefKey,
 } from '@kaisers-io/refs-core';
 import { matchRefKey } from './list.ts';
+import { shellQuote } from '../shell-quote.ts';
 
 // Turning one query string into the ref (and, where applicable, the package inside it) it denotes.
 // Split out of `resolve.ts`, which was carrying this four-step precedence alongside everything else
@@ -147,7 +148,9 @@ const packageMatchesFor = (config: Config, name: string): PackageEntryMatch[] =>
 // directory, which is the exact guesswork `resolve` exists to remove.
 const ambiguousPackageMessage = (name: string, keys: readonly RefKey[]): string =>
   `package '${name}' is registered by more than one ref: ${keys.join(', ')} — pick one with: ` +
-  `refs resolve ${name} --ref <ref>`;
+  // A real key, not a `<ref>` placeholder: a shell reads `<ref>` as an input redirection, so the
+  // line could not run as printed. The colliding keys are in hand here, so name the first.
+  `refs resolve ${shellQuote(name)} --ref ${shellQuote(keys[0] ?? '')}`;
 
 // Step 2/3 shared lookup: the sole ref registering `name`. Resolve's whole purpose is unambiguous
 // agent routing, so more than one candidate is a routing ambiguity — this throws `usageError`
@@ -256,8 +259,8 @@ const routeWithinRef = (config: Config, query: string, ref: string): RouteMatch 
     // names, so a reader following this advice still cannot see what the ref does register.
     throw notFoundError(
       looksLikeGitUrl(query)
-        ? `ref '${key}' is tracked but registers no package matching that query — inspect: refs show ${key} --packages --json`
-        : `ref '${key}' is tracked but registers no package matching '${query}' — inspect: refs show ${key} --packages --json`,
+        ? `ref '${key}' is tracked but registers no package matching that query — inspect: refs show ${shellQuote(key)} --packages --json`
+        : `ref '${key}' is tracked but registers no package matching '${query}' — inspect: refs show ${shellQuote(key)} --packages --json`,
       'package_not_registered',
     );
   }
