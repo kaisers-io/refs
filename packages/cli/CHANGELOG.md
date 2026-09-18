@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`refs resolve` no longer answers whether a path outside the package exists.** A package's
+  `exports` targets are third-party content, and a target could name any absolute path: `join`
+  clamps `..` at the filesystem root, so depth was not something the manifest had to guess. The
+  probe then reported `unverifiable` when something was there and `absent` when nothing was —
+  a clean two-valued answer about a path the package has nothing to do with, with each `exports`
+  subpath carrying its own, so one manifest batched many probes into a single reply.
+
+  Nothing was ever read, and the containment rule that refuses to hand back a real path outside the
+  checkout always held. What crossed was the classification of the refusal. An absence is now
+  reported only where containment can be established, which also covers the shape a `..` guard
+  cannot see — a symlink inside the package pointing out of it, in a target with no `..` at all.
+  An entry point that is genuinely missing inside the package still reports `absent`, however
+  deeply nested.
+
 ## [0.17.0] - 2026-09-13
 
 ### Added

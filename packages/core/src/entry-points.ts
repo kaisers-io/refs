@@ -1,6 +1,6 @@
+import { absenceIsInside, resolveInside } from './fs-containment.ts';
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { resolveInside } from './fs-containment.ts';
 
 // What a package's manifest DECLARES as its entry points, and what is actually there.
 //
@@ -93,11 +93,15 @@ const observe = async (packageDir: string, target: string): Promise<TargetObserv
   if (!PROBEABLE.test(target) || target.includes('*')) {
     return 'not_checked';
   }
-  const located = await resolveInside(packageDir, join(packageDir, target.slice(RELATIVE_PREFIX)));
-  if (located.kind === 'missing') {
-    return 'absent';
+  const path = join(packageDir, target.slice(RELATIVE_PREFIX));
+  const located = await resolveInside(packageDir, path);
+  if (located.kind === 'inside') {
+    return observeReal(located.real);
   }
-  return located.kind === 'inside' ? observeReal(located.real) : 'unverifiable';
+  if (located.kind !== 'missing') {
+    return 'unverifiable';
+  }
+  return (await absenceIsInside(packageDir, path)) ? 'absent' : 'unverifiable';
 };
 
 /** The two container shapes, each preserving what gives it meaning: alternatives keep their order
