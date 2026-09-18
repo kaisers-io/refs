@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **A command whose output hit the stream cap is treated as incomplete, everywhere it is read.**
+  The runner publishes `stdoutTruncated` for exactly this, and its own contract says a caller
+  parsing that output must treat it as incomplete — but no production code read the flag. The one
+  place that reacted to truncation matched the literal text `refs: stdout exceeded` in stderr,
+  which worked only while that note kept its wording and kept being routed there.
+
+  Two readers of git history accepted a cut stream as a complete answer, and that direction is not
+  quiet: the cut keeps the FIRST bytes, so a smaller answer looks like a real one. A
+  `pnpm-workspace.yaml` cut mid-file still parses — as a declaration listing fewer directories than
+  it has — so a narrowing reads as a widening and a package that was always there is announced as
+  newly arrived. A cut list of changed paths loses the deletion at the end of it, which is where a
+  package's previous name comes from, with the same result. Both now say they could not look.
+
+  A run that both hit the cap and then timed out publishes both facts; it previously reported only
+  the timeout.
+
 ## [0.17.0] - 2026-09-13
 
 ### Added

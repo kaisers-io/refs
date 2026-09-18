@@ -9,10 +9,16 @@ import { listTags } from '../../src/git/tags.ts';
 const TWO = 2;
 const TWENTY_FIVE = 25;
 
-/** A `Runner` that answers `git tag` with `tags`, and optionally with the note the collector adds
- * when a stream hits its cap — which arrives on stderr alongside exit code 0. */
-const fakeTagRunner = (tags: readonly string[], stderr = ''): Runner => ({
-  run: () => Promise.resolve({ exitCode: 0, stderr, stdout: tags.join('\n') }),
+/** A `Runner` that answers `git tag` with `tags`, and optionally with the structured truncation
+ * flag the runner sets when a stream hits its byte cap — which arrives alongside exit code 0. */
+const fakeTagRunner = (tags: readonly string[], truncated = false): Runner => ({
+  run: () =>
+    Promise.resolve({
+      exitCode: 0,
+      stderr: '',
+      stdout: tags.join('\n'),
+      ...(truncated ? { stdoutTruncated: true as const } : {}),
+    }),
 });
 
 describe('listTags: what it promises about the list', () => {
@@ -28,9 +34,11 @@ describe('listTags: what it promises about the list', () => {
 
   it('reports a truncated stream as an incomplete read, however many tags arrived', async () => {
     expect.hasAssertions();
-    // `spawn-collector.ts` notes truncation on stderr and still exits 0. Counting over what
-    // survived would answer "the format most tags use" from a list that is not all of them.
-    const tagRunner = fakeTagRunner(['a@1.0.0'], 'refs: stdout exceeded 67108864 bytes, truncated');
+    // The flag, with NO note in stderr. Matching the note's wording instead worked only while it
+    // kept that wording and kept being routed onto stderr, and would have gone quiet rather than
+    // loud if either changed. Counting over what survived would answer "the format most tags use"
+    // from a list that is not all of them.
+    const tagRunner = fakeTagRunner(['a@1.0.0'], true);
 
     await expect(listTags(tagRunner, '/repo')).resolves.toStrictEqual({
       complete: false,

@@ -166,6 +166,13 @@ const resolveExitCode = (code: number | null): number => {
   return code;
 };
 
+/** Whether this result's `stdout` is a PREFIX of what the command wrote.
+ *
+ * The one predicate for "do not trust these bytes as a whole answer". A caller that parses stdout
+ * must consult it: the cut lands at a byte, so the last line may be a fragment — and worse, a
+ * prefix of a structured document can parse perfectly well as a smaller, different document. */
+const isTruncated = (result: RunResult): boolean => result.stdoutTruncated === true;
+
 // `exactOptionalPropertyTypes` + the `stdoutTruncated?: true` shape (see `RunResult`): the flag
 // is added only when the stdout collector actually hit its byte cap, never set to `false`.
 const withStdoutTruncation = (result: RunResult, stdout: CollectedStream): RunResult => {
@@ -177,7 +184,16 @@ const withStdoutTruncation = (result: RunResult, stdout: CollectedStream): RunRe
 
 const buildCloseResult = (ctx: CloseContext): RunResult => {
   if (ctx.timedOut) {
-    return normalizeTimedOutResult(ctx.stderr.text, ctx.timeoutMs);
+    // Truncation is published here too. A run can both hit the stream cap and then time out, and
+    // this branch reported only the timeout, dropping the flag — not disagreeing with the stderr
+    // note, which this branch never reaches either, but silently losing the fact. Unreachable for
+    // every caller that branches on `timedOut` or on the exit code first, which is why it never
+    // showed. The flag is what callers are told to trust, so it has to be right wherever it is
+    // computed.
+    return withStdoutTruncation(
+      normalizeTimedOutResult(ctx.stderr.text, ctx.timeoutMs),
+      ctx.stdout,
+    );
   }
   if (ctx.errorMessage !== undefined) {
     return withStdoutTruncation(
@@ -220,5 +236,11 @@ class SpawnRunner implements Runner {
   }
 }
 
-export { SIGNAL_KILLED_EXIT_CODE, SPAWN_ERROR_EXIT_CODE, SpawnRunner, TIMEOUT_EXIT_CODE };
+export {
+  SIGNAL_KILLED_EXIT_CODE,
+  SPAWN_ERROR_EXIT_CODE,
+  SpawnRunner,
+  TIMEOUT_EXIT_CODE,
+  isTruncated,
+};
 export type { Runner, RunOpts, RunResult };

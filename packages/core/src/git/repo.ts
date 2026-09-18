@@ -1,8 +1,8 @@
+import type { RunResult, Runner } from '../proc/runner.ts';
 import { buildSyncResult, excerpt, toBuildSyncResultOpts } from './sync-result.ts';
 import type { BuiltSyncResult } from './sync-result.ts';
 import type { CloneMode } from '../schemas/primitives.ts';
 import type { RefsHome } from '../home.ts';
-import type { Runner } from '../proc/runner.ts';
 import { assertManagedCheckout } from './managed-checkout.ts';
 import { chmod } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -61,10 +61,10 @@ const gitSpec = (action: string, args: readonly string[], cwd?: string): Command
 // Runs one command and throws `validationError` on a non-zero exit — opts IN to "failure is an
 // exception" on top of `Runner.run`'s "failure is data" contract, for steps with no sane way to
 // continue past a failure (a failed clone/checkout/reset leaves nothing useful to return).
-const runOrThrow = async (
-  runner: Runner,
-  spec: CommandSpec,
-): Promise<{ stdout: string; stderr: string }> => {
+// Returns the whole `RunResult`, not just its two streams. The narrower shape was why `listTags`
+// had to detect a capped stream by matching the note in `stderr`: `stdoutTruncated` is the fact
+// the runner publishes, and it was not reachable through here.
+const runOrThrow = async (runner: Runner, spec: CommandSpec): Promise<RunResult> => {
   const result = await runner.run(spec.cmd, spec.args, cwdOpt(spec.cwd));
   if (result.exitCode === SUCCESS_EXIT_CODE) {
     return result;

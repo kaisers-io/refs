@@ -4,10 +4,6 @@ import type { TagFormat } from '../schemas/primitives.ts';
 import { notFoundError } from '../errors.ts';
 import { zTagFormat } from '../schemas/primitives.ts';
 
-// `spawn-collector.ts` puts this on `stderr` when a stream hits its cap. Read rather than assumed
-// away: a truncated list looks exactly like a complete one to anything that counts it.
-const TRUNCATION_NOTE = 'refs: stdout exceeded';
-
 /** Every tag, or the first `limit` of them, ordered by `git tag --sort=-version:refname` — which is
  * version-aware over the whole refname, so it groups by prefix rather than by date.
  *
@@ -27,7 +23,12 @@ const listTags = async (
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line !== '');
-  const whole = !result.stderr.includes(TRUNCATION_NOTE);
+  // The structured flag, not a note in `stderr`. `RunResult.stdoutTruncated` is what the runner
+  // publishes when a stream hits its byte cap; matching the human-readable note instead worked
+  // only while that note kept its exact wording AND kept being routed onto stderr, and would have
+  // gone quiet rather than loud if either changed. Read rather than assumed away: a truncated list
+  // looks exactly like a complete one to anything that counts it.
+  const whole = result.stdoutTruncated !== true;
   return limit === undefined
     ? { complete: whole, tags }
     : { complete: whole && tags.length <= limit, tags: tags.slice(0, limit) };

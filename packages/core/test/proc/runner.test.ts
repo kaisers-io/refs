@@ -241,3 +241,35 @@ describe('resolution waits for close, not exit', () => {
     },
   );
 });
+
+// `RunResult.stdoutTruncated` is the fact callers are told to branch on — the runner's own contract
+// says a byte-truncated result must be treated as incomplete, because the last line may be a
+// fragment. A run that both hit the cap and then timed out published the timeout and dropped the
+// flag, so the flag and the note in stderr disagreed about the same fact.
+//
+// Unreachable for every caller that branches on `timedOut` or the exit code first, which is why it
+// never showed. It is the flag that is documented, so it is the flag that has to be right.
+const BYTES_PER_KIB = 1024;
+const KIB_PER_MIB = 1024;
+const MIB = BYTES_PER_KIB * KIB_PER_MIB;
+const OVER_CAP_MIB = 70;
+const TRUNCATE_THEN_HANG = `const c = Buffer.alloc(${String(MIB)}, 120);
+for (let i = 0; i < ${String(OVER_CAP_MIB)}; i += 1) process.stdout.write(c);
+setTimeout(() => {}, 60000);`;
+const CAP_WRITE_TIMEOUT_MS = 3000;
+
+describe('a run that truncated AND timed out', SUITE_OPTS, () => {
+  it('publishes both facts, not only the timeout', async () => {
+    expect.hasAssertions();
+
+    const result = await runner.run(process.execPath, ['-e', TRUNCATE_THEN_HANG], {
+      timeoutMs: CAP_WRITE_TIMEOUT_MS,
+    });
+
+    expect(result.timedOut).toBe(true);
+    expect(result.stdoutTruncated).toBe(true);
+    // Still discarded, which is the documented behaviour for a timed-out run and the reason the
+    // flag matters at all: there is nothing left to inspect for a fragment.
+    expect(result.stdout).toBe('');
+  });
+});
