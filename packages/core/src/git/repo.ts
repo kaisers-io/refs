@@ -84,6 +84,9 @@ const cloneRepo = async (runner: Runner, opts: CloneOpts): Promise<CloneResult> 
   // resolves inside the tree being cloned, so an upstream-tracked hook of that name runs — during
   // `add --dry-run`, before anyone has approved the ref. `-c` also persists into the new repo's
   // local config, which is what the `git config` call below then only re-affirms.
+  // The interpolation is safe and both reasons are verified: there is no shell (`SpawnRunner`
+  // always spawns an argv array), and a newline in a `-c` value cannot smuggle a second setting —
+  // git 2.54 stores the whole string as ONE value. `hooksDir` is refs-owned in any case.
   const args = ['clone', '-q', '-c', `core.hooksPath=${opts.hooksDir}`];
   if (opts.mode === 'blobless') {
     args.push('--filter=blob:none');
