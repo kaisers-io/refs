@@ -30,9 +30,22 @@ const requireCheckout = (dest: string, key: RefKey): void => {
 };
 
 /** The named package's registered entry on `entry`; an unregistered name is a `notFoundError`,
- * exactly like an unresolvable `<ref>` is. */
+ * exactly like an unresolvable `<ref>` is.
+ *
+ * `Object.hasOwn`, not bracket access. The question is whether the record has its OWN entry under
+ * that name: without it, a name with no entry resolves up the prototype chain — `packages
+ * ['toString']` answers with `Object.prototype.toString`, which is truthy, so the name passes as
+ * registered. `tag` then reads `.tag_format` off it, gets `undefined`, and falls back to the REF's
+ * format, answering for a package the configuration does not have. Measured: `refs tag <ref>
+ * 1.2.3 --package toString` returned a tag.
+ *
+ * The edit path fails closed only incidentally, because `zPackageEntry` requires fields
+ * `Object.prototype` cannot supply. And this is not about forbidden names: `toString` and
+ * `valueOf` are perfectly storable — only `__proto__`, `constructor` and `prototype` are rejected
+ * as keys — so the guard has to find a real entry under such a name, not refuse the name. */
 const requirePackage = (entry: RefEntry, key: RefKey, name: string): PackageEntry => {
-  const pkg = entry.packages?.[name];
+  const { packages } = entry;
+  const pkg = packages !== undefined && Object.hasOwn(packages, name) ? packages[name] : undefined;
   if (pkg === undefined) {
     throw notFoundError(`no package '${name}' registered on ref '${key}'`);
   }
