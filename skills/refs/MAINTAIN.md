@@ -97,8 +97,12 @@ gone from the repo's workspaces), change its path (it moved within them), or reg
 the checkout declares and the config never had (`unregistered`) — and prints the `refs edit`
 command for it. None is urgent, and none should be run without showing the user first.
 
-An `unregistered` package the user does not want is answered with `refs edit --package=<name>
---decline --path=<path> <ref>`. That stops it being reported on every future run, where it would
+An `unregistered` package the user does not want is answered with the finding's own `decline`
+command — under `--json` every finding carries its repair commands already quoted for a shell
+(`register`, `decline`, `repoint`, `unregister`), which is the one to run. Never build one out of
+the raw `name` and `path`: those come from the tracked repository, refs checks that they are true
+rather than that they are safe to paste, and they may contain a space, a single quote or `$(…)`.
+Written out, the shape is `refs edit --package='<name>' --decline --path='<path>' '<ref>'`. That stops it being reported on every future run, where it would
 bury the next real finding. `doctor` says how many decisions a run left unreported. `refs sync`
 mentions only the unregistered members a fetch just brought in, and `doctor` lists the rest.
 Neither says anything about a package under a negated workspace pattern, or about any package at
