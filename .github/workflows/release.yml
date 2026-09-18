@@ -62,6 +62,61 @@ jobs:
             exit 1
           fi
           echo "CHANGELOG.md has a heading for $VERSION"
+      - name: Guard — this version is newer than the one npm serves as latest
+        # npm 11 already refuses to publish a version below the current stable `latest` on the
+        # implicit tag, so this is a stricter restatement of that rather than the only thing
+        # standing in the way — the registry's own check can be bypassed with an explicit `--tag`
+        # or `--force`, and this one cannot be, from an honest release.
+        #
+        # It matters because the ancestor guard deliberately allows tagging an OLDER main commit:
+        # a lower version prepared on main and never published would pass every other guard here.
+        # An existing install would never notice the regression, since `isBehind` reports nothing
+        # when the registry version is not strictly greater; only new installers would get it.
+        #
+        # This guard is in the tagged tree, like every other one, so it constrains an honest
+        # release and not an adversarial tag. The gate that does not live here is the Environment
+        # on `publish` — see CONTRIBUTING.md.
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          # Fails closed: a DNS failure, a timeout or a registry outage must not read as "nothing
+          # is published yet". Only a lookup that SUCCEEDS and reports no version is a bootstrap.
+          if ! LOOKUP="$(npm view @kaisers-io/refs@latest version --registry=https://registry.npmjs.org 2>&1)"; then
+            case "$LOOKUP" in
+              *E404*) LOOKUP='' ;;
+              *) echo "::error::could not read the published version from npm: $LOOKUP" >&2; exit 1 ;;
+            esac
+          fi
+          LATEST="$(printf '%s' "$LOOKUP" | tail -n 1)"
+          if [ -z "$LATEST" ]; then
+            echo "npm reports no published release yet — nothing to compare against"
+            exit 0
+          fi
+          node -e '
+            const [version, latest] = process.argv.slice(1);
+            // Canonical three-part decimal only. A prerelease is deliberately refused rather than
+            // ordered: this workflow publishes stable releases, and guessing an order for
+            // `1.0.0-rc.1` is how a release goes out under the wrong dist-tag. `1..1` and
+            // `Infinity.0.0` are refused for the same reason — `Number()` accepts both.
+            const CANONICAL = /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/u;
+            const parse = (value, what) => {
+              if (!CANONICAL.test(value)) {
+                console.error(`::error::${what} ${value} is not a plain x.y.z version`);
+                process.exit(1);
+              }
+              return value.split(".").map(Number);
+            };
+            const candidate = parse(version, "the tagged version");
+            const published = parse(latest, "the published version");
+            const at = candidate.findIndex((part, index) => part !== published[index]);
+            if (at === -1 || candidate[at] < published[at]) {
+              console.error(`::error::${version} is not newer than the published latest ${latest} — refusing to move latest backwards`);
+              process.exit(1);
+            }
+            console.log(`${version} is newer than the published latest ${latest}`);
+          ' "$VERSION" "$LATEST"
       - name: Guard — tagged commit is reachable from origin/main
         # A tag pushed from a random branch/fork must not be able to publish. `GITHUB_SHA` is
         # the runner-assigned commit SHA (not attacker-suppliable text like ref_name), so it's
@@ -132,6 +187,17 @@ jobs:
   publish:
     needs: verify
     runs-on: ubuntu-latest
+    # The one gate a tag's own tree cannot supply. Everything else authorizing this release —
+    # every guard in `verify`, the `needs` edge above, this `permissions` block — is content of
+    # the pushed ref, because GitHub resolves a push-triggered workflow from that ref. A tag whose
+    # tree deletes them is never subjected to them.
+    #
+    # An Environment moves the gate into repository settings, which a tag cannot edit: protection
+    # rules (required reviewers, a deployment branch/tag restriction) are evaluated by GitHub
+    # before the job starts. Deleting this key from a tag's tree does not evade it either, as long
+    # as the npm Trusted Publisher entry names the same environment — npm then refuses a token
+    # minted without it. Both halves have to be configured outside this file; see RELEASING.md.
+    environment: npm-publish
     permissions:
       id-token: write
       contents: read
