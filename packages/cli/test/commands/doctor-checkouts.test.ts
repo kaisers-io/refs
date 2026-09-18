@@ -237,6 +237,27 @@ describe('refs doctor: the hooks directory after the repair', () => {
   });
 });
 
+describe('refs doctor: a hooks directory that cannot be listed', () => {
+  it('reports a failing check rather than swallowing the error into ok', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, home, stdout } = await setupInitializedHome(homeDir);
+        await rm(home.hooksDir, { recursive: true });
+        // A FILE where the directory should be: `readdir` answers ENOTDIR, which is not the
+        // absence `missingGuardHooks` already reports — and a check that could not look must not
+        // answer `ok`.
+        await writeFile(home.hooksDir, 'not a directory');
+
+        const envelope = await runDoctorJson(ctx, stdout);
+
+        expectCheck(envelope, 'hooks-guard', { status: 'fail' });
+        expect(hooksGuardDetail(envelope)).toContain('ENOTDIR');
+      }),
+    );
+  });
+});
+
 describe('refs doctor: a home whose hooks directory is not there at all', () => {
   it('says what to run rather than reporting a crashed check', async () => {
     expect.hasAssertions();
