@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **A git url carrying an ASCII control character is refused.** The url canonicalizer returns the raw
+  input as the clone url while deriving the stored ref key from the parsed one, so any character the
+  URL parser silently removes can make those two name different repositories — the reason backslashes
+  and percent escapes were already rejected. Tab, line feed and carriage return are a third door: the
+  parser strips them _before_ it resolves `..`, so `.<TAB>.` reads as three characters to the raw
+  check and as `..` to the parser. Git clones that literal path when it exists, so the result was a
+  checkout whose recorded identity described a different repository. A sweep of every code point up
+  to U+00FF plus the zero-width and bidi suspects found no fourth character with the same effect.
+
 ## [0.17.0] - 2026-09-13
 
 ### Added
