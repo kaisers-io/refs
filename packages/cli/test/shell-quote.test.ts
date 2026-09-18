@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { rmCommand, shellQuote } from '../src/shell-quote.ts';
+import { SpawnRunner } from '@kaisers-io/refs-core';
 
 // These helpers exist because refs prints commands for a person to paste. A ref key comes from a
 // url the user supplied and permits spaces, `$()`, backticks, semicolons and quotes; a package name
@@ -40,5 +41,43 @@ describe('building a removal command', () => {
 
     // `--` matters independently of quoting: without it a path beginning with `-` parses as flags.
     expect(rmCommand('-rf-looking-path')).toBe("rm -rf -- '-rf-looking-path'");
+  });
+});
+
+// A value carrying a control character is the case ordinary single quotes cannot serve: they
+// PRESERVE it, so the printed command spans two lines and cannot be pasted — and neutralising it
+// afterwards for display would silently change which package or path the command names. The
+// round-trip is asserted through a real shell, because the claim is about what a shell does.
+const HOSTILE_VALUES: readonly [string, string][] = [
+  ['a newline', 'a\nb'],
+  ['a carriage return', 'a\rb'],
+  ['an escape sequence', 'a[2Kb'],
+  ['a delete character', 'ab'],
+  ['a C1 byte', 'ab'],
+  ['a newline beside a quote and a backslash', "a\nb'c\\d"],
+];
+
+describe('a value a shell cannot be handed in single quotes', () => {
+  it.each(HOSTILE_VALUES)('survives the shell unchanged: %s', async (_label, value) => {
+    expect.hasAssertions();
+    const quoted = shellQuote(value);
+
+    const result = await new SpawnRunner().run('sh', ['-c', `printf %s ${quoted}`]);
+
+    expect(result.stdout).toBe(value);
+  });
+
+  it.each(HOSTILE_VALUES)('prints as one line with no control character: %s', (_label, value) => {
+    expect.hasAssertions();
+
+    // What makes the display filter and the printed command safe at once: after encoding there is
+    // nothing left for that filter to change, so the command still means what it said.
+    expect(shellQuote(value)).not.toMatch(/\p{Cc}/u);
+  });
+
+  it('leaves an ordinary value in plain single quotes', () => {
+    expect.hasAssertions();
+
+    expect(rmCommand('/tmp/a b')).toBe("rm -rf -- '/tmp/a b'");
   });
 });

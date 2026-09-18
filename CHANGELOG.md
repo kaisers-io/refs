@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **A tracked repository can no longer add a line to refs' own output.** A workspace member's name
+  is taken from its manifest and printed at the head of every drift finding. A newline in that name
+  produced a second line on stdout that was byte-for-byte indistinguishable from one refs wrote —
+  and the obvious payload is a forged `To register it:` clause, because a genuine finding ends in
+  exactly that shape. Every human line now goes through one neutralisation on its way out: control
+  characters, the line terminators among them, are replaced with `?`. The name still reaches the
+  reader in full; it just cannot be a line. Printable text outside ASCII is untouched, so nothing
+  refs writes itself changes, and an error message keeps its own line breaks — `refs add`'s
+  two-phase instructions and a `--verbose` stack trace read as before.
+
+  **A command refs prints still means what it said.** Neutralising a line for display would have
+  rewritten the command inside it: `--package='a<LF>b'` became `--package='a?b'`, which names a
+  different package, and the same machinery prints `rm -rf` for an orphaned checkout path. A value
+  carrying a control character is therefore encoded rather than quoted — `$'a\x0Ab'`, which every
+  shell tested parses back to the exact original — so the line stays on one line, stays runnable,
+  and still names what it named. Verified by running the printed command through a real shell and
+  reading back what it wrote.
+
+  The `--json` envelope was never affected, because `JSON.stringify` escapes those characters, and
+  it is unchanged.
+
 ## [0.17.0] - 2026-09-13
 
 ### Added

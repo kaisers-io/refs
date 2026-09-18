@@ -140,4 +140,11 @@ const resolveStatus = async (
   return envelope.data?.package?.status;
 };
 
-export { COMMAND_PREFIX_LENGTH, PLACEHOLDER, repairLineFor, resolveStatus, runPrintedRepair };
+export {
+  COMMAND_PREFIX_LENGTH,
+  PLACEHOLDER,
+  cliBundle,
+  repairLineFor,
+  resolveStatus,
+  runPrintedRepair,
+};
