@@ -18,7 +18,7 @@ vi.mock(import('node:crypto'), async (importOriginal) => {
   return { ...actual, randomUUID: () => FIXED_UUID as ReturnType<typeof actual.randomUUID> };
 });
 
-const { writeFileAtomic } = await import('../src/fs-atomic.ts');
+const { errnoCode, isEnoent, writeFileAtomic } = await import('../src/fs-atomic.ts');
 
 const freshDir = (): Promise<string> => mkdtemp(join(tmpdir(), 'refs-atomic-'));
 
@@ -59,5 +59,30 @@ describe('the temp file an atomic write creates', () => {
     await writeFileAtomic(target, 'refs content');
 
     await expect(readFile(target, 'utf8')).resolves.toBe('refs content');
+  });
+});
+
+// `errnoCode` moved here from `lock-meta.ts`, beside `isEnoent`: decoding an errno is not lock
+// business, and `resolve-installed.ts` needed it. Its "this error carries no code" answer is what
+// keeps a caller from treating an ordinary `Error` as a filesystem outcome.
+describe('the errno a failure carries', () => {
+  it.each([
+    ['a plain Error', new Error('boom')],
+    ['a string', 'boom'],
+    // eslint-disable-next-line unicorn/no-null -- the point is that a null value is handled
+    ['null', null],
+    ['an object whose code is not a string', { code: 42 }],
+  ])('is undefined when there is none: %s', (_label, value) => {
+    expect.hasAssertions();
+
+    expect(errnoCode(value)).toBeUndefined();
+    expect(isEnoent(value)).toBe(false);
+  });
+
+  it('is the code when there is one', () => {
+    expect.hasAssertions();
+
+    expect(errnoCode({ code: 'ENOENT' })).toBe('ENOENT');
+    expect(isEnoent({ code: 'ENOENT' })).toBe(true);
   });
 });
