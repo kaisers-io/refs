@@ -138,7 +138,11 @@ const syncExistingCheckout = async (
     dest,
     expectedUrl: rsc.ref.url,
   });
-  const result = await syncRef(ctx.runner, { defaultBranch: rsc.ref.default_branch, dir: dest });
+  const result = await syncRef(ctx.runner, {
+    defaultBranch: rsc.ref.default_branch,
+    dir: dest,
+    hooksDir: rsc.home.hooksDir,
+  });
   const headSha = validateHeadSha(rsc.key, dest, result.newSha);
   const outcome: RefSyncOutcome = { headSha, previousSha: result.oldSha, status: result.status };
   if (result.branchRenamedTo !== undefined) {

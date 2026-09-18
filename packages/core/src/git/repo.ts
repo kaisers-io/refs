@@ -28,6 +28,9 @@ type CloneResult = {
 type SyncOpts = {
   dir: string;
   defaultBranch: string;
+  /** This home's hooks directory: what `core.hooksPath` must equal for the checkout to be one
+   * refs produced. See `assertManagedCheckout`. */
+  hooksDir: string;
 };
 
 // Canonical definitions live in sync-result.ts — re-exported here under this module's
@@ -223,7 +226,7 @@ const hardResetToBranch = async (
  * `buildSyncResult` (sync-result.ts) for the status/warning semantics.
  */
 const syncRef = async (runner: Runner, opts: SyncOpts): Promise<SyncResult> => {
-  await assertManagedCheckout(runner, opts.dir);
+  await assertManagedCheckout(runner, opts.dir, opts.hooksDir);
   const oldSha = await currentSha(runner, opts.dir);
   const syncBranch = await resolveSyncBranch(runner, opts);
   const dirty = await isDirty(runner, opts.dir);
