@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **A syntax error in `config.toml` no longer reports the surrounding lines.** The TOML parser's
+  message ends in a source excerpt — the offending line plus the nonempty lines either side of it —
+  and refs forwarded it verbatim. A syntax error next to a ref's `url` therefore reported that url,
+  credentials and all, through an ordinary command failure and before any schema or url handling
+  ran, so none of the redaction applied elsewhere was reached. The fault and its line and column are
+  still reported; the source is not.
+
 ## [0.17.0] - 2026-09-13
 
 ### Added
