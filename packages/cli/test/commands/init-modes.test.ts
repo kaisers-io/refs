@@ -1,7 +1,12 @@
 import { DIR_MODE, FILE_MODE, SpawnRunner, resolveHome } from '@kaisers-io/refs-core';
 import { chmod, mkdir, mkdtemp, stat, symlink } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
-import { initHome, realContextFor, withTempHome } from '../helpers/add-support.ts';
+import {
+  initHome,
+  realContextFor,
+  withResetExitCode,
+  withTempHome,
+} from '../helpers/add-support.ts';
 import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { cliBundle } from '../helpers/printed-command.ts';
 import { join } from 'node:path';
@@ -144,6 +149,27 @@ describe.skipIf(process.platform === 'win32')('a config left readable by an olde
 
       await expect(modeOf(home.configPath)).resolves.toBe(FILE_MODE);
     });
+  });
+});
+
+describe.skipIf(process.platform === 'win32')('a file whose mode cannot be applied', () => {
+  it('fails rather than leaving it unrepaired and reporting the home ready', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, stderr } = realContextFor(homeDir);
+        const home = resolveHome(ctx.env);
+        await mkdir(home.root, { recursive: true });
+        // A self-referential link: `chmod` follows links, so this answers ELOOP. Only an ABSENT
+        // file is an ordinary outcome here — anything else means the repair did not happen, and
+        // `init` reporting the home ready would be a claim it had not established.
+        await symlink(home.configPath, home.configPath);
+
+        await initHome(ctx);
+
+        expect(stderr.join('\n')).toContain('ELOOP');
+      }),
+    );
   });
 });
 
