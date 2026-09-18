@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **refs chooses the access mode of everything it owns instead of inheriting it.** Every directory
+  and file under `REFS_HOME` was created with no mode argument, so which principals could read or
+  write them was decided by whatever umask the invoking process happened to carry. Measured:
+  `refs init` under `umask 002` left the hooks directory group-writable, and under `umask 000`
+  world-writable. That directory is the one every managed checkout points `core.hooksPath` at, and
+  git resolves hook names against it — so anyone able to write there gets code run as the refs user
+  during an ordinary `refs sync`. Under the default `umask 022` none of that applies, which is
+  exactly the problem: refs neither chose nor recorded which of those it got.
+
+  Directories are now `0700` and files `0600`. A refs home is a single-user directory, and this
+  makes that explicit rather than incidental.
+
+  `refs init` also applies them to a home that already exists, because `mkdir` sets a mode only on
+  what it creates and `init` is the command that repairs a home. The repair removes group and other
+  access and restores the owner's own; a directory that is a symlink is left alone, since `chmod`
+  follows links and the mode of a directory outside the home is its owner's business. `config.toml`
+  is repaired too — nothing rewrites it when the CLI version already matches, so it would otherwise
+  keep an old mode forever. Checkouts under `sources/` are not touched: the directory above them is
+  what controls access to them.
+
+  A guard hook now gets its mode before it is published rather than after, so it is never briefly
+  present and not executable.
+
 ## [0.17.0] - 2026-09-13
 
 ### Added
