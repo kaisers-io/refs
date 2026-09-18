@@ -178,6 +178,28 @@ describe('refs doctor: a git configuration it could not read whole', () => {
   });
 });
 
+describe('refs doctor: a config key written without a value', () => {
+  it('is read as a key with an empty value, not as a malformed record', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const setup = await setupInitializedHome(homeDir);
+        setup.runner.expect('git --version', { stdout: GIT_VERSION_STDOUT });
+        // git writes a bare key — `[core]` then `bare` on its own line — as a record with no
+        // newline in it at all. `core.fsmonitor` in that shape has an empty value, which is one
+        // of the boolean spellings and therefore not a command.
+        setup.runner.expect('git config --list -z --show-scope', {
+          stdout: `global${NUL}core.bare${NUL}global${NUL}core.fsmonitor${NUL}`,
+        });
+
+        const envelope = await runDoctorJson(setup.ctx, setup.stdout);
+
+        expectCheck(envelope, SURFACE, { status: 'ok' });
+      }),
+    );
+  });
+});
+
 describe('refs doctor: a config value carrying a newline', () => {
   it('is parsed by NUL records, which is what -z is for', async () => {
     expect.hasAssertions();

@@ -60,11 +60,15 @@ const parseScopedConfig = (stdout: string): ConfigEntry[] => {
   const fields = stdout.split('\0');
   const entries: ConfigEntry[] = [];
   for (let index = 0; index + 1 < fields.length; index += FIELDS_PER_ENTRY) {
+    /* v8 ignore next 2 -- the loop guard already proves both indices are in range; the fallbacks
+       exist only because `noUncheckedIndexedAccess` cannot see that. */
     const record = fields[index + 1] ?? '';
+    const scope = fields[index] ?? '';
+    // A record with no newline is a key git wrote with no value — `[core]` then a bare `bare`.
     const at = record.indexOf('\n');
     const key = at === NOT_FOUND ? record : record.slice(0, at);
     const value = at === NOT_FOUND ? '' : record.slice(at + 1);
-    entries.push({ key, scope: fields[index] ?? '', value });
+    entries.push({ key, scope, value });
   }
   return entries;
 };
