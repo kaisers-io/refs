@@ -43,6 +43,18 @@ const observationsOf = async (dir: string): Promise<string[]> => {
   return entries.map((entry) => (entry.value as { observed: string }).observed);
 };
 
+/** The property, stated as a property rather than as one expected value: two targets differing
+ * ONLY in whether the out-of-package path exists must observe the same thing, and that thing must
+ * not be `absent` — which is the answer that says something about the path.
+ *
+ * Not pinned to a literal, because the value legitimately differs by platform: on Windows an
+ * absolute path carries a drive letter, so `./..` + it contains `:` and `\`, which the probe gate
+ * refuses outright as `not_checked`. Refusing earlier is not the bug; answering DIFFERENTLY is. */
+const expectSameAndNonCommittal = (observed: readonly string[]): void => {
+  expect(new Set(observed).size).toBe(1);
+  expect(observed).not.toContain('absent');
+};
+
 describe('a target that leaves the package', () => {
   it('says the same thing whether or not the traversal target exists', async () => {
     expect.hasAssertions();
@@ -56,7 +68,7 @@ describe('a target that leaves the package', () => {
       name: 'p',
     });
 
-    await expect(observationsOf(dir)).resolves.toStrictEqual(['unverifiable', 'unverifiable']);
+    expectSameAndNonCommittal(await observationsOf(dir));
   });
 
   it('says the same thing through a symlink, which carries no .. at all', async () => {
@@ -71,7 +83,7 @@ describe('a target that leaves the package', () => {
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     symlinkSync(outside, join(dir, 'link'), 'dir');
 
-    await expect(observationsOf(dir)).resolves.toStrictEqual(['unverifiable', 'unverifiable']);
+    expectSameAndNonCommittal(await observationsOf(dir));
   });
 
   it('says the same thing for a trailing-slash target, where lstat sees no link', async () => {
@@ -89,7 +101,7 @@ describe('a target that leaves the package', () => {
     // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
     symlinkSync(join(outside, 'no-such-dir'), join(dir, 'deadlink'), 'dir');
 
-    await expect(observationsOf(dir)).resolves.toStrictEqual(['unverifiable', 'unverifiable']);
+    expectSameAndNonCommittal(await observationsOf(dir));
   });
 });
 

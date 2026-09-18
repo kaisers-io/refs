@@ -95,13 +95,23 @@ const resolveInside = async (root: string, target: string): Promise<ContainmentR
     : { kind: 'outside' };
 };
 
-const TRAILING_SEPARATORS = /[/\\]+$/u;
+const SEPARATORS = new Set(['/', '\\']);
+const DRIVE_SUFFIX = ':';
 
 /** `path` without its trailing separators, unless removing them would change what it names — a
- * filesystem root is all separator, and a Windows `C:` without one is drive-RELATIVE. */
+ * filesystem root is all separator, and a Windows `C:` without one is drive-RELATIVE.
+ *
+ * Scanned rather than matched with `/[/\\]+$/`, which is a polynomial ReDoS: anchoring a
+ * quantified class at the end makes the engine retry from every position, and the target here is
+ * a path built from a declared `exports` target. Measured on that regex: 156 ms for 10 000 leading
+ * separators, 15.6 s for 100 000. This is linear. */
 const withoutTrailingSeparators = (path: string): string => {
-  const trimmed = path.replace(TRAILING_SEPARATORS, '');
-  return trimmed === '' || trimmed.endsWith(':') ? path : trimmed;
+  let end = path.length;
+  while (end > 0 && SEPARATORS.has(path[end - 1] ?? '')) {
+    end -= 1;
+  }
+  const trimmed = path.slice(0, end);
+  return trimmed === '' || trimmed.endsWith(DRIVE_SUFFIX) ? path : trimmed;
 };
 
 /** Whether an ABSENCE at `path` is an absence INSIDE the package.
