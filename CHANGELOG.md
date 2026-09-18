@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Small correctness corrections found while reviewing adjacent code.**
+  - `refs edit --decline` reports a bad path as `→ at path` instead of naming its position inside
+    the whole document. Both checks always held — `writeConfig` re-validates everything — but this
+    is the earlier and better-located of the two, as its siblings already have.
+  - A package name is checked against the same segment rule `zRefKey` and `zPackagePath` use,
+    rather than a second, narrower copy. The local one admitted `:` and `%`, which core rejects and
+    documents: on Windows a config-derived name like `C:foo` addressed an alternate data stream
+    rather than a directory. No legitimate npm name is affected.
+  - `--project` distinguishes "cannot be read" from "does not exist". It decided that by matching
+    refs' own wording in a caught error's message, so an EACCES or an ELOOP was reported as an
+    absence about a directory that is there.
+  - `refs add npm:<pkg>` has a request deadline, and reports it as one. Without a deadline, a
+    registry or an intercepting proxy that trickles a response held the command open indefinitely;
+    and a deadline that expires mid-body makes the response unreadable, which would otherwise have
+    been reported as the registry sending invalid JSON.
+  - The atomic write creates its temporary file exclusively and refuses to follow a symlink at that
+    path. The random name already made planting one impractical; this removes the argument.
+
 ## [0.17.0] - 2026-09-13
 
 ### Added

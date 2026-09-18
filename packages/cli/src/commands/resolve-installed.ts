@@ -1,6 +1,7 @@
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { errnoCode, isEnoent, isSafeSegment, usageError } from '@kaisers-io/refs-core';
 import { readFile, readdir, stat } from 'node:fs/promises';
-import { usageError } from '@kaisers-io/refs-core';
+import type { Stats } from 'node:fs';
 
 // Which version of a package a project actually has installed.
 //
@@ -22,7 +23,13 @@ const PNP_MANIFESTS = ['.pnp.cjs', '.pnp.js'];
 // Rejects anything that could climb out of `node_modules` or address a path rather than a package:
 // a package name reaches this from `config.toml`, where keys are only checked for being non-empty
 // and not a prototype key — not for being valid npm names.
-const UNSAFE_SEGMENT = new Set(['', '.', '..']);
+//
+// `isSafeSegment` is core's own rule, the one `zRefKey` and `zPackagePath` apply, rather than a
+// second definition here. The local one admitted `:` and `%`, which core rejects and documents:
+// `:` is a Windows drive and NTFS alternate-data-stream separator, so a config-derived name like
+// `C:foo` addressed a stream rather than a directory. No escape from the `node_modules` prefix
+// resulted and there is no POSIX effect, but two spellings of one rule is how the narrower one
+// ends up being the only one anybody updates.
 
 type InstalledStatus = 'found' | 'not_materialized' | 'unsupported_layout' | 'unverifiable';
 
@@ -37,9 +44,7 @@ type InstalledInfo = {
 };
 
 const isSafePackageName = (name: string): boolean =>
-  !isAbsolute(name) &&
-  !name.includes('\\') &&
-  name.split('/').every((segment) => !UNSAFE_SEGMENT.has(segment));
+  !isAbsolute(name) && name.split('/').every((segment) => isSafeSegment(segment));
 
 /** The `node_modules` directories Node would consult from `from`, nearest first.
  *
@@ -141,18 +146,30 @@ const hasPnpManifest = async (from: string): Promise<boolean> => {
 
 /** Validates `--project` before anything else happens. A path that does not exist, or is not a
  * directory, is a mistake in the invocation rather than a fact about the project — and it must be
- * caught before a `--sync-if-stale` in the same call goes and mutates a checkout for it. */
-const assertProjectDir = async (project: string): Promise<void> => {
+ * caught before a `--sync-if-stale` in the same call goes and mutates a checkout for it.
+ *
+ * The `stat` is kept inside its own try, so what follows it is not in the catch's reach. That used
+ * to be arranged by asking whether the caught error's MESSAGE began with `--project`, which is a
+ * string sniff over refs' own wording — and it swallowed every non-ENOENT failure into "path does
+ * not exist", reporting an EACCES or an ELOOP as an absence. */
+const statOrUndefined = async (path: string): Promise<Stats | undefined> => {
   try {
-    const info = await stat(project);
-    if (!info.isDirectory()) {
-      throw usageError(`--project must be a directory: ${project}`);
-    }
+    return await stat(path);
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith('--project')) {
-      throw error;
+    if (isEnoent(error)) {
+      return undefined;
     }
+    throw usageError(`--project could not be read: ${path} (${errnoCode(error) ?? 'unknown'})`);
+  }
+};
+
+const assertProjectDir = async (project: string): Promise<void> => {
+  const info = await statOrUndefined(project);
+  if (info === undefined) {
     throw usageError(`--project path does not exist: ${project}`);
+  }
+  if (!info.isDirectory()) {
+    throw usageError(`--project must be a directory: ${project}`);
   }
 };
 

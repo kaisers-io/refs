@@ -1,5 +1,6 @@
 import { readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { createLeaseSidecar } from './lock-sidecar.ts';
+import { errnoCode } from './fs-atomic.ts';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
@@ -16,16 +17,6 @@ type LockMeta = {
   // Absent when a `meta.json` carries no usable `token` — the lock is then treated as unownable by
   // anyone, which is what `releaseIfOwned` and the lease lookup already do with a mismatch.
   token?: string;
-};
-
-const errnoCode = (err: unknown): string | undefined => {
-  if (typeof err === 'object' && err !== null && 'code' in err) {
-    const { code } = err as { code: unknown };
-    if (typeof code === 'string') {
-      return code;
-    }
-  }
-  return undefined;
 };
 
 // Only ESRCH proves the process is gone; EPERM means it exists under another user, and any other
@@ -227,7 +218,6 @@ const writeInitialMeta = async (lockPath: string, token: string): Promise<void> 
 
 export {
   dirMtimeMs,
-  errnoCode,
   isPidAlive,
   newLockToken,
   readLockMeta,
@@ -236,4 +226,7 @@ export {
   statMtime,
   writeInitialMeta,
 };
+// Re-exported from its source so the lock modules keep one import site: it lives in `fs-atomic.ts`
+// beside `isEnoent`, because decoding an errno is not lock business.
+export { errnoCode } from './fs-atomic.ts';
 export type { LockMeta, MetaRead };

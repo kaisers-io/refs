@@ -63,6 +63,11 @@ const hasKeyShape = (raw: string): boolean => {
   return path.every((seg) => SAFE_SEGMENT.test(seg));
 };
 
+/** Whether one path segment is one refs is willing to build a filesystem path from. The rule
+ * `zRefKey` and `zPackagePath` already apply, exported so a caller walking into a directory does
+ * not have to restate it — and get it subtly wrong. */
+const isSafeSegment = (segment: string): boolean => SAFE_SEGMENT.test(segment);
+
 const zRefKey = z
   .string()
   .refine(
@@ -113,6 +118,7 @@ export {
   CLONE_MODES,
   durationToMs,
   GIT_TRANSPORTS,
+  isSafeSegment,
   zCloneMode,
   zDuration,
   zGitTransport,

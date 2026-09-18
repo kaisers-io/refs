@@ -211,3 +211,26 @@ describe('refs edit --decline: shapes it will not guess at', () => {
     );
   });
 });
+
+// The one config writer that used to rely solely on `writeConfig`'s whole-document re-validation.
+// Both checks hold either way; what changes is the message, and a reader can act on `path` where
+// they cannot act on `refs.<key>.declined_packages.0.path`.
+describe('refs edit --decline: a path the configuration cannot hold', () => {
+  it('names the field rather than its position in the whole document', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, stdout } = await setupEditFixture(homeDir);
+
+        await run(ctx, declineArgs('@acme/one', '../escape'));
+
+        const envelope = parseSoleEnvelope(stdout);
+        // Not `unexpected` with a raw zod dump, and not a whole-document path: `path` is what the
+        // caller passed and what they can correct.
+        expect(envelope.error?.code).toBe('validation');
+        expect(envelope.error?.message).toContain('at path');
+        expect(envelope.error?.message).not.toContain('declined_packages');
+      }),
+    );
+  });
+});
