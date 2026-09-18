@@ -1,3 +1,4 @@
+import { isStorableText } from './primitives.ts';
 import { z } from 'zod';
 
 // Dangerous own-keys that must never be silently accepted or silently dropped from a record.
@@ -30,10 +31,10 @@ const withValidatedKeys = <Schema extends z.ZodType>(
   }, schema);
 
 const PACKAGE_KEY_ISSUE_MESSAGE =
-  'package key must be non-empty and not "__proto__", "constructor", or "prototype"';
+  'package key must be non-empty, storable text, and not "__proto__", "constructor", or "prototype"';
 
 const isSafePackageKey = (key: string): boolean =>
-  key.length > 0 && !DANGEROUS_RECORD_KEYS.has(key);
+  isStorableText(key) && !DANGEROUS_RECORD_KEYS.has(key);
 
 // Shared guard for any "packages" record (config refs, proposal, final proposal): rejects
 // empty keys and dangerous own-keys (`__proto__`, `constructor`, `prototype`) instead of

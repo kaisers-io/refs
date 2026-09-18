@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Text that cannot be written back is refused before it becomes configuration.** A lone surrogate
+  is a valid JavaScript string with no UTF-8 encoding: the TOML serializer writes it as a `\ud800`
+  escape and the parser then rejects that escape, so accepting one produced a home refs itself could
+  no longer read — an unreadable configuration rather than a bad entry. The route in was JSON, which
+  has an escape for a lone surrogate where TOML has none, so a `refs add --proposal` file could
+  carry one into a package name, a description, the url, the default branch, a package path or a tag
+  format. All of them now require text that round-trips, and the refusal names the field.
+
+  Nothing narrows by length. The config is validated on every read, so a length bound would make an
+  existing home unreadable, and unfixable through a CLI that cannot load it, over a value that
+  round-trips perfectly well.
+
+  Writing the config now proves the document can be read back instead of assuming it. `meta` is
+  deliberately permissive — a key written by a future CLI passes through untouched — so no field
+  schema can cover it, and a schema cannot keep the guarantee when a field is added later. Both
+  `refs migrate` and every ordinary write go through the same check, which costs one parse: 0.4 ms
+  on a 32 KB config holding 100 refs.
+
+  `refs doctor` and `refs sync` no longer offer a `--decline` command for a name the configuration
+  cannot store. The report validated the path alone, so it could print a command the configuration
+  then refused. It now asks the shape that would be stored. A package called `constructor` stays
+  declinable, which is the documented difference between declining and registering.
+
 ## [0.17.0] - 2026-09-13
 
 ### Added

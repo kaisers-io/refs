@@ -5,6 +5,7 @@ import {
   zGitTransport,
   zPackagePath,
   zRefKey,
+  zStorableText,
   zTagFormat,
 } from './primitives.ts';
 import { z } from 'zod';
@@ -67,12 +68,15 @@ const zRefSettingsOverride = z.strictObject(removeDefaults(zSettings.shape));
 // package — it records a routing decision, and a decision about one repository never travels to
 // another, which is why this sits on the ref rather than in settings.
 const zDeclinedPackage = z.strictObject({
-  name: z.string().min(1),
+  // Same rule as a registrable package key, minus the prototype-key part: a declined name is an
+  // array element rather than a record key, so it cannot collide — but it is still written to
+  // config.toml, and a name that cannot be written back is a config refs can no longer read.
+  name: zStorableText,
   path: zPackagePath,
 });
 
 const zPackageEntry = z.strictObject({
-  description: z.string().min(1),
+  description: zStorableText,
   path: zPackagePath,
   tag_format: zTagFormat.optional(),
 });
@@ -83,18 +87,18 @@ const zPackageEntry = z.strictObject({
 // the only command that reads the field, and it reports the absence itself.
 const zRefEntry = z.strictObject({
   declined_packages: z.array(zDeclinedPackage).optional(),
-  default_branch: z.string().min(1),
-  description: z.string().min(1),
+  default_branch: zStorableText,
+  description: zStorableText,
   packages: zSafePackagesRecord(zPackageEntry).optional(),
   tag_format: zTagFormat.optional(),
-  url: z.string().min(1),
+  url: zStorableText,
   ...zRefSettingsOverride.shape,
 });
 
 // Meta is looseObject: keys written by future CLI versions must survive a read → write
 // round-trip by an older CLI (forward-compat guarantee).
 const zMeta = z.looseObject({
-  cli_version: z.string().min(1),
+  cli_version: zStorableText,
   schema_version: z.number().int().positive(),
 });
 
