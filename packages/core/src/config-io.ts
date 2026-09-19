@@ -6,6 +6,7 @@ import { isEnoent, writeFileAtomic } from './fs-atomic.ts';
 import type { Config } from './schemas/config.ts';
 import type { RefsHome } from './home.ts';
 import { configBackupPath } from './home.ts';
+import { tomlErrorSummary } from './config-toml-error.ts';
 import { z } from 'zod';
 
 type JsonRecord = Record<string, unknown>;
@@ -67,7 +68,7 @@ const parseConfigToml = (text: string, path: string): JsonRecord => {
     return parse(text) as JsonRecord;
   } catch (error) {
     if (error instanceof TomlError) {
-      throw validationError(`invalid TOML in ${path}: ${error.message}`);
+      throw validationError(`invalid TOML in ${path}: ${tomlErrorSummary(error)}`);
     }
     throw error;
   }

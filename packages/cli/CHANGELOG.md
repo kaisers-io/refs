@@ -28,6 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   checkout whose recorded identity described a different repository. A sweep of every code point up
   to U+00FF plus the zero-width and bidi suspects found no fourth character with the same effect.
 
+- **A syntax error in `config.toml` no longer reports the surrounding lines.** The TOML parser's
+  message ends in a source excerpt — the offending line plus the nonempty lines either side of it —
+  and refs forwarded it verbatim. A syntax error next to a ref's `url` therefore reported that url,
+  credentials and all, through an ordinary command failure and before any schema or url handling
+  ran, so none of the redaction applied elsewhere was reached. The fault and its line and column are
+  still reported; the source is not.
+
 ## [0.17.0] - 2026-09-13
 
 ### Added
