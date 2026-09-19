@@ -257,6 +257,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The atomic write creates its temporary file exclusively and refuses to follow a symlink at that
     path. The random name already made planting one impractical; this removes the argument.
 
+### Added
+
+- **`refs doctor` reports git configuration that git itself runs.** `core.hooksPath` is the
+  boundary refs pins, and it governs hooks-*directory* discovery — which is what stops a hook file
+  inside a checkout from running. Other mechanisms do not route through it. Measured on git 2.54
+  against a real clone with that path correctly set: a configured hook
+  (`[hook "x"] event = post-checkout; command = ./script.sh`) ran the **checkout's** copy of that
+  script during `refs add` and `refs sync`, and an attribute-selected filter
+  (`[filter "y"] smudge = ./script.sh`) ran it during the checkout `sync` performs.
+  `core.fsmonitor`'s command form is a third, run with the worktree as its working directory.
+
+  Each needs a definition already in the invoking user's own git configuration — a tracked
+  repository cannot create one, and its `.gitattributes` can only choose when an existing filter
+  applies. So the new `git-exec-surfaces` check reports the condition rather than refs discarding
+  the ambient configuration, which also carries the credential helpers and proxies a private clone
+  needs.
+
+  It reports **presence, not safety**: whether a command reaches a checkout's content depends on
+  the command, and `/bin/sh ./script.sh` has an absolute program and runs the checkout's script
+  anyway. `SECURITY.md` states the boundary, these exclusions, and what the check does not decide.
+
 ## [0.17.0] - 2026-09-13
 
 ### Added

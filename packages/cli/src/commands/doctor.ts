@@ -19,6 +19,7 @@ import type { CliContext } from '../context.ts';
 import type { ConfigLoad } from './doctor-checks-basic.ts';
 import type { RefsCommand } from './registry.ts';
 import { checkConfigDrift } from './doctor-checks-structure.ts';
+import { checkGitExecSurfaces } from './doctor-checks-git-config.ts';
 import { checkLocks } from './doctor-checks-locks.ts';
 import { checkSkill } from './doctor-checks-skill.ts';
 import { checkSshAuth } from './doctor-checks-ssh.ts';
@@ -59,6 +60,7 @@ const STEP_LABELS: Readonly<Record<string, string>> = {
   'config-drift': 'Comparing registered packages with the checkouts',
   'dirty-checkouts': 'Looking for local changes in checkouts',
   git: 'Checking Git',
+  'git-exec-surfaces': 'Checking what Git is configured to run',
   'hooks-guard': 'Checking the checkout protection hooks',
   locks: 'Checking locks',
   node: 'Checking Node.js',
@@ -101,6 +103,8 @@ const buildCheckSteps = (load: DoctorLoad): CheckStep[] => {
   const { configLoad, ctx, home, state } = load;
   return [
     { name: 'git', run: () => checkGit(ctx) },
+    // Right after the version, because it is about the same binary and reads no refs state.
+    { name: 'git-exec-surfaces', run: () => checkGitExecSurfaces(ctx, home.root) },
     { name: 'node', run: () => Promise.resolve(checkNode(ctx)) },
     { name: 'config', run: () => Promise.resolve(buildConfigCheck(configLoad.errorMessage)) },
     { name: 'hooks-guard', run: () => checkHooksGuard(ctx, home, configLoad.config) },

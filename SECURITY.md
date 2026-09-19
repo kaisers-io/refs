@@ -29,6 +29,27 @@ there are no long-term support branches.
   git commands against checkouts; it must never run *their* code. Each checkout's `core.hooksPath`
   points at the refs-owned hooks directory, so hooks living inside a checkout never run. A way to
   defeat that is in scope.
+
+  `core.hooksPath` governs hooks-*directory* discovery, which is what stops a hook file living
+  inside a checkout from running. Other git mechanisms do not route through it. Measured on git
+  2.54 against a real clone with `core.hooksPath` correctly pinned: a configured hook
+  (`[hook "x"] event = post-checkout; command = ./script.sh`) ran the **checkout's** copy of that
+  script during `refs add` and `refs sync`, and an attribute-selected filter
+  (`[filter "y"] smudge = ./script.sh`) ran it during the checkout `refs sync` performs.
+  `core.fsmonitor`'s command form is a third: git runs it with the worktree as its working
+  directory.
+
+  Each needs a definition already present in the invoking user's own git configuration. A tracked
+  repository cannot create one, and its `.gitattributes` can only choose when an existing filter
+  applies. `refs doctor`'s `git-exec-surfaces` check reports such a definition rather than `refs`
+  sanitising the ambient configuration, because that same configuration carries the credential
+  helpers, proxies and `insteadOf` rules a private clone needs.
+
+  That check reports **presence, not safety**. Whether a given command reaches a checkout's content
+  depends on the command, and deciding that would mean proving an arbitrary interpreter never loads
+  it — `/bin/sh ./script.sh` has an absolute program and runs the checkout's script anyway. It is
+  also a baseline: an `includeIf "gitdir:…"` section can add entries inside a managed checkout that
+  a listing read elsewhere does not show.
 - Supply-chain problems in the published `@kaisers-io/refs` package: an unexpected bundled
   dependency, a lifecycle script, or a mismatch between the published artifact and this
   repository.
@@ -61,7 +82,9 @@ That is an instruction-level mitigation, not a sandbox. Indirect prompt injectio
 dependency is a real residual risk and prose in a skill does not remove it. What is enforced in code
 is narrower, and worth stating exactly:
 
-- `refs` never runs a checkout's own code (the `core.hooksPath` note above).
+- `refs` never runs a checkout's own code through a hook *inside* the checkout (the
+  `core.hooksPath` note above), and `refs doctor` reports the configured mechanisms that note
+  describes as outside it.
 - **`refs` never imports a description out of a checkout's manifests.** A package `description` is
   the one field in `config.toml` that exists to hold prose, and workspace detection does not read it
   — it carries a package's name and path and nothing else. Every description is written by whoever
