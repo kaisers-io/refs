@@ -71,11 +71,11 @@ const withheldReason = (issue: StructureIssue): string | undefined => {
 };
 
 /** Both answers, because both are answers. Registering needs a human decision (SKILL.md: never on
- * your own initiative); declining is what stops the finding returning on every run once that
- * decision was "no". */
-const offeredCommands = (issue: StructureIssue, key: string): string => {
+ * your own initiative); declining stops the finding returning once that decision was "no". */
+// `path` is passed rather than read off the issue: a `?? ''` would be unreachable.
+const offeredCommands = (issue: StructureIssue, key: string, path: string): string => {
   const decline = editCommand(
-    [`--package=${shellQuote(issue.name)}`, '--decline', `--path=${shellQuote(issue.path ?? '')}`],
+    [`--package=${shellQuote(issue.name)}`, '--decline', `--path=${shellQuote(path)}`],
     [key],
   );
   if (!isRegistrablePackageName(issue.name)) {
@@ -88,7 +88,7 @@ const offeredCommands = (issue: StructureIssue, key: string): string => {
     [
       `--package=${shellQuote(issue.name)}`,
       '--create',
-      `--path=${shellQuote(issue.path ?? '')}`,
+      `--path=${shellQuote(path)}`,
       '--description="<what it is>"',
     ],
     [key],
@@ -107,7 +107,7 @@ const unregisteredLine = (issue: StructureIssue, key: string): string => {
   if (withheld !== undefined) {
     return `${head}. ${withheld} — report it and leave it unregistered`;
   }
-  return `${head}. ${offeredCommands(issue, key)}`;
+  return `${head}. ${offeredCommands(issue, key, issue.path)}`;
 };
 
 /** A relocation, with the path edit that repairs it. The new path comes from the CHECKOUT and is
@@ -130,8 +130,8 @@ const relocatedLine = (issue: StructureIssue, key: string, at: string): string =
  * configuration's own, but a ref key admits spaces and `$()` (`zRefKey`) and a package name is
  * checked only for being non-empty — so both go through `shellQuote`, for the reason spelled out
  * above `registrable`, and through `editCommand`, for the second parser they then meet. */
-/** A configured entry whose package is gone from the workspaces. Its name comes from the config,
- * which admits a control character — and a command carrying one cannot be pasted. */
+/** A configured entry gone from the workspaces. Its name comes from the config, which admits a
+ * control character — and a command carrying one cannot be pasted. */
 const missingLine = (issue: StructureIssue, key: string, at: string): string => {
   const head = `${issue.name}: gone from this repo's workspaces (${at}) — repoint the entry if it moved out of them`;
   if (!isPasteable(issue.name)) {

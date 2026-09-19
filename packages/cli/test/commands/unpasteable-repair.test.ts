@@ -47,6 +47,37 @@ describe('an unregistered package whose name carries a control character', () =>
   });
 });
 
+describe('a configured entry whose name carries a control character', () => {
+  it('is reported as gone, without a command to unregister it', () => {
+    expect.hasAssertions();
+    // This name came out of `config.toml`, which holds it fine. What it cannot survive is the
+    // printed command — the same reason as for an unregistered one, from the other direction.
+    const [line] = driftLines(
+      {
+        packages: [{ configured_path: 'packages/gone', name: '@acme/a\nb', status: 'missing' }],
+        status: 'drift',
+      },
+      KEY,
+    );
+
+    expect(line).toContain('unregister it by hand');
+    expect(line).not.toContain('refs edit');
+  });
+
+  it('still offers the removal when the name is ordinary', () => {
+    expect.hasAssertions();
+    const [line] = driftLines(
+      {
+        packages: [{ configured_path: 'packages/gone', name: '@acme/ok', status: 'missing' }],
+        status: 'drift',
+      },
+      KEY,
+    );
+
+    expect(line).toContain('--remove');
+  });
+});
+
 describe('an unregistered package whose values are merely awkward', () => {
   it.each([
     ['a space', 'packages/a b'],
