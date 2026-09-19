@@ -25,6 +25,8 @@ That takes three steps. The agent reads the version your project depends on, fin
 
 This one reads two private repositories no model has seen. `refs` keeps them as read-only git checkouts on your machine, through the git credentials you already have.
 
+## Why not just clone it?
+
 Your agent can already clone a repository. Cloning is the easy part. `refs` keeps the repositories you name, sends a question to the right one, refreshes them when they go stale, and gives the agent a repeatable way to read them.
 
 ## You talk to the agent, not to the CLI
@@ -37,6 +39,12 @@ Everything below is something you say to your agent. It runs the commands.
 
 The agent clones the repository, works out how the project tags its releases, and shows you what it found. Nothing enters your configuration until you approve it.
 
+> **TODO screenshot.** The approval step: what the agent found, waiting for your yes.
+> Save it as `assets/screenshots/add-approval.png`, then replace this block with the line below.
+
+<!-- ![The agent showing what it found about a repository and waiting for approval](https://raw.githubusercontent.com/kaisers-io/refs/main/assets/screenshots/add-approval.png) -->
+
+
 Three ways to name the same repository, all of which resolve to the key `github.com/Effect-TS/effect`:
 
 ```
@@ -47,7 +55,7 @@ git@github.com:Effect-TS/effect.git
 
 npm is a convenience for packages. A private repository or a self-hosted forge works the same way, and the credentials stay in your git configuration because `refs` refuses to take any in the URL.
 
-The CLI does the same things, and it is worth knowing for scripting or when typing is quicker. `refs sync` is the usual one. [`docs/commands.md`](docs/commands.md) has all of them. We recommend the agent route, because the agent can search a checkout, follow what it finds, and talk with you about it.
+The CLI does the same things, and it is worth knowing for scripting or when typing is quicker. `refs sync` is the usual one. [`docs/commands.md`](docs/commands.md) has all of them. We recommend the agent route. It can search a checkout, follow what it finds, and talk with you about it. It also writes the description every ref needs, one per package, from what the source says. Effect has 41 of them.
 
 ## Questions that cross repositories
 
@@ -101,15 +109,7 @@ fix(effect): TMap.remove/removeAll clears entire bucket on hash collision (#6233
 
 `refs` never invents a tag convention. When it cannot resolve a version it says so, and the tag list is right there to look at.
 
-Doing the same thing from the CLI, which is what the agent runs:
-
-```bash
-refs add npm:effect --dry-run --json > proposal.json   # fill in the descriptions, then:
-refs add --proposal proposal.json
-refs edit github.com/Effect-TS/effect tag_format 'effect@{version}' --package effect
-refs tag github.com/Effect-TS/effect 3.19.2 --package effect   # effect@3.19.2
-refs tag github.com/Effect-TS/effect 3.22.2 --package effect   # effect@3.22.2
-```
+The same steps run from the CLI, and [`docs/investigations.md`](docs/investigations.md) shows them.
 
 ## The CLI and the skill
 
@@ -146,7 +146,7 @@ refs doctor
 
 ## What lives on your machine
 
-Checkouts sit under `~/.kaisers-io/refs/sources/` as ordinary git repositories. You can open them in your editor, grep them, and read them without an agent. No service holds a copy of your code. What the agent reads is handled under that agent's own model and data settings.
+Checkouts sit under `~/.kaisers-io/refs/sources/` as ordinary git repositories. You can open them in your editor, grep them, and read them without an agent. Set `REFS_HOME` to keep them somewhere else, on another disk for instance, and everything `refs` owns moves with it: see [`docs/configuration.md`](docs/configuration.md). No service holds a copy of your code. What the agent reads is handled under that agent's own model and data settings.
 
 A checkout is the default branch at the revision you last fetched. It is not necessarily the version you have installed, and it does not refresh itself. `refs sync` fetches, and the skill runs it when a checkout has gone stale.
 

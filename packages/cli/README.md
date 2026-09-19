@@ -16,6 +16,8 @@ That takes three steps. The agent reads the version your project depends on, fin
 
 This one reads two private repositories no model has seen. `refs` keeps them as read-only git checkouts on your machine, through the git credentials you already have.
 
+## Why not just clone it?
+
 Your agent can already clone a repository. Cloning is the easy part. `refs` keeps the repositories you name, sends a question to the right one, refreshes them when they go stale, and gives the agent a repeatable way to read them.
 
 ## You talk to the agent, not to the CLI
@@ -66,7 +68,7 @@ The [full command reference](https://github.com/kaisers-io/refs/blob/main/docs/c
 
 ## What lives on your machine
 
-Checkouts sit under `~/.kaisers-io/refs/sources/` as ordinary git repositories. You can open them in your editor, grep them, and read them without an agent. No service holds a copy of your code. What the agent reads is handled under that agent's own model and data settings.
+Checkouts sit under `~/.kaisers-io/refs/sources/` as ordinary git repositories. You can open them in your editor, grep them, and read them without an agent. Set `REFS_HOME` to keep them somewhere else, on another disk for instance, and everything `refs` owns moves with it: see [configuration](https://github.com/kaisers-io/refs/blob/main/docs/configuration.md). No service holds a copy of your code. What the agent reads is handled under that agent's own model and data settings.
 
 A checkout is the default branch at the revision you last fetched. It is not necessarily the version you have installed, and it does not refresh itself. `refs sync` fetches, and the skill runs it when a checkout has gone stale.
 
