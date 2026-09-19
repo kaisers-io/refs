@@ -35,6 +35,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ran, so none of the redaction applied elsewhere was reached. The fault and its line and column are
   still reported; the source is not.
 
+### Changed
+
+- **`refs show` redacts a credential in the ref url.** The url field is allowed to hold one: a bare
+  ssh username is legal by design, and the read path accepts any non-empty string, so a hand-edited
+  config can carry `user:pass@` too. `--json` is the agent contract, so that output leaves the
+  terminal. The conventional `git@host` stays readable — redacting it would mark every ordinary ssh
+  ref as credential-bearing while telling the reader nothing — but any other userinfo is replaced
+  with `<redacted>@`, and the host and path are kept. The decision is made on the parsed url rather
+  than by matching the string, and a value that can be neither parsed nor recognised as the scp form
+  is redacted in full rather than printed.
+
 ## [0.17.0] - 2026-09-13
 
 ### Added
