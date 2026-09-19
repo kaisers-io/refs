@@ -1,4 +1,4 @@
-import { zRefKey, zTagFormat } from './primitives.ts';
+import { zBranchName, zRefKey, zTagFormat } from './primitives.ts';
 import { z } from 'zod';
 
 import { zPackageEntry } from './config.ts';
@@ -11,7 +11,7 @@ import { zSafePackagesRecord } from './record-keys.ts';
 const zPackageEntryPartial = zPackageEntry.partial({ description: true });
 
 const zProposalBase = z.strictObject({
-  default_branch: z.string().min(1),
+  default_branch: zBranchName,
   key: zRefKey,
   tag_format_candidate: zTagFormat.nullable(),
   url: z.string().min(1),
