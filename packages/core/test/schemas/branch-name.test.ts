@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { join, sep } from 'node:path';
 import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { SpawnRunner } from '../../src/proc/runner.ts';
 import { isBranchName } from '../../src/schemas/branch-name.ts';
-import { join } from 'node:path';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { zConfig } from '../../src/schemas/config.ts';
@@ -137,7 +137,11 @@ const disagreementsWithGit = async (names: readonly string[]): Promise<string[]>
   return found;
 };
 
-describe('the branch-name rule, against git itself', () => {
+// POSIX only, for cost rather than for correctness: the rule is git's and does not vary by
+// platform, and one `git` process per name is an order of magnitude slower on Windows — the same
+// corpus that takes ~28s on macOS ran past a 60s timeout there. It is compared against real git on
+// Linux and macOS, which is what the claim needs.
+describe.skipIf(sep === '\\')('the branch-name rule, against git itself', () => {
   it(
     'gives the same answer as git check-ref-format --branch, for every candidate',
     async () => {

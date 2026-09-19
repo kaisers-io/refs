@@ -7,9 +7,9 @@ import {
   withResetExitCode,
   withTempHome,
 } from '../helpers/add-support.ts';
+import { join, sep } from 'node:path';
 import type { ErrorEnvelope } from '../helpers/add-support.ts';
 import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
-import { join } from 'node:path';
 import { mkdtemp } from 'node:fs/promises';
 import { run } from '../../src/main.ts';
 import { tmpdir } from 'node:os';
@@ -53,7 +53,10 @@ const repoWithHostileHead = async (): Promise<string> => {
   return dir;
 };
 
-describe('a repository whose HEAD names a branch git would not accept', () => {
+// POSIX only: a Windows temp path carries backslashes, and `file://C:\\Users\\…` is not a url refs
+// accepts — the fixture cannot be built there at all. What is under test is refs' own decision,
+// which does not vary by platform.
+describe.skipIf(sep === '\\')('a repository whose HEAD names a branch git would not accept', () => {
   it(
     'is refused by the dry run, naming the field',
     async () => {
