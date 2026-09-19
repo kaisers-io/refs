@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readEntryPoints } from '../src/entry-points.ts';
 import { tmpdir } from 'node:os';
@@ -115,6 +115,35 @@ describe('an absence inside the package', () => {
 
     // The information that had to survive. `./dist/deep` does not exist either, so answering this
     // from the immediate parent alone would report a real absence as uninspected.
+    await expect(observationsOf(dir)).resolves.toStrictEqual(['absent', 'absent']);
+  });
+});
+
+// `withoutTrailingSeparators` is where the walk starts, and its two guards are the ones that keep
+// it from turning a root into something else. Exercised through the public surface: a target that
+// names the package directory itself, with and without a trailing slash.
+describe('a target that names a directory rather than a file', () => {
+  it('reports the directory, trailing slash or not', async () => {
+    expect.hasAssertions();
+    const dir = freshPackage({
+      exports: { './plain': './sub', './slashed': './sub/' },
+      name: 'p',
+    });
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    mkdirSync(join(dir, 'sub'));
+
+    await expect(observationsOf(dir)).resolves.toStrictEqual(['directory', 'directory']);
+  });
+
+  it('reports an absent nested directory as absent, trailing slash or not', async () => {
+    expect.hasAssertions();
+    const dir = freshPackage({
+      exports: { './plain': './gone/deeper', './slashed': './gone/deeper/' },
+      name: 'p',
+    });
+
+    // The walk has to climb out of `gone/deeper` to the package directory, and the slashed form
+    // must not lose its last component on the way.
     await expect(observationsOf(dir)).resolves.toStrictEqual(['absent', 'absent']);
   });
 });

@@ -107,7 +107,7 @@ const DRIVE_SUFFIX = ':';
  * separators, 15.6 s for 100 000. This is linear. */
 const withoutTrailingSeparators = (path: string): string => {
   let end = path.length;
-  while (end > 0 && SEPARATORS.has(path[end - 1] ?? '')) {
+  while (end > 0 && SEPARATORS.has(path.charAt(end - 1))) {
     end -= 1;
   }
   const trimmed = path.slice(0, end);
@@ -147,5 +147,5 @@ const absenceIsInside = async (packageDir: string, path: string): Promise<boolea
   }
 };
 
-export { absenceIsInside, resolveInside };
+export { absenceIsInside, resolveInside, withoutTrailingSeparators };
 export type { ContainmentResult };
