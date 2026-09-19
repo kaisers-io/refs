@@ -10,11 +10,6 @@
 
 That takes three steps. The agent reads the version your project depends on, finds the repository behind the package, and compares that release with the current one. Answers name the file and line they came from, so you can check them.
 
-> **TODO screenshot.** The answer to the prompt above, showing the cited files and lines.
-> Save it as `assets/screenshots/upgrade-answer.png` in the repository, then replace this block with the line below.
-
-<!-- ![The agent answering the upgrade question, citing files and lines](https://raw.githubusercontent.com/kaisers-io/refs/main/assets/screenshots/upgrade-answer.png) -->
-
 ```
 /refs does our payments client still match what the checkout service expects
 ```

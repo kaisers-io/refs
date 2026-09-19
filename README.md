@@ -17,10 +17,6 @@
 
 That takes three steps. The agent reads the version your project depends on, finds the repository behind the package, and compares that release with the current one. Answers name the file and line they came from, so you can check them.
 
-> **TODO screenshot.** The answer to the prompt above, showing the cited files and lines.
-> Save it as `assets/screenshots/upgrade-answer.png`, then replace this block with the line below.
-
-<!-- ![The agent answering the upgrade question, citing files and lines](https://raw.githubusercontent.com/kaisers-io/refs/main/assets/screenshots/upgrade-answer.png) -->
 
 
 ```
@@ -67,18 +63,22 @@ The agent reads each checkout in turn and names the files it used. What it canno
 
 ## How does this actually work
 
-Reading a library to find out how it does something is the other everyday question, and the answer is spread over files nobody wants to open one at a time. Ask for the shape of it:
+Reading a library to find out how it does something is the other everyday question, and the answer is spread over files nobody wants to open one at a time. Ask for the shape of it, and for the evidence:
 
 ```
-/refs how does effect run a fiber? follow the path from Effect.runPromise into the runtime loop, draw it as a diagram, and link every file you used
+/refs how does effect run a fiber? draw it as a diagram, then list every source file you inspected and what each one establishes
 ```
 
-The agent reads the checkout, follows the calls, and draws what it found. The file references are real paths on your disk, so you can open any of them and check the step yourself.
+The agent reads the checkout, follows the calls, and draws what it found. Underneath comes a table: one row per file, each with the line it read and what that line settles. Every row is a link into your own checkout. Click one and the file opens at that line, so you can check the step instead of taking it.
 
-> **TODO screenshot.** The diagram the agent drew, with its file links.
-> Save it as `assets/screenshots/effect-runtime-diagram.png`, then replace this block with the line below.
+It also names the revision it traced, which matters more than it sounds. A checkout can be a release candidate whose internals differ from the version a model learned, and the answer says which one you are looking at.
 
-<!-- ![A flow diagram of Effect's runtime, drawn by the agent, with links to the files it read](https://raw.githubusercontent.com/kaisers-io/refs/main/assets/screenshots/effect-runtime-diagram.png) -->
+This works in a terminal too. The diagram comes out as text and the file references are still there.
+
+> **TODO screenshot.** The agent's answer: the diagram, the table of files it inspected, and a source file open at one of the cited lines.
+> Save it as `assets/screenshots/effect-fiber-diagram.png`, then replace this block with the line below.
+
+<!-- ![The agent's diagram of how Effect runs a fiber, the files it inspected, and one of them open at the cited line](https://raw.githubusercontent.com/kaisers-io/refs/main/assets/screenshots/effect-fiber-diagram.png) -->
 
 ## Try it on a real repository
 
