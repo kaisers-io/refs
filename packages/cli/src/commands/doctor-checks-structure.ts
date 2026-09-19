@@ -5,10 +5,12 @@ import type { StructureIssue, StructureReport } from './drift-report.ts';
 import type { CheckResult } from './doctor-types.ts';
 import type { ExistingCheckout } from './doctor-checks-checkouts.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
+import type { RepairCommands } from './drift-commands.ts';
 import { driftLines } from './drift-lines.ts';
 import { existingCheckouts } from './doctor-checks-checkouts.ts';
 import { probeRefStructure } from './drift-probe.ts';
 import { refLockName } from './add-source.ts';
+import { repairCommandsFor } from './drift-commands.ts';
 
 // The `config-drift` check: does every configured package still live where the config says it
 // does, across every checkout that exists?
@@ -138,6 +140,21 @@ const probeInOrder = async (
 /** One ref's report, folded into the ones after it. The split is by WHICH REPORT a line came out
  * of, not by reading the line: `driftLines` is asked twice, once with only the configured half of
  * the report and once with only the discovery half, so neither has to be recognised by its text. */
+/** A finding with the repair commands it can offer, already quoted for a shell.
+ *
+ * The raw `name` and `path` stay — a caller that wants the values still gets them — but nothing has
+ * to ASSEMBLE a command from them any more. That mattered most where the human `detail` gives no
+ * command at all: once a directory holds enough unregistered packages, the per-package line is
+ * replaced by a single count line, which is exactly the large-monorepo case the skill routes an
+ * agent to `findings` for. A finding that can offer no command honestly carries none.
+ *
+ * `register` carries a `"<what it is>"` placeholder deliberately: a description is written from the
+ * package's own source, never copied out of a manifest, so refs cannot fill it in. */
+const withCommands = (issue: StructureIssue, key: string): StructureIssue & RepairCommands => ({
+  ...issue,
+  ...repairCommandsFor(issue, key),
+});
+
 const mergeFindings = (
   rest: ProbeFindings,
   item: { key: string; report: StructureReport },
@@ -153,7 +170,10 @@ const mergeFindings = (
       ...prefixed(driftLines({ discovery: candidates, status: 'ok' }, key)),
       ...rest.discovery,
     ],
-    findings: found.length === 0 ? rest.findings : [{ key, packages: found }, ...rest.findings],
+    findings:
+      found.length === 0
+        ? rest.findings
+        : [{ key, packages: found.map((issue) => withCommands(issue, key)) }, ...rest.findings],
     unhealthy: [
       ...prefixed(
         driftLines(

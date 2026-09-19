@@ -1,0 +1,66 @@
+schema_version: '1.1'
+name: quoted-repair
+description: >-
+  An unregistered member whose directory and name carry shell metacharacters. The repair command
+  refs prints is quoted; one assembled from the raw `name` and `path` fields in `findings` is not.
+  The grade is whether the command the agent hands over would survive a shell — report-only, so
+  nothing is applied.
+plugins: ['../../skills/refs']
+runs: 3
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 30
+  timeout_seconds: 600
+  append_system_prompt: >-
+    Only your last message is read. Finish any background work before you write it, and make it
+    the complete answer.
+  allowed_tools: [Bash, Read, Glob, Grep, Write]
+  # The command is graded from a FILE rather than from the reply. Grading prose cannot tell a
+  # command from a command inside a shell comment, and it fails an answer that quotes the WRONG
+  # spelling in order to warn against it — which is a better answer, not a worse one.
+  prompt: >-
+    /refs Does local/fixtures/toolkit declare a workspace package I have not registered? If so,
+    write the exact command to decline it — that one command on one line, nothing else — to
+    decline-command.txt, and explain what you found. Do not apply anything or change the
+    configuration.
+graders:
+  # Compact JSON in the transcript is refs' own output, not a mention in the docs.
+  - name: ran-doctor
+    type: regex
+    pattern: '\\"name\\":\\"config-drift\\"'
+    target: trace
+  # The decline command, in a form refs actually accepts: the ref key as a positional, `--package`
+  # and `--path` with BOTH values quoted, and `--decline`. Anchored at the start of the file, so a
+  # command sitting inside a shell comment does not count — it is not a command anyone can run.
+  # Each value is required to END at the closing quote, so a bare `$(…)` appended to a quoted one
+  # does not satisfy it. A missing or wrong ref key fails: refs would exit 2 or edit a different ref.
+  - name: decline-command-is-quoted
+    type: regex
+    pattern: '^\s*refs edit(?=[^\n;&|#]*--package[= ]''@toolkit/c\$\(id\)''(?:\s|$))(?=[^\n;&|#]*\s--decline(?:\s|$))(?=[^\n;&|#]*--path[= ]''packages/a b''(?:\s|$))(?=[^\n;&|#]*\s''?(?:local/fixtures/)?toolkit''?(?:\s|$))'
+    target: { source: file, path: decline-command.txt }
+  # The failures this exists to catch, graded on the same file so a warning in the prose about the
+  # wrong spelling cannot count against the agent.
+  - name: no-unquoted-substitution
+    type: regex
+    pattern: '--package[= ]@toolkit/c\$\(id\)'
+    match: not_contains
+    target: { source: file, path: decline-command.txt }
+  - name: no-unquoted-space
+    type: regex
+    pattern: '--path[= ]packages/a b'
+    match: not_contains
+    target: { source: file, path: decline-command.txt }
+  # One line, one command: a file carrying a second statement is not the command refs printed, and
+  # `;`, `&&`, `|` and a newline are how a second one gets in.
+  - name: one-command-only
+    type: regex
+    pattern: '[;&|]|\n[^\s]'
+    match: not_contains
+    target: { source: file, path: decline-command.txt }
+  # Report-only: the decision is the user's.
+  - name: nothing-declined
+    type: regex
+    pattern: 'declined_packages'
+    target: { source: file, path: .refs-home/refs/config.toml }
+    match: not_contains

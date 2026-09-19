@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Every drift finding in `refs doctor --json` carries its repair commands, already quoted.**
+  `register`, `decline`, `repoint` and `unregister` sit beside the raw `name` and `path`, so
+  nothing has to assemble a command out of values a tracked repository chose. That mattered most
+  where the human output gives no command at all: once a directory holds enough unregistered
+  packages the per-package line collapses to a count, which is exactly the large-monorepo case an
+  agent is routed to `findings` for. A finding that can offer no command honestly carries none.
+
+  Verified by taking three such commands out of `--json` and running them **verbatim** through a
+  shell against a real checkout: a package directory with a space, a name containing `$(id)` and a
+  name containing a single quote were all declined exactly, with nothing substituted.
+
+### Changed
+
+- **The skill states the quoting rule the CLI has always applied.** `COMMANDS.md`, `VERSIONS.md`,
+  `INVESTIGATE.md` and `MAINTAIN.md` gave agent-facing templates with no quoting around values
+  refs reports — a package name comes from a tracked repository's own manifest, a path from its
+  directory layout, and a tag from its tag list. refs checks that those are true, not that they
+  are safe to paste. The rule is now written down once: run the command refs printed; if you must
+  build one, single-quote every interpolated value and close-and-reopen the quote around any single
+  quote in it. Every RUNNABLE line in those documents follows it, and the command synopses — which
+  show a verb's grammar rather than a line to paste — say so explicitly instead of being quoted as
+  though they were.
+
+  Two corrections to what those documents asserted. `git tag -l '<prefix>…'` needs a `--` before
+  the pattern: a prefix beginning with `-` otherwise fails with
+  `options '-v' and '-l' cannot be used together`, and the prefix comes from the repository's own
+  tags. And git does not accept every metacharacter in a tag name — a semicolon, a single quote,
+  backticks and `$(…)` it creates and lists back, but `git check-ref-format` refuses a space or a
+  control character.
+
 ### Fixed
 
 - **A checkout's own git hooks can no longer run during the clone that creates it.** `refs` points

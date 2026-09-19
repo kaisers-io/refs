@@ -8,6 +8,14 @@ keys, urls, and paths in them are placeholders (`example-org/…`) — not repos
 skill fetches, tracks, or suggests. Real ones come from the user's own config, via
 `refs list`, `refs resolve`, or `refs show`.
 
+**The `refs <verb> …` lines under each heading are SYNOPSES — they show the grammar, not a line to
+paste.** `<ref>`, `<name>`, `<path>` and `<version>` stand for values that reach you from a
+tracked repository or from the user, and every one of them is single-quoted when you actually run
+something: `refs edit --package='<name>' path '<new-path>' '<ref>'`. Close and reopen the quote
+around any single quote in a value (`'a'\''b'`), and attach an option's value with `=` so a value
+beginning with `-` is not read as the next option. The runnable lines elsewhere in this skill are
+written that way; see _Never build a shell command out of a value refs reported_ below.
+
 ## Envelope, streams, exit codes
 
 ```
@@ -468,7 +476,23 @@ off, and names what stopped it; the `packages` findings, if any, are unaffected.
 | `unregistered` | the checkout declares this package and the config has no such entry | propose registering it, and wait for the user to agree |
 
 `missing`, `relocated` and `unregistered` each end with the `refs edit` command that repairs
-them, quoted for a shell; the other statuses have no repair to print. Show the user the command
+them, quoted for a shell; the other statuses have no repair to print. Under `--json` the same
+commands are fields on the finding itself, so a grouped count in the human output never leaves you
+without one.
+**Never build a shell command out of a value refs reported.** A package name comes from the
+tracked repository's own manifest and a path comes from its directory layout; refs checks that they
+are TRUE, not that they are safe to paste. Both may contain a space, a single quote, `$(…)` or a
+backtick. A tag name may carry a semicolon, a single quote, backticks or `$(…)` — git creates and
+lists those back — but NOT a space or a control character, which `git check-ref-format` refuses.
+
+So: run the command refs printed. Every finding in `refs doctor --json` carries its repair commands
+already quoted — `register`, `decline`, `repoint`, `unregister` — beside the raw `name` and `path`,
+including where the human output grouped the finding into a count. Where a finding carries no
+command, there is none to run: report it as found. If you must build a command line yourself,
+single-quote every interpolated value and close-and-reopen the quote around any single quote in it
+(`'a'\''b'`).
+
+Show the user the command
 and what was found — a removal in particular discards an entry they may have written by hand.
 `unregistered` is the one finding that is not about an entry the config already has. It comes from two places: the repository root (which is
 never one of its own glob targets, so `refs add` could not have registered it) and workspace
@@ -506,17 +530,18 @@ is not one of these: it hides nothing, it only leaves in what the repository mea
 it silences the paths beneath it and nothing else.
 
 **Never register one on your own initiative.** Show the user what was found and what you would
-run, and wait for them to say yes:
+run, and wait for them to say yes. The finding's own `register` field is that command, already
+quoted; it carries a `'<what it is>'` placeholder you replace with one factual sentence:
 
 ```
-refs edit --package=<name> --create --path=<path> --description "<what it is>" <ref>
+refs edit --package='<name>' --create --path='<path>' --description='<what it is>' '<ref>'
 ```
 
-When the answer is no, record it. Otherwise the same finding returns on every run, and the next
-real finding arrives in a line nobody reads:
+When the answer is no, record it — the finding's `decline` field. Otherwise the same finding
+returns on every run, and the next real finding arrives in a line nobody reads:
 
 ```
-refs edit --package=<name> --decline --path=<path> <ref>
+refs edit --package='<name>' --decline --path='<path>' '<ref>'
 ```
 
 A decline is stored as that name at that path, on that ref. It suppresses the `unregistered`
@@ -535,7 +560,8 @@ to register is a decision rather than a lookup.
 Never treat `missing` and `relocated` alike: `relocated` names the new path, so there is
 nothing to look for. `missing` means the name is not in any _declared workspace_ — usually a
 deletion, occasionally a move to a directory the workspace patterns no longer cover, which
-`git log --diff-filter=D -- <configured path>` settles in one command. Drift does not affect
+`git log --diff-filter=D -- '<configured path>'` settles in one command — quoted, because the path
+is the repository's. Drift does not affect
 the exit code.
 
 Exit codes: `1` when any item is `failed` — the envelope stays `ok: true`, so check both.
