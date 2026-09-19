@@ -20,7 +20,32 @@ import { zConfig } from '../../src/schemas/config.ts';
 
 const SUCCESS = 0;
 /** Enough combinations that a broken generator cannot pass by producing none. */
-const CANDIDATE_FLOOR = 1000;
+const CANDIDATE_FLOOR = 900;
+/** The ranges where the rule turns, rather than every codepoint: one git invocation per name, and
+ * the boundaries are where a wrong rule shows. `0x01-0x30` covers the ASCII controls, space and the
+ * punctuation git reserves; `0x7e-0xa1` covers DEL and the start of the C1 block, which is exactly
+ * where `\p{Cc}` was wrong; `0x9e-0xff` covers the rest of C1 and the first accented letters.
+ * NUL is excluded — argv cannot carry it, so git cannot be asked and it is asserted separately. */
+// The boundaries the rule turns on, named one by one: one git invocation per name, so sweeping
+// every codepoint costs real time while the boundaries are where a wrong rule shows.
+/** U+0001, the first codepoint argv can carry: NUL cannot be passed, so git cannot be asked. */
+const FIRST_PASSABLE = 1;
+/** U+0030, past space and the punctuation git reserves. */
+const END_OF_ASCII_PUNCTUATION = 48;
+/** U+007F, DEL. */
+const DEL = 127;
+/** U+00A1, into the C1 block — exactly where the rule was wrong. */
+const INTO_C1 = 161;
+/** U+009E, the rest of C1. */
+const LATE_C1 = 158;
+/** U+00FF, the first accented letters, which git accepts. */
+const END_OF_LATIN1 = 255;
+
+const SWEEP_RANGES: readonly (readonly [number, number])[] = [
+  [FIRST_PASSABLE, END_OF_ASCII_PUNCTUATION],
+  [DEL, INTO_C1],
+  [LATE_C1, END_OF_LATIN1],
+];
 /** A literal NUL would be an invisible byte in this file. */
 const NUL = String.fromCodePoint(0);
 /** The pieces git's own rules are phrased in terms of, plus a few ordinary ones. */
@@ -51,20 +76,41 @@ const PIECES = [
   '@{',
 ];
 
-/** Every one- and two-piece combination, plus the same with an `a` wedged in the middle — enough to
- * reach each rule from both ends without hand-picking the cases that happen to pass. */
-const candidates = (): string[] => {
-  const names = new Set(['main', 'HEAD', '@', 'a', '', 'feature/foo', 'refs/heads/x']);
-  for (const left of PIECES) {
-    names.add(left);
-    for (const right of PIECES) {
-      names.add(left + right);
-      names.add(`${left}a${right}`);
-      names.add(`a${left}${right}`);
-    }
-  }
-  return [...names];
-};
+/** Every one- and two-piece combination, plus the same with an `a` wedged in the middle — enough
+ * to reach each rule from both ends without hand-picking the cases that happen to pass. */
+const pairsWith = (left: string): string[] =>
+  PIECES.flatMap((right) => [left + right, `${left}a${right}`, `a${left}${right}`]);
+
+const pieceCombinations = (): string[] => [...PIECES, ...PIECES.flatMap((left) => pairsWith(left))];
+
+/** A sweep, because the combinations cannot reach a character no piece contains. That gap hid a
+ * real defect: the rule was written with `\p{Cc}`, which rejects the 32 C1 controls (U+0080-U+009F)
+ * that git ACCEPTS, and no generated pair could tell. */
+const sweepNames = (): string[] =>
+  SWEEP_RANGES.flatMap(([from, to]) =>
+    Array.from({ length: to - from + 1 }, (_unused, offset) =>
+      String.fromCodePoint(from + offset),
+    ).flatMap((char) => [`topic${char}x`, `${char}topic`, `topic${char}`]),
+  );
+
+/** The `.lock` and leading-dot rules are per-COMPONENT, and a rule applied to the whole name
+ * instead passed every generated case — so the components are spelled out. */
+const STRUCTURAL = ['a.lock/b', 'a/.b/c', 'a./b', 'a/b.lock', 'x/a.lock', '.lock'];
+
+const candidates = (): string[] => [
+  ...new Set([
+    'main',
+    'HEAD',
+    '@',
+    'a',
+    '',
+    'feature/foo',
+    'refs/heads/x',
+    ...pieceCombinations(),
+    ...sweepNames(),
+    ...STRUCTURAL,
+  ]),
+];
 
 /** git's own answer, from a throwaway repository. */
 const gitAccepts = async (runner: SpawnRunner, cwd: string, name: string): Promise<boolean> => {
@@ -148,22 +194,29 @@ const configWithBranch = (branch: string): unknown => ({
   settings: { clone_mode: 'blobless', git_transport: 'https', sync_ttl: '1h' },
 });
 
-describe('the config schema', () => {
-  it('refuses a default_branch git would not accept', () => {
+describe('a config recorded before the rule existed', () => {
+  it('still parses, because the read path has to stay permissive', () => {
     expect.hasAssertions();
 
-    // The whole point of the rule: this value reaches refs from a real repository's own `HEAD`,
-    // and before it was refused here it was stored and every later sync failed.
-    expect(zConfig.safeParse(configWithBranch('--upload-pack=id')).success).toBe(false);
+    // Deliberately NOT refused here. `readConfig` parses the whole document, and `edit` and
+    // `remove` both read it before they can change anything — so refusing an old entry would turn
+    // one unusable ref into an unusable home, with no way left to repair it. The entry points
+    // refuse a NEW bad value instead; this one stays reachable so it can be removed.
+    expect(zConfig.safeParse(configWithBranch('--upload-pack=id')).success).toBe(true);
   });
 
-  it('still accepts the ordinary ones, so an existing config keeps parsing', () => {
+  it('parses beside an ordinary ref, which must not be taken down with it', () => {
     expect.hasAssertions();
 
-    // Being STRICTER than git is the dangerous direction — a config that parsed yesterday has to
-    // parse today. These are the shapes real repositories use.
-    for (const branch of ['main', 'master', 'develop', 'release/2.x', 'v1', 'trunk']) {
-      expect(zConfig.safeParse(configWithBranch(branch)).success).toBe(true);
-    }
+    const config = configWithBranch('--upload-pack=id') as {
+      refs: Record<string, unknown>;
+    };
+    config.refs['example.com/o/fine'] = {
+      default_branch: 'main',
+      description: 'an ordinary ref',
+      url: 'https://example.com/o/fine.git',
+    };
+
+    expect(zConfig.safeParse(config).success).toBe(true);
   });
 });

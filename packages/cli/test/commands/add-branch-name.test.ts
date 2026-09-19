@@ -69,9 +69,11 @@ describe('a repository whose HEAD names a branch git would not accept', () => {
           expect(process.exitCode).toBe(EXIT.VALIDATION);
           const envelope = parseLastEnvelope(stdout) as ErrorEnvelope;
           expect(envelope.ok).toBe(false);
-          // The message has to say which field, because the value came from the repository rather
-          // than from anything the caller typed — there is nothing to correct in the command.
-          expect(String(envelope.error?.message)).toContain('default_branch');
+          const message = String(envelope.error?.message);
+          // It has to name the value AND say where it came from: the branch was read from the
+          // repository, not typed, so there is nothing in the command to correct.
+          expect(message).toContain(HOSTILE_BRANCH);
+          expect(message).toContain('comes from the repository');
         }),
       );
     },

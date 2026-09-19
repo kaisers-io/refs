@@ -3,6 +3,7 @@ import {
   assertInsideSources,
   canonicalizeGitUrl,
   checkoutPath,
+  isBranchName,
   isGitCheckout,
   readConfig,
   redactUrl,
@@ -39,6 +40,7 @@ type EditRefArgs = {
 
 const PACKAGES_FIELD = 'packages';
 const URL_FIELD = 'url';
+const BRANCH_FIELD = 'default_branch';
 const SUCCESS_EXIT_CODE = 0;
 
 const PACKAGES_USAGE_MESSAGE = 'use --package <name> <field> <value>';
@@ -111,6 +113,15 @@ const editPlainRefField = (
   field: keyof typeof zRefEntry.shape,
   value: string,
 ): RefEntry => {
+  // Checked here rather than in `zRefEntry`, which is the schema that READS an existing config: a
+  // rule on the read path would make a config recorded before the rule existed unloadable, and
+  // `edit` and `remove` both read it before they can repair anything. So the entry point refuses a
+  // new bad value while an old one stays reachable.
+  if (field === BRANCH_FIELD && !isBranchName(value)) {
+    throw validationError(
+      `'${value}' is not a name git accepts for a branch, so refs could not synchronise this ref`,
+    );
+  }
   const candidate = { ...entry, [field]: value };
   const parsed = zRefEntry.safeParse(candidate);
   if (!parsed.success) {

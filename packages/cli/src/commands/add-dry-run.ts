@@ -22,6 +22,7 @@ import {
   detectDefaultBranch,
   detectTagFormat,
   detectWorkspacePackagesDetailed,
+  isBranchName,
   listTags,
   readConfig,
   readState,
@@ -31,14 +32,12 @@ import {
   validationError,
   withLock,
   writeState,
-  zProposal,
 } from '@kaisers-io/refs-core';
 import type { CliContext } from '../context.ts';
 import type { ResolvedSource } from './add-source.ts';
 import { discoveryObstacle } from './workspace-diagnostics.ts';
 import { ensureClonedCheckout } from './add-checkout-guards.ts';
 import { progress } from '../output.ts';
-import { z } from 'zod';
 
 // The `--dry-run` core: resolve source → conflict/collision guards → idempotent clone → detect
 // default branch/tags/workspace packages → shape a `Proposal`. Shared by both `refs add --dry-run`
@@ -191,7 +190,22 @@ type BuildDryRunOutcomeOpts = {
 /** The serialized half: what a `--proposal` file carries. `description` starts empty — it is the
  * one field a human or an agent must supply. */
 const proposalFrom = (fields: DetectedFields, resolved: ResolvedSource): Proposal => {
-  const proposal = {
+  // Only the branch, deliberately. Validating the WHOLE proposal here looked tidier and threw away
+  // a path that works: detection and registration answer different questions, so a member named
+  // `constructor` or sitting at `packages/100%` is DETECTED correctly and cannot be a config key —
+  // and a reviewer removes it from the proposal before finalizing the rest. Refusing the repository
+  // for one such member turns an observation into a dead end.
+  //
+  // The branch is different: nothing downstream can repair it, the value is not the caller's, and
+  // the ref cannot be synchronised at all while it stands.
+  if (!isBranchName(fields.defaultBranch)) {
+    throw validationError(
+      `this repository's HEAD names a branch git will not accept: ${JSON.stringify(fields.defaultBranch)}. ` +
+        'refs cannot synchronise a ref with that default branch — the name comes from the ' +
+        'repository, so there is nothing to correct in this command.',
+    );
+  }
+  return {
     default_branch: fields.defaultBranch,
     description: '',
     key: resolved.key,
@@ -199,19 +213,6 @@ const proposalFrom = (fields: DetectedFields, resolved: ResolvedSource): Proposa
     tag_format_candidate: fields.tagFormatCandidate,
     url: resolved.cloneUrl,
   };
-  // Proved against the schema that reads it back, rather than trusted because the types line up:
-  // every field here is DETECTED from a repository refs has just cloned, and a proposal refs would
-  // refuse to accept is not one it should hand over. `default_branch` is the field that made this
-  // concrete — a repository whose `HEAD` points at a branch named `--upload-pack=id` produced a
-  // proposal that finalized, and every later sync then failed with git's complaint about a value
-  // nobody typed.
-  const parsed = zProposal.safeParse(proposal);
-  if (!parsed.success) {
-    throw validationError(
-      `the repository's own metadata does not make a usable ref:\n${z.prettifyError(parsed.error)}`,
-    );
-  }
-  return parsed.data;
 };
 
 /** Assembled in one expression, with the same conditional-spread idiom `detectedFrom` uses above:

@@ -1,6 +1,5 @@
 import { withValidatedKeys, zSafePackagesRecord } from './record-keys.ts';
 import {
-  zBranchName,
   zCloneMode,
   zDuration,
   zGitTransport,
@@ -88,7 +87,7 @@ const zPackageEntry = z.strictObject({
 // the only command that reads the field, and it reports the absence itself.
 const zRefEntry = z.strictObject({
   declined_packages: z.array(zDeclinedPackage).optional(),
-  default_branch: zBranchName,
+  default_branch: zStorableText,
   description: zStorableText,
   packages: zSafePackagesRecord(zPackageEntry).optional(),
   tag_format: zTagFormat.optional(),

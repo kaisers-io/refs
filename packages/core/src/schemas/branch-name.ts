@@ -19,9 +19,15 @@
 // (`git check-ref-format --branch --quiet` reports an invalid branch name rather than parsing a
 // flag).
 
-/** Refused anywhere in the name: ASCII control characters, DEL, space, and the characters git
- * reserves for revision syntax. A backslash is included — git rejects it outright. */
-const FORBIDDEN_CHARACTER = /[\p{Cc} ~^:?*[\\]/u;
+/** Refused anywhere in the name: bytes below octal 040, DEL, and the characters git reserves
+ * for revision syntax. A backslash is included - git rejects it outright.
+ *
+ * An ASCII range rather than a Unicode-category class, which was measured wrong in the direction
+ * that matters: git 2.54 accepts all 32 C1 controls (U+0080-U+009F) in a branch name while
+ * \p{Cc} rejects every one of them, which would have made this rule STRICTER than git's. git's
+ * restriction is about bytes below octal 040 and DEL, not about the Unicode category. */
+// eslint-disable-next-line no-control-regex -- the control range IS the rule git applies
+const FORBIDDEN_CHARACTER = /[\u0000-\u0020\u007F~^:?*[\\]/u;
 /** The one name `--branch` mode rejects that the refname rules allow, because a branch called
  * `HEAD` cannot be told apart from the symbolic ref. */
 const RESERVED = 'HEAD';
