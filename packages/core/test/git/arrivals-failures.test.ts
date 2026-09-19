@@ -92,3 +92,64 @@ describe('a range too large to read', () => {
     await expect(before(runner)).resolves.toBeUndefined();
   });
 });
+
+// Truncation is NOT the quiet failure it looks like. A cut stream keeps the FIRST bytes, so it
+// reads as a complete, smaller answer — and for history, a smaller answer means MORE arrivals, not
+// fewer: the evidence that a name already existed is what goes missing.
+//
+// Concretely, for the diff: a range that adds `a/package.json` with an existing name and deletes
+// `z/package.json`, which is where that name used to live. Put enough changed paths between them
+// to reach the cap and the deletion is simply not in the output. The pathspec also selects files
+// like `mypackage.json`, which the basename check then discards, so the 200-manifest guard does
+// not bound how much output has to arrive before the paths that matter.
+const PATH_A = 'a/package.json';
+const PATH_Z = 'z/package.json';
+const EXISTING_NAME = 'existing-name';
+
+const truncated = (stdout: string): RunResult => ({
+  exitCode: OK,
+  stderr: '',
+  stdout,
+  stdoutTruncated: true,
+});
+
+describe('a range git could only answer in part', () => {
+  it('says nothing when the diff output was cut at the stream cap', async () => {
+    expect.hasAssertions();
+    // Exit 0 and a perfectly well-formed prefix: indistinguishable from a complete answer without
+    // the flag. The deletion that carried the name is past the cut.
+    const runner = fakeRunner({ diff: () => truncated('a/package.json\0') });
+
+    await expect(before(runner)).resolves.toBeUndefined();
+  });
+
+  it('says nothing when the old-revision listing was cut at the stream cap', async () => {
+    expect.hasAssertions();
+    // `ls-tree` decides which changed paths existed BEFORE. A cut listing reads as "this one was
+    // not there", which is a statement about membership rather than a failure to look — and the
+    // path it loses is where a deleted package's name lives.
+    const runner = fakeRunner({
+      diff: () => ok(`${PATH_A}\0${PATH_Z}\0`),
+      'ls-tree': () => truncated(`${PATH_A}\0`),
+      show: () => ok(JSON.stringify({ name: EXISTING_NAME })),
+    });
+
+    await expect(before(runner)).resolves.toBeUndefined();
+  });
+
+  it('answers normally when that same listing arrived whole', async () => {
+    expect.hasAssertions();
+    // The control: identical scripting, complete output. Without it the case above holds for a
+    // fixture that answers `undefined` for some unrelated reason.
+    const runner = fakeRunner({
+      diff: () => ok(`${PATH_A}\0${PATH_Z}\0`),
+      'ls-tree': () => ok(`${PATH_A}\0${PATH_Z}\0`),
+      show: () => ok(JSON.stringify({ name: EXISTING_NAME })),
+    });
+
+    await expect(before(runner)).resolves.toStrictEqual({
+      changedDirs: ['a', 'z'],
+      namesBefore: [EXISTING_NAME, EXISTING_NAME],
+    });
+  });
+});
