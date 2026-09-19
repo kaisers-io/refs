@@ -1,12 +1,16 @@
 import { assertProjectDir, resolveInstalled } from '../../src/commands/resolve-installed.ts';
+import { chmod, mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 // Finding the version a project actually has installed. The alternative was telling the agent to
 // parse lockfiles, so the bar here is being RIGHT about what is installed, and honest when it
 // cannot tell — never a plausible guess.
+
+const NO_ACCESS = 0o000;
+const RESTORED_ACCESS = 0o700;
+const ROOT_UID = 0;
 
 const makeProject = (): Promise<string> => mkdtemp(join(tmpdir(), 'refs-installed-'));
 
@@ -227,5 +231,66 @@ describe('validating the project directory', () => {
     await writeFile(file, '');
 
     await expect(assertProjectDir(file)).rejects.toThrow('must be a directory');
+  });
+});
+
+// The rule a package name has to satisfy before it becomes a `node_modules/<name>` path. It used
+// to be a second, narrower definition of the one `zRefKey` and `zPackagePath` already apply: the
+// local copy rejected `''`, `.` and `..` and a backslash, and admitted `:` and `%`. Core rejects
+// `:` and documents why — it is a Windows drive and NTFS alternate-data-stream separator, so a
+// config-derived `C:foo` addressed a stream rather than a directory.
+describe('a package name that is not a name', () => {
+  it.each([
+    ['a drive-relative windows path', 'C:foo'],
+    ['an alternate data stream', 'file:stream'],
+    ['a percent escape', 'pkg%2e%2e'],
+    ['a parent segment', '../escape'],
+    ['an empty segment', 'a//b'],
+    ['a backslash', String.raw`a\b`],
+  ])('is refused rather than joined onto node_modules: %s', async (_label, name) => {
+    expect.hasAssertions();
+    const project = await makeProject();
+
+    await expect(resolveInstalled(project, name)).resolves.toMatchObject({
+      reason: 'unsupported_package_name',
+      status: 'unverifiable',
+    });
+  });
+
+  it('still accepts an ordinary scoped name', async () => {
+    expect.hasAssertions();
+    const project = await makeProject();
+
+    // The control: the shared rule must not have narrowed what a real dependency can be called.
+    await expect(resolveInstalled(project, '@scope/pkg')).resolves.not.toMatchObject({
+      reason: 'unsupported_package_name',
+    });
+  });
+});
+
+// Skipped on Windows and under root: neither enforces a directory's search bit through `chmod`, so
+// the `stat` below would answer ENOENT and the case would assert the opposite of what it means.
+const ENFORCES_SEARCH_BIT = process.platform !== 'win32' && process.getuid?.() !== ROOT_UID;
+
+describe.skipIf(!ENFORCES_SEARCH_BIT)('a project directory that cannot be read', () => {
+  it('says so, rather than reporting it as absent', async () => {
+    expect.hasAssertions();
+    const project = await makeProject();
+    const unreadable = join(project, 'locked');
+    await mkdir(unreadable);
+    // The child exists BEFORE access is withdrawn, so an ENOENT here would be a bug in the fixture
+    // rather than the answer under test.
+    const inside = join(unreadable, 'inside');
+    await mkdir(inside);
+    await chmod(unreadable, NO_ACCESS);
+
+    try {
+      // `stat` on a path under an unsearchable directory answers EACCES. The old check asked
+      // whether the caught error's MESSAGE began with `--project`, and reported everything else as
+      // "path does not exist" — an absence, about a directory that is there.
+      await expect(assertProjectDir(inside)).rejects.toThrow('could not be read');
+    } finally {
+      await chmod(unreadable, RESTORED_ACCESS);
+    }
   });
 });

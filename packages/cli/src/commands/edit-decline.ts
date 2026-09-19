@@ -5,11 +5,13 @@ import {
   validationError,
   withLock,
   writeConfig,
+  zDeclinedPackage,
 } from '@kaisers-io/refs-core';
 import type { CliContext } from '../context.ts';
 import type { EditData } from './edit.ts';
 import { matchRefKey } from './list.ts';
 import { requireEntry } from './ref-context.ts';
+import { z } from 'zod';
 
 // `refs edit <ref> --package <name> --path <path> --decline|--undecline` — records that someone
 // looked at a package the checkout declares and decided not to route to it.
@@ -94,7 +96,15 @@ const declinePackageEntry = (
     const config: Config = await readConfig(home);
     const key = matchRefKey(config, args.query);
     const entry = requireEntry(config, key);
-    const record: DeclinedPackage = { name: args.packageName, path: args.path };
+    // Parsed here, not only by `writeConfig`'s whole-document re-validation. Both checks hold;
+    // this is the earlier and better-located of the two, in the same sense `edit-package.ts` says
+    // of its own — the failure names `path`, which is what the caller passed and can correct,
+    // rather than `refs.<key>.declined_packages.0.path`.
+    const parsed = zDeclinedPackage.safeParse({ name: args.packageName, path: args.path });
+    if (!parsed.success) {
+      throw validationError(z.prettifyError(parsed.error));
+    }
+    const record: DeclinedPackage = parsed.data;
     const next = nextEntry({ declined: args.declined, entry, key, record });
     await writeConfig(home, { ...config, refs: { ...config.refs, [key]: next } });
     return {
