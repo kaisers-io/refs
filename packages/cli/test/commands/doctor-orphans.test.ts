@@ -9,8 +9,8 @@ import {
 } from '../helpers/doctor-support.ts';
 import { checkoutPath, zRefKey } from '@kaisers-io/refs-core';
 import { describe, expect, it } from 'vitest';
+import { join, sep } from 'node:path';
 import { markCheckoutPresent, seedConfig, seedState } from '../helpers/ref-fixtures.ts';
-import { join } from 'node:path';
 
 // `orphans` — a checkout under `sources/` with no matching config entry. Split out of
 // `doctor.test.ts` purely to keep that file under the repo's 300-line oxlint cap.
@@ -51,7 +51,9 @@ describe('refs doctor: (c) true orphan checkout', () => {
   });
 });
 
-describe('refs doctor: an orphan whose path cannot be printed', () => {
+// POSIX only: Windows refuses a control character in a path component, so the orphan directory
+// cannot be created there (`ENOENT … mkdir`).
+describe.skipIf(sep === '\\')('refs doctor: an orphan whose path cannot be printed', () => {
   it('offers no removal command', async () => {
     expect.hasAssertions();
     await withResetExitCode(() =>
