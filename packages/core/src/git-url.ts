@@ -1,4 +1,9 @@
 import type { GitTransport, RefKey } from './schemas/primitives.ts';
+import {
+  assertNoPercentEncodingUnlessFile,
+  assertSafeRawUrl,
+  hasPercentEncoding,
+} from './git-url-guards.ts';
 import { stripGitSuffix, trimPathSlashes } from './git-url-path.ts';
 import { redactUrl } from './git-url-redact.ts';
 import { validationError } from './errors.ts';
@@ -21,21 +26,6 @@ type BuildKeyInput = {
   port: string;
   protocol: string;
 };
-
-// The WHATWG URL parser silently resolves `..`/`.` path segments before we ever see
-// `url.pathname`, so traversal attempts must be caught on the raw input first.
-const hasDotSegment = (raw: string): boolean =>
-  raw.split('/').some((segment) => segment === '.' || segment === '..');
-// Backslashes are treated as `/` by the WHATWG URL parser for special (e.g. https) schemes, so
-// `a/b\..\c` can normalize into a traversal invisible to the raw, `/`-split check above. We reject
-// any backslash outright: git clone urls never legitimately contain one.
-const hasBackslash = (raw: string): boolean => raw.includes('\\');
-// Percent-encoding lets a dot segment survive raw inspection (e.g. `%2e%2e`), which the WHATWG URL
-// parser then resolves after our traversal check runs, producing a cloneUrl/key mismatch. Rather
-// than decode-and-recheck every path segment, we reject any `%` in non-file forms outright: git
-// hosts virtually never need percent-encoded paths, and zRefKey's SAFE_SEGMENT already forbids `%`
-// in stored keys, so encoding here can only ever cause normalization surprises.
-const hasPercentEncoding = (raw: string): boolean => raw.includes('%');
 
 // The candidate is redacted because it can carry a secret: an authority-less `ssh:/user:pass@host/...` url
 // parses with EMPTY username/password (WHATWG folds the credentials into pathname), so
@@ -143,36 +133,13 @@ const resolveScpKey = (scp: RegExpExecArray, input: string): RefKey => {
   return buildKey({ host: scp.groups?.['host'] ?? '', path: scpPath, port: '', protocol: 'ssh:' });
 };
 
-const assertNoBackslash = (cloneUrl: string, input: string): void => {
-  if (hasBackslash(cloneUrl)) {
-    throw validationError(`not a supported git url: backslash not allowed in ${redactUrl(input)}`);
-  }
-};
-
-const assertNoDotSegment = (cloneUrl: string, input: string): void => {
-  if (hasDotSegment(cloneUrl)) {
-    throw validationError(`not a supported git url: path traversal segment in ${redactUrl(input)}`);
-  }
-};
-
-// Percent-encoding is only meaningful for `file:` urls (which encode filesystem-legal characters
-// like spaces); https/ssh forms never need it, so any `%` there is rejected.
-const assertNoPercentEncodingUnlessFile = (url: URL, cloneUrl: string, input: string): void => {
-  if (url.protocol !== 'file:' && hasPercentEncoding(cloneUrl)) {
-    throw validationError(
-      `not a supported git url: percent-encoding not supported in ${redactUrl(input)}`,
-    );
-  }
-};
-
 const canonicalizeGitUrl = (
   input: string,
   opts?: CanonicalizeGitUrlOptions,
 ): { key: RefKey; cloneUrl: string } => {
   const allowFileUrls = opts?.allowFileUrls ?? false;
   const cloneUrl = input.replace(GIT_PLUS_PREFIX, '');
-  assertNoBackslash(cloneUrl, input);
-  assertNoDotSegment(cloneUrl, input);
+  assertSafeRawUrl(cloneUrl, input);
   const scp = SCP_URL.exec(cloneUrl);
   if (scp?.groups !== undefined) {
     return { cloneUrl, key: resolveScpKey(scp, input) };
