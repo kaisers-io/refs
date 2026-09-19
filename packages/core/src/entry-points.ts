@@ -1,5 +1,6 @@
 import { absenceIsInside, resolveInside } from './fs-containment.ts';
 import { readFile, stat } from 'node:fs/promises';
+import { MALFORMED_MANIFEST_REASON } from './workspaces-parse.ts';
 import { join } from 'node:path';
 
 // What a package's manifest DECLARES as its entry points, and what is actually there.
@@ -250,7 +251,7 @@ const readEntryPoints = async (packageDir: string, expectedName: string): Promis
     return {
       entries: [],
       manifest: MANIFEST_FILE,
-      reason: (error as NodeJS.ErrnoException).code ?? String(error),
+      reason: (error as NodeJS.ErrnoException).code ?? MALFORMED_MANIFEST_REASON,
       status: 'unverifiable',
     };
   }

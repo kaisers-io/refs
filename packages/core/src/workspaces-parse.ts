@@ -95,4 +95,23 @@ const extractPackageName = (data: Record<string, unknown>): string | undefined =
   return undefined;
 };
 
-export { collectPnpmPatterns, extractPackageName, parseNpmWorkspaces };
+/** What a caller is told when a manifest could not be turned into an answer.
+ *
+ * A fixed string, never the parser's own message. `JSON.parse` embeds the offending input in its
+ * message for some malformations and not others — measured on Node 24, `{"url":SECRET}` produces
+ * ``Unexpected token 'S', "{"url":SECRET}" is not valid JSON`` while a trailing-garbage document
+ * produces only a position. A manifest is checkout content, so forwarding that message put
+ * third-party bytes into a `refs resolve --json` reason, and which malformations do it is a
+ * property of the Node version rather than anything refs decides.
+ *
+ * A position IS lost. `JSON.parse`'s message sometimes carries one, and Node exposes it nowhere
+ * else — so someone debugging their own file gives up a little. That is the deliberate trade: the
+ * same message carries the input for other malformations, which of them do so is a property of the
+ * Node version, and a manifest belongs to somebody else.
+ *
+ * Worded for everything the catch covers, not only a syntax error. A manifest that is exactly
+ * `null` parses fine and then throws on the first property access, so "not valid JSON" would be a
+ * false statement about a valid document. */
+const MALFORMED_MANIFEST_REASON = 'manifest could not be read or interpreted';
+
+export { MALFORMED_MANIFEST_REASON, collectPnpmPatterns, extractPackageName, parseNpmWorkspaces };

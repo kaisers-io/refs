@@ -169,6 +169,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A guard hook now gets its mode before it is published rather than after, so it is never briefly
   present and not executable.
 
+- **A file refs cannot parse is no longer quoted back.** Node's `JSON.parse` embeds the offending
+  input in its message for some malformations and not others, and refs forwarded that message.
+  Measured: a `package.json` carrying a bare token produced the reason
+  ``SyntaxError: Unexpected token 'L', ...","token":LEAKED_abc"... is not valid JSON`` in
+  `refs resolve --json` — a manifest is checkout content, so that put third-party bytes into the
+  output an agent parses. The same applied to `refs add --proposal`, where the document is one
+  someone filled in by hand, quite possibly with a credentialed url in it.
+
+  Both now report a fixed reason. The errno branch is untouched: an `ENOENT` or `EISDIR` is refs'
+  own fact rather than a parser's. The position `JSON.parse` sometimes carries is given up, which
+  is the deliberate trade — Node exposes it nowhere else, and which malformations carry the input
+  along with it is a property of the Node version rather than anything refs decides.
+
 ## [0.17.0] - 2026-09-13
 
 ### Added

@@ -1,11 +1,11 @@
 // Package identity: a configured `path` is only a LOCATOR — the package NAME is the identity.
 // Every question here is asked by name, never by path, which is what makes an upstream move a
 // FACT (the manifest still declares the same name) rather than a guess.
+import { MALFORMED_MANIFEST_REASON, extractPackageName } from './workspaces-parse.ts';
 import { isAbsolute, join } from 'node:path';
 import type { ContainmentResult } from './fs-containment.ts';
 import type { WorkspacePackage } from './workspaces-patterns.ts';
 import { compareCodepoint } from './workspaces-patterns.ts';
-import { extractPackageName } from './workspaces-parse.ts';
 import { readFile } from 'node:fs/promises';
 import { resolveInside } from './fs-containment.ts';
 
@@ -114,7 +114,7 @@ const readManifestName = async (
     const data = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<string, unknown>;
     return { found: extractPackageName(data) };
   } catch (error) {
-    return { reason: (error as NodeJS.ErrnoException).code ?? String(error) };
+    return { reason: (error as NodeJS.ErrnoException).code ?? MALFORMED_MANIFEST_REASON };
   }
 };
 
