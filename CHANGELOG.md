@@ -182,6 +182,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is the deliberate trade — Node exposes it nowhere else, and which malformations carry the input
   along with it is a property of the Node version rather than anything refs decides.
 
+### Changed
+
+- **The guard in front of `refs sync`'s destructive step asks the same question as its three
+  siblings.** Every managed checkout is stamped with `core.hooksPath` pointing at this home's hooks
+  directory, and `add`, `doctor` and `resolve` all check for exactly that. The guard `sync` applies
+  immediately before `checkout -B`, `reset --hard` and `clean -fd` accepted any non-empty value —
+  weaker than the other three and weaker than its own comment, which described the strict check.
+
+  No sync behaved differently: that guard's one caller already ran the strict check on the same
+  directory immediately before it. It is closed because the weak predicate becomes the operative
+  one as soon as a second caller appears, and a comment describing the strict check is an
+  invitation to add that caller.
+
 ## [0.17.0] - 2026-09-13
 
 ### Added
