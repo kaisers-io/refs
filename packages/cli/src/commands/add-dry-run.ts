@@ -22,12 +22,14 @@ import {
   detectDefaultBranch,
   detectTagFormat,
   detectWorkspacePackagesDetailed,
+  isBranchName,
   listTags,
   readConfig,
   readState,
   resolveHome,
   resolveSetting,
   scanIsReliable,
+  validationError,
   withLock,
   writeState,
 } from '@kaisers-io/refs-core';
@@ -187,14 +189,31 @@ type BuildDryRunOutcomeOpts = {
 
 /** The serialized half: what a `--proposal` file carries. `description` starts empty — it is the
  * one field a human or an agent must supply. */
-const proposalFrom = (fields: DetectedFields, resolved: ResolvedSource): Proposal => ({
-  default_branch: fields.defaultBranch,
-  description: '',
-  key: resolved.key,
-  packages: fields.packages,
-  tag_format_candidate: fields.tagFormatCandidate,
-  url: resolved.cloneUrl,
-});
+const proposalFrom = (fields: DetectedFields, resolved: ResolvedSource): Proposal => {
+  // Only the branch, deliberately. Validating the WHOLE proposal here looked tidier and threw away
+  // a path that works: detection and registration answer different questions, so a member named
+  // `constructor` or sitting at `packages/100%` is DETECTED correctly and cannot be a config key —
+  // and a reviewer removes it from the proposal before finalizing the rest. Refusing the repository
+  // for one such member turns an observation into a dead end.
+  //
+  // The branch is different: nothing downstream can repair it, the value is not the caller's, and
+  // the ref cannot be synchronised at all while it stands.
+  if (!isBranchName(fields.defaultBranch)) {
+    throw validationError(
+      `this repository's HEAD names a branch git will not accept: ${JSON.stringify(fields.defaultBranch)}. ` +
+        'refs cannot synchronise a ref with that default branch — the name comes from the ' +
+        'repository, so there is nothing to correct in this command.',
+    );
+  }
+  return {
+    default_branch: fields.defaultBranch,
+    description: '',
+    key: resolved.key,
+    packages: fields.packages,
+    tag_format_candidate: fields.tagFormatCandidate,
+    url: resolved.cloneUrl,
+  };
+};
 
 /** Assembled in one expression, with the same conditional-spread idiom `detectedFrom` uses above:
  * `exactOptionalPropertyTypes` distinguishes an absent key from one set to `undefined`, and all

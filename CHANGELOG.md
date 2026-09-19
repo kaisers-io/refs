@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`refs add` refuses a repository whose default branch is a name git will not accept.**
+  `default_branch` was stored as ordinary text, and a branch name is not ordinary text. The value
+  is read from the repository's own `HEAD`, not typed by anyone: `git branch` will not create a
+  name beginning with `-`, but the ref FORMAT permits one, `update-ref` writes it, it clones
+  through, and `HEAD` may point at it. Such a ref was recorded without complaint and then failed at
+  every `refs sync` with `fatal: '--upload-pack=id' is not a valid branch name` — git objecting to
+  a value the caller never supplied, one command after the one that could have said so.
+
+  `refs add` and `refs edit` now refuse such a name where it enters. Nothing runs: `checkout -B` validates its
+  argument as a branch name before anything else, and the values that reach a verb with a
+  command-executing option (`--upload-pack` on `clone` and `fetch`) are fixed.
+
+  **The rule is git's own, and no stricter.** The predicate reimplements a rule that lives in git,
+  because a Zod refinement is synchronous while `check-ref-format` is a child process — so a test
+  runs the real `git check-ref-format --branch` over the generated names and asserts the two never
+  disagree. That test caught the first attempt: it was written with `\p{Cc}`, and git accepts all
+  32 C1 controls (U+0080-U+009F) that class rejects.
+
+  **The stored schema stays permissive, deliberately.** `readConfig` parses the whole document, and
+  `edit` and `remove` both read it before they can change anything — so refusing an old entry would
+  turn one unusable ref into an unusable home, with no way left to repair it, and would take every
+  unrelated ref in the file with it. The entry points refuse a new bad value instead; an old one
+  stays reachable so it can be removed.
+
 ### Added
 
 - **`refs doctor` reports a refs home whose access modes are too open.** `refs init` creates and
