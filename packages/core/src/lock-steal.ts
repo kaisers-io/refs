@@ -1,6 +1,7 @@
 import { diagnoseLock, isAutoReclaimable } from './lock-lease.ts';
 import { mkdir, rm, rmdir } from 'node:fs/promises';
 import { renameOrLostRace, tryExclusiveMkdir } from './lock-fs.ts';
+import { DIR_MODE } from './fs-modes.ts';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { readLockToken } from './lock-meta.ts';
@@ -61,8 +62,8 @@ const tombstonePathFor = (ctx: LockCtx): string =>
 /** Both protocol directories, created up front so the steal path never has to distinguish "the
  * parent does not exist yet" from a real failure. `recursive` makes this idempotent. */
 const ensureProtocolDirs = async (locksDir: string): Promise<void> => {
-  await mkdir(join(locksDir, CLAIMS_DIRNAME), { recursive: true });
-  await mkdir(join(locksDir, TOMBSTONES_DIRNAME), { recursive: true });
+  await mkdir(join(locksDir, CLAIMS_DIRNAME), { mode: DIR_MODE, recursive: true });
+  await mkdir(join(locksDir, TOMBSTONES_DIRNAME), { mode: DIR_MODE, recursive: true });
 };
 
 /** Wins the exclusive right to steal this lock name, or `false` if someone else holds it.

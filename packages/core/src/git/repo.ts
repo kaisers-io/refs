@@ -4,7 +4,6 @@ import type { CloneMode } from '../schemas/primitives.ts';
 import type { RefsHome } from '../home.ts';
 import type { Runner } from '../proc/runner.ts';
 import { assertManagedCheckout } from './managed-checkout.ts';
-import { chmod } from 'node:fs/promises';
 import { join } from 'node:path';
 import { redactUrlsInText } from '../git-url-redact.ts';
 import { validationError } from '../errors.ts';
@@ -290,9 +289,7 @@ const GUARD_HOOK_SCRIPT = [
 const installHooksGuard = async (home: RefsHome): Promise<void> => {
   await Promise.all(
     ['pre-commit', 'pre-push'].map(async (name) => {
-      const path = join(home.hooksDir, name);
-      await writeFileAtomic(path, GUARD_HOOK_SCRIPT);
-      await chmod(path, HOOK_MODE);
+      await writeFileAtomic(join(home.hooksDir, name), GUARD_HOOK_SCRIPT, HOOK_MODE);
     }),
   );
 };

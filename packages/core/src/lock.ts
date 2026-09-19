@@ -1,15 +1,15 @@
 import { HEARTBEAT_MS, diagnoseLock, renewLease } from './lock-lease.ts';
 import { conflictError, validationError } from './errors.ts';
+import { ensureLocksDir, tryExclusiveMkdir } from './lock-fs.ts';
 import { errnoCode, newLockToken, readLockToken, writeInitialMeta } from './lock-meta.ts';
 import { lockCtxFor, stealStaleLock } from './lock-steal.ts';
-import { mkdir, rm } from 'node:fs/promises';
 import type { Heartbeat } from './lock-heartbeat.ts';
 import type { LockCtx } from './lock-steal.ts';
 import type { RefsHome } from './home.ts';
 import { setTimeout as delay } from 'node:timers/promises';
 import { describeHeldLock } from './lock-describe.ts';
+import { rm } from 'node:fs/promises';
 import { startHeartbeat } from './lock-heartbeat.ts';
-import { tryExclusiveMkdir } from './lock-fs.ts';
 // Advisory cross-process locking for the refs home directory. meta.json read/write/parse
 // primitives live in `lock-meta.ts`; this file is the acquire/steal/release orchestration.
 //
@@ -264,7 +264,7 @@ const withLock = async <TResult>(
 ): Promise<TResult> => {
   validateLockName(name);
   const ctx = lockCtxFor(home.locksDir, name);
-  await mkdir(home.locksDir, { recursive: true });
+  await ensureLocksDir(home.locksDir);
   const deadline = Date.now() + (opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   const token = await acquireWithRetry(ctx, deadline);
   const heartbeat = startHeartbeat({

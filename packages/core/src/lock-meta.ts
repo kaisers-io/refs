@@ -1,4 +1,5 @@
 import { readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { FILE_MODE } from './fs-modes.ts';
 import { createLeaseSidecar } from './lock-sidecar.ts';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -204,7 +205,7 @@ const dirMtimeMs = async (path: string): Promise<number | undefined> => {
 const writeMetaAtomic = async (lockPath: string, contents: string): Promise<void> => {
   const path = join(lockPath, META_FILENAME);
   const tmpPath = `${path}.tmp-${randomUUID()}`;
-  await writeFile(tmpPath, contents, 'utf8');
+  await writeFile(tmpPath, contents, { encoding: 'utf8', mode: FILE_MODE });
   await rename(tmpPath, path);
 };
 

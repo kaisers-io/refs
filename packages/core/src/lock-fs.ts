@@ -1,4 +1,5 @@
 import { mkdir, rename } from 'node:fs/promises';
+import { DIR_MODE } from './fs-modes.ts';
 import { errnoCode } from './lock-meta.ts';
 
 // Windows-aware "lost race" classification for the lock's raw fs primitives — split out of
@@ -19,7 +20,7 @@ const RENAME_LOST_RACE_CODES = new Set(['ENOENT', 'EPERM', 'EACCES', 'EBUSY']);
 /** `mkdir` as an exclusive-acquisition attempt: `true` → created (race won), `false` → lost. */
 const tryExclusiveMkdir = async (path: string): Promise<boolean> => {
   try {
-    await mkdir(path, { recursive: false });
+    await mkdir(path, { mode: DIR_MODE, recursive: false });
     return true;
   } catch (error) {
     const code = errnoCode(error);
@@ -44,4 +45,9 @@ const renameOrLostRace = async (from: string, to: string): Promise<boolean> => {
   }
 };
 
-export { renameOrLostRace, tryExclusiveMkdir };
+/** The locks directory, created with refs' own mode rather than the ambient umask's. `withLock`
+ * needs it before any lock can be taken, including on a home `init` never ran in. */
+const ensureLocksDir = (path: string): Promise<string | undefined> =>
+  mkdir(path, { mode: DIR_MODE, recursive: true });
+
+export { ensureLocksDir, renameOrLostRace, tryExclusiveMkdir };

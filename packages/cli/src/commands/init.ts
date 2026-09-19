@@ -1,9 +1,17 @@
+import {
+  DIR_MODE,
+  FILE_MODE,
+  installHooksGuard,
+  isEnoent,
+  migrateConfig,
+  resolveHome,
+  withLock,
+} from '@kaisers-io/refs-core';
+import { chmod, lstat, mkdir } from 'node:fs/promises';
 import { cliOptsOf, emit, wrapAction } from '../output.ts';
-import { installHooksGuard, migrateConfig, resolveHome, withLock } from '@kaisers-io/refs-core';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
 import type { RefsHome } from '@kaisers-io/refs-core';
-import { mkdir } from 'node:fs/promises';
 // eslint-disable-next-line import/no-relative-parent-imports -- package.json lives at the package root, one level above src/
 import pkg from '../../package.json' with { type: 'json' };
 
@@ -34,11 +42,44 @@ const CONFIG_DISPLAY: Record<InitData['config'], string> = {
 // `migrateConfig` nor `installHooksGuard` — so they are created up front here rather than relying
 // on the incidental mkdir-recursive calls buried inside those two functions' own atomic-write
 // helpers (`withLock` itself also mkdir's `locksDir` recursively, independent of this).
+//
+// Each is created with an explicit mode and then re-applied to it. `mkdir` applies a mode only to
+// the directories it CREATES, so a home that already exists would keep whatever umask was in force
+// the day `init` first ran — and `init` is the command that repairs a home. What the repair does
+// is remove group and other access and restore the owner's own; it is not only a tightening,
+// because a directory left at `0500` gains owner write back.
+//
+// A path that is a SYMLINK is created but never chmod'd. `chmod` follows links, so repairing one
+// would silently change the mode of whatever it points at — a directory outside the home, which
+// refs does not own and was never asked about. Pointing `sources` at another disk is a legitimate
+// thing to do, and the mode of that target is its owner's business.
+const applyDirMode = async (dir: string): Promise<void> => {
+  await mkdir(dir, { mode: DIR_MODE, recursive: true });
+  const link = await lstat(dir);
+  if (!link.isSymbolicLink()) {
+    await chmod(dir, DIR_MODE);
+  }
+};
+
+/** Tightens a file `init` does not otherwise rewrite. `stampCliVersionIfChanged` returns without
+ * writing when the version already matches, so a `config.toml` left readable by others on an older
+ * refs would stay that way through every later `init`. */
+const applyFileMode = async (path: string): Promise<void> => {
+  try {
+    await chmod(path, FILE_MODE);
+  } catch (error) {
+    if (!isEnoent(error)) {
+      throw error;
+    }
+  }
+};
+
 const ensureHomeDirs = async (home: RefsHome): Promise<void> => {
-  await mkdir(home.root, { recursive: true });
-  await mkdir(home.sourcesDir, { recursive: true });
-  await mkdir(home.locksDir, { recursive: true });
-  await mkdir(home.hooksDir, { recursive: true });
+  for (const dir of [home.root, home.sourcesDir, home.locksDir, home.hooksDir]) {
+    // eslint-disable-next-line no-await-in-loop -- a parent must exist before its child is made
+    await applyDirMode(dir);
+  }
+  await Promise.all([applyFileMode(home.configPath), applyFileMode(home.statePath)]);
 };
 
 // Pure command body: no `--json`/`--verbose` of its own (only the global flags apply to `init`),
