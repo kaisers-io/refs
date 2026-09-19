@@ -35,6 +35,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`refs doctor` reports a refs home whose access modes are too open.** `refs init` creates and
+  repairs everything refs owns with explicit modes — `0700` directories, `0600` files — but `init`
+  is run once. A home created by an older refs under a permissive umask keeps whatever it got
+  (measured: `umask 002` produced `drwxrwxr-x`, `umask 000` produced `drwxrwxrwx`), and somebody
+  who upgrades and only ever runs `sync` was never told. A fix nobody is told about is not one.
+
+  The check names each entry it found and the mode it has, and `hooks/` in particular: that is the
+  directory every managed checkout points `core.hooksPath` at, and git resolves hook NAMES against
+  it, so a second local principal able to write there gets code executed as the refs user during an
+  ordinary `refs sync`. The remedy it prints is `refs init`, which already sets every one of them
+  and needs no path interpolated into a command.
+
+  Group and other are reported together rather than judged apart: a shared group may be deliberate,
+  and refs cannot read that policy. On Windows the check reports that it does not apply, because the
+  mode bits there do not say who may write.
+
+  Two things it is careful not to claim. A path that could not be INSPECTED is reported as such
+  rather than counted as nothing found — an `ELOOP` or an `EACCES` is a failure to look, and the
+  quiet answer would otherwise assert something it had not established. And `refs init` is offered
+  only where it would act: it deliberately does not chmod a symlinked directory, since `chmod`
+  follows the link and the target's mode is its own owner's business, so a symlinked `sources/`
+  pointing somewhere open is reported with "fix it where it points" instead of a repair that would
+  leave the finding standing. The quiet message says "no group or other permission bits" rather than
+  "reachable only by its owner", which mode bits alone do not establish.
+
+### Added
+
 - **Every drift finding in `refs doctor --json` carries its repair commands, already quoted.**
   `register`, `decline`, `repoint` and `unregister` sit beside the raw `name` and `path`, so
   nothing has to assemble a command out of values a tracked repository chose. That mattered most

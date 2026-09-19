@@ -1,0 +1,164 @@
+import { chmod, mkdtemp, rm, symlink } from 'node:fs/promises';
+import { describe, expect, it } from 'vitest';
+import {
+  expectCheck,
+  expectGitVersion,
+  runDoctorJson,
+  setupInitializedHome,
+  withResetExitCode,
+  withTempHome,
+} from '../helpers/doctor-support.ts';
+import { join, sep } from 'node:path';
+import { tmpdir } from 'node:os';
+
+// `home-modes` — what `refs init` sets, checked on a home that already exists.
+//
+// `init` creates everything refs owns with explicit modes and repairs them when re-run. That repair
+// is the fix; this check is what makes it findable. A home created by an older refs under a
+// permissive umask keeps whatever it got, and somebody who upgrades and only ever runs `sync` is
+// never told — `hooks/` most of all, since every managed checkout points `core.hooksPath` there and
+// git resolves hook NAMES against it.
+//
+// POSIX only: Windows carries no permission bits that say who may write, and `chmod` there does not
+// produce the state under test.
+
+const onWindows = sep === '\\';
+/** What `umask 000` leaves behind, which is the case this exists for. */
+const WORLD_WRITABLE = 0o777;
+const WORLD_READABLE_FILE = 0o644;
+/** A perfectly ordinary mode for a directory somebody else owns. */
+const OPEN_DIRECTORY = 0o755;
+
+/** This check's own detail line, so a test can assert what it does NOT say. */
+const detailOf = (envelope: { data?: { checks?: { detail?: string; name?: string }[] } }): string =>
+  String((envelope.data?.checks ?? []).find((check) => check.name === 'home-modes')?.detail ?? '');
+
+describe.skipIf(onWindows)('refs doctor: the modes on a home refs owns', () => {
+  it('is quiet on a home init just created', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, runner, stdout } = await setupInitializedHome(homeDir);
+        expectGitVersion(runner);
+
+        const envelope = await runDoctorJson(ctx, stdout);
+
+        expectCheck(envelope, 'home-modes', {
+          detailContains: 'no group or other permission bits',
+          status: 'ok',
+        });
+      }),
+    );
+  });
+
+  it('names every entry a permissive umask left open, and the directory git reads', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, home, runner, stdout } = await setupInitializedHome(homeDir);
+        await chmod(home.root, WORLD_WRITABLE);
+        await chmod(home.hooksDir, WORLD_WRITABLE);
+        await chmod(home.configPath, WORLD_READABLE_FILE);
+        expectGitVersion(runner);
+
+        const envelope = await runDoctorJson(ctx, stdout);
+
+        expectCheck(envelope, 'home-modes', {
+          // `hooks/` is the one that turns a permission into code execution, so it has to be named
+          // rather than folded into a count.
+          detailContains: 'hooks/ is 777 (expected 700)',
+          status: 'warn',
+        });
+      }),
+    );
+  });
+});
+
+describe.skipIf(onWindows)('refs doctor: the modes on the files refs writes', () => {
+  it('names them too, not only the directories', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, home, runner, stdout } = await setupInitializedHome(homeDir);
+        await chmod(home.configPath, WORLD_READABLE_FILE);
+        expectGitVersion(runner);
+
+        const envelope = await runDoctorJson(ctx, stdout);
+
+        // `config.toml` may hold a credential-bearing url, so it is not a directory-only concern.
+        expectCheck(envelope, 'home-modes', {
+          detailContains: 'config.toml is 644 (expected 600)',
+          status: 'warn',
+        });
+      }),
+    );
+  });
+});
+
+describe.skipIf(onWindows)('refs doctor: repairing a home whose modes are wrong', () => {
+  it('points at the command that does it', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, home, runner, stdout } = await setupInitializedHome(homeDir);
+        await chmod(home.hooksDir, WORLD_WRITABLE);
+        expectGitVersion(runner);
+
+        const envelope = await runDoctorJson(ctx, stdout);
+
+        // Not a `chmod` line with a path interpolated into it: `init` already sets every one of
+        // these, is idempotent, and needs no value from the caller.
+        expectCheck(envelope, 'home-modes', { detailContains: 'run: refs init', status: 'warn' });
+      }),
+    );
+  });
+});
+
+describe.skipIf(onWindows)('refs doctor: a symlinked directory in the home', () => {
+  it('reports the open target without claiming refs init would repair it', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, home, runner, stdout } = await setupInitializedHome(homeDir);
+        // Pointing `sources` at another disk is a legitimate thing to do, and `refs init` will not
+        // chmod a link: `chmod` follows it, and the target's mode is its own owner's business. So
+        // the finding has to stand without advertising a repair that leaves it standing.
+        const elsewhere = await mkdtemp(join(tmpdir(), 'refs-elsewhere-'));
+        await chmod(elsewhere, OPEN_DIRECTORY);
+        await rm(home.sourcesDir, { force: true, recursive: true });
+        await symlink(elsewhere, home.sourcesDir, 'dir');
+        expectGitVersion(runner);
+
+        const envelope = await runDoctorJson(ctx, stdout);
+
+        expectCheck(envelope, 'home-modes', { detailContains: 'a symlink', status: 'warn' });
+        expect(detailOf(envelope)).not.toContain('run: refs init');
+      }),
+    );
+  });
+});
+
+describe.skipIf(onWindows)('refs doctor: a path in the home that cannot be inspected', () => {
+  it('says so, rather than counting it as nothing found', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, home, runner, stdout } = await setupInitializedHome(homeDir);
+        // A failure to look is never evidence. Treating `ELOOP` like an absent file would have let
+        // the check report that nothing was open, which it had not established.
+        const loop = `${home.statePath}.loop`;
+        await rm(home.statePath, { force: true });
+        await symlink(home.statePath, loop);
+        await symlink(loop, home.statePath);
+        expectGitVersion(runner);
+
+        const envelope = await runDoctorJson(ctx, stdout);
+
+        expectCheck(envelope, 'home-modes', {
+          detailContains: 'could not be inspected',
+          status: 'warn',
+        });
+      }),
+    );
+  });
+});
