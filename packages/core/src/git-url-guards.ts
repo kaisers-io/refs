@@ -46,6 +46,8 @@ const HEX_RADIX = 16;
 // control character by definition, and this message reaches a terminal. The offset is a zero-based
 // index into the url with any `git+` prefix already removed.
 const controlCharacterMessage = (cloneUrl: string, at: number): string => {
+  /* v8 ignore next -- `at` came from a match on this same string, so the index is in range; the
+     fallback exists because the return type cannot say so. */
   const code = cloneUrl.codePointAt(at) ?? 0;
   const point = `U+${code.toString(HEX_RADIX).toUpperCase().padStart(HEX_WIDTH, '0')}`;
   return `not a supported git url: control character ${point} at position ${String(at)}`;
