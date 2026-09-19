@@ -20,6 +20,7 @@ import type { ConfigLoad } from './doctor-checks-basic.ts';
 import type { RefsCommand } from './registry.ts';
 import { checkConfigDrift } from './doctor-checks-structure.ts';
 import { checkGitExecSurfaces } from './doctor-checks-git-config.ts';
+import { checkHomeModes } from './doctor-checks-home-modes.ts';
 import { checkLocks } from './doctor-checks-locks.ts';
 import { checkSkill } from './doctor-checks-skill.ts';
 import { checkSshAuth } from './doctor-checks-ssh.ts';
@@ -107,6 +108,8 @@ const buildCheckSteps = (load: DoctorLoad): CheckStep[] => {
     { name: 'git-exec-surfaces', run: () => checkGitExecSurfaces(ctx, home.root) },
     { name: 'node', run: () => Promise.resolve(checkNode(ctx)) },
     { name: 'config', run: () => Promise.resolve(buildConfigCheck(configLoad.errorMessage)) },
+    // Beside `config`, because both are about the home itself rather than about any ref.
+    { name: 'home-modes', run: () => checkHomeModes(home) },
     { name: 'hooks-guard', run: () => checkHooksGuard(ctx, home, configLoad.config) },
     { name: 'dirty-checkouts', run: () => checkDirtyCheckouts(ctx, home, configLoad.config) },
     { name: 'config-drift', run: () => checkConfigDrift(home, configLoad.config) },
