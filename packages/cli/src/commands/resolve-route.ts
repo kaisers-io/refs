@@ -134,7 +134,9 @@ type PackageEntryMatch = {
 const packageMatchesFor = (config: Config, name: string): PackageEntryMatch[] => {
   const matches: PackageEntryMatch[] = [];
   for (const key of Object.keys(config.refs).toSorted()) {
-    const entry = config.refs[key]?.packages?.[name];
+    const packages = config.refs[key]?.packages;
+    const entry =
+      packages !== undefined && Object.hasOwn(packages, name) ? packages[name] : undefined;
     if (entry !== undefined) {
       matches.push({ entry, key: zRefKey.parse(key) });
     }
@@ -235,16 +237,22 @@ const matchSuffixOrThrow = (config: Config, query: string, message: string): Ref
  * query that matches no package in it is a mistake worth reporting rather than a reason to hand
  * back the ref itself with no package — which is precisely the silent near-miss this flag was added
  * to fix. */
+// `Object.hasOwn` rather than bracket access, and it matters most here: `routeWithinRef` passes a
+// `{}` literal when a ref declares no packages table, and that literal carries `Object.prototype`
+// however the schema built the real record. Measured before this changed:
+// `refs resolve toString --ref <ref>` matched `Object.prototype.toString`, and reading `.path` off
+// it crashed the command with an `unexpected` error. Both lookups need it — the prefix loop asks
+// the same question of every segment prefix, so `toString/subpath` reached it just as directly.
 const packageWithin = (
   packages: Readonly<Record<string, PackageEntry>>,
   query: string,
 ): { entry: PackageEntry; name: string } | undefined => {
-  const exact = packages[query];
+  const exact = Object.hasOwn(packages, query) ? packages[query] : undefined;
   if (exact !== undefined) {
     return { entry: exact, name: query };
   }
   for (const candidate of segmentPrefixes(query)) {
-    const found = packages[candidate];
+    const found = Object.hasOwn(packages, candidate) ? packages[candidate] : undefined;
     if (found !== undefined) {
       return { entry: found, name: candidate };
     }

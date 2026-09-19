@@ -211,6 +211,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A run that both hit the cap and then timed out publishes both facts; it previously reported only
   the timeout.
 
+- **A package name with no entry of its own is no longer answered for.** Four read paths looked a
+  name up with plain bracket access, so a name absent from the record resolved up the prototype
+  chain: `packages['toString']` answered with `Object.prototype.toString`, which is truthy and
+  therefore looked registered. Measured with the built CLI: `refs tag <ref> 1.2.3 --package
+  toString` returned a tag, silently using the ref's own format for a package the configuration
+  does not have, and `refs resolve toString --ref <ref>` crashed.
+
+  All four now ask whether the record has its own entry under that name, as their siblings already
+  did. This is not about forbidden names — `toString` and `valueOf` are perfectly legal package
+  keys, and a package really registered under one still resolves, with its own tag format.
+
 ## [0.17.0] - 2026-09-13
 
 ### Added
