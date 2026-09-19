@@ -79,6 +79,8 @@ is what tells you whether the path is trustworthy:
   answering the question, and offer to persist it with
   `refs edit '<ref>' --package='<name>' path '<new-path>'` — single-quoted, because a package name
   and a path come from the tracked repository and may contain a space, a single quote or `$(…)`.
+  Close and reopen the quote around any single quote in a value (`'a'\''b'`); there is no way to
+  escape one inside single quotes.
 - **`unmaterialized`** — the checkout is not there. With `--sync-if-stale` this should not
   survive into the answer, since the clone happens before verification runs; without the flag,
   add it and call again.
