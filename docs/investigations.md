@@ -40,9 +40,7 @@ This starts in your own repository and runs outwards. The agent reads what you c
 
 The value is in what it saves. Without it you ask around, or you find out when something breaks in a service you do not own.
 
-**Name the consumers.** `refs` routes a question to a repository; it does not work out which of your refs depend on which. Listing them is on you, and `refs list --json` is the reminder of what you track.
-
-Calling them by the name your team uses is enough. The CLI matches ref keys and package names, and where that finds nothing the agent falls back to the ref list and matches what you said against each description. That is what descriptions are for: they make a repository findable by the name people actually say, rather than by its URL.
+**Name the consumers.** `refs` routes a question to a repository. It does not work out which of your refs depend on which, so saying which ones to check is your half of the question. Call them however your team does; where that is not enough to tell which repository you mean, the agent asks, and `refs list --json` shows what you track.
 
 **What stays open.** A search finds the call sites that are there to find. Code that reaches your API through a variable, a generated client, or a configuration value will not turn up. The answer is a list of places to look, not a proof that the rest is safe.
 
