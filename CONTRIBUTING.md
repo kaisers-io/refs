@@ -79,6 +79,56 @@ that directory it is `node bin/refs.mjs <args>`; from the repository root,
 - **Tests that assert on implementation details** rather than observable behavior. The CLI's
   `--json` envelope is a contract. The shape of a private helper is not.
 
+## Releasing
+
+A `v*` tag push is the only trigger, and every guard authorizing the release — the tag/version
+match, the changelog checks, the version-regression check, the `origin/main` ancestor check, the
+`needs` edge and the `id-token` grant — is content of the tagged tree, because GitHub resolves a
+push-triggered workflow from the pushed ref. **A tag whose tree deletes a guard is never subjected
+to it.** Every check in `release.yml` therefore constrains an honest release and nothing else.
+
+One gate can live outside the tagged tree, and it has two halves that must both be configured. A
+pull request cannot restore either:
+
+1. **A GitHub Environment named `npm-publish`**, which the `publish` job declares, with a
+   **required reviewer who is not the principal that can push the tag**, and self-review disabled.
+   A deployment tag rule (`v*`) alone is not enough: it checks the ref's NAME, so an adversarial
+   tag keeps `environment: npm-publish`, deletes `verify`, and satisfies it. GitHub needs only one
+   listed reviewer to approve, so a reviewer list containing the tag pusher is no gate at all.
+   This holds even with a single maintainer: a credential that can push a tag is not the same
+   authority as that person approving a deployment interactively.
+2. **The npm Trusted Publisher entry must name that environment**, alongside the repository and
+   the workflow filename. npm's configuration binds the workflow's FILENAME — `npm trust github`
+   takes `--file`, `--repository` and an optional `--environment`, and its API expresses the match
+   as `workflow_ref: { file }` with no digest of the contents. So without the environment, a tag
+   supplying its own workflow at that path mints the token regardless of what this file says.
+
+**Check both, separately.** A publish that fails proves nothing on its own — an already-published
+version fails too. What has to be established is: an environment-bearing job waits for an approval
+the tag pusher cannot give; a correctly configured, approved identity authenticates; and an
+otherwise identical identity WITHOUT the environment is refused during authentication.
+
+Also list every trusted-publisher entry on the package, not just the one you edited. npm supports
+several independent entries, and an older environment-free entry left in place keeps the old route
+open. When you replace one, allow direct `npm publish` explicitly — a newly created entry defaults
+to staged publishing.
+
+**Not yet established:** whether adding `environment:` to the job breaks an existing publisher
+entry configured WITHOUT one. The environment claim changes the token's `sub`, and npm documents
+the field as optional without stating what omission means for matching. Bind the environment on
+both sides before the next release rather than finding out during it.
+
+Binding the environment also means a commit whose `release.yml` predates it can no longer be
+released from, even though the ancestor check still allows tagging it.
+
+The version-regression guard refuses a tag whose version is not strictly greater than the one npm
+serves as `latest`, and refuses anything that is not a plain `x.y.z` — a prerelease included,
+since this workflow publishes stable releases and guessing an order for `1.0.0-rc.1` is how one
+goes out under the wrong dist-tag. npm 11 already rejects a lower version on the implicit tag, so
+this is a stricter restatement that `--tag` and `--force` cannot bypass. It fails closed: a lookup
+that errors stops the release, and only a lookup that succeeds and reports nothing is treated as a
+first publication.
+
 ## Commits
 
 Conventional commits (`feat:`, `fix:`, `chore:`, `docs:`, `test:`, `build:`, `ci:`). The subject

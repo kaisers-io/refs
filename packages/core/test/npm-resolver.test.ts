@@ -224,3 +224,66 @@ describe('package names carrying more than one slash', () => {
     },
   );
 });
+
+// Without a deadline, a registry — or an intercepting proxy — that trickles a response hangs
+// `refs add npm:<pkg>` for as long as it likes. `update-check.ts` already put one on its own
+// registry call; this one had none, so the two disagreed about whether that was acceptable.
+/** A fetcher that fails the way an expired deadline does, at the chosen leg. Rejecting with a
+ * `TimeoutError` is exactly what `AbortSignal.timeout` produces — asserting only that a signal was
+ * PASSED would pass for `new AbortController().signal`, which never expires. */
+const abortedByTimeout = (): Promise<never> =>
+  Promise.reject(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+
+const timingOutFetcher = (at: 'body' | 'request'): Fetcher => {
+  const timeout = abortedByTimeout;
+  return (_url, init) => {
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+    return at === 'request'
+      ? timeout()
+      : Promise.resolve({ json: timeout, status: HTTP_STATUS_OK });
+  };
+};
+
+describe('the registry request', () => {
+  it('carries an abort signal, so a trickling response cannot hang the command', async () => {
+    expect.hasAssertions();
+    // eslint-disable-next-line init-declarations -- the point is that the fetcher sets it
+    let seen: AbortSignal | undefined;
+    const fetcher: Fetcher = (_url, init) => {
+      seen = init?.signal;
+      return Promise.resolve({
+        json: () => Promise.resolve({ repository: NEXT_REPO_URL }),
+        status: HTTP_STATUS_OK,
+      });
+    };
+
+    await resolveNpmPackage(fetcher, 'next');
+
+    expect(seen).toBeInstanceOf(AbortSignal);
+    expect(seen?.aborted).toBe(false);
+  });
+
+  it.each([
+    ['before the headers', 'request'],
+    ['mid-body', 'body'],
+  ] as const)('reports its own deadline as a timeout, %s', async (_label, at) => {
+    expect.hasAssertions();
+
+    // Mid-body is the one that used to lie: the abort made `response.json()` reject, and refs
+    // reported "not parseable JSON" — blaming the registry for cancelling its own transfer.
+    await expect(resolveNpmPackage(timingOutFetcher(at), 'next')).rejects.toThrow(
+      /did not answer for 'next' within/u,
+    );
+  });
+
+  it('still reports a genuinely unparseable body as unparseable', async () => {
+    expect.hasAssertions();
+    const fetcher: Fetcher = () =>
+      Promise.resolve({
+        json: () => Promise.reject(new SyntaxError('Unexpected token')),
+        status: HTTP_STATUS_OK,
+      });
+
+    await expect(resolveNpmPackage(fetcher, 'next')).rejects.toThrow(/not parseable JSON/u);
+  });
+});

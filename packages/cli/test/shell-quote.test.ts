@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { rmCommand, shellQuote } from '../src/shell-quote.ts';
+import { isPasteable, rmCommand, shellQuote } from '../src/shell-quote.ts';
+import { SpawnRunner } from '@kaisers-io/refs-core';
 
 // These helpers exist because refs prints commands for a person to paste. A ref key comes from a
 // url the user supplied and permits spaces, `$()`, backticks, semicolons and quotes; a package name
@@ -40,5 +41,50 @@ describe('building a removal command', () => {
 
     // `--` matters independently of quoting: without it a path beginning with `-` parses as flags.
     expect(rmCommand('-rf-looking-path')).toBe("rm -rf -- '-rf-looking-path'");
+  });
+});
+
+// A value carrying a control character cannot go into a printed command at all.
+//
+// Single quotes PRESERVE it, so the line spans two lines and cannot be pasted. ANSI-C `$'…'`
+// looked like the answer and is not: `sh` on Debian and Ubuntu is dash, which has no such syntax,
+// and measured there the command does not fail — it SUCCEEDS, against a package literally named
+// `$x\x0Ay`. A command that silently acts on the wrong thing is worse than no command.
+const UNPASTEABLE: readonly (readonly [string, string])[] = [
+  ['a newline', 'a\nb'],
+  ['a carriage return', 'a\rb'],
+  ['an escape sequence', 'a\u001B[2Kb'],
+  ['a delete character', 'a\u007Fb'],
+  ['a C1 byte', 'a\u009Bb'],
+];
+
+const PASTEABLE: readonly (readonly [string, string])[] = [
+  ['a space', 'a b'],
+  ['a single quote', "a'b"],
+  ['a command substitution', 'a$(id)b'],
+  ['a backslash', String.raw`a\b`],
+  ['an em dash', 'a—b'],
+];
+
+describe('whether a value can go into a printed command', () => {
+  it.each(UNPASTEABLE)('refuses one carrying %s', (_label, value) => {
+    expect.hasAssertions();
+
+    expect(isPasteable(value)).toBe(false);
+  });
+
+  it.each(PASTEABLE)('accepts one carrying %s, which quoting handles', (_label, value) => {
+    expect.hasAssertions();
+
+    expect(isPasteable(value)).toBe(true);
+  });
+
+  it.each(PASTEABLE)('and the quoted form survives a real shell: %s', async (_label, value) => {
+    expect.hasAssertions();
+    const quoted = shellQuote(value);
+
+    const result = await new SpawnRunner().run('sh', ['-c', `printf %s ${quoted}`]);
+
+    expect(result.stdout).toBe(value);
   });
 });

@@ -71,7 +71,13 @@ const classifyOrphan = (candidate: OrphanCandidate, state: State, now: number): 
   if (isFreshPendingProposal(state, candidate.key, now)) {
     return `${candidate.key}: pending add`;
   }
-  return `${candidate.key}: orphan — remove with: ${rmCommand(candidate.dest)}`;
+  // A directory name on disk may carry a control character, and a removal command that reaches a
+  // terminal with one neutralised would name a DIFFERENT sibling — the one suggestion where being
+  // slightly wrong cannot be undone. No command is offered for such a path.
+  const removal = rmCommand(candidate.dest);
+  return removal === undefined
+    ? `${candidate.key}: orphan — its path cannot be put into a pasteable command; remove it by hand`
+    : `${candidate.key}: orphan — remove with: ${removal}`;
 };
 
 const toCandidate = (home: RefsHome, segments: readonly string[]): OrphanCandidate => ({

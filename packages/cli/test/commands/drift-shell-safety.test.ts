@@ -18,7 +18,7 @@ const argvThroughShell = async (name: string, path: string): Promise<string[]> =
     { packages: [{ name, path, status: 'unregistered' }], status: 'drift' },
     "github.com/acme/o'brien",
   );
-  const marker = 'To register it: ';
+  const marker = 'To register it (replace the description first): ';
   const command = (line ?? '').slice((line ?? '').indexOf(marker) + marker.length);
   // `printf` in place of `refs`, so the assertion is about what the shell PARSED into arguments.
   const result = await runner.run('sh', [

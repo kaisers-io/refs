@@ -8,6 +8,8 @@ import { describe, expect, it } from 'vitest';
 import { readConfig, resolveHome } from '@kaisers-io/refs-core';
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
 import { run } from '../../src/main.ts';
+import { seedConfig } from '../helpers/ref-fixtures.ts';
+import { testContext } from '../helpers/context.ts';
 
 // `refs edit <ref> --package <name> --path <path> --decline` — recording that a package the
 // checkout declares is deliberately not registered.
@@ -18,6 +20,7 @@ import { run } from '../../src/main.ts';
 // already been made.
 
 const EDIT_REF = ['node', 'refs', 'edit', REF_KEY];
+const BARE_REF_KEY = 'github.com/acme/bare';
 const TWO_DECISIONS = 2;
 
 const declineArgs = (name: string, path: string, flag = '--decline'): string[] => [
@@ -207,6 +210,64 @@ describe('refs edit --decline: shapes it will not guess at', () => {
 
         const envelope = parseSoleEnvelope(stdout);
         expect(envelope.error?.message).toContain('different answers');
+      }),
+    );
+  });
+});
+
+// The one config writer that used to rely solely on `writeConfig`'s whole-document re-validation.
+// Both checks hold either way; what changes is the message, and a reader can act on `path` where
+// they cannot act on `refs.<key>.declined_packages.0.path`.
+describe('refs edit --decline: a ref that registers no packages at all', () => {
+  it('records the decision, rather than tripping over the absent table', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, stdout } = testContext();
+        ctx.env['REFS_HOME'] = homeDir;
+        const home = resolveHome(ctx.env);
+        // No `packages` key at all — the shape a ref has before anything is registered, and the
+        // one the "is it already registered?" check has to answer for without a table to look in.
+        await seedConfig(home, {
+          [BARE_REF_KEY]: {
+            default_branch: 'main',
+            description: 'A ref with nothing registered.',
+            url: 'https://github.com/acme/bare',
+          },
+        });
+
+        await run(ctx, [
+          'node',
+          'refs',
+          'edit',
+          BARE_REF_KEY,
+          '--package=@acme/new',
+          '--decline',
+          '--path=packages/new',
+          '--json',
+        ]);
+
+        expect(parseSoleEnvelope(stdout)).toMatchObject({ data: { declined: true }, ok: true });
+      }),
+    );
+  });
+});
+
+describe('refs edit --decline: a path the configuration cannot hold', () => {
+  it('names the field rather than its position in the whole document', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, stdout } = await setupEditFixture(homeDir);
+
+        await run(ctx, declineArgs('@acme/one', '../escape'));
+
+        const envelope = parseSoleEnvelope(stdout);
+        // Not `unexpected` with a raw zod dump, and not a whole-document path: `path` is what the
+        // caller passed and what they can correct.
+        expect(envelope.error?.code).toBe('validation');
+        expect(envelope.error?.message).toContain('at path');
+        expect(envelope.error?.message).not.toContain('declined_packages');
       }),
     );
   });

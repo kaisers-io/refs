@@ -14,6 +14,9 @@ import { tmpdir } from 'node:os';
 const CLEAN_SHA = 'aaaaaaa';
 const NEW_SHA = 'bbbbbbb';
 const ONE_CALL = 1;
+// What the scripted `core.hooksPath` answers with, and therefore what `syncRef` must be told
+// this home's hooks directory is — the guard compares the two for equality.
+const MANAGED_HOOKS_MARKER = '/managed/hooks';
 
 const makeManagedCheckoutDir = async (): Promise<string> => {
   const dir = await mkdtemp(join(tmpdir(), 'refs-unit-checkout-'));
@@ -45,7 +48,11 @@ describe('syncRef() set-head refresh failure', () => {
     const runner = new FakeRunner();
     scriptCleanSyncWithFailedSetHead(runner);
 
-    const result = await syncRef(runner, { defaultBranch: 'main', dir });
+    const result = await syncRef(runner, {
+      defaultBranch: 'main',
+      dir,
+      hooksDir: MANAGED_HOOKS_MARKER,
+    });
 
     expect(result.status).toBe('fresh');
     expect(result.branchRenamedTo).toBeUndefined();
@@ -59,9 +66,9 @@ describe('syncRef() set-head refresh failure', () => {
     const runner = new FakeRunner();
     runner.expect('git config --local --get core.hooksPath', { exitCode: 1, stderr: 'not set\n' });
 
-    await expect(syncRef(runner, { defaultBranch: 'main', dir })).rejects.toThrow(
-      /not a refs-managed checkout/u,
-    );
+    await expect(
+      syncRef(runner, { defaultBranch: 'main', dir, hooksDir: MANAGED_HOOKS_MARKER }),
+    ).rejects.toThrow(/not a refs-managed checkout/u);
     expect(runner.calls).toHaveLength(ONE_CALL);
   });
 });
@@ -90,7 +97,11 @@ describe('syncRef() default-branch rename detection', () => {
     const runner = new FakeRunner();
     scriptRenamedDefaultBranch(runner);
 
-    const result = await syncRef(runner, { defaultBranch: 'master', dir });
+    const result = await syncRef(runner, {
+      defaultBranch: 'master',
+      dir,
+      hooksDir: MANAGED_HOOKS_MARKER,
+    });
 
     expect(result.branchRenamedTo).toBe('main');
     expect(result.status).toBe('updated');
@@ -133,7 +144,11 @@ describe('syncRef() combined dirty-checkout + set-head-refresh-failure warning',
     const runner = new FakeRunner();
     scriptDirtySyncWithFailedSetHead(runner);
 
-    const result = await syncRef(runner, { defaultBranch: 'main', dir });
+    const result = await syncRef(runner, {
+      defaultBranch: 'main',
+      dir,
+      hooksDir: MANAGED_HOOKS_MARKER,
+    });
 
     expect(result.status).toBe('restored');
     expect(result.warning).toMatch(/read-only/u);
@@ -199,6 +214,8 @@ describe('cloneRepo argument hygiene', () => {
     await expect(cloneWith('full')).resolves.toStrictEqual([
       'clone',
       '-q',
+      '-c',
+      'core.hooksPath=/tmp/refs-unit-hooks',
       '--',
       HOSTILE_URL,
       '/tmp/refs-unit-dest',
@@ -210,6 +227,8 @@ describe('cloneRepo argument hygiene', () => {
     await expect(cloneWith('blobless')).resolves.toStrictEqual([
       'clone',
       '-q',
+      '-c',
+      'core.hooksPath=/tmp/refs-unit-hooks',
       '--filter=blob:none',
       '--',
       HOSTILE_URL,

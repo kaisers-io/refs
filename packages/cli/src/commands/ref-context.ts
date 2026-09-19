@@ -1,5 +1,6 @@
 import type { Config, PackageEntry, RefEntry, RefKey } from '@kaisers-io/refs-core';
 import { isGitCheckout, notFoundError } from '@kaisers-io/refs-core';
+import { shellQuote } from '../shell-quote.ts';
 
 // Shared ref/checkout/package guards for the command layer — extracted so no command carries a
 // diverging copy of the same checks (their user-facing message strings are part of the CLI contract
@@ -25,14 +26,27 @@ const requireEntry = (config: Config, key: RefKey): RefEntry => {
  * low-level git/cwd error deeper in the command. */
 const requireCheckout = (dest: string, key: RefKey): void => {
   if (!isGitCheckout(dest)) {
-    throw notFoundError(`checkout for '${key}' is missing — run: refs sync ${key}`);
+    throw notFoundError(`checkout for '${key}' is missing — run: refs sync ${shellQuote(key)}`);
   }
 };
 
 /** The named package's registered entry on `entry`; an unregistered name is a `notFoundError`,
- * exactly like an unresolvable `<ref>` is. */
+ * exactly like an unresolvable `<ref>` is.
+ *
+ * `Object.hasOwn`, not bracket access. The question is whether the record has its OWN entry under
+ * that name: without it, a name with no entry resolves up the prototype chain — `packages
+ * ['toString']` answers with `Object.prototype.toString`, which is truthy, so the name passes as
+ * registered. `tag` then reads `.tag_format` off it, gets `undefined`, and falls back to the REF's
+ * format, answering for a package the configuration does not have. Measured: `refs tag <ref>
+ * 1.2.3 --package toString` returned a tag.
+ *
+ * The edit path fails closed only incidentally, because `zPackageEntry` requires fields
+ * `Object.prototype` cannot supply. And this is not about forbidden names: `toString` and
+ * `valueOf` are perfectly storable — only `__proto__`, `constructor` and `prototype` are rejected
+ * as keys — so the guard has to find a real entry under such a name, not refuse the name. */
 const requirePackage = (entry: RefEntry, key: RefKey, name: string): PackageEntry => {
-  const pkg = entry.packages?.[name];
+  const { packages } = entry;
+  const pkg = packages !== undefined && Object.hasOwn(packages, name) ? packages[name] : undefined;
   if (pkg === undefined) {
     throw notFoundError(`no package '${name}' registered on ref '${key}'`);
   }

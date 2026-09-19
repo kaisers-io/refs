@@ -7,7 +7,9 @@ import {
   validationError,
   zRefKey,
 } from '@kaisers-io/refs-core';
+import { packageWithin, segmentPrefixes } from './resolve-route-package.ts';
 import { matchRefKey } from './list.ts';
+import { shellQuote } from '../shell-quote.ts';
 
 // Turning one query string into the ref (and, where applicable, the package inside it) it denotes.
 // Split out of `resolve.ts`, which was carrying this four-step precedence alongside everything else
@@ -133,7 +135,9 @@ type PackageEntryMatch = {
 const packageMatchesFor = (config: Config, name: string): PackageEntryMatch[] => {
   const matches: PackageEntryMatch[] = [];
   for (const key of Object.keys(config.refs).toSorted()) {
-    const entry = config.refs[key]?.packages?.[name];
+    const packages = config.refs[key]?.packages;
+    const entry =
+      packages !== undefined && Object.hasOwn(packages, name) ? packages[name] : undefined;
     if (entry !== undefined) {
       matches.push({ entry, key: zRefKey.parse(key) });
     }
@@ -145,9 +149,13 @@ const packageMatchesFor = (config: Config, name: string): PackageEntryMatch[] =>
 // key", which routes by ref rather than by package and comes back with `package: null` — a caller
 // following the advice got a success envelope with no package in it, and was left guessing a
 // directory, which is the exact guesswork `resolve` exists to remove.
-const ambiguousPackageMessage = (name: string, keys: readonly RefKey[]): string =>
+// `pick` is passed rather than taken off `keys`, so the message cannot be built without one — the
+// caller already has it in hand, and a `?? ''` here would be a fallback no test could reach.
+const ambiguousPackageMessage = (name: string, keys: readonly RefKey[], pick: RefKey): string =>
   `package '${name}' is registered by more than one ref: ${keys.join(', ')} — pick one with: ` +
-  `refs resolve ${name} --ref <ref>`;
+  // A real key, not a `<ref>` placeholder: a shell reads `<ref>` as an input redirection, so the
+  // line could not run as printed.
+  `refs resolve ${shellQuote(name)} --ref ${shellQuote(pick)}`;
 
 // Step 2/3 shared lookup: the sole ref registering `name`. Resolve's whole purpose is unambiguous
 // agent routing, so more than one candidate is a routing ambiguity — this throws `usageError`
@@ -167,24 +175,11 @@ const findPackageByName = (
       ambiguousPackageMessage(
         name,
         matches.map((match) => match.key),
+        first.key,
       ),
     );
   }
   return first;
-};
-
-/** Decreasing-length segment prefixes of `query`, longest first, excluding the full string (which
- * the caller has already tried as an exact match). Yielding longest-first is what makes the FIRST
- * hit necessarily the longest one, so `react/jsx-runtime` resolves to `react` and
- * `@scope/pkg/sub/path` to `@scope/pkg` without hard-coding scoped-vs-unscoped segment counts.
- *
- * One definition, used by both the unscoped search and the `--ref`-scoped one, so the two cannot
- * disagree about what an import path means. */
-const segmentPrefixes = function* segmentPrefixes(query: string): Generator<string> {
-  const segments = query.split('/');
-  for (let length = segments.length - 1; length >= 1; length -= 1) {
-    yield segments.slice(0, length).join('/');
-  }
 };
 
 // Step 3: import-path longest-prefix on segment boundaries, across every ref.
@@ -229,23 +224,6 @@ const matchSuffixOrThrow = (config: Config, query: string, message: string): Ref
  * query that matches no package in it is a mistake worth reporting rather than a reason to hand
  * back the ref itself with no package — which is precisely the silent near-miss this flag was added
  * to fix. */
-const packageWithin = (
-  packages: Readonly<Record<string, PackageEntry>>,
-  query: string,
-): { entry: PackageEntry; name: string } | undefined => {
-  const exact = packages[query];
-  if (exact !== undefined) {
-    return { entry: exact, name: query };
-  }
-  for (const candidate of segmentPrefixes(query)) {
-    const found = packages[candidate];
-    if (found !== undefined) {
-      return { entry: found, name: candidate };
-    }
-  }
-  return undefined;
-};
-
 const routeWithinRef = (config: Config, query: string, ref: string): RouteMatch => {
   const key = matchSuffixOrThrow(config, ref, refUnresolvedMessage(ref));
   const found = packageWithin(config.refs[key]?.packages ?? {}, query);
@@ -256,8 +234,8 @@ const routeWithinRef = (config: Config, query: string, ref: string): RouteMatch 
     // names, so a reader following this advice still cannot see what the ref does register.
     throw notFoundError(
       looksLikeGitUrl(query)
-        ? `ref '${key}' is tracked but registers no package matching that query — inspect: refs show ${key} --packages --json`
-        : `ref '${key}' is tracked but registers no package matching '${query}' — inspect: refs show ${key} --packages --json`,
+        ? `ref '${key}' is tracked but registers no package matching that query — inspect: refs show ${shellQuote(key)} --packages --json`
+        : `ref '${key}' is tracked but registers no package matching '${query}' — inspect: refs show ${shellQuote(key)} --packages --json`,
       'package_not_registered',
     );
   }

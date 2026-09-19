@@ -1,4 +1,5 @@
 import { open, stat, utimes } from 'node:fs/promises';
+import { FILE_MODE } from './fs-modes.ts';
 import { isEnoent } from './fs-atomic.ts';
 import { join } from 'node:path';
 
@@ -48,7 +49,7 @@ const createLeaseSidecar = async (lockPath: string, token: string): Promise<void
   if (path === undefined) {
     return;
   }
-  const handle = await open(path, 'w');
+  const handle = await open(path, 'w', FILE_MODE);
   await handle.close();
 };
 

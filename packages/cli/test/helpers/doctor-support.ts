@@ -40,8 +40,12 @@ const GIT_VERSION_STDOUT = 'git version 2.50.1';
 /** Queues the scripted response for `checkGit`'s `git --version` probe — every doctor test needs
  * exactly one of these queued first, since `runStepsInOrder` runs the checks strictly in the
  * spec's own order (`git` is always first). */
+/** The two git calls every `doctor` run makes before it touches any checkout: the version, and the
+ * configuration listing `git-exec-surfaces` reads. Scripted together because they are adjacent in
+ * the step order and no test cares about the second unless it is the one under test. */
 const expectGitVersion = (runner: FakeRunner): void => {
   runner.expect('git --version', { stdout: GIT_VERSION_STDOUT });
+  runner.expect('git config --list -z --show-scope', { stdout: '' });
 };
 
 type CheckResultLike = {
@@ -110,6 +114,7 @@ const buildSshConfig = (refs: Record<string, unknown>): Config =>
   });
 
 export {
+  GIT_VERSION_STDOUT,
   buildSshConfig,
   buildSshRefEntry,
   expectCheck,

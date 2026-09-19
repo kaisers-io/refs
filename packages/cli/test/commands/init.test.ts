@@ -1,5 +1,6 @@
-import { access, constants, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { access, constants, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
+import { EXIT } from '@kaisers-io/refs-core';
 import { join } from 'node:path';
 import { parse } from 'smol-toml';
 import { run } from '../../src/main.ts';
@@ -160,6 +161,40 @@ describe('refs init: human mode', () => {
         second.ctx.env['REFS_HOME'] = homeDir;
         await run(second.ctx, ['node', 'refs', 'init']);
         expect(second.stdout[CONFIG_LINE_INDEX]).toBe('config: unchanged');
+      }),
+    );
+  });
+});
+
+// `init` shares `migrateConfig` with `refs migrate`, so validating the config there reaches it
+// too. That is the intended direction — `init`'s own report would otherwise say the home is ready
+// when no reader will accept its config — but it IS a behaviour change: `init` used to succeed
+// and leave the problem for `doctor` to find.
+const INVALID_CURRENT_CONFIG = [
+  '[meta]',
+  `schema_version = ${String(EXPECTED_SCHEMA_VERSION)}`,
+  'cli_version = "0.0.1"',
+  '',
+  '[settings]',
+  'clone_mode = 42',
+  '',
+].join('\n');
+
+describe('refs init: a config at the current schema that does not validate', () => {
+  it('refuses with the validation envelope instead of reporting the home ready', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        await runInitJson(homeDir);
+        await writeFile(join(homeDir, 'config.toml'), INVALID_CURRENT_CONFIG, 'utf8');
+
+        const { stdout } = await runInitJson(homeDir);
+
+        expect(parseSoleEnvelope(stdout)).toMatchObject({
+          error: { code: 'validation' },
+          ok: false,
+        });
+        expect(process.exitCode).toBe(EXIT.VALIDATION);
       }),
     );
   });

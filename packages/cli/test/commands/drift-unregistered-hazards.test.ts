@@ -130,3 +130,24 @@ describe('probeRefStructure: a negation that could exclude anything', () => {
     expect(report).toStrictEqual({ status: 'ok' });
   });
 });
+
+describe('probeRefStructure: a member whose name the configuration cannot store', () => {
+  it('offers no decline command, because the command would fail validation', async () => {
+    expect.hasAssertions();
+    const repo = freshRepo();
+    writeJson(join(repo, 'package.json'), { workspaces: ['packages/*'] });
+    addPackage(repo, 'packages/a', { name: '@fixture/a', version: '1.0.0' });
+    // A lone surrogate has no UTF-8 encoding, so this name cannot be written to `config.toml` and
+    // read back — `zDeclinedPackage` rejects it. The path is perfectly ordinary, which is the
+    // point: validating the path alone offered a `--decline` the schema then refused.
+    addPackage(repo, 'packages/lost', { name: '@fixture/\uD800', version: '1.0.0' });
+
+    const lines = driftLines(
+      await probeRefStructure(repo, { packages: CONFIGURED }, ALL),
+      FIXTURE_REF,
+    ).join('\n');
+
+    expect(lines).toContain('the configuration cannot hold');
+    expect(lines).not.toContain('--decline');
+  });
+});

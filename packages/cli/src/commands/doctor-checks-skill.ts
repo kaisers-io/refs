@@ -190,7 +190,17 @@ type SkillVerdict = 'cli-older' | 'match' | 'skill-older' | 'unknown';
 // ordering. `comparePlainVersions` is the single implementation of that rule; this file used to
 // carry a second one that compared through `Number`, which agrees with it everywhere except past
 // 2^53, where it silently reported a match.
+// Longer than any version this CLI could have published, by a wide margin. `comparePlainVersions`
+// deliberately supports components of arbitrary length, so `'9'.repeat(4000) + '.0.0'` compares
+// fine and is a perfectly ordinary `skill-older`/`cli-older` verdict — which then quotes those
+// 4000 digits into the detail. A bound here keeps the line a line, and it belongs on the verdict
+// rather than on the rendering: a value this long is not a version, whatever it compares as.
+const MAX_SKILL_VERSION_LENGTH = 32;
+
 const compareSkillVersion = (skillVersion: string, cliVersion: string): SkillVerdict => {
+  if (skillVersion.length > MAX_SKILL_VERSION_LENGTH) {
+    return 'unknown';
+  }
   if (skillVersion === cliVersion) {
     return 'match';
   }
@@ -210,8 +220,17 @@ const DETAIL_BY_VERDICT: Record<SkillVerdict, (skill: string, cli: string) => st
   match: (_skill, cli) => `the refs skill is installed and matches this CLI (${cli})`,
   'skill-older': (skill, cli) =>
     `the refs skill targets CLI ${skill} but this CLI is ${cli} — update the skill: ${SKILL_INSTALL_HINT}`,
-  unknown: (skill, cli) =>
-    `the refs skill targets CLI ${skill} but this CLI is ${cli} — reinstall both: ${CLI_UPDATE_HINT} and ${SKILL_INSTALL_HINT}`,
+  // The one verdict where the declared value is NOT quoted back. Two of the five places a
+  // `SKILL.md` is looked for are rooted at the working directory — for an agent session, whatever
+  // repository it happens to be in — and the frontmatter scan accepts any quote-free,
+  // whitespace-free token of any length. Quoting it put attacker-chosen prose, unbounded, into an
+  // agent-facing `--json` detail that MAINTAIN.md tells the agent to relay verbatim to a human.
+  //
+  // The two ordering verdicts are the only others that interpolate the declared value, and they
+  // are reached only once `comparePlainVersions` has accepted it, so what they quote is three
+  // decimal components bounded by `MAX_SKILL_VERSION_LENGTH`. `match` does not quote it at all.
+  unknown: (_skill, cli) =>
+    `the refs skill does not declare a version this CLI (${cli}) can compare — reinstall both: ${CLI_UPDATE_HINT} and ${SKILL_INSTALL_HINT}`,
 };
 
 type SkillVersionArgs = {

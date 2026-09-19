@@ -9,11 +9,11 @@ import {
   validationError,
   zRefState,
 } from '@kaisers-io/refs-core';
+import { rmCommand, shellQuote } from '../shell-quote.ts';
 import type { CliContext } from '../context.ts';
 import { dirname } from 'node:path';
 import { mkdir } from 'node:fs/promises';
 import { progress } from '../output.ts';
-import { rmCommand } from '../shell-quote.ts';
 
 // Checkout-identity + head-sha guards shared by `refs add`'s idempotent clone/finalize flow and
 // `refs sync`'s per-ref pipeline (`sync-checkout.ts`). Owns everything that runs AGAINST an
@@ -78,8 +78,11 @@ const ensureCheckoutOrigin = async (
   throw conflictError(originMismatchMessage(opts.dest, actual, opts.expectedUrl));
 };
 
-const unmanagedCheckoutMessage = (dest: string): string =>
-  `checkout at ${dest} exists but is not refs-managed — remove it (${rmCommand(dest)}) and retry`;
+const unmanagedCheckoutMessage = (dest: string): string => {
+  const removal = rmCommand(dest);
+  const how = removal === undefined ? 'by hand' : `(${removal})`;
+  return `checkout at ${dest} exists but is not refs-managed — remove it ${how} and retry`;
+};
 
 /** Reuse-path-only guard: confirms `dest` is a checkout `refs` itself produced — the `cloneRepo`
  * marker (`core.hooksPath` pointing at this home's `hooksDir`) — rather than merely a directory
@@ -160,7 +163,7 @@ const ensureClonedCheckout = async (
 
 const revParseFailedMessage = (key: RefKey, dest: string): string =>
   `checkout for '${key}' at ${dest} is missing or corrupt (git rev-parse HEAD failed) — ` +
-  `run: refs remove ${key}, then refs add <source> --dry-run again`;
+  `run: refs remove ${shellQuote(key)}, then refs add <source> --dry-run again`;
 
 const HEAD_SHA_HEX_LENGTH = 40;
 

@@ -1,10 +1,10 @@
+import type { RunResult, Runner } from '../proc/runner.ts';
 import { buildSyncResult, excerpt, toBuildSyncResultOpts } from './sync-result.ts';
 import type { BuiltSyncResult } from './sync-result.ts';
 import type { CloneMode } from '../schemas/primitives.ts';
 import type { RefsHome } from '../home.ts';
-import type { Runner } from '../proc/runner.ts';
 import { assertManagedCheckout } from './managed-checkout.ts';
-import { chmod } from 'node:fs/promises';
+import { failureDetail } from './failure-detail.ts';
 import { join } from 'node:path';
 import { validationError } from '../errors.ts';
 import { writeFileAtomic } from '../fs-atomic.ts';
@@ -28,6 +28,9 @@ type CloneResult = {
 type SyncOpts = {
   dir: string;
   defaultBranch: string;
+  /** This home's hooks directory: what `core.hooksPath` must equal for the checkout to be one
+   * refs produced. See `assertManagedCheckout`. */
+  hooksDir: string;
 };
 
 // Canonical definitions live in sync-result.ts — re-exported here under this module's
@@ -61,23 +64,33 @@ const gitSpec = (action: string, args: readonly string[], cwd?: string): Command
 // Runs one command and throws `validationError` on a non-zero exit — opts IN to "failure is an
 // exception" on top of `Runner.run`'s "failure is data" contract, for steps with no sane way to
 // continue past a failure (a failed clone/checkout/reset leaves nothing useful to return).
-const runOrThrow = async (
-  runner: Runner,
-  spec: CommandSpec,
-): Promise<{ stdout: string; stderr: string }> => {
+// Returns the whole `RunResult`, not just its two streams. The narrower shape was why `listTags`
+// had to detect a capped stream by matching the note in `stderr`: `stdoutTruncated` is the fact
+// the runner publishes, and it was not reachable through here.
+const runOrThrow = async (runner: Runner, spec: CommandSpec): Promise<RunResult> => {
   const result = await runner.run(spec.cmd, spec.args, cwdOpt(spec.cwd));
   if (result.exitCode === SUCCESS_EXIT_CODE) {
     return result;
   }
-  const detail = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
-  throw validationError(`${spec.action} failed: ${detail}`);
+  const raw = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
+  throw validationError(`${spec.action} failed: ${failureDetail(raw)}`);
 };
 
 // `git clone` into `opts.dest` (`--filter=blob:none` when blobless). Some servers (verified: a
 // plain `file://` remote without `uploadpack.allowFilter=true`) ignore the filter and warn — that
-// downgrades to `effectiveMode: 'full'` + warning. Always configures `core.hooksPath` afterwards.
+// downgrades to `effectiveMode: 'full'` + warning.
 const cloneRepo = async (runner: Runner, opts: CloneOpts): Promise<CloneResult> => {
-  const args = ['clone', '-q'];
+  // `-c core.hooksPath=…` on the clone ITSELF, not afterwards. git applies a clone's `-c` once the
+  // new repository is initialized and BEFORE it fetches and checks out, so this is the only form
+  // that covers the checkout the clone performs. Setting it afterwards leaves that checkout
+  // governed by the ambient config: a user-level RELATIVE `core.hooksPath` (`.githooks`, say)
+  // resolves inside the tree being cloned, so an upstream-tracked hook of that name runs — during
+  // `add --dry-run`, before anyone has approved the ref. `-c` also persists into the new repo's
+  // local config, which is what the `git config` call below then only re-affirms.
+  // The interpolation is safe and both reasons are verified: there is no shell (`SpawnRunner`
+  // always spawns an argv array), and a newline in a `-c` value cannot smuggle a second setting —
+  // git 2.54 stores the whole string as ONE value. `hooksDir` is refs-owned in any case.
+  const args = ['clone', '-q', '-c', `core.hooksPath=${opts.hooksDir}`];
   if (opts.mode === 'blobless') {
     args.push('--filter=blob:none');
   }
@@ -88,6 +101,9 @@ const cloneRepo = async (runner: Runner, opts: CloneOpts): Promise<CloneResult> 
   // hold at the call itself rather than resting on something having been checked earlier.
   args.push('--', opts.cloneUrl, opts.dest);
   const cloneResult = await runOrThrow(runner, gitSpec('git clone', args));
+  // Kept deliberately, though the clone's own `-c` already wrote it: an older git that does not
+  // apply a clone `-c` before checkout would still leave the marker every later guard compares
+  // against. Re-writing the same value is idempotent.
   await runOrThrow(
     runner,
     gitSpec('git config core.hooksPath', ['config', 'core.hooksPath', opts.hooksDir], opts.dest),
@@ -223,7 +239,7 @@ const hardResetToBranch = async (
  * `buildSyncResult` (sync-result.ts) for the status/warning semantics.
  */
 const syncRef = async (runner: Runner, opts: SyncOpts): Promise<SyncResult> => {
-  await assertManagedCheckout(runner, opts.dir);
+  await assertManagedCheckout(runner, opts.dir, opts.hooksDir);
   const oldSha = await currentSha(runner, opts.dir);
   const syncBranch = await resolveSyncBranch(runner, opts);
   const dirty = await isDirty(runner, opts.dir);
@@ -262,9 +278,7 @@ const GUARD_HOOK_SCRIPT = [
 const installHooksGuard = async (home: RefsHome): Promise<void> => {
   await Promise.all(
     ['pre-commit', 'pre-push'].map(async (name) => {
-      const path = join(home.hooksDir, name);
-      await writeFileAtomic(path, GUARD_HOOK_SCRIPT);
-      await chmod(path, HOOK_MODE);
+      await writeFileAtomic(join(home.hooksDir, name), GUARD_HOOK_SCRIPT, HOOK_MODE);
     }),
   );
 };

@@ -1,6 +1,7 @@
 import { collectPnpmPatterns, parseNpmWorkspaces } from '../workspaces-parse.ts';
 import type { Runner } from '../proc/runner.ts';
 import { declaresUnreadably } from '../workspaces-declarations.ts';
+import { isTruncated } from '../proc/runner.ts';
 
 // Did the repository's workspace DECLARATION change across a range?
 //
@@ -60,7 +61,11 @@ const existsAt = async (
     ['ls-tree', '-z', '--name-only', opts.rev, '--', opts.path],
     { cwd: opts.dir },
   );
-  return result.exitCode === SUCCESS_EXIT_CODE ? result.stdout.includes(opts.path) : undefined;
+  // A truncated listing keeps the first entries, so a path beyond the cut reads as absent — which
+  // is a statement about membership, not a failure to look. `undefined` says what happened.
+  return result.exitCode === SUCCESS_EXIT_CODE && !isTruncated(result)
+    ? result.stdout.includes(opts.path)
+    : undefined;
 };
 
 const showFile = async (
@@ -75,7 +80,11 @@ const showFile = async (
     return { kind: 'absent' };
   }
   const result = await runner.run('git', ['show', `${opts.rev}:${opts.path}`], { cwd: opts.dir });
-  return result.exitCode === SUCCESS_EXIT_CODE
+  // Truncation is unreadable, not a smaller document. A cut JSON manifest fails `JSON.parse` and
+  // reaches the give-up path anyway, but the YAML reader accepts a valid PREFIX — so a
+  // `pnpm-workspace.yaml` cut mid-file parses as a narrower declaration, and comparing a real
+  // declaration against that narrower one reports a package as newly included when it always was.
+  return result.exitCode === SUCCESS_EXIT_CODE && !isTruncated(result)
     ? { contents: result.stdout }
     : { kind: 'unreadable' };
 };

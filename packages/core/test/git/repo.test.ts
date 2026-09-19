@@ -43,16 +43,20 @@ const plainClone = async (url: string, dest: string): Promise<void> => {
   throw new Error(`test setup clone failed: ${result.stderr}`);
 };
 
-// `syncRef()`'s managed-checkout guard requires `core.hooksPath` to be a non-empty value (the
-// Marker `cloneRepo` stamps on every checkout it produces) — see the "managed-checkout guard"
-// Describe block below. Fixtures that only need a plain clone plus that marker (not the full
-// `cloneRepo`/`installHooksGuard` machinery) use this instead of `plainClone` directly.
+// `syncRef()`'s managed-checkout guard requires `core.hooksPath` to EQUAL the hooks directory it
+// is given — the marker `cloneRepo` stamps on every checkout it produces. See
+// `managed-checkout-guard.test.ts`. Fixtures that only need a plain clone plus that marker (not
+// the full `cloneRepo`/`installHooksGuard` machinery) use this instead of `plainClone` directly.
 const MANAGED_HOOKS_MARKER = '/managed-checkout-marker';
 
 const managedClone = async (url: string, dest: string): Promise<void> => {
   await plainClone(url, dest);
   await runner.run('git', ['config', 'core.hooksPath', MANAGED_HOOKS_MARKER], { cwd: dest });
 };
+
+/** `syncRef` against a checkout carrying the marker, with the hooks directory it must match. */
+const syncManaged = (dir: string) =>
+  syncRef(runner, { defaultBranch: 'main', dir, hooksDir: MANAGED_HOOKS_MARKER });
 
 const headSha = async (dir: string): Promise<string> => {
   const result = await runner.run('git', ['rev-parse', 'HEAD'], { cwd: dir });
@@ -124,7 +128,7 @@ describe('syncRef()', SUITE_OPTS, () => {
     const oldSha = await headSha(dest);
     await addCommit(fixture.dir, 'more.txt', 'more content\n');
 
-    const result = await syncRef(runner, { defaultBranch: 'main', dir: dest });
+    const result = await syncManaged(dest);
     const fixtureHead = await headSha(fixture.dir);
 
     expect(result).toMatchObject({ newSha: fixtureHead, oldSha, status: 'updated' });
@@ -138,7 +142,7 @@ describe('syncRef()', SUITE_OPTS, () => {
     await managedClone(fixture.url, dest);
     await forcePushRewrite(fixture.dir);
 
-    const result = await syncRef(runner, { defaultBranch: 'main', dir: dest });
+    const result = await syncManaged(dest);
 
     expect(result.status).toBe('updated');
     expect(result.newSha).toBe(await headSha(fixture.dir));
@@ -170,7 +174,7 @@ describe('syncRef() restore semantics', SUITE_OPTS, () => {
     const dirtFile = join(dest, 'DIRT.md');
     await writeFile(dirtFile, 'uncommitted local edit\n');
 
-    const result = await syncRef(runner, { defaultBranch: 'main', dir: dest });
+    const result = await syncManaged(dest);
 
     expect(result.status).toBe('restored');
     expect(result.warning).toMatch(/read-only/u);
@@ -182,7 +186,7 @@ describe('syncRef() restore semantics', SUITE_OPTS, () => {
     const dest = await cloneFreshCheckout();
     const ignoredFile = await plantIgnoredArtifact(dest);
 
-    const result = await syncRef(runner, { defaultBranch: 'main', dir: dest });
+    const result = await syncManaged(dest);
 
     expect(result.status).toBe('fresh');
     expect(result.warning).toBeUndefined();
@@ -200,46 +204,16 @@ describe('syncRef() restore semantics', SUITE_OPTS, () => {
     await writeFile(join(dir, 'foo.txt'), 'local untracked content\n');
     await addCommit(fixture.dir, 'foo.txt', 'upstream tracked content\n');
 
-    const result = await syncRef(runner, { defaultBranch: 'main', dir });
+    const result = await syncRef(runner, {
+      defaultBranch: 'main',
+      dir,
+      hooksDir: MANAGED_HOOKS_MARKER,
+    });
 
     expect(result.status).toBe('restored');
     await expect(readFile(join(dir, 'foo.txt'), 'utf8')).resolves.toBe(
       'upstream tracked content\n',
     );
-  });
-});
-
-describe('syncRef() managed-checkout guard', SUITE_OPTS, () => {
-  it('rejects an unmanaged (plain) git checkout without touching it', async () => {
-    expect.hasAssertions();
-    const fixture = await createFixtureRepo();
-    const dest = await makeDest();
-    await plainClone(fixture.url, dest);
-    const shaBefore = await headSha(dest);
-    await addCommit(fixture.dir, 'more.txt', 'more content\n');
-
-    await expect(syncRef(runner, { defaultBranch: 'main', dir: dest })).rejects.toThrow(
-      /not a refs-managed checkout/u,
-    );
-
-    await expect(headSha(dest)).resolves.toBe(shaBefore);
-  });
-
-  it('accepts a plain checkout when local core.hooksPath is set, treating it as managed', async () => {
-    expect.hasAssertions();
-    const fixture = await createFixtureRepo();
-    const dest = await makeDest();
-    await plainClone(fixture.url, dest);
-    await runner.run('git', ['config', '--local', 'core.hooksPath', MANAGED_HOOKS_MARKER], {
-      cwd: dest,
-    });
-    const shaBefore = await headSha(dest);
-    await addCommit(fixture.dir, 'more.txt', 'more content\n');
-
-    const result = await syncRef(runner, { defaultBranch: 'main', dir: dest });
-
-    expect(result.status).toBe('updated');
-    expect(result.newSha).not.toBe(shaBefore);
   });
 });
 

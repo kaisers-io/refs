@@ -1,7 +1,6 @@
 import { validationError, zFinalProposal } from '@kaisers-io/refs-core';
 import type { CliContext } from '../context.ts';
 import type { FinalProposal } from '@kaisers-io/refs-core';
-import { errorMessageOf } from '../output.ts';
 import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 
@@ -20,11 +19,18 @@ const readProposalText = (ctx: CliContext, location: string): Promise<string> =>
   return readFile(location, 'utf8');
 };
 
+// The parser's own message is not forwarded. `JSON.parse` embeds the offending input in it for
+// some malformations — measured on Node 24, `{"url":SECRET}` comes back as
+// ``Unexpected token 'S', "{"url":SECRET}" is not valid JSON`` — and a proposal is a document
+// someone filled in by hand, quite possibly with a credentialed url in it. It offers no structured
+// position either. A human debugging their own file does give up the position the message
+// sometimes carries — the deliberate trade against forwarding a message that, for other
+// malformations, carries the document.
 const parseProposalJson = (text: string): unknown => {
   try {
     return JSON.parse(text) as unknown;
-  } catch (error) {
-    throw validationError(`invalid JSON in proposal: ${errorMessageOf(error)}`);
+  } catch {
+    throw validationError('invalid JSON in proposal: the document could not be parsed');
   }
 };
 

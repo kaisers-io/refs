@@ -1,9 +1,10 @@
 import type { Config, RefKey, RefsHome } from '@kaisers-io/refs-core';
-import { access, constants } from 'node:fs/promises';
-import { checkoutPath, isGitCheckout, zRefKey } from '@kaisers-io/refs-core';
+import { access, constants, readdir } from 'node:fs/promises';
+import { checkoutPath, isEnoent, isGitCheckout, zRefKey } from '@kaisers-io/refs-core';
 import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
 import { join } from 'node:path';
+import { rmCommand } from '../shell-quote.ts';
 
 // `hooks-guard` and `dirty-checkouts` — the two checks that iterate configured refs whose checkout
 // currently exists, each running one `git` command per checkout via the injected `Runner`.
@@ -33,6 +34,8 @@ const PRE_PUSH_HOOK_NAME = 'pre-push';
 // check fails if either one is missing — never just pre-commit.
 const GUARD_HOOK_NAMES = [PRE_COMMIT_HOOK_NAME, PRE_PUSH_HOOK_NAME] as const;
 
+type GuardHookName = (typeof GUARD_HOOK_NAMES)[number];
+
 const hookExecutable = async (home: RefsHome, name: string): Promise<boolean> => {
   try {
     await access(join(home.hooksDir, name), constants.X_OK);
@@ -49,6 +52,39 @@ const missingGuardHooks = async (home: RefsHome): Promise<string[]> => {
   return GUARD_HOOK_NAMES.filter((_name, index) => !flags[index]);
 };
 
+/** Everything in the hooks directory that refs did not put there.
+ *
+ * git resolves hook NAMES against `core.hooksPath`, not against the two names refs installed, so
+ * asking only whether those two are present and executable states a guarantee about two filenames
+ * and says nothing about the rest of the directory. Measured on git 2.54: a `post-checkout` placed
+ * here RUNS during `refs sync`, while `doctor` reported the guard `ok` — the check that exists to
+ * confirm the guard could not see the file that defeats it.
+ *
+ * Every entry is reported, not only the executable ones with hook names git knows. Which names a
+ * given git invokes is a property of that git, and the point of enumerating is to stop deciding
+ * from a list refs maintains. What is NOT claimed is that every reported entry runs: a
+ * non-executable file does not, and the finding is that the directory holds something whose
+ * provenance refs cannot account for.
+ *
+ * A leftover `<name>.tmp-<uuid>` from an interrupted `refs init` is reported for the same reason
+ * and is not exempted by pattern. It is genuinely something that should not be there, removing it
+ * is the right repair, and a pattern exemption would be a name an unexpected file could take.
+ *
+ * ENOENT means the directory is not there at all, which `missingGuardHooks` already reports with
+ * the remedy that fixes it. Any other error is left to propagate: `doctor` turns it into a failing
+ * check, and one that could not look must not answer `ok`. */
+const unexpectedHookEntries = async (home: RefsHome): Promise<string[]> => {
+  try {
+    const entries = await readdir(home.hooksDir);
+    return entries.filter((name) => !GUARD_HOOK_NAMES.includes(name as GuardHookName)).toSorted();
+  } catch (error) {
+    if (isEnoent(error)) {
+      return [];
+    }
+    throw error;
+  }
+};
+
 /** Whether `dest`'s `core.hooksPath` points at THIS home's hooks directory — the same marker
  * `cloneRepo`/`ensureManagedCheckout` (core) stamp/verify elsewhere, re-checked here per-checkout
  * as `doctor`'s own read-only-guard integrity sweep. */
@@ -63,25 +99,49 @@ const checkoutHooksPathOk = async (
   return result.exitCode === SUCCESS_EXIT_CODE && result.stdout.trim() === home.hooksDir;
 };
 
+const unexpectedHooksClause = (hooksDir: string, unexpected: readonly string[]): string => {
+  const names = unexpected.map((name) => `hooks/${name}`).join(', ');
+  const removal = rmCommand(unexpected.map((name) => join(hooksDir, name)));
+  return (
+    `${names}: not installed by refs — this is the directory git resolves hook names against ` +
+    `for every managed checkout, so nothing whose provenance refs cannot account for belongs ` +
+    `in it; remove: ${removal}`
+  );
+};
+
+/** Every failing fact, not just the first. Reporting one at a time made a repair that fixed it
+ * reveal the next only on the following run — and all three are already computed here. */
+const hooksGuardFailures = (opts: {
+  badKeys: readonly string[];
+  hooksDir: string;
+  missingHooks: readonly string[];
+  unexpected: readonly string[];
+}): string[] => {
+  const clauses: string[] = [];
+  if (opts.unexpected.length > 0) {
+    clauses.push(unexpectedHooksClause(opts.hooksDir, opts.unexpected));
+  }
+  if (opts.missingHooks.length > 0) {
+    clauses.push(
+      `${opts.missingHooks.map((name) => `hooks/${name}`).join(', ')} missing or not executable — run: refs init`,
+    );
+  }
+  if (opts.badKeys.length > 0) {
+    clauses.push(`core.hooksPath not set for: ${opts.badKeys.join(', ')} — run: refs init`);
+  }
+  return clauses;
+};
+
 const buildHooksGuardResult = (opts: {
   badKeys: readonly string[];
   checkoutCount: number;
+  hooksDir: string;
   missingHooks: readonly string[];
+  unexpected: readonly string[];
 }): CheckResult => {
-  if (opts.missingHooks.length > 0) {
-    const names = opts.missingHooks.map((name) => `hooks/${name}`).join(', ');
-    return {
-      detail: `${names} missing or not executable — run: refs init`,
-      name: 'hooks-guard',
-      status: 'fail',
-    };
-  }
-  if (opts.badKeys.length > 0) {
-    return {
-      detail: `core.hooksPath not set for: ${opts.badKeys.join(', ')} — run: refs init`,
-      name: 'hooks-guard',
-      status: 'fail',
-    };
+  const failures = hooksGuardFailures(opts);
+  if (failures.length > 0) {
+    return { detail: failures.join('; '), name: 'hooks-guard', status: 'fail' };
   }
   const guardedNames = GUARD_HOOK_NAMES.map((name) => `hooks/${name}`).join(', ');
   return {
@@ -97,14 +157,21 @@ const checkHooksGuard = async (
   config: Config,
 ): Promise<CheckResult> => {
   const checkouts = existingCheckouts(home, config);
-  const [missingHooks, hooksPathFlags] = await Promise.all([
+  const [missingHooks, unexpected, hooksPathFlags] = await Promise.all([
     missingGuardHooks(home),
+    unexpectedHookEntries(home),
     Promise.all(checkouts.map((item) => checkoutHooksPathOk(ctx, home, item.dest))),
   ]);
   const badKeys = checkouts
     .filter((_item, index) => !hooksPathFlags[index])
     .map((item) => item.key);
-  return buildHooksGuardResult({ badKeys, checkoutCount: checkouts.length, missingHooks });
+  return buildHooksGuardResult({
+    badKeys,
+    checkoutCount: checkouts.length,
+    hooksDir: home.hooksDir,
+    missingHooks,
+    unexpected,
+  });
 };
 
 type CheckoutStatus = {

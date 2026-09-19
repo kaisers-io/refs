@@ -77,7 +77,10 @@ is what tells you whether the path is trustworthy:
 - **`relocated`** — proceed with the returned `local_path`; it is the verified current
   location, and `configured_path` names the stale one. Mention the move **after**
   answering the question, and offer to persist it with
-  `refs edit <ref> --package <name> path <new-path>`.
+  `refs edit '<ref>' --package='<name>' path '<new-path>'` — single-quoted, because a package name
+  and a path come from the tracked repository and may contain a space, a single quote or `$(…)`.
+  Close and reopen the quote around any single quote in a value (`'a'\''b'`); there is no way to
+  escape one inside single quotes.
 - **`unmaterialized`** — the checkout is not there. With `--sync-if-stale` this should not
   survive into the answer, since the clone happens before verification runs; without the flag,
   add it and call again.
@@ -92,8 +95,8 @@ is what tells you whether the path is trustworthy:
   before reading anything.
 - **`missing`** — the package is not in this checkout under that name, and `local_path`
   is `null`. Do not guess a path. Report it, and offer to investigate what happened
-  upstream — `git log --diff-filter=D -- <configured-path>` usually names the commit that
-  removed or renamed it.
+  upstream — `git log --diff-filter=D -- '<configured-path>'` usually names the commit that
+  removed or renamed it. Quote the path: it is the repository's, not yours.
 - **no `status` field at all** — the installed CLI predates verification. The path is the
   configured one and nothing checked it; proceed, but treat it as unverified, and mention
   that upgrading (`npm i -g @kaisers-io/refs@latest`) would let refs confirm it.
@@ -131,10 +134,10 @@ the main thread small — never paste large excerpts or diffs into your own cont
 doesn't surface what you need, widen: whole-file reads and broad searches are
 always available and sometimes the right call.
 
-1. Locate before you read: `git grep -n "<term>"` (or `rg -l "<term>"`) inside the
+1. Locate before you read: `git grep -n '<term>'` (or `rg -l '<term>'`) inside the
    checkout finds the defining sites cheaply, however broad the pattern. When a broad
    term is drowned out by vendored/generated hits, exclude them with pathspecs
-   (`git grep -n "<term>" -- ':(exclude)**/node_modules/**' ':(exclude)dist'`).
+   (`git grep -n '<term>' -- ':(exclude)**/node_modules/**' ':(exclude)dist'`).
 2. Read the smallest span that answers the question (the defining function/class
    plus its immediate context), not the whole file.
 3. Follow only the call sites/imports you actually need.

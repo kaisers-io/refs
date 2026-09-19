@@ -92,19 +92,61 @@ const extractDirectory = (repository: NpmRepository): string | undefined => {
   return undefined;
 };
 
+// A deadline, which this call had none of: a registry or an intercepting proxy that trickles a
+// response hung `refs add npm:<pkg>` for as long as it liked.
+//
+// Longer than `update-check.ts`'s 2s, deliberately. That one is a background courtesy nobody asked
+// for, so giving up quickly costs nothing; this one is the work the user asked for by name, and
+// failing a slow-but-working registry would be worse than waiting. It covers the body transfer as
+// well as the headers, so a genuinely slow download can reach it too.
+const REQUEST_TIMEOUT_MS = 10_000;
+
+/** Whether this failure is refs' own deadline firing rather than anything the registry did.
+ *
+ * It has to be asked around the BODY read as well as the request. `AbortSignal.timeout` aborts a
+ * response mid-stream, `response.json()` then rejects, and reporting that as "not parseable JSON"
+ * blames the registry for refs cancelling the transfer — which is exactly the trickling-response
+ * case the deadline exists for. */
+const isTimeout = (error: unknown): boolean =>
+  error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+
+const timedOutError = (pkgName: string): Error =>
+  validationError(
+    `npm registry did not answer for '${pkgName}' within ${String(REQUEST_TIMEOUT_MS)}ms`,
+  );
+
 const parseResponseJson = async (
   response: { json: () => Promise<unknown> },
   pkgName: string,
 ): Promise<unknown> => {
   try {
     return await response.json();
-  } catch {
+  } catch (error) {
+    if (isTimeout(error)) {
+      throw timedOutError(pkgName);
+    }
     throw validationError(`invalid npm registry response for '${pkgName}': not parseable JSON`);
   }
 };
 
+const requestPackument = async (
+  fetcher: Fetcher,
+  pkgName: string,
+): Promise<Awaited<ReturnType<Fetcher>>> => {
+  try {
+    return await fetcher(`https://registry.npmjs.org/${encodePackageName(pkgName)}`, {
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch (error) {
+    if (isTimeout(error)) {
+      throw timedOutError(pkgName);
+    }
+    throw error;
+  }
+};
+
 const fetchPackument = async (fetcher: Fetcher, pkgName: string): Promise<NpmPackument> => {
-  const response = await fetcher(`https://registry.npmjs.org/${encodePackageName(pkgName)}`);
+  const response = await requestPackument(fetcher, pkgName);
   if (response.status === HTTP_STATUS_NOT_FOUND) {
     throw notFoundError(`npm package '${pkgName}' not found`);
   }

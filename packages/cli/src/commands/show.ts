@@ -6,6 +6,7 @@ import {
   listTags,
   readConfig,
   readState,
+  redactUrlForDisplay,
   resolveHome,
   resolveSetting,
 } from '@kaisers-io/refs-core';
@@ -103,6 +104,12 @@ const runShow = async (
     missing: !isGitCheckout(dest),
     ...(options.packages ? { packages: packages ?? {} } : {}),
     packages_count: Object.keys(packages ?? {}).length,
+    // `show` exists to display the ref, and the url is part of that — but the field is allowed to
+    // hold a credential: a bare ssh username is legal by design (`git@host` is the documented
+    // form), and the read path types the url as any non-empty string, so a hand-edited config can
+    // carry `user:pass@` too. `--json` is the agent contract, so this output leaves the terminal.
+    // The conventional `git@` stays readable; anything else in the userinfo position does not.
+    url: redactUrlForDisplay(entry.url),
     ...(sampled === undefined ? {} : { sample_tags: sampled.tags }),
     stale: isStale(
       refState.last_fetched_at,

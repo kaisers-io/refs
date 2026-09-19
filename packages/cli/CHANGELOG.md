@@ -5,6 +5,329 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Every drift finding in `refs doctor --json` carries its repair commands, already quoted.**
+  `register`, `decline`, `repoint` and `unregister` sit beside the raw `name` and `path`, so
+  nothing has to assemble a command out of values a tracked repository chose. That mattered most
+  where the human output gives no command at all: once a directory holds enough unregistered
+  packages the per-package line collapses to a count, which is exactly the large-monorepo case an
+  agent is routed to `findings` for. A finding that can offer no command honestly carries none.
+
+  Verified by taking three such commands out of `--json` and running them **verbatim** through a
+  shell against a real checkout: a package directory with a space, a name containing `$(id)` and a
+  name containing a single quote were all declined exactly, with nothing substituted.
+
+### Changed
+
+- **The skill states the quoting rule the CLI has always applied.** `COMMANDS.md`, `VERSIONS.md`,
+  `INVESTIGATE.md` and `MAINTAIN.md` gave agent-facing templates with no quoting around values
+  refs reports — a package name comes from a tracked repository's own manifest, a path from its
+  directory layout, and a tag from its tag list. refs checks that those are true, not that they
+  are safe to paste. The rule is now written down once: run the command refs printed; if you must
+  build one, single-quote every interpolated value and close-and-reopen the quote around any single
+  quote in it. Every RUNNABLE line in those documents follows it, and the command synopses — which
+  show a verb's grammar rather than a line to paste — say so explicitly instead of being quoted as
+  though they were.
+
+  Two corrections to what those documents asserted. `git tag -l '<prefix>…'` needs a `--` before
+  the pattern: a prefix beginning with `-` otherwise fails with
+  `options '-v' and '-l' cannot be used together`, and the prefix comes from the repository's own
+  tags. And git does not accept every metacharacter in a tag name — a semicolon, a single quote,
+  backticks and `$(…)` it creates and lists back, but `git check-ref-format` refuses a space or a
+  control character.
+
+### Fixed
+
+- **A checkout's own git hooks can no longer run during the clone that creates it.** `refs` points
+  every managed checkout's `core.hooksPath` at its own hooks directory so hooks inside a checkout
+  never run, but it set that only _after_ `git clone` returned. The clone's own checkout was
+  therefore governed by whatever git config the invoking user already had — and `core.hooksPath`
+  may be relative, in which case git resolves it inside the tree being cloned. A user with, say,
+  `core.hooksPath = .githooks` set globally would run an upstream-tracked `.githooks/post-checkout`
+  during `refs add`, before the proposal that add exists to put in front of a human. The managed
+  path is now passed on the clone invocation itself, which git applies after initializing the new
+  repository and before fetching and checking out.
+
+- **A git url carrying an ASCII control character is refused.** The url canonicalizer returns the raw
+  input as the clone url while deriving the stored ref key from the parsed one, so any character the
+  URL parser silently removes can make those two name different repositories — the reason backslashes
+  and percent escapes were already rejected. Tab, line feed and carriage return are a third door: the
+  parser strips them _before_ it resolves `..`, so `.<TAB>.` reads as three characters to the raw
+  check and as `..` to the parser. Git clones that literal path when it exists, so the result was a
+  checkout whose recorded identity described a different repository. A sweep of every code point up
+  to U+00FF plus the zero-width and bidi suspects found no fourth character with the same effect.
+
+- **A syntax error in `config.toml` no longer reports the surrounding lines.** The TOML parser's
+  message ends in a source excerpt — the offending line plus the nonempty lines either side of it —
+  and refs forwarded it verbatim. A syntax error next to a ref's `url` therefore reported that url,
+  credentials and all, through an ordinary command failure and before any schema or url handling
+  ran, so none of the redaction applied elsewhere was reached. The fault and its line and column are
+  still reported; the source is not.
+
+### Changed
+
+- **`refs show` redacts a credential in the ref url.** The url field is allowed to hold one: a bare
+  ssh username is legal by design, and the read path accepts any non-empty string, so a hand-edited
+  config can carry `user:pass@` too. `--json` is the agent contract, so that output leaves the
+  terminal. The conventional `git@host` stays readable — redacting it would mark every ordinary ssh
+  ref as credential-bearing while telling the reader nothing — but any other userinfo is replaced
+  with `<redacted>@`, and the host and path are kept. The decision is made on the parsed url rather
+  than by matching the string, and a value that can be neither parsed nor recognised as the scp form
+  is redacted in full rather than printed.
+
+### Changed
+
+- **Text that cannot be written back is refused before it becomes configuration.** A lone surrogate
+  is a valid JavaScript string with no UTF-8 encoding: the TOML serializer writes it as a `\ud800`
+  escape and the parser then rejects that escape, so accepting one produced a home refs itself could
+  no longer read — an unreadable configuration rather than a bad entry. The route in was JSON, which
+  has an escape for a lone surrogate where TOML has none, so a `refs add --proposal` file could
+  carry one into a package name, a description, the url, the default branch, a package path or a tag
+  format. All of them now require text that round-trips, and the refusal names the field.
+
+  Nothing narrows by length. The config is validated on every read, so a length bound would make an
+  existing home unreadable, and unfixable through a CLI that cannot load it, over a value that
+  round-trips perfectly well.
+
+  Writing the config now proves the document can be read back instead of assuming it. `meta` is
+  deliberately permissive — a key written by a future CLI passes through untouched — so no field
+  schema can cover it, and a schema cannot keep the guarantee when a field is added later. Both
+  `refs migrate` and every ordinary write go through the same check, which costs one parse: 0.4 ms
+  on a 32 KB config holding 100 refs.
+
+  `refs doctor` and `refs sync` no longer offer a `--decline` command for a name the configuration
+  cannot store. The report validated the path alone, so it could print a command the configuration
+  then refused. It now asks the shape that would be stored. A package called `constructor` stays
+  declinable, which is the documented difference between declining and registering.
+
+- **A tracked repository can no longer add a line to refs' human output.** A workspace member's
+  name is taken from its manifest and printed at the head of every drift finding. A newline in that
+  name produced a second line on stdout that was byte-for-byte indistinguishable from one refs
+  wrote — and the obvious payload is a forged `To register it:` clause, because a genuine finding
+  ends in exactly that shape. Every human line now goes through one neutralisation on its way out:
+  C0/C1 control characters, the line terminators among them, are replaced with `?`. The name still
+  reaches the reader; what it can no longer be is a line. Printable text outside ASCII is untouched,
+  so nothing refs writes itself changes.
+
+  An error message keeps its own line breaks — `refs add`'s two-phase instructions put each command
+  on its own line, and `--verbose` appends a stack trace — so there the untrusted values are
+  neutralised where they are composed INTO that layout instead. The package names that message
+  lists come from the same manifests, and before this they could add a line of their own.
+
+  **And no command is printed for a value one cannot carry.** Neutralising a line for display would
+  otherwise rewrite the command inside it: `--package='a<LF>b'` becomes `--package='a?b'`, which
+  names a different package. This is not a quoting problem — single quotes carry the character
+  perfectly well, and a shell would accept the result; what the command stops being is one
+  pasteable line that means what it says. Every value a printed command interpolates is subject to
+  it: the package name, the path, the ref key, and the filesystem paths in the `rm -rf` and `rmdir`
+  suggestions, where naming the wrong target cannot be undone. The builders in `shell-quote.ts`
+  return nothing at all for such a value, so a command producer cannot forget the check, and the
+  finding is reported without a command and with a pointer to `--json`, which carries the value
+  exactly.
+
+  The description placeholder in the register command is single-quoted rather than double-quoted:
+  in double quotes a `$(…)` a reader substitutes for it would be expanded by their own shell before
+  refs ever saw it.
+
+  The `--json` envelope's parsed identity was never affected, because `JSON.stringify` escapes
+  U+0000–U+001F, and it is unchanged.
+
+- **`refs resolve` no longer answers whether a path outside the package exists.** A package's
+  `exports` targets are third-party content, and a target could name any absolute path: `join`
+  clamps `..` at the filesystem root, so depth was not something the manifest had to guess. The
+  probe then reported `unverifiable` when something was there and `absent` when nothing was —
+  a clean two-valued answer about a path the package has nothing to do with, with each `exports`
+  subpath carrying its own, so one manifest batched many probes into a single reply.
+
+  Nothing was ever read, and the containment rule that refuses to hand back a real path outside the
+  checkout always held. What crossed was the classification of the refusal. An absence is now
+  reported only where containment can be established, which also covers the shape a `..` guard
+  cannot see — a symlink inside the package pointing out of it, in a target with no `..` at all.
+  An entry point that is genuinely missing inside the package still reports `absent`, however
+  deeply nested.
+
+- **`refs doctor` looks in the hooks directory before reporting the checkouts guarded.** Every
+  managed checkout is stamped with `core.hooksPath` pointing at one refs-owned directory, and git
+  resolves hook NAMES against that directory — not against the two names refs installed there. The
+  check asked only whether `pre-commit` and `pre-push` were present and executable, so it reported
+  the guard intact while the directory held something else. Measured on git 2.54: a `post-checkout`
+  placed there runs during `refs sync`, and `doctor` still answered `ok`.
+
+  The directory is now enumerated, and anything refs did not install makes the check fail, naming
+  every entry and printing one removal that clears all of them. Every failing fact is reported at
+  once rather than one per run. A hooks directory that is not there at all says `run: refs init`,
+  which is the remedy that fixes it.
+
+  What the check does not claim is that every entry runs — a non-executable file does not. The
+  finding is that the directory git resolves hook names against holds something refs cannot
+  account for.
+
+- **`refs doctor` no longer quotes a skill's declared CLI version back when it cannot read it.**
+  Two of the five places the check looks for a `SKILL.md` are rooted at the working directory —
+  for an agent session, whatever repository it happens to be in — and the frontmatter scan accepts
+  any quote-free, whitespace-free token of any length. A repository could therefore put
+  attacker-chosen prose, unbounded, into the `--json` detail that the bundled skill tells the agent
+  to relay verbatim to a human. Measured: a 4208-character detail carrying the planted text.
+
+  A value the version comparison cannot interpret now produces one short line naming both remedies
+  and nothing from the file. A value it CAN interpret is bounded too: version components may be
+  arbitrarily long, so four thousand digits compared fine and were quoted in full.
+
+### Changed
+
+- **refs chooses the access mode of everything it owns instead of inheriting it.** Every directory
+  and file under `REFS_HOME` was created with no mode argument, so which principals could read or
+  write them was decided by whatever umask the invoking process happened to carry. Measured:
+  `refs init` under `umask 002` left the hooks directory group-writable, and under `umask 000`
+  world-writable. That directory is the one every managed checkout points `core.hooksPath` at, and
+  git resolves hook names against it — so anyone able to write there gets code run as the refs user
+  during an ordinary `refs sync`. Under the default `umask 022` none of that applies, which is
+  exactly the problem: refs neither chose nor recorded which of those it got.
+
+  Directories are now `0700` and files `0600`. A refs home is a single-user directory, and this
+  makes that explicit rather than incidental.
+
+  `refs init` also applies them to a home that already exists, because `mkdir` sets a mode only on
+  what it creates and `init` is the command that repairs a home. The repair removes group and other
+  access and restores the owner's own; a directory that is a symlink is left alone, since `chmod`
+  follows links and the mode of a directory outside the home is its owner's business. `config.toml`
+  is repaired too — nothing rewrites it when the CLI version already matches, so it would otherwise
+  keep an old mode forever. Checkouts under `sources/` are not touched: the directory above them is
+  what controls access to them.
+
+  A guard hook now gets its mode before it is published rather than after, so it is never briefly
+  present and not executable.
+
+- **A file refs cannot parse is no longer quoted back.** Node's `JSON.parse` embeds the offending
+  input in its message for some malformations and not others, and refs forwarded that message.
+  Measured: a `package.json` carrying a bare token produced the reason
+  `SyntaxError: Unexpected token 'L', ...","token":LEAKED_abc"... is not valid JSON` in
+  `refs resolve --json` — a manifest is checkout content, so that put third-party bytes into the
+  output an agent parses. The same applied to `refs add --proposal`, where the document is one
+  someone filled in by hand, quite possibly with a credentialed url in it.
+
+  Both now report a fixed reason. The errno branch is untouched: an `ENOENT` or `EISDIR` is refs'
+  own fact rather than a parser's. The position `JSON.parse` sometimes carries is given up, which
+  is the deliberate trade — Node exposes it nowhere else, and which malformations carry the input
+  along with it is a property of the Node version rather than anything refs decides.
+
+### Changed
+
+- **The guard in front of `refs sync`'s destructive step asks the same question as its three
+  siblings.** Every managed checkout is stamped with `core.hooksPath` pointing at this home's hooks
+  directory, and `add`, `doctor` and `resolve` all check for exactly that. The guard `sync` applies
+  immediately before `checkout -B`, `reset --hard` and `clean -fd` accepted any non-empty value —
+  weaker than the other three and weaker than its own comment, which described the strict check.
+
+  No sync behaved differently: that guard's one caller already ran the strict check on the same
+  directory immediately before it. It is closed because the weak predicate becomes the operative
+  one as soon as a second caller appears, and a comment describing the strict check is an
+  invitation to add that caller.
+
+- **A command whose output hit the stream cap is treated as incomplete, everywhere it is read.**
+  The runner publishes `stdoutTruncated` for exactly this, and its own contract says a caller
+  parsing that output must treat it as incomplete — but no production code read the flag. The one
+  place that reacted to truncation matched the literal text `refs: stdout exceeded` in stderr,
+  which worked only while that note kept its wording and kept being routed there.
+
+  Two readers of git history accepted a cut stream as a complete answer, and that direction is not
+  quiet: the cut keeps the FIRST bytes, so a smaller answer looks like a real one. A
+  `pnpm-workspace.yaml` cut mid-file still parses — as a declaration listing fewer directories than
+  it has — so a narrowing reads as a widening and a package that was always there is announced as
+  newly arrived. A cut list of changed paths loses the deletion at the end of it, which is where a
+  package's previous name comes from, with the same result. Both now say they could not look.
+
+  A run that both hit the cap and then timed out publishes both facts; it previously reported only
+  the timeout.
+
+- **A package name with no entry of its own is no longer answered for.** Four read paths looked a
+  name up with plain bracket access, so a name absent from the record resolved up the prototype
+  chain: `packages['toString']` answered with `Object.prototype.toString`, which is truthy and
+  therefore looked registered. Measured with the built CLI: `refs tag <ref> 1.2.3 --package
+toString` returned a tag, silently using the ref's own format for a package the configuration
+  does not have, and `refs resolve toString --ref <ref>` crashed.
+
+  All four now ask whether the record has its own entry under that name, as their siblings already
+  did. This is not about forbidden names — `toString` and `valueOf` are perfectly legal package
+  keys, and a package really registered under one still resolves, with its own tag format.
+
+- **`refs migrate` no longer reports a config up to date without validating it.** When the schema
+  version already matched, it re-serialised the file with a fresh `cli_version` and answered
+  `noop` — rendered as "config up to date" — having checked nothing about the contents. Measured:
+  a `clone_mode` of `42` was stamped and reported current, while every reader then refused the
+  file. The document is now validated before both the write and the answer, and nothing is written
+  when it fails, so the file the user still has is the one they started with.
+
+  What is validated is the STAMPED document. A config whose `meta.cli_version` is missing fails
+  validation as it stands and passes once stamped, and repairing exactly that is what the stamp is
+  for — checking the input instead would have withdrawn a repair refs has always performed.
+
+  `refs init` shares this path, so it now refuses a config in that state rather than reporting the
+  home ready. That is the same claim being made honestly, but it is a behaviour change: `init`
+  previously succeeded and left the problem for `doctor` to find.
+
+### Changed
+
+- **Small correctness corrections found while reviewing adjacent code.**
+  - `refs edit --decline` reports a bad path as `→ at path` instead of naming its position inside
+    the whole document. Both checks always held — `writeConfig` re-validates everything — but this
+    is the earlier and better-located of the two, as its siblings already have.
+  - A package name is checked against the same segment rule `zRefKey` and `zPackagePath` use,
+    rather than a second, narrower copy. The local one admitted `:` and `%`, which core rejects and
+    documents: on Windows a config-derived name like `C:foo` addressed an alternate data stream
+    rather than a directory. No legitimate npm name is affected.
+  - `--project` distinguishes "cannot be read" from "does not exist". It decided that by matching
+    refs' own wording in a caught error's message, so an EACCES or an ELOOP was reported as an
+    absence about a directory that is there.
+  - `refs add npm:<pkg>` has a request deadline, and reports it as one. Without a deadline, a
+    registry or an intercepting proxy that trickles a response held the command open indefinitely;
+    and a deadline that expires mid-body makes the response unreadable, which would otherwise have
+    been reported as the registry sending invalid JSON.
+  - The atomic write creates its temporary file exclusively and refuses to follow a symlink at that
+    path. The random name already made planting one impractical; this removes the argument.
+
+### Added
+
+- **`refs doctor` reports git configuration that git itself runs.** `core.hooksPath` is the
+  boundary refs pins, and it governs hooks-_directory_ discovery — which is what stops a hook file
+  inside a checkout from running. Other mechanisms do not route through it. Measured on git 2.54
+  against a real clone with that path correctly set: a configured hook
+  (`[hook "x"] event = post-checkout; command = ./script.sh`) ran the **checkout's** copy of that
+  script during `refs add` and `refs sync`, and an attribute-selected filter
+  (`[filter "y"] smudge = ./script.sh`) ran it during the checkout `sync` performs.
+  `core.fsmonitor`'s command form is a third, run with the worktree as its working directory.
+
+  Each needs a definition already in the invoking user's own git configuration — a tracked
+  repository cannot create one, and its `.gitattributes` can only choose when an existing filter
+  applies. So the new `git-exec-surfaces` check reports the condition rather than refs discarding
+  the ambient configuration, which also carries the credential helpers and proxies a private clone
+  needs.
+
+  It reports **presence, not safety**: whether a command reaches a checkout's content depends on
+  the command, and `/bin/sh ./script.sh` has an absolute program and runs the checkout's script
+  anyway. `SECURITY.md` states the boundary, these exclusions, and what the check does not decide.
+
+### Changed
+
+- **The release workflow refuses a version that is not newer than the published one, and its
+  publish job declares a GitHub Environment.** A `v*` tag push is the only trigger, and GitHub
+  resolves a push-triggered workflow from the pushed ref — so every guard authorizing a release is
+  content of the tagged tree, and a tag whose tree deletes one is never subjected to it. An
+  Environment is the one gate that can live in repository settings instead, and npm's trusted
+  publisher can bind it alongside the repository and the workflow filename, which is what makes
+  deleting the key from a tag's tree fail rather than pass.
+
+  Both halves have to be configured outside the repository, and `CONTRIBUTING.md` now says what
+  they are, what a deployment tag rule does not achieve on its own, and how to check each
+  separately — a failed publish proves nothing by itself.
+
+  The version guard fails closed: a registry lookup that errors stops the release rather than
+  reading as "nothing published yet", and anything that is not a plain `x.y.z` is refused rather
+  than ordered.
+
 ## [0.17.0] - 2026-09-13
 
 ### Added

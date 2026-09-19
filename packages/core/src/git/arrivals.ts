@@ -2,6 +2,7 @@ import { PNPM_WORKSPACE_FILE, ROOT_MANIFEST, membershipNarrowed } from './declar
 import { basename, dirname } from 'node:path';
 import type { Runner } from '../proc/runner.ts';
 import { extractPackageName } from '../workspaces-parse.ts';
+import { isTruncated } from '../proc/runner.ts';
 
 // Which package NAMES the repository already had before a sync range — the evidence a caller needs
 // to decide whether a package it can see now is genuinely new upstream.
@@ -65,15 +66,22 @@ type PackagesBefore = {
  * the basename is what makes the selection exact. */
 const isPackageManifest = (path: string): boolean => basename(path) === PACKAGE_MANIFEST;
 
-/** Runs `git`, resolving `undefined` on any non-zero exit so a caller can treat a failure to look
- * as exactly that. */
+/** Runs `git`, resolving `undefined` on any non-zero exit — or on a TRUNCATED stream — so a caller
+ * can treat a failure to look as exactly that.
+ *
+ * Truncation is not fail-quiet here, which is what it looked like: a cut list of changed paths
+ * keeps the FIRST ones, so a deletion beyond the cap is simply not seen — and a deleted manifest
+ * is where the name a package used to have comes from. Lose that and an existing name is reported
+ * as a new arrival. The pathspec also selects files like `mypackage.json`, which the basename
+ * check then discards, so the 200-manifest guard does not bound how much output has to arrive
+ * before the ones that matter. */
 const gitOutput = async (
   runner: Runner,
   dir: string,
   args: readonly string[],
 ): Promise<string | undefined> => {
   const result = await runner.run('git', [...args], { cwd: dir });
-  return result.exitCode === SUCCESS_EXIT_CODE ? result.stdout : undefined;
+  return result.exitCode === SUCCESS_EXIT_CODE && !isTruncated(result) ? result.stdout : undefined;
 };
 
 /** Splits NUL-delimited git output into manifest paths.

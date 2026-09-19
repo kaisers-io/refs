@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
   initHome,
+  parseLastEnvelope,
   realContextFor,
   runFinalizeExpectingValidationError,
   validFinalProposal,
   withResetExitCode,
   withTempHome,
 } from '../helpers/add-support.ts';
+import type { ErrorEnvelope } from '../helpers/add-support.ts';
 import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
+import { join } from 'node:path';
+import { run } from '../../src/main.ts';
+import { writeFile } from 'node:fs/promises';
 
 // Regression coverage for `parseFinalProposal`'s (`add-proposal-io.ts`) legible-error rendering:
 // zod's own default rendering of a strict-object's `unrecognized_keys` issue has an EMPTY path
@@ -133,5 +138,39 @@ describe('refs add --proposal: a named-path issue still renders with its full ne
       );
     },
     SLOW_IO_TIMEOUT_MS,
+  );
+});
+
+// `JSON.parse` embeds the offending input in its message for SOME malformations and not others —
+// measured on Node 24, `{"url":SECRET}` comes back as
+// ``Unexpected token 'S', "{"url":SECRET}" is not valid JSON``. A proposal is a document someone
+// filled in by hand, quite possibly with a credentialed url in it, and the message goes into the
+// `--json` error envelope. It carries no structured position either, so nothing a caller could act
+// on is lost by not forwarding it.
+const PLANTED_SECRET = 'SECRET_TOKEN_abc123';
+
+describe('refs add --proposal: a document that is not valid JSON', () => {
+  it(
+    'reports the failure without the parser message or the document',
+    { timeout: SLOW_IO_TIMEOUT_MS },
+    async () => {
+      expect.hasAssertions();
+      await withResetExitCode(() =>
+        withTempHome(async (homeDir) => {
+          const { ctx, stdout } = realContextFor(homeDir);
+          await initHome(ctx);
+          const path = join(homeDir, 'broken.json');
+          // The input-embedding shape specifically: a bare token where a value belongs.
+          await writeFile(path, `{"url":${PLANTED_SECRET}}`);
+
+          await run(ctx, ['node', 'refs', 'add', '--proposal', path, '--json']);
+
+          const envelope = parseLastEnvelope(stdout) as ErrorEnvelope;
+          expect(envelope.error?.message).toBe(
+            'invalid JSON in proposal: the document could not be parsed',
+          );
+        }),
+      );
+    },
   );
 });

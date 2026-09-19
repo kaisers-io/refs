@@ -7,10 +7,11 @@ import {
   validationError,
 } from '@kaisers-io/refs-core';
 import { cliOptsOf, emit, wrapAction } from '../output.ts';
-import { editCommand, shellQuote } from '../shell-quote.ts';
 import { requireCheckout, requireEntry, requirePackage } from './ref-context.ts';
 import type { CliContext } from '../context.ts';
+import type { CommandOption } from '../shell-quote.ts';
 import type { RefsCommand } from './registry.ts';
+import { editCommand } from '../shell-quote.ts';
 import { matchRefKey } from './list.ts';
 
 // `refs tag <ref> <version> [--package <name>]` — resolves a semver-ish `<version>` to the actual
@@ -70,10 +71,16 @@ const requireFormat = (
   // fixed with `--package`: setting the ref-level format instead would hand that convention to
   // every other package that has no override of its own.
   const subject = packageName === undefined ? `ref '${key}'` : `package '${packageName}'`;
-  const scope = packageName === undefined ? [] : [`--package=${shellQuote(packageName)}`];
+  // The name goes in raw: `editCommand` quotes it and withholds the whole command if it is a value
+  // no printed line can carry, which a configured package name may well be.
+  const scope: CommandOption[] = packageName === undefined ? [] : [['--package', packageName]];
+  const command = editCommand(scope, [key, 'tag_format', '<format>']);
+  const how =
+    command === undefined
+      ? 'set one on this entry — no single-line command can carry these values, so none is offered'
+      : `set one with: ${command}`;
   throw validationError(
-    `${subject} has no tag_format configured — inspect the repository's real tags and set one ` +
-      `with: ${editCommand(scope, [key, 'tag_format', '<format>'])}`,
+    `${subject} has no tag_format configured — inspect the repository's real tags and ${how}`,
   );
 };
 

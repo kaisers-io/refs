@@ -88,7 +88,21 @@ const startChild = (
   args: readonly string[],
   opts: RunOpts | undefined,
 ): RunningChild => {
-  const child = spawn(cmd, args, { ...cwdOpt(opts?.cwd), stdio: ['ignore', 'pipe', 'pipe'] });
+  // `shell: false` is Node's default, so this changes nothing at runtime — it states the property
+  // the rest of the codebase rests on. Every argument refs passes to git is built from values a
+  // tracked repository or the user supplied (a url, a ref key, a package path), and none of them is
+  // shell-quoted on the way in, because there is no shell to quote for: `spawn` with an argv array
+  // performs an execve. Measured with a `-c core.hooksPath=/tmp/hooks; touch /tmp/PWNED` value —
+  // the file is not created.
+  //
+  // It does NOT change what code scanning reports: `js/shell-command-constructed-from-input` and
+  // its two siblings were raised again with the option spelled out. They are false positives on
+  // this call and have to be handled as such, not argued with in code.
+  const child = spawn(cmd, args, {
+    ...cwdOpt(opts?.cwd),
+    shell: false,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
   activeChildren.add(child);
   const stdoutCollector = createCollector();
   const stderrCollector = createCollector();
@@ -166,6 +180,13 @@ const resolveExitCode = (code: number | null): number => {
   return code;
 };
 
+/** Whether this result's `stdout` is a PREFIX of what the command wrote.
+ *
+ * The one predicate for "do not trust these bytes as a whole answer". A caller that parses stdout
+ * must consult it: the cut lands at a byte, so the last line may be a fragment — and worse, a
+ * prefix of a structured document can parse perfectly well as a smaller, different document. */
+const isTruncated = (result: RunResult): boolean => result.stdoutTruncated === true;
+
 // `exactOptionalPropertyTypes` + the `stdoutTruncated?: true` shape (see `RunResult`): the flag
 // is added only when the stdout collector actually hit its byte cap, never set to `false`.
 const withStdoutTruncation = (result: RunResult, stdout: CollectedStream): RunResult => {
@@ -177,7 +198,16 @@ const withStdoutTruncation = (result: RunResult, stdout: CollectedStream): RunRe
 
 const buildCloseResult = (ctx: CloseContext): RunResult => {
   if (ctx.timedOut) {
-    return normalizeTimedOutResult(ctx.stderr.text, ctx.timeoutMs);
+    // Truncation is published here too. A run can both hit the stream cap and then time out, and
+    // this branch reported only the timeout, dropping the flag — not disagreeing with the stderr
+    // note, which this branch never reaches either, but silently losing the fact. Unreachable for
+    // every caller that branches on `timedOut` or on the exit code first, which is why it never
+    // showed. The flag is what callers are told to trust, so it has to be right wherever it is
+    // computed.
+    return withStdoutTruncation(
+      normalizeTimedOutResult(ctx.stderr.text, ctx.timeoutMs),
+      ctx.stdout,
+    );
   }
   if (ctx.errorMessage !== undefined) {
     return withStdoutTruncation(
@@ -220,5 +250,11 @@ class SpawnRunner implements Runner {
   }
 }
 
-export { SIGNAL_KILLED_EXIT_CODE, SPAWN_ERROR_EXIT_CODE, SpawnRunner, TIMEOUT_EXIT_CODE };
+export {
+  SIGNAL_KILLED_EXIT_CODE,
+  SPAWN_ERROR_EXIT_CODE,
+  SpawnRunner,
+  TIMEOUT_EXIT_CODE,
+  isTruncated,
+};
 export type { Runner, RunOpts, RunResult };
