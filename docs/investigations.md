@@ -33,14 +33,16 @@ From there the agent reads commits and diffs between the two tags, scoped to the
 ## Who has to change when I change something
 
 ```
-/refs I changed how our orders API paginates. go through the services we track, find the ones that call it, and tell me who has to adjust
+/refs I changed how our orders API paginates. check billing-worker and the admin dashboard: do they call it, and what has to change
 ```
 
-This starts in your own repository and runs outwards. The agent reads what you changed, then searches every checkout for the code that calls it: the import, the endpoint, the field you renamed. What comes back is a list of repositories your change reaches, with the file and line in each.
+This starts in your own repository and runs outwards. The agent reads what you changed, then goes through the consumers you named looking for the call sites: the import, the endpoint, the field you renamed. What comes back is the file and line in each of them, and what has to change there.
 
 The value is in what it saves. Without it you ask around, or you find out when something breaks in a service you do not own.
 
-**What stays open.** A search finds the call sites that are there to find. Code that reaches your API through a variable, a generated client, or a configuration value will not turn up, and neither will a consumer you do not track. The answer is a list of places to look, not a proof that the rest is safe.
+**Name the consumers.** `refs` routes a question to a repository; it does not work out which of your refs depend on which. Listing them is on you, and `refs list --json` is the reminder of what you track.
+
+**What stays open.** A search finds the call sites that are there to find. Code that reaches your API through a variable, a generated client, or a configuration value will not turn up. The answer is a list of places to look, not a proof that the rest is safe.
 
 ## A flow that crosses several repositories
 

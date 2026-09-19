@@ -20,10 +20,10 @@ That takes three steps. The agent reads the version your project depends on, fin
 
 
 ```
-/refs I changed how our orders API paginates. go through the services we track, find the ones that call it, and tell me who has to adjust
+/refs I changed how our orders API paginates. check billing-worker and the admin dashboard: do they call it, and what has to change
 ```
 
-This one runs the other way. Rather than reading one repository, the agent searches every checkout you keep for the code that calls yours, and reports which of them your change reaches. None of those repositories are public, and no model has seen any of them. `refs` keeps them as read-only git checkouts on your machine, through the git credentials you already have.
+This one runs the other way. It starts with a change in your own repository and asks what it reaches. The agent reads the consumers you name, finds the call sites, and tells you which ones your change breaks. None of those repositories are public, and no model has seen any of them. `refs` keeps them as read-only git checkouts on your machine, through the git credentials you already have.
 
 ## Why not just clone it?
 
