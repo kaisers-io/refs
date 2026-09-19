@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { readEntryPoints } from '../src/entry-points.ts';
 import { tmpdir } from 'node:os';
+
+const onWindows = sep === '\\';
 
 // An observation about a path OUTSIDE the package must not depend on whether that path exists.
 //
@@ -141,7 +143,10 @@ describe('a target that leaves the package through a link', () => {
     expectSameAndNonCommittal(await observationsOf(slashedLinkPair('link')));
   });
 
-  it('says the same thing when the link name ends in a colon', async () => {
+  // POSIX only: a colon is not a legal character in a Windows filename, so the fixture cannot be
+  // created there (`ENOENT … symlink 'livelink:'`). The defect it pins was in the ROOT recognition,
+  // which on Windows is `C:\\` and correctly keeps its separator — a case the root tests cover.
+  it.skipIf(onWindows)('says the same thing when the link name ends in a colon', async () => {
     expect.hasAssertions();
     // The trailing separator is kept only at a filesystem ROOT, where removing it would name
     // something else. Approximating that root as "ends in `:`" fired for any basename ending in a
