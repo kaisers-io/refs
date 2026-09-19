@@ -6,6 +6,7 @@ import type { Runner } from '../proc/runner.ts';
 import { assertManagedCheckout } from './managed-checkout.ts';
 import { chmod } from 'node:fs/promises';
 import { join } from 'node:path';
+import { redactUrlsInText } from '../git-url-redact.ts';
 import { validationError } from '../errors.ts';
 import { writeFileAtomic } from '../fs-atomic.ts';
 
@@ -61,6 +62,20 @@ const gitSpec = (action: string, args: readonly string[], cwd?: string): Command
 // Runs one command and throws `validationError` on a non-zero exit — opts IN to "failure is an
 // exception" on top of `Runner.run`'s "failure is data" contract, for steps with no sane way to
 // continue past a failure (a failed clone/checkout/reset leaves nothing useful to return).
+// A git failure message carries the child's own output, which is remote-controlled text: the
+// stream cap in `spawn-collector.ts` is 64 MiB, a safety valve against an OOM rather than a bound
+// suitable for a message that ends up in the `--json` envelope an agent parses. Bound it here, at
+// the one seam every failing git command passes through, and strip url userinfo on the way — git
+// 2.54 already does the latter for its own `unable to access` line, so that half is defence in
+// depth for a git that does not.
+const MAX_DETAIL_LENGTH = 2000;
+const DETAIL_TRUNCATION_SUFFIX = '… (truncated)';
+
+const boundedDetail = (detail: string): string =>
+  detail.length <= MAX_DETAIL_LENGTH
+    ? detail
+    : `${detail.slice(0, MAX_DETAIL_LENGTH)}${DETAIL_TRUNCATION_SUFFIX}`;
+
 const runOrThrow = async (
   runner: Runner,
   spec: CommandSpec,
@@ -69,8 +84,8 @@ const runOrThrow = async (
   if (result.exitCode === SUCCESS_EXIT_CODE) {
     return result;
   }
-  const detail = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
-  throw validationError(`${spec.action} failed: ${detail}`);
+  const raw = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
+  throw validationError(`${spec.action} failed: ${boundedDetail(redactUrlsInText(raw))}`);
 };
 
 // `git clone` into `opts.dest` (`--filter=blob:none` when blobless). Some servers (verified: a
