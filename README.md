@@ -9,71 +9,113 @@
   <a href="https://github.com/kaisers-io/refs/actions/workflows/ci.yml"><img src="https://github.com/kaisers-io/refs/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status"></a>
 </p>
 
-Ask a coding agent how a library works and it answers from training data that is months
-old. Tell it to go look, and the best it finds is a minified bundle in `node_modules`.
-Private repositories are worse still. The model has never seen that code at all.
+# Ask about code your agent has never seen
 
-`refs` hands it the source. It keeps read-only git checkouts of the repositories you care
-about, so your agent reads the code that actually ships.
+```
+/refs I want to upgrade effect. what changed since the version we use, and what do I have to adjust
+```
 
-## How it works
+That takes three steps. The agent reads the version your project depends on, finds the repository
+behind the package, and compares that release with the current one. Answers name the file and line
+they came from, so you can check them.
 
-You say "add zod as a ref". `refs` resolves the npm package to its git repository, clones
-it, and works out how the project tags its releases.
+```
+/refs does our payments client still match what the checkout service expects
+```
 
-After that the agent has zod's own files on disk. "How does zod implement codecs" is
-answered by reading them. For "what changed between v4.0.1 and v4.1.0", the agent resolves
-both versions to their tags and diffs them in the same clone.
+This one reads two private repositories no model has seen. `refs` keeps them as read-only git
+checkouts on your machine, through the git credentials you already have.
 
-`https` and `ssh` URLs both work, including the `git@host:path` form, so a private repo or
-a self-hosted forge is no different from a public one. Private ones use the credentials
-your git already has, since refs refuses to take any in the URL. npm is just a convenient
-way to name a repository you would otherwise paste a URL for.
+Your agent can already clone a repository. Cloning is the easy part. `refs` keeps the repositories
+you name, sends a question to the right one, refreshes them when they go stale, and gives the agent
+a repeatable way to read them.
+
+## Adding a repository
+
+You say "add effect as a ref". The agent runs the CLI, clones the repository, works out how the
+project tags its releases, and shows you what it found. Nothing enters your configuration until you
+approve it.
+
+Three ways to name the same repository, all of which resolve to the key
+`github.com/Effect-TS/effect`:
+
+```
+npm:effect
+https://github.com/Effect-TS/effect
+git@github.com:Effect-TS/effect.git
+```
+
+npm is a convenience for packages. A private repository or a self-hosted forge works the same way,
+and the credentials stay in your git configuration because `refs` refuses to take any in the URL.
+
+## Two repositories, one question
+
+*An example. `checkout-api` and `billing-worker` are made up, and no answer is implied.*
+
+Two services talk to each other. One team is changing the caller, and the question is whether the
+other side still agrees:
+
+```
+/refs we are adding retries to checkout-api. read billing-worker and tell me how it handles
+      duplicate requests, which tests describe that behaviour, and what could break
+```
+
+The agent reads both checkouts, quotes the retry logic and the tests around it, and names the files
+it used. What it cannot tell you is whether the deployed versions match what you have checked out.
+Ask it to name the revisions it read.
+
+## Try it on a real repository
+
+Every command below was run against the current Effect repository.
+
+```bash
+refs add npm:effect --dry-run --json > proposal.json   # fill in the descriptions, then:
+refs add --proposal proposal.json
+```
+
+Effect is a monorepo, and its packages tag releases separately. Detection records one convention for
+the whole ref, which is not always the package you asked about, so set the one you want:
+
+```bash
+refs edit github.com/Effect-TS/effect tag_format 'effect@{version}' --package effect
+```
+
+Now a version resolves to a tag, and two tags resolve to a diff:
+
+```bash
+refs tag github.com/Effect-TS/effect 3.19.2 --package effect   # effect@3.19.2
+refs tag github.com/Effect-TS/effect 3.22.2 --package effect   # effect@3.22.2
+```
+
+From there the agent reads the range in the checkout. The commit subjects are the repository's own:
+
+```
+fix(effect): TMap.remove/removeAll clears entire bucket on hash collision (#6233)
+```
+
+`refs` never invents a tag convention. When it cannot resolve a version it says so, and the tag list
+is right there to look at.
 
 ## The CLI and the skill
 
-`refs` is two pieces: a command-line tool, and a skill for your agent. It is written for
-Claude Code and Codex, and `skills add` installs it into other agents' directories too.
+`refs` is two pieces. The CLI does the deterministic work of cloning, refreshing, and resolving a
+question to the right path or tag. The skill teaches your agent when to reach for the CLI and how to
+read what comes back.
 
-The CLI does the deterministic work of cloning, syncing, and resolving a question to the
-right path or tag. The skill teaches your agent when to reach for the CLI and how to use
-what comes back.
+The agent uses the terminal tools it already has to search a checkout and read the passages that
+matter. There is no server to configure and no per-file request over the network.
 
-The skill runs only when you ask for it, in both agents. In Claude Code that also keeps
-its description out of the context window until then, so the questions that need no source
-code cost you nothing.
-
-## Using it
-
-Invoke the skill explicitly. It will not activate by itself.
-
-```
-/refs add zod as a ref
-/refs how does zod implement codecs
-```
-
-Use `/refs` in Claude Code and `$refs` in Codex. Adding a ref pauses for your approval
-before it enters your configuration. The clone happens first, so what the agent shows you
-is filled in from the real repository rather than guessed. From then on it finds the right
-checkout, reads the source, and runs `refs sync` when one has gone stale.
-
-Its answers name the file and line they came from, so you can check a claim instead of
-trusting it. Where your terminal or app opens file links, they are clickable; where it
-restricts access to the working directory, they stay plain text.
-
-The agent route comes first because the agent can search the source, follow what it finds,
-and talk with you about it. Driving the CLI by hand is still worth knowing, for scripting
-or for checking what the agent did. [`docs/commands.md`](docs/commands.md) has every
-command.
+Invoke the skill explicitly with `/refs` in Claude Code or `$refs` in Codex. It does not activate by
+itself, so the questions that need no source code cost you nothing.
 
 ## Install
 
 ### 1. The CLI
 
 You need Node.js 24.2 or newer, and git. On Windows use
-[Git for Windows](https://gitforwindows.org/), because the read-only guards are `sh` scripts
-and need the shell it ships with. The CLI behaves the same on all three platforms, and its
-full test suite runs on each of them.
+[Git for Windows](https://gitforwindows.org/), because the read-only guards are `sh` scripts and
+need the shell it ships with. The CLI behaves the same on all three platforms, and its full test
+suite runs on each of them.
 
 ```bash
 npm i -g @kaisers-io/refs
@@ -86,16 +128,9 @@ refs init       # seeds the refs home directory and the git hooks guard
 npx skills add kaisers-io/refs
 ```
 
-This installs into the current project. Pass `-g` to install once for every project, which
-also prints a failure line for the few agents that have no global location. The install
-itself still succeeds.
-
-To install without `skills add`, copy the directory yourself:
-
-```bash
-mkdir -p ~/.claude/skills                                     # or ~/.codex/skills
-cp -r <path-to-this-repo>/skills/refs ~/.claude/skills/refs
-```
+This installs into the current project. Pass `-g` to install once for every project.
+[`docs/install.md`](docs/install.md) covers the manual copy and the agents that have no global
+location.
 
 Now check the whole setup:
 
@@ -103,23 +138,35 @@ Now check the whole setup:
 refs doctor
 ```
 
+## What lives on your machine
+
+Checkouts sit under your refs home as ordinary git repositories. You can open them in your editor,
+grep them, and read them without an agent. No service holds a copy of your code. What the agent
+reads is handled under that agent's own model and data settings.
+
+A checkout is the default branch at the revision you last fetched. It is not necessarily the version
+you have installed, and it does not refresh itself. `refs sync` fetches, and the skill runs it when
+a checkout has gone stale.
+
 ## Read-only is a promise, not a sandbox
 
-Every checkout under `sources/` is reference material. Agents are instructed never to edit,
-commit or push inside one, and `refs` installs git hooks that reject both. When a checkout
-gets dirty anyway, `refs sync` restores it.
+Every checkout under `sources/` is reference material. Agents are instructed never to edit, commit
+or push inside one, and `refs` installs git hooks that reject both. When a checkout gets dirty
+anyway, `refs sync` restores it.
 
-The hooks are a backstop against mistakes, not a security boundary. A determined local
-process can still write into a checkout.
+The hooks are a backstop against mistakes, not a security boundary. A determined local process can
+still write into a checkout.
 
 ## Documentation
 
-- [`docs/commands.md`](docs/commands.md) covers every command, its flags, its `--json`
-  output and its exit codes.
-- [`docs/configuration.md`](docs/configuration.md) explains `config.toml`, `state.json`,
-  the per-ref settings and `REFS_HOME`.
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) has the toolchain, the local development loop and
-  what a pull request has to pass.
+- [`docs/investigations.md`](docs/investigations.md) works through the questions above in full,
+  including what each answer leaves open.
+- [`docs/commands.md`](docs/commands.md) covers every command, its flags, its `--json` output and
+  its exit codes.
+- [`docs/configuration.md`](docs/configuration.md) explains `config.toml`, `state.json`, the
+  per-ref settings and `REFS_HOME`.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) has the toolchain, the local development loop and what a
+  pull request has to pass.
 - [`SECURITY.md`](SECURITY.md) is what to read before reporting a vulnerability.
 
 MIT licensed. See [`LICENSE`](LICENSE).
