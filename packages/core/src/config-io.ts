@@ -6,6 +6,7 @@ import { isEnoent, writeFileAtomic } from './fs-atomic.ts';
 import type { Config } from './schemas/config.ts';
 import type { RefsHome } from './home.ts';
 import { configBackupPath } from './home.ts';
+import { tomlErrorSummary } from './config-toml-error.ts';
 import { z } from 'zod';
 
 type JsonRecord = Record<string, unknown>;
@@ -60,21 +61,6 @@ const readConfigText = async (home: RefsHome): Promise<string> => {
     }
     throw error;
   }
-};
-
-// `TomlError.message` ends in a source excerpt: the offending line plus the nonempty lines either
-// side of it. A syntax error adjacent to a ref's `url` therefore reported that url verbatim,
-// credentials and all, before any schema or url handling ran — so none of the redaction elsewhere
-// was reached. `line`/`column` are exposed separately, so the position survives without the source.
-// The excerpt is stripped as a SUFFIX; a block that is not the suffix drops the whole message in
-// favour of the coordinates, failing closed, because the point is that no source survives.
-const tomlErrorSummary = (error: TomlError): string => {
-  const position = `line ${String(error.line)}, column ${String(error.column)}`;
-  const { codeblock, message } = error;
-  if (codeblock !== '' && !message.endsWith(codeblock)) {
-    return `could not be parsed (${position})`;
-  }
-  return `${message.slice(0, message.length - codeblock.length).trim()} (${position})`;
 };
 
 const parseConfigToml = (text: string, path: string): JsonRecord => {

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import type { TomlError } from 'smol-toml';
 import { join } from 'node:path';
 import { readConfig } from '../src/config-io.ts';
 import { resolveHome } from '../src/home.ts';
 import { tmpdir } from 'node:os';
+import { tomlErrorSummary } from '../src/config-toml-error.ts';
 
 // A TOML parse failure is reported before schema validation and before any url handling, so none of
 // the redaction applied elsewhere is reached. The parser's own message ends in a source excerpt —
@@ -61,5 +63,35 @@ describe('an invalid config.toml', () => {
     await expect(messageFor('[meta]\nschema_version = 1\nbroken line\n')).resolves.toBe(
       'invalid TOML in <config>: Invalid TOML document: incomplete key-value: cannot find end of key (line 3, column 1)',
     );
+  });
+});
+
+// The fail-closed half, which the real parser cannot reach: it always puts the excerpt at the end
+// of the message, so the suffix strip always applies. If a future smol-toml moved it, stripping a
+// suffix that is not there would leave the excerpt in — so a message that does not end in its own
+// codeblock drops the message entirely and keeps only the coordinates.
+describe('a parser message whose excerpt is not where it is expected', () => {
+  it('reports only the position, keeping none of the source', () => {
+    expect.hasAssertions();
+    const moved = {
+      codeblock: '5:  url = "https://user:tok@example.com"',
+      column: 3,
+      line: 5,
+      message: 'moved: 5:  url = "https://user:tok@example.com" then trailing prose',
+    } as TomlError;
+
+    expect(tomlErrorSummary(moved)).toBe('could not be parsed (line 5, column 3)');
+  });
+
+  it('keeps the parser wording when the excerpt IS the suffix', () => {
+    expect.hasAssertions();
+    const ordinary = {
+      codeblock: '\n\n5:  url = "…"\n',
+      column: 3,
+      line: 5,
+      message: 'Invalid TOML document: something\n\n5:  url = "…"\n',
+    } as TomlError;
+
+    expect(tomlErrorSummary(ordinary)).toBe('Invalid TOML document: something (line 5, column 3)');
   });
 });
