@@ -1,5 +1,6 @@
 import type { Config, PackageEntry, RefEntry, RefKey } from '@kaisers-io/refs-core';
 import { isGitCheckout, notFoundError } from '@kaisers-io/refs-core';
+import { shellQuote } from '../shell-quote.ts';
 
 // Shared ref/checkout/package guards for the command layer — extracted so no command carries a
 // diverging copy of the same checks (their user-facing message strings are part of the CLI contract
@@ -25,7 +26,7 @@ const requireEntry = (config: Config, key: RefKey): RefEntry => {
  * low-level git/cwd error deeper in the command. */
 const requireCheckout = (dest: string, key: RefKey): void => {
   if (!isGitCheckout(dest)) {
-    throw notFoundError(`checkout for '${key}' is missing — run: refs sync ${key}`);
+    throw notFoundError(`checkout for '${key}' is missing — run: refs sync ${shellQuote(key)}`);
   }
 };
 
