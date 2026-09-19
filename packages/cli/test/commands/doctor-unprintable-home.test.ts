@@ -9,10 +9,10 @@ import {
   withResetExitCode,
   withTempHome,
 } from '../helpers/doctor-support.ts';
+import { join, sep } from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import type { ErrorEnvelope } from '../helpers/add-support.ts';
 import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
-import { join } from 'node:path';
 import { parseLastEnvelope } from '../helpers/add-support.ts';
 import { run } from '../../src/main.ts';
 
@@ -28,6 +28,11 @@ import { run } from '../../src/main.ts';
 
 /** A directory name no printed command can carry, which the home then sits inside. */
 const UNPRINTABLE_SEGMENT = 'refs\nhome';
+// POSIX only: Windows refuses a control character in a path component, so the fixture cannot be
+// created there at all (`ENOENT … mkdir`). What is under test is refs' own decision about what it
+// will print, which is not platform-specific; the platform only decides whether such a path can
+// exist to begin with.
+const onWindows = sep === '\\';
 
 const homeUnderUnprintablePath = async (homeDir: string): Promise<string> => {
   const nested = join(homeDir, UNPRINTABLE_SEGMENT);
@@ -35,7 +40,7 @@ const homeUnderUnprintablePath = async (homeDir: string): Promise<string> => {
   return nested;
 };
 
-describe('refs doctor: a refs home whose path cannot be printed', () => {
+describe.skipIf(onWindows)('refs doctor: a refs home whose path cannot be printed', () => {
   it('reports a leftover steal claim without a command to clear it', async () => {
     expect.hasAssertions();
     await withResetExitCode(() =>
@@ -75,7 +80,7 @@ describe('refs doctor: a refs home whose path cannot be printed', () => {
   });
 });
 
-describe('refs add: a refs home whose path cannot be printed', () => {
+describe.skipIf(onWindows)('refs add: a refs home whose path cannot be printed', () => {
   it(
     'refuses an unmanaged checkout and tells the reader to remove it by hand',
     async () => {
