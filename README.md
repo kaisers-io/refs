@@ -17,6 +17,12 @@
 
 That takes three steps. The agent reads the version your project depends on, finds the repository behind the package, and compares that release with the current one. Answers name the file and line they came from, so you can check them.
 
+> **TODO screenshot.** The answer to the prompt above, showing the cited files and lines.
+> Save it as `assets/screenshots/upgrade-answer.png`, then replace this block with the line below.
+
+<!-- ![The agent answering the upgrade question, citing files and lines](https://raw.githubusercontent.com/kaisers-io/refs/main/assets/screenshots/upgrade-answer.png) -->
+
+
 ```
 /refs does our payments client still match what the checkout service expects
 ```
@@ -58,6 +64,21 @@ Add every repository that takes part in a flow, not just the two at its ends. A 
 ```
 
 The agent reads each checkout in turn and names the files it used. What it cannot tell you is whether the deployed versions match what you have checked out, so ask it to name the revisions it read.
+
+## How does this actually work
+
+Reading a library to find out how it does something is the other everyday question, and the answer is spread over files nobody wants to open one at a time. Ask for the shape of it:
+
+```
+/refs how does effect run a fiber? follow the path from Effect.runPromise into the runtime loop, draw it as a diagram, and link every file you used
+```
+
+The agent reads the checkout, follows the calls, and draws what it found. The file references are real paths on your disk, so you can open any of them and check the step yourself.
+
+> **TODO screenshot.** The diagram the agent drew, with its file links.
+> Save it as `assets/screenshots/effect-runtime-diagram.png`, then replace this block with the line below.
+
+<!-- ![A flow diagram of Effect's runtime, drawn by the agent, with links to the files it read](https://raw.githubusercontent.com/kaisers-io/refs/main/assets/screenshots/effect-runtime-diagram.png) -->
 
 ## Try it on a real repository
 
