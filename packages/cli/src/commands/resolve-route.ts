@@ -146,11 +146,13 @@ const packageMatchesFor = (config: Config, name: string): PackageEntryMatch[] =>
 // key", which routes by ref rather than by package and comes back with `package: null` — a caller
 // following the advice got a success envelope with no package in it, and was left guessing a
 // directory, which is the exact guesswork `resolve` exists to remove.
-const ambiguousPackageMessage = (name: string, keys: readonly RefKey[]): string =>
+// `pick` is passed rather than taken off `keys`, so the message cannot be built without one — the
+// caller already has it in hand, and a `?? ''` here would be a fallback no test could reach.
+const ambiguousPackageMessage = (name: string, keys: readonly RefKey[], pick: RefKey): string =>
   `package '${name}' is registered by more than one ref: ${keys.join(', ')} — pick one with: ` +
   // A real key, not a `<ref>` placeholder: a shell reads `<ref>` as an input redirection, so the
-  // line could not run as printed. The colliding keys are in hand here, so name the first.
-  `refs resolve ${shellQuote(name)} --ref ${shellQuote(keys[0] ?? '')}`;
+  // line could not run as printed.
+  `refs resolve ${shellQuote(name)} --ref ${shellQuote(pick)}`;
 
 // Step 2/3 shared lookup: the sole ref registering `name`. Resolve's whole purpose is unambiguous
 // agent routing, so more than one candidate is a routing ambiguity — this throws `usageError`
@@ -170,6 +172,7 @@ const findPackageByName = (
       ambiguousPackageMessage(
         name,
         matches.map((match) => match.key),
+        first.key,
       ),
     );
   }
