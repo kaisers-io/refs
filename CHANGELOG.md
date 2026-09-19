@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`refs add` refuses a repository whose default branch is a name git will not accept.**
+  `default_branch` was stored as ordinary text, and a branch name is not ordinary text. The value
+  is read from the repository's own `HEAD`, not typed by anyone: `git branch` will not create a
+  name beginning with `-`, but the ref FORMAT permits one, `update-ref` writes it, it clones
+  through, and `HEAD` may point at it. Such a ref was recorded without complaint and then failed at
+  every `refs sync` with `fatal: '--upload-pack=id' is not a valid branch name` — git objecting to
+  a value the caller never supplied, one command after the one that could have said so.
+
+  The rule is git's own, and the dry run now proves the proposal against the schema that reads it
+  back rather than trusting that the fields line up. Nothing runs: `checkout -B` validates its
+  argument as a branch name before anything else, and the values that reach a verb with a
+  command-executing option (`--upload-pack` on `clone` and `fetch`) are fixed.
+
+  The check is deliberately no stricter than git — it guards a field that is READ as well as
+  written, so a tighter rule would make an existing config unreadable rather than refuse a new ref.
+  A test compares it against `git check-ref-format --branch` over more than a thousand generated
+  names and asserts the two never disagree.
+
 ### Added
 
 - **Every drift finding in `refs doctor --json` carries its repair commands, already quoted.**

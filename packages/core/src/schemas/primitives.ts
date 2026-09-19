@@ -1,3 +1,4 @@
+import { isBranchName } from './branch-name.ts';
 import { z } from 'zod';
 
 const CLONE_MODES = ['blobless', 'full'] as const;
@@ -61,6 +62,20 @@ const isStorableText = (raw: string): boolean => raw.length > 0 && raw.isWellFor
 const zStorableText = z
   .string()
   .refine(isStorableText, 'must be non-empty text that survives being written to the config');
+
+/** A branch name git would accept, that the config can also hold.
+ *
+ * Two rules, deliberately separate. `zStorableText` is about the FILE — a value that survives being
+ * written back and read again; `isBranchName` is about GIT. Composing them keeps each failure
+ * message about its own subject, and keeps the git rule testable against git itself.
+ *
+ * Stored as ordinary text before, which let a name beginning with `-` into the config from a real
+ * repository's own `HEAD` — and every later sync then failed with git's complaint about a value
+ * nobody typed. */
+const zBranchName = zStorableText.refine(
+  isBranchName,
+  'must be a name git accepts for a branch (git check-ref-format --branch)',
+);
 
 /** `host/path…/repo`, with a host the DNS rules accept and path segments the safe alphabet does. */
 const hasKeyShape = (raw: string): boolean => {
@@ -128,10 +143,11 @@ type TagFormat = z.infer<typeof zTagFormat>;
 
 export {
   CLONE_MODES,
-  durationToMs,
   GIT_TRANSPORTS,
+  durationToMs,
   isSafeSegment,
   isStorableText,
+  zBranchName,
   zCloneMode,
   zDuration,
   zGitTransport,

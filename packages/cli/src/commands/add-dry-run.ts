@@ -28,14 +28,17 @@ import {
   resolveHome,
   resolveSetting,
   scanIsReliable,
+  validationError,
   withLock,
   writeState,
+  zProposal,
 } from '@kaisers-io/refs-core';
 import type { CliContext } from '../context.ts';
 import type { ResolvedSource } from './add-source.ts';
 import { discoveryObstacle } from './workspace-diagnostics.ts';
 import { ensureClonedCheckout } from './add-checkout-guards.ts';
 import { progress } from '../output.ts';
+import { z } from 'zod';
 
 // The `--dry-run` core: resolve source → conflict/collision guards → idempotent clone → detect
 // default branch/tags/workspace packages → shape a `Proposal`. Shared by both `refs add --dry-run`
@@ -187,14 +190,29 @@ type BuildDryRunOutcomeOpts = {
 
 /** The serialized half: what a `--proposal` file carries. `description` starts empty — it is the
  * one field a human or an agent must supply. */
-const proposalFrom = (fields: DetectedFields, resolved: ResolvedSource): Proposal => ({
-  default_branch: fields.defaultBranch,
-  description: '',
-  key: resolved.key,
-  packages: fields.packages,
-  tag_format_candidate: fields.tagFormatCandidate,
-  url: resolved.cloneUrl,
-});
+const proposalFrom = (fields: DetectedFields, resolved: ResolvedSource): Proposal => {
+  const proposal = {
+    default_branch: fields.defaultBranch,
+    description: '',
+    key: resolved.key,
+    packages: fields.packages,
+    tag_format_candidate: fields.tagFormatCandidate,
+    url: resolved.cloneUrl,
+  };
+  // Proved against the schema that reads it back, rather than trusted because the types line up:
+  // every field here is DETECTED from a repository refs has just cloned, and a proposal refs would
+  // refuse to accept is not one it should hand over. `default_branch` is the field that made this
+  // concrete — a repository whose `HEAD` points at a branch named `--upload-pack=id` produced a
+  // proposal that finalized, and every later sync then failed with git's complaint about a value
+  // nobody typed.
+  const parsed = zProposal.safeParse(proposal);
+  if (!parsed.success) {
+    throw validationError(
+      `the repository's own metadata does not make a usable ref:\n${z.prettifyError(parsed.error)}`,
+    );
+  }
+  return parsed.data;
+};
 
 /** Assembled in one expression, with the same conditional-spread idiom `detectedFrom` uses above:
  * `exactOptionalPropertyTypes` distinguishes an absent key from one set to `undefined`, and all
