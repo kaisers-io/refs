@@ -71,6 +71,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   then refused. It now asks the shape that would be stored. A package called `constructor` stays
   declinable, which is the documented difference between declining and registering.
 
+- **A tracked repository can no longer add a line to refs' human output.** A workspace member's
+  name is taken from its manifest and printed at the head of every drift finding. A newline in that
+  name produced a second line on stdout that was byte-for-byte indistinguishable from one refs
+  wrote — and the obvious payload is a forged `To register it:` clause, because a genuine finding
+  ends in exactly that shape. Every human line now goes through one neutralisation on its way out:
+  C0/C1 control characters, the line terminators among them, are replaced with `?`. The name still
+  reaches the reader; what it can no longer be is a line. Printable text outside ASCII is untouched,
+  so nothing refs writes itself changes.
+
+  An error message keeps its own line breaks — `refs add`'s two-phase instructions put each command
+  on its own line, and `--verbose` appends a stack trace — so there the untrusted values are
+  neutralised where they are composed INTO that layout instead. The package names that message
+  lists come from the same manifests, and before this they could add a line of their own.
+
+  **And no command is printed for a value one cannot carry.** Neutralising a line for display would
+  otherwise rewrite the command inside it: `--package='a<LF>b'` becomes `--package='a?b'`, which
+  names a different package. This is not a quoting problem — single quotes carry the character
+  perfectly well, and a shell would accept the result; what the command stops being is one
+  pasteable line that means what it says. Every value a printed command interpolates is subject to
+  it: the package name, the path, the ref key, and the filesystem paths in the `rm -rf` and `rmdir`
+  suggestions, where naming the wrong target cannot be undone. The builders in `shell-quote.ts`
+  return nothing at all for such a value, so a command producer cannot forget the check, and the
+  finding is reported without a command and with a pointer to `--json`, which carries the value
+  exactly.
+
+  The description placeholder in the register command is single-quoted rather than double-quoted:
+  in double quotes a `$(…)` a reader substitutes for it would be expanded by their own shell before
+  refs ever saw it.
+
+  The `--json` envelope's parsed identity was never affected, because `JSON.stringify` escapes
+  U+0000–U+001F, and it is unchanged.
+
 ## [0.17.0] - 2026-09-13
 
 ### Added

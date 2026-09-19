@@ -10,6 +10,7 @@ import {
 import { checkoutPath, zRefKey } from '@kaisers-io/refs-core';
 import { describe, expect, it } from 'vitest';
 import { markCheckoutPresent, seedConfig, seedState } from '../helpers/ref-fixtures.ts';
+import { join } from 'node:path';
 
 // `orphans` — a checkout under `sources/` with no matching config entry. Split out of
 // `doctor.test.ts` purely to keep that file under the repo's 300-line oxlint cap.
@@ -43,6 +44,31 @@ describe('refs doctor: (c) true orphan checkout', () => {
           // Quoted and `--`-terminated: the path can contain spaces (the refs home often does),
           // so an unquoted suggestion would delete the wrong things when pasted.
           detailContains: `orphan — remove with: rm -rf -- '${orphanDest}'`,
+          status: 'warn',
+        });
+      }),
+    );
+  });
+});
+
+describe('refs doctor: an orphan whose path cannot be printed', () => {
+  it('offers no removal command', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, home, runner, stdout } = await setupInitializedHome(homeDir);
+        await seedConfig(home, { [ALPHA_KEY]: HTTPS_REF_ENTRY });
+        // An orphan is a directory refs did NOT create, so its name is whatever is on disk. Quoting
+        // does not save this one: the command would survive a shell, but `displaySafe` rewrites the
+        // newline on its way to the terminal and the pasted line would then delete a sibling
+        // literally named `left?over`. Deletion is the suggestion where that cannot be undone.
+        await markCheckoutPresent(join(home.sourcesDir, 'github.com', 'acme', 'left\nover'));
+        expectGitVersion(runner);
+
+        const envelope = await runDoctorJson(ctx, stdout);
+
+        expectCheck(envelope, 'orphans', {
+          detailContains: 'remove it by hand',
           status: 'warn',
         });
       }),

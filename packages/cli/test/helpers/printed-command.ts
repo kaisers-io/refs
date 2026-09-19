@@ -81,7 +81,7 @@ const shellLine = (
     .map(([name, value]) => `${name}=${shellQuote(value ?? '')}`)
     .join(' ');
   const command = printed
-    .replace(`"${PLACEHOLDER}"`, shellQuote(description))
+    .replace(`'${PLACEHOLDER}'`, shellQuote(description))
     .replace(/^refs /u, `node ${shellQuote(bundle)} `);
   return `${prefix} ${command} --json`;
 };
@@ -90,13 +90,15 @@ const shellLine = (
  * placeholder is substituted, which is the one part the finding leaves to the caller.
  *
  * The substitution happens in the STRING, before the shell sees it, and the placeholder carries
- * its own quotes (`"<what it is>"`) so the replacement is quoted in turn rather than pasted bare. */
+ * its own SINGLE quotes (`'<what it is>'`) so the replacement is quoted in turn rather than pasted
+ * bare. Double quotes would have let a `$(…)` in whatever the caller substitutes run in their own
+ * shell — the placeholder is the one part of the line a reader is told to edit. */
 const runPrintedRepair = async (args: {
   description: string;
   env: Record<string, string | undefined>;
   line: string;
 }): Promise<string> => {
-  const marker = 'To register it: ';
+  const marker = 'To register it (replace the description first): ';
   // The finding prints TWO commands — register, and decline for the case where the answer is no.
   // Split on the literal sentence that introduces the second rather than taking the rest of the
   // line: running both concatenated is `too many arguments`, and a test that ran them would be
@@ -104,7 +106,7 @@ const runPrintedRepair = async (args: {
   const [printed = ''] = args.line
     .slice(args.line.indexOf(marker) + marker.length)
     .split('. If it should not be: ');
-  expect(printed).toContain(`"${PLACEHOLDER}"`);
+  expect(printed).toContain(`'${PLACEHOLDER}'`);
   const result = await new SpawnRunner().run('sh', [
     '-c',
     shellLine(printed, {
@@ -140,4 +142,11 @@ const resolveStatus = async (
   return envelope.data?.package?.status;
 };
 
-export { COMMAND_PREFIX_LENGTH, PLACEHOLDER, repairLineFor, resolveStatus, runPrintedRepair };
+export {
+  COMMAND_PREFIX_LENGTH,
+  PLACEHOLDER,
+  cliBundle,
+  repairLineFor,
+  resolveStatus,
+  runPrintedRepair,
+};

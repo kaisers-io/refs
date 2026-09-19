@@ -1,7 +1,7 @@
 import { CURRENT_DIR, GROUP_AT, commonDir, dirOf } from './drift-group.ts';
 import type { StructureIssue, StructureReport } from './drift-report.ts';
-import { editCommand, shellQuote } from '../shell-quote.ts';
 import { isRegistrablePackageName, zDeclinedPackage, zPackagePath } from '@kaisers-io/refs-core';
+import { editCommand } from '../shell-quote.ts';
 
 // How a probe's findings read to a human. Split from `drift-report.ts`, which owns the vocabulary
 // and decides the ref's health, for the 300-line cap.
@@ -14,42 +14,6 @@ import { isRegistrablePackageName, zDeclinedPackage, zPackagePath } from '@kaise
 const UNKNOWN_REASON = '(no reason given)';
 const UNKNOWN_PATH = '(unknown)';
 
-/** How one issue reads to a human. Shared by `sync` and `doctor` so the two never describe the
- * same finding differently — and worded so a removal and a relocation prescribe different work.
- *
- * The `missing` line states the ceiling of what was actually checked. Detection expands the repo's
- * own workspace declarations, so a package that moved somewhere no declaration covers is
- * indistinguishable here from one that was deleted. Naming that possibility costs six words and
- * keeps the line from prescribing the removal of an entry that only needs a new path — while the
- * primary repair still comes first, because deletion is by far the commoner cause. */
-/** The one finding with no configured entry, so it carries no "configured:" tail.
- *
- * Worded for both of its sources — the repository root and a workspace member — because the
- * consequence is the same either way: a name the checkout declares and the configuration does not
- * have cannot be resolved. The root's own wording used to say so; nothing about it was specific to
- * the root.
- *
- * The ref key is interpolated rather than left as a `<ref>` placeholder: a shell reads `<ref>` as
- * an input redirection, so a line carrying one cannot be run as printed — which is the whole
- * point of printing a command instead of a config fragment.
- *
- * It names a COMMAND now rather than a `config.toml` fragment. That is `refs edit --create`'s
- * whole reason for existing: this was the one finding no command could repair, so the only honest
- * instruction was "hand-edit the config". The description is deliberately left for the caller to
- * write and not filled in from the manifest — see SKILL.md on what a checkout's own text may and
- * may not be used for.
- *
- * Both interpolated values are shell-quoted, for the reason `shell-quote.ts` was written down:
- * a package NAME comes from a tracked repository's own manifest and is checked only for being
- * non-empty, and `zPackagePath` rejects only separators, dot segments, percent escapes and colons
- * — `$()`, backticks, semicolons and spaces all pass. This line exists to be pasted into a shell,
- * so an unquoted value here is an execution primitive handed to whoever runs it. Being verified
- * against the checkout makes a value TRUE, not shell-safe. */
-/** Whether the configuration could actually hold this package. Detection and registration answer
- * different questions: a workspace member may legitimately be named `constructor` or sit at
- * `packages/100%`, and the scan reports it correctly, while `zRefEntry` rejects both. Printing a
- * command that fails validation is worse than printing none — the finding is still true, so it is
- * reported with the reason instead. */
 /** Whether the DECISION can be recorded, which is a weaker question than whether the package can
  * be registered. `packages` is a record keyed by name, so a member legitimately called
  * `constructor` cannot be a key; `declined_packages` is an array of records, so that name is no
@@ -66,9 +30,52 @@ const UNKNOWN_PATH = '(unknown)';
 const declinable = (issue: StructureIssue): boolean =>
   zDeclinedPackage.safeParse({ name: issue.name, path: issue.path }).success;
 
+/** What is said instead of a command, when one of the values it would carry cannot be printed.
+ *
+ * Not "its name cannot go into a command": single quotes carry a newline or a tab perfectly well,
+ * and a shell would accept the result. What such a command cannot be is ONE PASTEABLE LINE — and
+ * refs neutralises control characters on their way to a terminal, so the line a reader sees would
+ * name a different package or path than the one the finding is about. A lone surrogate fails the
+ * same way one layer down, having no UTF-8 encoding at all.
+ *
+ * The exact values are not lost: `--json` carries them unchanged, and that is where this points. */
+const NO_COMMAND =
+  'no single-line command can carry these values, so none is offered — ' +
+  "'refs doctor --json' has them exactly";
+
+/** Both answers, because both are answers. Registering needs a human decision (SKILL.md: never on
+ * your own initiative); declining stops the finding returning once that decision was "no".
+ *
+ * `undefined` when either command would have to carry a value it cannot print. Every dynamic part
+ * is handed to `editCommand` raw — the ref KEY as much as the name and the path, since a key is
+ * derived from a url the user supplied and is no safer than the rest.
+ *
+ * The description is a placeholder rather than a value, and it is single-quoted like every other:
+ * in double quotes a `$(…)` a reader pastes in place of it would be substituted by their shell
+ * before refs ever saw it. That line is a template to edit, not a command to run unchanged. */
+// `path` is passed rather than read off the issue: a `?? ''` would be unreachable.
+const offeredCommands = (issue: StructureIssue, key: string, path: string): string | undefined => {
+  const decline = editCommand([['--package', issue.name], '--decline', ['--path', path]], [key]);
+  const register = editCommand(
+    [['--package', issue.name], '--create', ['--path', path], ['--description', '<what it is>']],
+    [key],
+  );
+  if (decline === undefined || register === undefined) {
+    return undefined;
+  }
+  if (!isRegistrablePackageName(issue.name)) {
+    return (
+      `Its name is one the packages table cannot hold, so it cannot be registered — ` +
+      `if that is the answer, record it: ${decline}`
+    );
+  }
+  return `To register it (replace the description first): ${register}. If it should not be: ${decline}`;
+};
+
 const unregisteredLine = (issue: StructureIssue, key: string): string => {
   const head = `${issue.name}: declared in this checkout but not registered — it cannot be resolved by name until it is`;
-  if (issue.path === undefined) {
+  const { path } = issue;
+  if (path === undefined) {
     // More than one directory declares this name, so which one to register is a decision, not a
     // lookup. Naming the candidates is the most this can honestly do.
     return `${head}. Declared at several paths (${(issue.candidates ?? []).join(', ')}) — pick one`;
@@ -79,30 +86,10 @@ const unregisteredLine = (issue: StructureIssue, key: string): string => {
       `for it — report it and leave it unregistered`
     );
   }
-  // Both answers, because both are answers. Registering is the one that needs a human decision
-  // (SKILL.md: never on your own initiative), and declining is what stops the finding returning
-  // on every run once that decision was "no" — without it the only way to quieten this line was
-  // to register something nobody wanted.
-  const decline = editCommand(
-    [`--package=${shellQuote(issue.name)}`, '--decline', `--path=${shellQuote(issue.path)}`],
-    [key],
-  );
-  if (!isRegistrablePackageName(issue.name)) {
-    return (
-      `${head}. Its name is one the packages table cannot hold, so it cannot be registered — ` +
-      `if that is the answer, record it: ${decline}`
-    );
-  }
-  const register = editCommand(
-    [
-      `--package=${shellQuote(issue.name)}`,
-      '--create',
-      `--path=${shellQuote(issue.path)}`,
-      '--description="<what it is>"',
-    ],
-    [key],
-  );
-  return `${head}. To register it: ${register}. If it should not be: ${decline}`;
+  const offered = offeredCommands(issue, key, path);
+  return offered === undefined
+    ? `${head}. ${NO_COMMAND} — report it and leave it unregistered`
+    : `${head}. ${offered}`;
 };
 
 /** A relocation, with the path edit that repairs it. The new path comes from the CHECKOUT and is
@@ -110,11 +97,13 @@ const unregisteredLine = (issue: StructureIssue, key: string): string => {
  * and the finding is still true without it. */
 const relocatedLine = (issue: StructureIssue, key: string, at: string): string => {
   const head = `${issue.name}: moved to ${issue.path ?? UNKNOWN_PATH} — update the entry's path (${at})`;
-  const repoint = editCommand(
-    [`--package=${shellQuote(issue.name)}`],
-    [key, 'path', issue.path ?? ''],
-  );
-  return zPackagePath.safeParse(issue.path).success ? `${head}. To fix it: ${repoint}` : head;
+  // The PARSED value is used rather than the raw one, so the command is built from exactly what
+  // validation accepted and no unreachable fallback is needed to satisfy the type.
+  const parsed = zPackagePath.safeParse(issue.path);
+  const repoint = parsed.success
+    ? editCommand([['--package', issue.name]], [key, 'path', parsed.data])
+    : undefined;
+  return repoint === undefined ? head : `${head}. To fix it: ${repoint}`;
 };
 
 /** The four findings about an entry that IS configured — each naming the repair it needs, and the
@@ -124,17 +113,23 @@ const relocatedLine = (issue: StructureIssue, key: string, at: string): string =
  * configuration's own, but a ref key admits spaces and `$()` (`zRefKey`) and a package name is
  * checked only for being non-empty — so both go through `shellQuote`, for the reason spelled out
  * above `registrable`, and through `editCommand`, for the second parser they then meet. */
+/** A configured entry gone from the workspaces. Its name comes from the config, which admits a
+ * control character — and a command carrying one cannot be pasted. */
+const missingLine = (issue: StructureIssue, key: string, at: string): string => {
+  const head = `${issue.name}: gone from this repo's workspaces (${at}) — repoint the entry if it moved out of them`;
+  const unregister = editCommand([['--package', issue.name], '--remove'], [key]);
+  return unregister === undefined
+    ? `${head}; ${NO_COMMAND}, so unregister it by hand`
+    : `${head}, or unregister it: ${unregister}`;
+};
+
 const configuredIssueLine = (issue: StructureIssue, key: string): string => {
   const at = `configured: ${issue.configured_path ?? UNKNOWN_PATH}`;
   if (issue.status === 'relocated') {
     return relocatedLine(issue, key, at);
   }
   if (issue.status === 'missing') {
-    const unregister = editCommand([`--package=${shellQuote(issue.name)}`, '--remove'], [key]);
-    return (
-      `${issue.name}: gone from this repo's workspaces (${at}) — repoint the entry if it moved ` +
-      `out of them, or unregister it: ${unregister}`
-    );
+    return missingLine(issue, key, at);
   }
   if (issue.status === 'ambiguous') {
     const where = (issue.candidates ?? []).join(', ');

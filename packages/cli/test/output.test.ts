@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { emit } from '../src/output.ts';
+import { emit, emitError, progress } from '../src/output.ts';
 import { testContext } from './helpers/context.ts';
 
 // Direct unit coverage for `emit`'s warning-surfacing contract (micro-fix round 2): warnings were
@@ -63,5 +63,58 @@ describe('emit: json mode warnings', () => {
     expect(stderr).toHaveLength(NO_LINES);
     const parsed: unknown = JSON.parse(soleLine(stdout));
     expect(parsed).toMatchObject({ ok: true, warnings: [WARNING_ONE] });
+  });
+});
+
+// `emit`'s human loop is not the only line a command-composed string reaches a terminal through:
+// an error message carries a ref key and a git failure, and `progress` fires even under `--json`,
+// where it is the one human line an agent run still prints.
+const CONTROL_CHARACTER = /\p{Cc}/u;
+const INJECTED = 'refs: forged line';
+
+describe('control characters in human output', () => {
+  it('keeps refs own line structure in an error but strips every other control character', () => {
+    expect.hasAssertions();
+    const { ctx, stderr } = testContext();
+    // `refs add`'s two-phase instructions put each command on its own line, and `--verbose`
+    // appends a stack trace: flattening an error message would destroy refs' own output.
+    const message = `run this instead:\n  refs add --dry-run\nthen\u001B[2K\r finish`;
+
+    emitError(ctx, { json: false }, { code: 'validation', message });
+
+    // ESC and CR become `?`; the `[2K` they carried is ordinary text and stays visible, which is
+    // the point — nothing is hidden, it just cannot act on the terminal.
+    expect(soleLine(stderr)).toBe(
+      'refs: run this instead:\n  refs add --dry-run\nthen?[2K? finish',
+    );
+  });
+
+  it('keeps a progress line to one line, including under --json', () => {
+    expect.hasAssertions();
+    const { ctx, stderr } = testContext();
+
+    progress(ctx, `cloning\u001B[2K\r${INJECTED}`);
+
+    expect(stderr).toHaveLength(ONE_LINE);
+    expect(CONTROL_CHARACTER.test(soleLine(stderr))).toBe(false);
+  });
+
+  it('leaves printable text outside ASCII alone, which refs own lines are full of', () => {
+    expect.hasAssertions();
+    const { ctx, stdout } = testContext();
+    const line = 'widget — described, renamed to widgét';
+
+    emit(ctx, { json: false }, line, {});
+
+    expect(soleLine(stdout)).toBe(line);
+  });
+
+  it('does not touch the --json envelope, which JSON.stringify already escapes', () => {
+    expect.hasAssertions();
+    const { ctx, stdout } = testContext();
+
+    emit(ctx, { json: true }, 'ignored', { name: `a\nb` });
+
+    expect(JSON.parse(soleLine(stdout))).toMatchObject({ data: { name: 'a\nb' } });
   });
 });

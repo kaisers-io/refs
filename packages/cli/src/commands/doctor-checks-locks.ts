@@ -84,10 +84,14 @@ const claimLine = (home: RefsHome, lock: InspectedLock): string => {
   const path = join(home.locksDir, CLAIMS_DIRNAME, lock.name);
   const age =
     lock.diagnosis.ageMs === undefined ? '' : ` for ${formatDuration(lock.diagnosis.ageMs)}`;
+  const command = rmdirCommand(path);
+  const repair =
+    command === undefined
+      ? 'remove that directory by hand — its path cannot be put into a pasteable command'
+      : `${STOP_FIRST}: ${command}`;
   return (
     `steal claim on ${lock.name}: present${age}. Stealing this lock is blocked while it is here. ` +
-    `A reclaim in progress clears it within a moment; if it stays, ${STOP_FIRST}: ` +
-    `${rmdirCommand(path)}`
+    `A reclaim in progress clears it within a moment; if it stays, ${repair}`
   );
 };
 
@@ -115,7 +119,10 @@ const reclaimPhrase = (home: RefsHome, lock: InspectedLock): string => {
   // lock at all sitting on a lock name. refs will not touch any of them, so the command is the
   // only way out — and `rm -rf`, not `rmdir`, because a real lock holds metadata and a sidecar.
   const path = join(home.locksDir, lock.name);
-  return `, not automatically reclaimable — if it is genuinely abandoned, ${STOP_FIRST}: ${rmCommand(path)}`;
+  const command = rmCommand(path);
+  return command === undefined
+    ? ', not automatically reclaimable — and its path cannot be put into a pasteable command, so it has to be removed by hand'
+    : `, not automatically reclaimable — if it is genuinely abandoned, ${STOP_FIRST}: ${command}`;
 };
 
 const lockLine = (home: RefsHome, lock: InspectedLock): string => {

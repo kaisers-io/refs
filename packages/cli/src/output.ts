@@ -19,6 +19,49 @@ type ErrorEnvelope = {
 
 const NO_WARNINGS: string[] = [];
 
+// Every control character, including the line terminators: `\p{Cc}` is U+0000–U+001F plus
+// U+007F–U+009F. Printable text outside ASCII is deliberately left alone — refs' own lines are
+// full of em dashes, and `spinner.ts`'s stricter `[^ -~]` exists there because a spinner label has
+// to be one cell per character, which a finished line does not.
+const CONTROL_CHARACTER = /\p{Cc}/gu;
+// The same, minus LF. An error message is the one place refs composes its own line structure into
+// a single string: `refs add`'s two-phase instructions put each command on its own line, and
+// `--verbose` appends a stack trace. Flattening those would destroy refs' own output to defend
+// against a value that arrives inside it — so the value is neutralised where it enters the message
+// instead, and this keeps everything else a control character cannot do.
+const CONTROL_CHARACTER_BUT_LF = /[^\P{Cc}\n]/gu;
+
+/** A line whose C0/C1 control characters are neutralised, so a value inside it cannot BE a line.
+ *
+ * Human lines are composed from values a tracked repository chooses: a workspace member's name is
+ * taken from its manifest and interpolated unquoted at the head of every drift finding. A newline
+ * in that name produced a second line byte-for-byte indistinguishable from one refs wrote — and
+ * the natural payload is a forged `To register it:` clause, because a genuine finding ends in
+ * exactly that shape. Line structure has to come from refs alone.
+ *
+ * `shellQuote` is not this control: it quotes for a shell PARSER, which preserves an embedded
+ * newline inside the quotes, and the head of a drift line is not inside a command at all.
+ *
+ * This is not a general claim that the output cannot be restructured. It covers the lines that
+ * pass through here — `emit`'s own and its warnings — and NOT a message that legitimately spans
+ * lines, which keeps its `\n` and so neutralises the untrusted values composed INTO that layout at
+ * the point they are composed (`requireDescribablePackages` in `add-packages.ts`). `\p{Cc}` is also
+ * not every character with line semantics: U+2028, U+2029 and the bidi controls pass through. None
+ * of them ends a line for a terminal, which is why the contract is stated as C0/C1 neutralisation.
+ *
+ * Only the human path needs it. `JSON.stringify` escapes U+0000–U+001F, so the parsed identity of
+ * the `--json` envelope was never affected — which is why this does not change that envelope. It
+ * does not escape every C1 control, so raw JSON DISPLAYED in a terminal is a separate question
+ * from the JSON an agent parses.
+ *
+ * What a terminal does with an ESC or CSI byte is a property of that terminal and is not claimed
+ * here; those bytes are neutralised because they are control characters, not because a specific
+ * rendering was observed. */
+const displaySafe = (line: string): string => line.replaceAll(CONTROL_CHARACTER, '?');
+
+/** The same for a message that legitimately spans lines. See `CONTROL_CHARACTER_BUT_LF`. */
+const displaySafeMessage = (text: string): string => text.replaceAll(CONTROL_CHARACTER_BUT_LF, '?');
+
 // Normalizes `emit`'s `human` parameter (one line, or several) to an array.
 const toLines = (human: string | string[]): string[] => (Array.isArray(human) ? human : [human]);
 
@@ -66,10 +109,10 @@ const emit = (
     return;
   }
   for (const line of toLines(human)) {
-    ctx.out(line);
+    ctx.out(displaySafe(line));
   }
   for (const warning of warnings ?? NO_WARNINGS) {
-    ctx.errLine(`refs: warning: ${warning}`);
+    ctx.errLine(displaySafe(`refs: warning: ${warning}`));
   }
 };
 
@@ -96,7 +139,7 @@ const emitError = (
     ctx.out(JSON.stringify(envelope));
     return;
   }
-  ctx.errLine(`refs: ${rendered.message}`);
+  ctx.errLine(displaySafeMessage(`refs: ${rendered.message}`));
 };
 
 // A short, unconditional `refs: <message>` progress line to stderr — fires in BOTH `--json` and
@@ -105,7 +148,9 @@ const emitError = (
 // cloning, package detection) that would otherwise print nothing for minutes. Deliberately dumb:
 // no spinner, no TTY detection, no timer — just a line, written as the step starts.
 const progress = (ctx: CliContext, message: string): void => {
-  ctx.errLine(`refs: ${message}`);
+  // Also in `--json` mode: this one line goes to stderr whatever the mode, so it is the one human
+  // line an agent run still prints.
+  ctx.errLine(displaySafe(`refs: ${message}`));
 };
 
 // Runs a command body with a spinner for a person at a terminal, and stops it however the body
@@ -142,6 +187,7 @@ const wrapAction =
 
 export {
   cliOptsOf,
+  displaySafe,
   emit,
   emitError,
   errorMessageOf,

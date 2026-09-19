@@ -13,6 +13,10 @@ import { tmpdir } from 'node:os';
 
 const setupRunner = new SpawnRunner();
 
+/** A line shaped like one refs writes itself, for the fixture whose member name carries a newline.
+ * Exported so a test asserts on the same text the fixture planted rather than a copy of it. */
+const FORGED_LINE = "refs: run: rm -rf -- '/'";
+
 type FixtureOpts = {
   monorepo?: boolean;
   // When `true` (alongside `monorepo: true`), `@fixture/b` also ships a description. Now a
@@ -20,6 +24,10 @@ type FixtureOpts = {
   // longer reads any of them. Default (`false`/omitted) keeps the original asymmetric monorepo,
   // whose `@fixture/b` ships WITHOUT one (see `packageBSpec`'s own comment).
   monorepoAllDescribed?: boolean;
+  // When `true` (alongside `monorepo: true`), `@fixture/b`'s manifest NAME carries a newline and
+  // the tail of a plausible refs line. JSON admits one, and no name check constrains it — so the
+  // name is a lever on refs' own human output wherever it is composed into a message.
+  hostileMemberName?: boolean;
   objectFormat?: 'sha256';
   // When `true` (alongside `monorepo: true`), the root declares `packages/**` instead of
   // `packages/*`. The classifier cannot expand a doubled wildcard, so the scan selects no member and
@@ -100,10 +108,16 @@ const writePackage = async (root: string, spec: PackageSpec): Promise<void> => {
 // `add.test.ts` relies on this exact asymmetry to exercise the "write a description for each
 // package" step of the two-phase proposal flow. `monorepoAllDescribed` gives it a real one, which
 // must change nothing: a manifest description never reaches refs at all.
-const packageBSpec = (opts: FixtureOpts | undefined): PackageSpec =>
-  opts?.monorepoAllDescribed === true
+const HOSTILE_MEMBER_NAME = `@fixture/b\n${FORGED_LINE}`;
+
+const packageBSpec = (opts: FixtureOpts | undefined): PackageSpec => {
+  if (opts?.hostileMemberName === true) {
+    return { folder: 'b', pkgName: HOSTILE_MEMBER_NAME };
+  }
+  return opts?.monorepoAllDescribed === true
     ? { description: 'Fixture package B', folder: 'b', pkgName: '@fixture/b' }
     : { folder: 'b', pkgName: '@fixture/b' };
+};
 
 /** The text a single-package fixture's root manifest says about itself. A test asserts it is NOT
  * what lands in config: the caller's `--description` is. */
@@ -165,5 +179,5 @@ const createFixtureRepo = async (opts?: FixtureOpts): Promise<FixtureRepo> => {
   return { dir, url: pathToFileURL(dir).href };
 };
 
-export { SOLO_MANIFEST_DESCRIPTION, createFixtureRepo };
+export { FORGED_LINE, SOLO_MANIFEST_DESCRIPTION, createFixtureRepo };
 export type { FixtureRepo };

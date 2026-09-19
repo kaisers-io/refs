@@ -6,6 +6,7 @@ import type {
   TagFormat,
   WorkspacePackage,
 } from '@kaisers-io/refs-core';
+import { displaySafe } from '../output.ts';
 import { shellQuote } from '../shell-quote.ts';
 import { validationError } from '@kaisers-io/refs-core';
 
@@ -198,6 +199,17 @@ const requireDescribablePackages = (
   if (undescribed.length === 0) {
     return;
   }
+  // This message keeps its own line breaks — each instruction is a line — so the values composed
+  // INTO that layout are neutralised individually. The names come from the checkout's manifests,
+  // and a name carrying an LF would otherwise add a line of its own to a refs error.
+  //
+  // `source` is not neutralised and needs no gate: this message is only ever composed after a
+  // successful clone, and git refuses a url with a newline in it outright ("url contains a newline
+  // in its path component"), so what reaches here is a url git accepted.
+  const names = Object.keys(proposalPackages)
+    .toSorted()
+    .map((name) => displaySafe(name))
+    .join(', ');
   throw validationError(
     'refs add --description cannot describe a package: it has one description, about the ' +
       'repository. Run the two-phase flow instead:\n' +
@@ -205,7 +217,7 @@ const requireDescribablePackages = (
       "Fill in the ref's own description, and one written from its own source for each package " +
       'below, then:\n' +
       '  refs add --proposal proposal.json\n' +
-      `packages to describe: ${Object.keys(proposalPackages).toSorted().join(', ')}`,
+      `packages to describe: ${names}`,
   );
 };
 
