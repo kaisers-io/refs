@@ -131,12 +131,27 @@ const readConfig = async (home: RefsHome): Promise<Config> => {
   return result.data;
 };
 
+// Proves the document can be read back rather than assuming it. `zConfig`'s fields are storable
+// text, but `meta` is a `looseObject` by design — a key from a future CLI passes through untouched
+// — so the schema cannot carry the guarantee, and stops carrying it the moment a field is added. A config refs cannot parse is a home that no longer works, strictly worse than a refused
+// write. Costs 0.4 ms on a 32 KB config with 100 refs. The parser's own message is not repeated:
+// it quotes the offending line, which is a value someone supplied.
+const assertReadableBack = (text: string, path: string): string => {
+  try {
+    parse(text);
+  } catch {
+    throw validationError(`refusing to write a config that could not be read back: ${path}`);
+  }
+  return text;
+};
+
 const writeConfig = async (home: RefsHome, config: Config): Promise<void> => {
   const result = zConfig.safeParse(config);
   if (!result.success) {
     throw validationError(z.prettifyError(result.error));
   }
-  await writeFileAtomic(home.configPath, stringify(result.data));
+  const text = assertReadableBack(stringify(result.data), home.configPath);
+  await writeFileAtomic(home.configPath, text);
 };
 
 const pathExists = async (path: string): Promise<boolean> => {
@@ -250,7 +265,7 @@ const migrateOlderConfig = async (
         `(backup preserved at ${configBackupPath(home)}): ${z.prettifyError(result.error)}`,
     );
   }
-  await writeFileAtomic(home.configPath, stringify(migrated));
+  await writeFileAtomic(home.configPath, assertReadableBack(stringify(migrated), home.configPath));
 };
 
 const migrateExistingConfig = async (

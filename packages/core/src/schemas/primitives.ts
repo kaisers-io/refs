@@ -43,13 +43,24 @@ const isValidHostSegment = (host: string): boolean => {
 };
 
 // A lone surrogate is a valid JS string and not a valid piece of text. It has no UTF-8 encoding,
-// so anything that writes the key out — the config file, the checkout directory, the sha256 a lock
-// name falls back to — silently substitutes U+FFFD. Three distinct keys ending in U+D800, U+D801
-// and U+FFFD therefore share one directory and one lock name, which is exactly the non-injectivity
-// the lock-name encoding exists to prevent. Rejecting here is the only place that holds for every
-// consumer at once; no real config can carry one anyway, since TOML admits no escape for an
-// unpaired surrogate.
-const isEncodableKey = (raw: string): boolean => raw.isWellFormed();
+// so anything that writes the value out — the config file, the checkout directory, the sha256 a
+// lock name falls back to — silently substitutes U+FFFD. Three distinct keys ending in U+D800,
+// U+D801 and U+FFFD therefore share one directory and one lock name, which is exactly the
+// non-injectivity the lock-name encoding exists to prevent.
+//
+// For a value rather than a key the consequence is worse. The pinned TOML serializer writes a lone
+// surrogate as a `\ud800` escape and its own parser then rejects that escape, so accepting one
+// produced a config file refs itself could never read again — a home that no longer works rather
+// than a bad entry. Every free-text field that lands in `config.toml` therefore goes through this.
+//
+// Deliberately NOT length-bounded: the config is validated on every READ, so a bound would make an
+// existing home unreadable, and unfixable through a CLI that cannot load it, over a value that
+// round-trips perfectly well.
+const isStorableText = (raw: string): boolean => raw.length > 0 && raw.isWellFormed();
+
+const zStorableText = z
+  .string()
+  .refine(isStorableText, 'must be non-empty text that survives being written to the config');
 
 /** `host/path…/repo`, with a host the DNS rules accept and path segments the safe alphabet does. */
 const hasKeyShape = (raw: string): boolean => {
@@ -66,7 +77,7 @@ const hasKeyShape = (raw: string): boolean => {
 const zRefKey = z
   .string()
   .refine(
-    (raw) => isEncodableKey(raw) && hasKeyShape(raw),
+    (raw) => isStorableText(raw) && hasKeyShape(raw),
     'ref key must be host/path…/repo with safe, non-empty segments',
   )
   .brand<'RefKey'>();
@@ -91,11 +102,12 @@ const durationToMs = (duration: Duration): number => {
 const zCloneMode = z.enum(CLONE_MODES);
 const zGitTransport = z.enum(GIT_TRANSPORTS);
 
-const zTagFormat = z
-  .string()
-  .refine((raw) => raw.includes('{version}'), 'tag format must contain {version}');
+const zTagFormat = zStorableText.refine(
+  (raw) => raw.includes('{version}'),
+  'tag format must contain {version}',
+);
 
-const zPackagePath = z.string().refine((raw) => {
+const zPackagePath = zStorableText.refine((raw) => {
   if (raw === '.') {
     return true;
   }
@@ -113,11 +125,13 @@ export {
   CLONE_MODES,
   durationToMs,
   GIT_TRANSPORTS,
+  isStorableText,
   zCloneMode,
   zDuration,
   zGitTransport,
   zPackagePath,
   zRefKey,
+  zStorableText,
   zTagFormat,
 };
 export type { CloneMode, Duration, GitTransport, RefKey, TagFormat };

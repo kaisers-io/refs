@@ -184,3 +184,37 @@ describe('migrate — newer schema and cli_version stamping', () => {
     expect(text).toContain(`schema_version = ${String(SCHEMA_VERSION)}`);
   });
 });
+
+// `meta` is a `looseObject`, so a key this CLI does not know passes the schema untouched — that is
+// the forward-compat guarantee. It is also the one place a value can reach the serializer without
+// a field schema having looked at it, which is why the write is proved rather than assumed. JSON
+// text is the route: it has an escape for a lone surrogate where TOML has none.
+const configWithUnknownMetaKey = (value: string): unknown =>
+  JSON.parse(
+    JSON.stringify({
+      meta: { cli_version: '0.1.0', schema_version: SCHEMA_VERSION, written_by: 'PLACEHOLDER' },
+      refs: {},
+      settings: { clone_mode: 'blobless', git_transport: 'https', sync_ttl: '1h' },
+    }).replace('"PLACEHOLDER"', `"${value}"`),
+  );
+
+describe('the write boundary proves the document can be read back', () => {
+  it('refuses to write a config the parser would then reject', async () => {
+    expect.hasAssertions();
+    const home = freshHome();
+    const config = configWithUnknownMetaKey(String.raw`agent\ud800`) as Parameters<
+      typeof writeConfig
+    >[1];
+    await expect(writeConfig(home, config)).rejects.toThrow(/could not be read back/u);
+    // eslint-disable-next-line node/no-sync -- the point is that nothing was written at all
+    expect(existsSync(home.configPath)).toBe(false);
+  });
+
+  it('writes an unknown meta key that round-trips, so forward compat is unaffected', async () => {
+    expect.hasAssertions();
+    const home = freshHome();
+    const config = configWithUnknownMetaKey('agent') as Parameters<typeof writeConfig>[1];
+    await expect(writeConfig(home, config)).resolves.toBeUndefined();
+    await expect(readConfig(home)).resolves.toMatchObject({ meta: { written_by: 'agent' } });
+  });
+});

@@ -1,7 +1,7 @@
 import { CURRENT_DIR, GROUP_AT, commonDir, dirOf } from './drift-group.ts';
 import type { StructureIssue, StructureReport } from './drift-report.ts';
 import { editCommand, shellQuote } from '../shell-quote.ts';
-import { isRegistrablePackageName, zPackagePath } from '@kaisers-io/refs-core';
+import { isRegistrablePackageName, zDeclinedPackage, zPackagePath } from '@kaisers-io/refs-core';
 
 // How a probe's findings read to a human. Split from `drift-report.ts`, which owns the vocabulary
 // and decides the ref's health, for the 300-line cap.
@@ -57,8 +57,14 @@ const UNKNOWN_PATH = '(unknown)';
  *
  * Splitting the two matters most exactly where it is easiest to miss. A finding with no command
  * is the one that recurs forever, so the package whose name cannot be registered is precisely the
- * one that most needs the answer "no, and stop asking". */
-const declinable = (issue: StructureIssue): boolean => zPackagePath.safeParse(issue.path).success;
+ * one that most needs the answer "no, and stop asking".
+ *
+ * It asks the STORED SHAPE, `zDeclinedPackage`, rather than the path alone, so that what this
+ * offers and what `--decline` accepts cannot drift apart: a name the schema will not store is a
+ * command that fails after being pasted. That is strictly weaker than registration — the name is
+ * held as a field here, not as a record key, so `constructor` stays declinable. */
+const declinable = (issue: StructureIssue): boolean =>
+  zDeclinedPackage.safeParse({ name: issue.name, path: issue.path }).success;
 
 const unregisteredLine = (issue: StructureIssue, key: string): string => {
   const head = `${issue.name}: declared in this checkout but not registered — it cannot be resolved by name until it is`;
@@ -69,8 +75,8 @@ const unregisteredLine = (issue: StructureIssue, key: string): string => {
   }
   if (!declinable(issue)) {
     return (
-      `${head}. Its path is one the configuration cannot hold, so there is no command for it — ` +
-      `report it and leave it unregistered`
+      `${head}. Its name or path is one the configuration cannot hold, so there is no command ` +
+      `for it — report it and leave it unregistered`
     );
   }
   // Both answers, because both are answers. Registering is the one that needs a human decision
