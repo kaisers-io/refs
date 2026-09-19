@@ -79,11 +79,18 @@ const editCommand = (
   ].join(' ');
 };
 
-/** A `rm -rf` a human or agent can paste as-is, or `undefined` for a path that cannot be printed.
- * `--` ends the option list, so a path beginning with `-` is treated as a path rather than parsed
- * as flags. */
-const rmCommand = (path: string): string | undefined =>
-  isPasteable(path) ? `rm -rf -- ${shellQuote(path)}` : undefined;
+/** A `rm -rf` a human or agent can paste as-is, or `undefined` when any of its paths cannot be
+ * printed. `--` ends the option list, so a path beginning with `-` is treated as a path rather than
+ * parsed as flags. Takes several paths because a finding may name several, and one line that
+ * removes all of them is a command; a line naming the first is a command that leaves the rest
+ * behind — which is also why ONE unprintable path withholds the whole line rather than a part of
+ * it. */
+const rmCommand = (paths: string | readonly string[]): string | undefined => {
+  const list = typeof paths === 'string' ? [paths] : paths;
+  return list.every((path) => isPasteable(path))
+    ? `rm -rf -- ${list.map((path) => shellQuote(path)).join(' ')}`
+    : undefined;
+};
 
 /** Non-recursive, for a directory that is only ever legitimately empty (a steal claim). If
  * something else has taken that path, `rmdir` refusing is the right outcome — a recursive remove

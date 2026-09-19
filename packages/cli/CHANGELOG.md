@@ -117,6 +117,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   An entry point that is genuinely missing inside the package still reports `absent`, however
   deeply nested.
 
+- **`refs doctor` looks in the hooks directory before reporting the checkouts guarded.** Every
+  managed checkout is stamped with `core.hooksPath` pointing at one refs-owned directory, and git
+  resolves hook NAMES against that directory — not against the two names refs installed there. The
+  check asked only whether `pre-commit` and `pre-push` were present and executable, so it reported
+  the guard intact while the directory held something else. Measured on git 2.54: a `post-checkout`
+  placed there runs during `refs sync`, and `doctor` still answered `ok`.
+
+  The directory is now enumerated, and anything refs did not install makes the check fail, naming
+  every entry and printing one removal that clears all of them. Every failing fact is reported at
+  once rather than one per run. A hooks directory that is not there at all says `run: refs init`,
+  which is the remedy that fixes it.
+
+  What the check does not claim is that every entry runs — a non-executable file does not. The
+  finding is that the directory git resolves hook names against holds something refs cannot
+  account for.
+
 ## [0.17.0] - 2026-09-13
 
 ### Added
