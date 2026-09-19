@@ -2,106 +2,86 @@
 
 **Real source code for coding agents.**
 
-Ask a coding agent how a library works and it answers from training data that is months
-old. Tell it to go look, and the best it finds is a minified bundle in `node_modules`.
-Private repositories are worse still. The model has never seen that code at all.
+## Ask about your dependencies and your team's repositories
 
-`refs` hands it the source. It keeps read-only git checkouts of the repositories you care
-about, so your agent reads the code that actually ships.
+```
+/refs I want to upgrade effect. what changed since the version we use, and what do I have to adjust
+```
 
-You say "add zod as a ref". `refs` resolves the npm package to its git repository, clones
-it, and works out how the project tags its releases. After that the agent answers "how
-does zod implement codecs" by reading zod's own files, and "what changed between v4.0.1
-and v4.1.0" by diffing those two tags in the same clone.
+That takes three steps. The agent reads the version your project depends on, finds the repository behind the package, and compares that release with the current one. Answers name the file and line they came from, so you can check them.
 
-`https` and `ssh` URLs both work, including the `git@host:path` form, so a private repo or
-a self-hosted forge is no different from a public one. Private ones use the credentials
-your git already has, since refs refuses to take any in the URL.
+```
+/refs I changed how our orders API paginates. check billing-worker and the admin dashboard: do they call it, and what has to change
+```
 
-## Install
+This one runs the other way. It starts with a change in your own repository and asks what it reaches. The agent reads the consumers you name, finds the call sites, and tells you which ones your change breaks. None of those repositories are public, and no model has seen any of them. `refs` keeps them as read-only git checkouts on your machine, through the git credentials you already have.
 
-You need Node.js 24.2 or newer, and git. On Windows use
-[Git for Windows](https://gitforwindows.org/), because the read-only guards are `sh` scripts
-and need the shell it ships with. The CLI behaves the same on all three platforms, and its
-full test suite runs on each of them.
+## Why not just clone it?
+
+Your agent can already clone a repository. Cloning is the easy part. `refs` keeps the repositories you name, sends a question to the right one, refreshes them when they go stale, and gives the agent a repeatable way to read them.
+
+## You talk to the agent, not to the CLI
+
+This package is the CLI. The skill that drives it installs separately:
 
 ```bash
 npm i -g @kaisers-io/refs
-refs init       # seeds the refs home directory and the git hooks guard
-refs doctor     # confirms git, node and the setup are in order
+refs init                          # seeds the refs home and the git hooks guard
+npx skills add kaisers-io/refs     # installs the agent skill
+refs doctor                        # confirms git, node and the setup are in order
 ```
 
-## The agent skill
+You need Node.js 24.2 or newer, and git. On Windows use [Git for Windows](https://gitforwindows.org/), because the read-only guards are `sh` scripts and need the shell it ships with. The CLI behaves the same on all three platforms, and its full test suite runs on each of them.
 
-This package is the CLI. The skill that drives it lives in the
-[GitHub repository](https://github.com/kaisers-io/refs) and installs separately:
+Invoke the skill with `/refs` in Claude Code or `$refs` in Codex. It never activates on its own, so questions that need no source code cost you nothing.
 
-```bash
-npx skills add kaisers-io/refs
+Then talk to the agent:
+
+```
+/refs add effect as a ref
 ```
 
-Invoke it with `/refs` in Claude Code or `$refs` in Codex. It never activates on its own.
-In Claude Code its description also stays out of the context window until you ask for it,
-so questions that need no source code cost you nothing.
+It clones the repository, works out how the project tags its releases, and shows you what it found. Nothing enters your configuration until you approve it.
 
-The agent route is the one to reach for first. It can search the source, follow what it
-finds, and talk with you about it. Its answers name the file and line they came from, so
-you can check a claim instead of trusting it, and they are clickable wherever your
-terminal or app opens file links.
+Three ways to name the same repository, all of which resolve to the key `github.com/Effect-TS/effect`:
+
+```
+npm:effect
+https://github.com/Effect-TS/effect
+git@github.com:Effect-TS/effect.git
+```
+
+npm is a convenience for packages. A private repository or a self-hosted forge works the same way, and the credentials stay in your git configuration because `refs` refuses to take any in the URL.
 
 ## Driving the CLI yourself
 
-Useful for scripting, or for checking what the agent did.
+The agent runs these. Typing one yourself is quicker for some of them, and `refs sync` is the one most people reach for.
 
 ```bash
-refs add npm:zod --dry-run --json > proposal.json   # clones and proposes, no config entry yet
+refs add npm:effect --dry-run --json > proposal.json   # clones and proposes, no config entry yet
 # open proposal.json and fill in every empty description, including each package's
-refs add --proposal proposal.json --json            # finalize
+refs add --proposal proposal.json --json               # finalize
+refs sync --json                                       # fetch what has gone stale
 ```
 
-Finalize rejects a proposal that still has an empty description, which is what keeps refs
-from inventing one for you.
+The [full command reference](https://github.com/kaisers-io/refs/blob/main/docs/commands.md) has every flag, every `--json` shape and every exit code.
 
-You can skip the file when every package already carries a description in its own manifest:
+## What lives on your machine
 
-```bash
-refs add https://github.com/stevemao/left-pad --description "Left-pad a string." --json
-```
+Checkouts sit under `~/.kaisers-io/refs/sources/` as ordinary git repositories. You can open them in your editor, grep them, and read them without an agent. Set `REFS_HOME` to keep them somewhere else, on another disk for instance, and everything `refs` owns moves with it: see [configuration](https://github.com/kaisers-io/refs/blob/main/docs/configuration.md). No service holds a copy of your code. What the agent reads is handled under that agent's own model and data settings.
 
-Every command takes `--json` for a stable machine-readable envelope, and `--verbose` for
-stack traces. Both are global flags, so they are listed under `refs --help` rather than
-under each command's own help.
-
-| Command        | What it does                                                                          |
-| -------------- | ------------------------------------------------------------------------------------- |
-| `refs init`    | Seed or migrate the refs home directory, its config and the git hooks guard.          |
-| `refs add`     | Add a git reference: propose with `--dry-run`, then finalize with `--proposal`.       |
-| `refs list`    | List configured refs with their staleness and missing-checkout status.                |
-| `refs show`    | Show one ref: entry, state, local path, package count.                                |
-| `refs sync`    | Fetch configured refs, or re-clone the ones whose checkout went missing.              |
-| `refs resolve` | Resolve a git url, npm package name, import path or key suffix to its ref or package. |
-| `refs tag`     | Resolve a version to its git tag through the ref's `tag_format`, or a package's.      |
-| `refs edit`    | Edit one field of a global setting, a ref or a package.                               |
-| `refs remove`  | Remove a ref: its config and state entry, and its checkout directory.                 |
-| `refs doctor`  | Check the environment and the integrity of what refs manages.                         |
-| `refs migrate` | Migrate the config to the current schema, seeding it if absent.                       |
-
-Full reference, including exit codes and `--json` shapes:
-[`docs/commands.md`](https://github.com/kaisers-io/refs/blob/main/docs/commands.md).
+A checkout is the default branch at the revision you last fetched. It is not necessarily the version you have installed, and it does not refresh itself. `refs sync` fetches, and the skill runs it when a checkout has gone stale.
 
 ## Read-only is a promise, not a sandbox
 
-Every checkout is a reference, not a working copy. `refs` installs git hooks that reject
-commits and pushes inside one, and `refs sync` restores a checkout that got dirty anyway.
+Every checkout under `sources/` is reference material. Agents are instructed never to edit, commit or push inside one, and `refs` installs git hooks that reject both. When a checkout gets dirty anyway, `refs sync` restores it.
 
-Those hooks are a backstop against mistakes. A determined local process can still write
-into a checkout, so treat this as a workflow that holds, not as a security boundary.
+The hooks are a backstop against mistakes, not a security boundary. A determined local process can still write into a checkout.
 
-## Changelog
+## More
 
-`CHANGELOG.md` ships inside this package, so npm's "Code" tab shows it without leaving the
-package page.
+- [Worked investigations](https://github.com/kaisers-io/refs/blob/main/docs/investigations.md), each ending in what the answer leaves open.
+- [Configuration](https://github.com/kaisers-io/refs/blob/main/docs/configuration.md): `config.toml`, `state.json`, per-ref settings and `REFS_HOME`.
+- [Changelog](https://github.com/kaisers-io/refs/blob/main/CHANGELOG.md).
 
-## License
-
-MIT
+MIT licensed.
