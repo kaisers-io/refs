@@ -8,6 +8,14 @@ keys, urls, and paths in them are placeholders (`example-org/…`) — not repos
 skill fetches, tracks, or suggests. Real ones come from the user's own config, via
 `refs list`, `refs resolve`, or `refs show`.
 
+**The `refs <verb> …` lines under each heading are SYNOPSES — they show the grammar, not a line to
+paste.** `<ref>`, `<name>`, `<path>` and `<version>` stand for values that reach you from a
+tracked repository or from the user, and every one of them is single-quoted when you actually run
+something: `refs edit --package='<name>' path '<new-path>' '<ref>'`. Close and reopen the quote
+around any single quote in a value (`'a'\''b'`), and attach an option's value with `=` so a value
+beginning with `-` is not read as the next option. The runnable lines elsewhere in this skill are
+written that way; see _Never build a shell command out of a value refs reported_ below.
+
 ## Envelope, streams, exit codes
 
 ```
@@ -474,7 +482,8 @@ without one.
 **Never build a shell command out of a value refs reported.** A package name comes from the
 tracked repository's own manifest and a path comes from its directory layout; refs checks that they
 are TRUE, not that they are safe to paste. Both may contain a space, a single quote, `$(…)` or a
-backtick, and a tag name may too — git accepts all of them.
+backtick. A tag name may carry a semicolon, a single quote, backticks or `$(…)` — git creates and
+lists those back — but NOT a space or a control character, which `git check-ref-format` refuses.
 
 So: run the command refs printed. Every finding in `refs doctor --json` carries its repair commands
 already quoted — `register`, `decline`, `repoint`, `unregister` — beside the raw `name` and `path`,

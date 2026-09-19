@@ -26,8 +26,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `INVESTIGATE.md` and `MAINTAIN.md` gave agent-facing templates with no quoting around values
   refs reports — a package name comes from a tracked repository's own manifest, a path from its
   directory layout, and a tag from its tag list. refs checks that those are true, not that they
-  are safe to paste. The rule is now written down once and applied in every template: run the
-  command refs printed; if you must build one, single-quote every interpolated value.
+  are safe to paste. The rule is now written down once: run the command refs printed; if you must
+  build one, single-quote every interpolated value and close-and-reopen the quote around any single
+  quote in it. Every RUNNABLE line in those documents follows it, and the command synopses — which
+  show a verb's grammar rather than a line to paste — say so explicitly instead of being quoted as
+  though they were.
+
+  Two corrections to what those documents asserted. `git tag -l '<prefix>…'` needs a `--` before
+  the pattern: a prefix beginning with `-` otherwise fails with
+  `options '-v' and '-l' cannot be used together`, and the prefix comes from the repository's own
+  tags. And git does not accept every metacharacter in a tag name — a semicolon, a single quote,
+  backticks and `$(…)` it creates and lists back, but `git check-ref-format` refuses a space or a
+  control character.
 
 ### Fixed
 
