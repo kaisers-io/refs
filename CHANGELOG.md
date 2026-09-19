@@ -222,6 +222,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   did. This is not about forbidden names — `toString` and `valueOf` are perfectly legal package
   keys, and a package really registered under one still resolves, with its own tag format.
 
+- **`refs migrate` no longer reports a config up to date without validating it.** When the schema
+  version already matched, it re-serialised the file with a fresh `cli_version` and answered
+  `noop` — rendered as "config up to date" — having checked nothing about the contents. Measured:
+  a `clone_mode` of `42` was stamped and reported current, while every reader then refused the
+  file. The document is now validated before both the write and the answer, and nothing is written
+  when it fails, so the file the user still has is the one they started with.
+
+  What is validated is the STAMPED document. A config whose `meta.cli_version` is missing fails
+  validation as it stands and passes once stamped, and repairing exactly that is what the stamp is
+  for — checking the input instead would have withdrawn a repair refs has always performed.
+
+  `refs init` shares this path, so it now refuses a config in that state rather than reporting the
+  home ready. That is the same claim being made honestly, but it is a behaviour change: `init`
+  previously succeeded and left the problem for `doctor` to find.
+
 ## [0.17.0] - 2026-09-13
 
 ### Added
