@@ -1,3 +1,4 @@
+import { chmod, mkdtemp, rm, symlink } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import {
   expectCheck,
@@ -7,8 +8,8 @@ import {
   withResetExitCode,
   withTempHome,
 } from '../helpers/doctor-support.ts';
-import { chmod } from 'node:fs/promises';
-import { sep } from 'node:path';
+import { join, sep } from 'node:path';
+import { tmpdir } from 'node:os';
 
 // `home-modes` — what `refs init` sets, checked on a home that already exists.
 //
@@ -25,6 +26,12 @@ const onWindows = sep === '\\';
 /** What `umask 000` leaves behind, which is the case this exists for. */
 const WORLD_WRITABLE = 0o777;
 const WORLD_READABLE_FILE = 0o644;
+/** A perfectly ordinary mode for a directory somebody else owns. */
+const OPEN_DIRECTORY = 0o755;
+
+/** This check's own detail line, so a test can assert what it does NOT say. */
+const detailOf = (envelope: { data?: { checks?: { detail?: string; name?: string }[] } }): string =>
+  String((envelope.data?.checks ?? []).find((check) => check.name === 'home-modes')?.detail ?? '');
 
 describe.skipIf(onWindows)('refs doctor: the modes on a home refs owns', () => {
   it('is quiet on a home init just created', async () => {
@@ -37,7 +44,7 @@ describe.skipIf(onWindows)('refs doctor: the modes on a home refs owns', () => {
         const envelope = await runDoctorJson(ctx, stdout);
 
         expectCheck(envelope, 'home-modes', {
-          detailContains: 'reachable only by its owner',
+          detailContains: 'no group or other permission bits',
           status: 'ok',
         });
       }),
@@ -102,6 +109,55 @@ describe.skipIf(onWindows)('refs doctor: repairing a home whose modes are wrong'
         // Not a `chmod` line with a path interpolated into it: `init` already sets every one of
         // these, is idempotent, and needs no value from the caller.
         expectCheck(envelope, 'home-modes', { detailContains: 'run: refs init', status: 'warn' });
+      }),
+    );
+  });
+});
+
+describe.skipIf(onWindows)('refs doctor: a symlinked directory in the home', () => {
+  it('reports the open target without claiming refs init would repair it', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, home, runner, stdout } = await setupInitializedHome(homeDir);
+        // Pointing `sources` at another disk is a legitimate thing to do, and `refs init` will not
+        // chmod a link: `chmod` follows it, and the target's mode is its own owner's business. So
+        // the finding has to stand without advertising a repair that leaves it standing.
+        const elsewhere = await mkdtemp(join(tmpdir(), 'refs-elsewhere-'));
+        await chmod(elsewhere, OPEN_DIRECTORY);
+        await rm(home.sourcesDir, { force: true, recursive: true });
+        await symlink(elsewhere, home.sourcesDir, 'dir');
+        expectGitVersion(runner);
+
+        const envelope = await runDoctorJson(ctx, stdout);
+
+        expectCheck(envelope, 'home-modes', { detailContains: 'a symlink', status: 'warn' });
+        expect(detailOf(envelope)).not.toContain('run: refs init');
+      }),
+    );
+  });
+});
+
+describe.skipIf(onWindows)('refs doctor: a path in the home that cannot be inspected', () => {
+  it('says so, rather than counting it as nothing found', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const { ctx, home, runner, stdout } = await setupInitializedHome(homeDir);
+        // A failure to look is never evidence. Treating `ELOOP` like an absent file would have let
+        // the check report that nothing was open, which it had not established.
+        const loop = `${home.statePath}.loop`;
+        await rm(home.statePath, { force: true });
+        await symlink(home.statePath, loop);
+        await symlink(loop, home.statePath);
+        expectGitVersion(runner);
+
+        const envelope = await runDoctorJson(ctx, stdout);
+
+        expectCheck(envelope, 'home-modes', {
+          detailContains: 'could not be inspected',
+          status: 'warn',
+        });
       }),
     );
   });

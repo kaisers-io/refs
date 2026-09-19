@@ -1,7 +1,7 @@
 import { DIR_MODE, FILE_MODE } from '@kaisers-io/refs-core';
+import { lstat, stat } from 'node:fs/promises';
 import type { CheckResult } from './doctor-types.ts';
 import type { RefsHome } from '@kaisers-io/refs-core';
-import { stat } from 'node:fs/promises';
 
 // `home-modes` — whether the things refs owns are readable or writable by anyone but their owner.
 //
@@ -49,24 +49,65 @@ const ownedPaths = (home: RefsHome): OwnedPath[] => [
 const asOctal = (mode: number): string =>
   (mode & PERMISSION_BITS).toString(OCTAL).padStart(MODE_DIGITS, '0');
 
-/** The permission bits, or `undefined` for a path that is not there — an absent `state.json` is an
- * ordinary state on a home nothing has been added to, not a finding. */
-const permissionsOf = async (path: string): Promise<number | undefined> => {
+/** What was found at one path: its mode, that it is not there, or that looking failed.
+ *
+ * The three are kept apart because collapsing them is how a check starts lying. The first version
+ * caught every error and treated it as absence, so an `EACCES`, an `ELOOP` or an `ENOTDIR` produced
+ * the same silence as a `state.json` that was simply never written — and the check then reported
+ * that nothing was open. A failure to look is never evidence. */
+type Observation =
+  | { kind: 'absent' }
+  | { kind: 'mode'; mode: number; symlink: boolean }
+  | { kind: 'unreadable'; reason: string };
+
+/** The only code that means "nothing is there". Everything else is a failure to look. */
+const MISSING_CODE = 'ENOENT';
+
+const codeOf = (error: unknown): string =>
+  error instanceof Error && 'code' in error ? String(error.code) : 'unknown';
+
+const observe = async (path: string): Promise<Observation> => {
   try {
-    const stats = await stat(path);
-    return stats.mode & PERMISSION_BITS;
-  } catch {
-    return undefined;
+    // `lstat` as well, because the repair does not treat the two alike: `refs init` deliberately
+    // does NOT chmod a symlinked directory — `chmod` follows the link, and the mode of whatever it
+    // points at is its own owner's business. Naming `refs init` for a link would advertise a repair
+    // that leaves the finding standing.
+    const [stats, link] = await Promise.all([stat(path), lstat(path)]);
+    return { kind: 'mode', mode: stats.mode & PERMISSION_BITS, symlink: link.isSymbolicLink() };
+  } catch (error) {
+    const reason = codeOf(error);
+    return reason === MISSING_CODE ? { kind: 'absent' } : { kind: 'unreadable', reason };
   }
 };
 
-const tooOpen = async (owned: OwnedPath): Promise<string | undefined> => {
-  const mode = await permissionsOf(owned.path);
-  if (mode === undefined || (mode & GROUP_AND_OTHER) === 0) {
+/** What is worth saying about one path, and whether `refs init` is the answer to it. */
+type Finding = { repairable: boolean; text: string };
+
+const findingFor = async (owned: OwnedPath): Promise<Finding | undefined> => {
+  const seen = await observe(owned.path);
+  if (seen.kind === 'absent') {
+    // A home nothing has been added to has no `state.json`. That is a state, not a finding.
     return undefined;
   }
-  return `${owned.label} is ${asOctal(mode)} (expected ${asOctal(owned.expected)})`;
+  if (seen.kind === 'unreadable') {
+    // Not `ok`, and not a mode claim either: nothing was established about this path.
+    return { repairable: false, text: `${owned.label} could not be inspected (${seen.reason})` };
+  }
+  if ((seen.mode & GROUP_AND_OTHER) === 0) {
+    return undefined;
+  }
+  const byHand = seen.symlink ? ' — a symlink; fix it where it points' : '';
+  return {
+    repairable: !seen.symlink,
+    text: `${owned.label} is ${asOctal(seen.mode)} (expected ${asOctal(owned.expected)})${byHand}`,
+  };
 };
+
+/** The remedy, or none. `refs init` is offered only where it would actually do something: it
+ * deliberately does not chmod a symlinked directory, and it cannot act on a path that could not be
+ * inspected — printing it there would advertise a repair that leaves the finding standing. */
+const remedyFor = (findings: readonly Finding[]): string =>
+  findings.some((finding) => finding.repairable) ? ' — run: refs init' : '';
 
 const checkHomeModes = async (home: RefsHome): Promise<CheckResult> => {
   if (process.platform === 'win32') {
@@ -76,11 +117,14 @@ const checkHomeModes = async (home: RefsHome): Promise<CheckResult> => {
       status: 'ok',
     };
   }
-  const found = await Promise.all(ownedPaths(home).map((owned) => tooOpen(owned)));
+  const found = await Promise.all(ownedPaths(home).map((owned) => findingFor(owned)));
   const open = found.filter((entry) => entry !== undefined);
   if (open.length === 0) {
     return {
-      detail: 'everything refs owns is reachable only by its owner',
+      // Narrower than "reachable only by its owner", which mode bits do not establish: an ancestor
+      // a second principal can write, an ACL, or a change of owner would each defeat it while every
+      // bit here stayed 0.
+      detail: 'no group or other permission bits on anything refs owns',
       name: NAME,
       status: 'ok',
     };
@@ -88,7 +132,7 @@ const checkHomeModes = async (home: RefsHome): Promise<CheckResult> => {
   return {
     // `refs init` rather than a `chmod` line: it already sets every one of these, it is idempotent,
     // and it needs no path interpolated into a command.
-    detail: `${open.join('; ')} — run: refs init`,
+    detail: `${open.map((finding) => finding.text).join('; ')}${remedyFor(open)}`,
     name: NAME,
     status: 'warn',
   };

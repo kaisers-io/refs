@@ -25,6 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and refs cannot read that policy. On Windows the check reports that it does not apply, because the
   mode bits there do not say who may write.
 
+  Two things it is careful not to claim. A path that could not be INSPECTED is reported as such
+  rather than counted as nothing found — an `ELOOP` or an `EACCES` is a failure to look, and the
+  quiet answer would otherwise assert something it had not established. And `refs init` is offered
+  only where it would act: it deliberately does not chmod a symlinked directory, since `chmod`
+  follows the link and the target's mode is its own owner's business, so a symlinked `sources/`
+  pointing somewhere open is reported with "fix it where it points" instead of a repair that would
+  leave the finding standing. The quiet message says "no group or other permission bits" rather than
+  "reachable only by its owner", which mode bits alone do not establish.
+
 ### Added
 
 - **Every drift finding in `refs doctor --json` carries its repair commands, already quoted.**
