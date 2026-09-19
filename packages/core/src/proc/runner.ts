@@ -88,7 +88,21 @@ const startChild = (
   args: readonly string[],
   opts: RunOpts | undefined,
 ): RunningChild => {
-  const child = spawn(cmd, args, { ...cwdOpt(opts?.cwd), stdio: ['ignore', 'pipe', 'pipe'] });
+  // `shell: false` is Node's default, so this changes nothing at runtime — it states the property
+  // the rest of the codebase rests on. Every argument refs passes to git is built from values a
+  // tracked repository or the user supplied (a url, a ref key, a package path), and none of them is
+  // shell-quoted on the way in, because there is no shell to quote for: `spawn` with an argv array
+  // performs an execve. Measured with a `-c core.hooksPath=/tmp/hooks; touch /tmp/PWNED` value —
+  // the file is not created.
+  //
+  // It does NOT change what code scanning reports: `js/shell-command-constructed-from-input` and
+  // its two siblings were raised again with the option spelled out. They are false positives on
+  // this call and have to be handled as such, not argued with in code.
+  const child = spawn(cmd, args, {
+    ...cwdOpt(opts?.cwd),
+    shell: false,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
   activeChildren.add(child);
   const stdoutCollector = createCollector();
   const stderrCollector = createCollector();
