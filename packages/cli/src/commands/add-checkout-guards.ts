@@ -78,8 +78,11 @@ const ensureCheckoutOrigin = async (
   throw conflictError(originMismatchMessage(opts.dest, actual, opts.expectedUrl));
 };
 
-const unmanagedCheckoutMessage = (dest: string): string =>
-  `checkout at ${dest} exists but is not refs-managed — remove it (${rmCommand(dest)}) and retry`;
+const unmanagedCheckoutMessage = (dest: string): string => {
+  const removal = rmCommand(dest);
+  const how = removal === undefined ? 'by hand' : `(${removal})`;
+  return `checkout at ${dest} exists but is not refs-managed — remove it ${how} and retry`;
+};
 
 /** Reuse-path-only guard: confirms `dest` is a checkout `refs` itself produced — the `cloneRepo`
  * marker (`core.hooksPath` pointing at this home's `hooksDir`) — rather than merely a directory

@@ -31,7 +31,7 @@ const CONTROL_CHARACTER = /\p{Cc}/gu;
 // instead, and this keeps everything else a control character cannot do.
 const CONTROL_CHARACTER_BUT_LF = /[^\P{Cc}\n]/gu;
 
-/** A line that cannot restructure the output it is printed into.
+/** A line whose C0/C1 control characters are neutralised, so a value inside it cannot BE a line.
  *
  * Human lines are composed from values a tracked repository chooses: a workspace member's name is
  * taken from its manifest and interpolated unquoted at the head of every drift finding. A newline
@@ -42,8 +42,17 @@ const CONTROL_CHARACTER_BUT_LF = /[^\P{Cc}\n]/gu;
  * `shellQuote` is not this control: it quotes for a shell PARSER, which preserves an embedded
  * newline inside the quotes, and the head of a drift line is not inside a command at all.
  *
- * Only the human path needs it. `JSON.stringify` escapes U+0000–U+001F, so the `--json` envelope
- * an agent parses was never affected — which is also why this does not change that envelope.
+ * This is not a general claim that the output cannot be restructured. It covers the lines that
+ * pass through here — `emit`'s own and its warnings — and NOT a message that legitimately spans
+ * lines, which keeps its `\n` and so neutralises the untrusted values composed INTO that layout at
+ * the point they are composed (`requireDescribablePackages` in `add-packages.ts`). `\p{Cc}` is also
+ * not every character with line semantics: U+2028, U+2029 and the bidi controls pass through. None
+ * of them ends a line for a terminal, which is why the contract is stated as C0/C1 neutralisation.
+ *
+ * Only the human path needs it. `JSON.stringify` escapes U+0000–U+001F, so the parsed identity of
+ * the `--json` envelope was never affected — which is why this does not change that envelope. It
+ * does not escape every C1 control, so raw JSON DISPLAYED in a terminal is a separate question
+ * from the JSON an agent parses.
  *
  * What a terminal does with an ESC or CSI byte is a property of that terminal and is not claimed
  * here; those bytes are neutralised because they are control characters, not because a specific

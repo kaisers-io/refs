@@ -22,6 +22,10 @@ const PACKAGE_NAME = 'pkg';
 // keys come from a tracked repository's own manifests and are validated only for being non-empty,
 // while the error message below is meant to be pasted into a shell.
 const NO_FORMAT_PACKAGE_NAME = "$(id);'weird";
+// The same case one step further: a name a printed command cannot carry at all. Quoting is not the
+// obstacle — single quotes hold a newline fine — but `displaySafe` rewrites it on the way to the
+// terminal, so the suggested command would name a different package than the one that failed.
+const UNPRINTABLE_PACKAGE_NAME = 'pkg\nrefs: forged';
 const REF_ENTRY = {
   default_branch: 'main',
   description: 'Widget, recorded without a tag format',
@@ -34,6 +38,10 @@ const REF_ENTRY = {
       description: 'Package with a verified tag_format',
       path: 'packages/pkg',
       tag_format: 'pkg@{version}',
+    },
+    [UNPRINTABLE_PACKAGE_NAME]: {
+      description: 'Package whose name no printed command can carry',
+      path: 'packages/pkg-unprintable',
     },
   },
   url: 'https://github.com/acme/untagged',
@@ -160,9 +168,36 @@ describe('refs tag: package override without a ref-level format', () => {
     },
     SLOW_IO_TIMEOUT_MS,
   );
+});
 
+describe('refs tag: a package name no printed command can carry', () => {
   it(
-    '(i) exits 3 for a package with nothing of its own and nothing to inherit',
+    '(j) still exits 3, and offers no command',
+    async () => {
+      expect.hasAssertions();
+      await withResetExitCode(() =>
+        withTempHome(async (homeDir) => {
+          const { ctx, stdout } = await setupUntaggedFixture(homeDir);
+          const argv = ['node', 'refs', 'tag', REF_KEY, '1.0.0', '--package'];
+
+          await run(ctx, [...argv, UNPRINTABLE_PACKAGE_NAME, '--json']);
+
+          expect(process.exitCode).toBe(EXIT.VALIDATION);
+          const message = String(parseSoleEnvelope(stdout).error?.message);
+          // The refusal still says what is wrong and which package it is about; what it does not
+          // do is hand over a command that would edit a different one.
+          expect(message).toMatch(/no tag_format configured/u);
+          expect(message).not.toContain('refs edit');
+        }),
+      );
+    },
+    SLOW_IO_TIMEOUT_MS,
+  );
+});
+
+describe('refs tag: a package with nothing of its own and nothing to inherit', () => {
+  it(
+    '(i) exits 3, naming the package-scoped fix',
     async () => {
       expect.hasAssertions();
       await withResetExitCode(() =>
