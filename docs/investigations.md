@@ -42,6 +42,8 @@ The value is in what it saves. Without it you ask around, or you find out when s
 
 **Name the consumers.** `refs` routes a question to a repository; it does not work out which of your refs depend on which. Listing them is on you, and `refs list --json` is the reminder of what you track.
 
+Calling them by the name your team uses is enough. The CLI matches ref keys and package names, and where that finds nothing the agent falls back to the ref list and matches what you said against each description. That is what descriptions are for: they make a repository findable by the name people actually say, rather than by its URL.
+
 **What stays open.** A search finds the call sites that are there to find. Code that reaches your API through a variable, a generated client, or a configuration value will not turn up. The answer is a list of places to look, not a proof that the rest is safe.
 
 ## A flow that crosses several repositories
