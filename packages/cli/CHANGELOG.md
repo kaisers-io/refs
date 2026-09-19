@@ -310,6 +310,24 @@ toString` returned a tag, silently using the ref's own format for a package the 
   the command, and `/bin/sh ./script.sh` has an absolute program and runs the checkout's script
   anyway. `SECURITY.md` states the boundary, these exclusions, and what the check does not decide.
 
+### Changed
+
+- **The release workflow refuses a version that is not newer than the published one, and its
+  publish job declares a GitHub Environment.** A `v*` tag push is the only trigger, and GitHub
+  resolves a push-triggered workflow from the pushed ref — so every guard authorizing a release is
+  content of the tagged tree, and a tag whose tree deletes one is never subjected to it. An
+  Environment is the one gate that can live in repository settings instead, and npm's trusted
+  publisher can bind it alongside the repository and the workflow filename, which is what makes
+  deleting the key from a tag's tree fail rather than pass.
+
+  Both halves have to be configured outside the repository, and `CONTRIBUTING.md` now says what
+  they are, what a deployment tag rule does not achieve on its own, and how to check each
+  separately — a failed publish proves nothing by itself.
+
+  The version guard fails closed: a registry lookup that errors stops the release rather than
+  reading as "nothing published yet", and anything that is not a plain `x.y.z` is refused rather
+  than ordered.
+
 ## [0.17.0] - 2026-09-13
 
 ### Added
