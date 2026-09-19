@@ -11,10 +11,10 @@
 That takes three steps. The agent reads the version your project depends on, finds the repository behind the package, and compares that release with the current one. Answers name the file and line they came from, so you can check them.
 
 ```
-/refs does our payments client still match what the checkout service expects
+/refs I changed how our orders API paginates. go through the services we track, find the ones that call it, and tell me who has to adjust
 ```
 
-This one reads two private repositories no model has seen. `refs` keeps them as read-only git checkouts on your machine, through the git credentials you already have.
+This one runs the other way. Rather than reading one repository, the agent searches every checkout you keep for the code that calls yours, and reports which of them your change reaches. None of those repositories are public, and no model has seen any of them. `refs` keeps them as read-only git checkouts on your machine, through the git credentials you already have.
 
 ## Why not just clone it?
 

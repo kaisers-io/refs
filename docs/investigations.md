@@ -30,6 +30,18 @@ From there the agent reads commits and diffs between the two tags, scoped to the
 
 **What stays open.** A diff tells you what changed in the library. It does not tell you what your code does with it. The agent can look for the changed names in your project, and that is a search, not a proof. Ask it to name the revisions it compared, because a checkout is the default branch at the last fetch and not necessarily the version you have installed.
 
+## Who has to change when I change something
+
+```
+/refs I changed how our orders API paginates. go through the services we track, find the ones that call it, and tell me who has to adjust
+```
+
+This starts in your own repository and runs outwards. The agent reads what you changed, then searches every checkout for the code that calls it: the import, the endpoint, the field you renamed. What comes back is a list of repositories your change reaches, with the file and line in each.
+
+The value is in what it saves. Without it you ask around, or you find out when something breaks in a service you do not own.
+
+**What stays open.** A search finds the call sites that are there to find. Code that reaches your API through a variable, a generated client, or a configuration value will not turn up, and neither will a consumer you do not track. The answer is a list of places to look, not a proof that the rest is safe.
+
 ## A flow that crosses several repositories
 
 ```
