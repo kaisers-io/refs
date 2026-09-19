@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { join, relative } from 'node:path';
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { readEntryPoints } from '../src/entry-points.ts';
 import { tmpdir } from 'node:os';
 
@@ -38,6 +38,21 @@ const outsideDir = (): string => {
   return dir;
 };
 
+/** A package with a live and a dead symlink of the given basename, each declared WITH a trailing
+ * slash, so the pair differs only in whether the out-of-package target exists. */
+const slashedLinkPair = (name: string): string => {
+  const outside = outsideDir();
+  const dir = freshPackage({
+    exports: { './gone': `./dead${name}/`, './here': `./live${name}/` },
+    name: 'p',
+  });
+  // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+  symlinkSync(outside, join(dir, `live${name}`), 'dir');
+  // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+  symlinkSync(join(outside, 'no-such-dir'), join(dir, `dead${name}`), 'dir');
+  return dir;
+};
+
 const observationsOf = async (dir: string): Promise<string[]> => {
   const { entries } = await readEntryPoints(dir, 'p');
   return entries.map((entry) => (entry.value as { observed: string }).observed);
@@ -48,11 +63,20 @@ const observationsOf = async (dir: string): Promise<string[]> => {
  * not be `absent` — which is the answer that says something about the path.
  *
  * Not pinned to a literal, because the value legitimately differs by platform: on Windows an
- * absolute path carries a drive letter, so `./..` + it contains `:` and `\`, which the probe gate
- * refuses outright as `not_checked`. Refusing earlier is not the bug; answering DIFFERENTLY is. */
+ * absolute path carries a drive letter, so `./..` + it spells a backslash, which the probe gate
+ * refuses outright as `not_checked`. (The colon in it does NOT refuse — the gate excludes
+ * whitespace, `%`, `?`, `#` and `\`, and nothing else.) Refusing earlier is not the bug; answering
+ * DIFFERENTLY is — and the sibling case below reaches the walk on every platform. */
+const NON_COMMITTAL = ['not_checked', 'unverifiable'];
+/** One target whose out-of-package path exists, one whose does not. */
+const TARGET_PAIR = 2;
+
 const expectSameAndNonCommittal = (observed: readonly string[]): void => {
+  // Exactly two, so an implementation that drops one target cannot satisfy the equality by
+  // leaving a single observation behind, and neither can one that answers `file` for both.
+  expect(observed).toHaveLength(TARGET_PAIR);
   expect(new Set(observed).size).toBe(1);
-  expect(observed).not.toContain('absent');
+  expect(NON_COMMITTAL).toContain(observed[0]);
 };
 
 describe('a target that leaves the package', () => {
@@ -71,6 +95,29 @@ describe('a target that leaves the package', () => {
     expectSameAndNonCommittal(await observationsOf(dir));
   });
 
+  it('says the same thing for a same-volume sibling, reached on every platform', async () => {
+    expect.hasAssertions();
+    const outside = outsideDir();
+    const dir = freshPackage({ name: 'p' });
+    // Spelled relative and with forward slashes, so it carries no drive letter and no backslash:
+    // the gate passes it on Windows too, where the absolute traversal above is refused before the
+    // containment walk is ever reached.
+    const toOutside = relative(dir, outside).replaceAll('\\', '/');
+    const manifest = {
+      exports: {
+        './gone': `./${toOutside}/absent.js`,
+        './here': `./${toOutside}/present.js`,
+      },
+      name: 'p',
+    };
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    writeFileSync(join(dir, 'package.json'), JSON.stringify(manifest));
+
+    expectSameAndNonCommittal(await observationsOf(dir));
+  });
+});
+
+describe('a target that leaves the package through a link', () => {
   it('says the same thing through a symlink, which carries no .. at all', async () => {
     expect.hasAssertions();
     const outside = outsideDir();
@@ -88,20 +135,19 @@ describe('a target that leaves the package', () => {
 
   it('says the same thing for a trailing-slash target, where lstat sees no link', async () => {
     expect.hasAssertions();
-    const outside = outsideDir();
-    const dir = freshPackage({
-      exports: { './gone': './deadlink/', './here': './livelink/' },
-      name: 'p',
-    });
     // `./link/` keeps its slash through `join`, and a trailing slash makes `lstat` resolve the
     // link as a directory rather than inspect the link itself — so a link at a directory that does
     // not exist looked like a plain absence, and stepping to the parent walked straight over it.
-    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
-    symlinkSync(outside, join(dir, 'livelink'), 'dir');
-    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
-    symlinkSync(join(outside, 'no-such-dir'), join(dir, 'deadlink'), 'dir');
+    expectSameAndNonCommittal(await observationsOf(slashedLinkPair('link')));
+  });
 
-    expectSameAndNonCommittal(await observationsOf(dir));
+  it('says the same thing when the link name ends in a colon', async () => {
+    expect.hasAssertions();
+    // The trailing separator is kept only at a filesystem ROOT, where removing it would name
+    // something else. Approximating that root as "ends in `:`" fired for any basename ending in a
+    // colon, which `PROBEABLE` does not exclude — so these two kept their slash, `lstat` followed
+    // them as directories, and the dead one was reported `absent` about an external path.
+    expectSameAndNonCommittal(await observationsOf(slashedLinkPair('link:')));
   });
 });
 

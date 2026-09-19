@@ -9,7 +9,7 @@
 // Resolution deliberately happens BEFORE any read, so a symlink pointing out of the tree is
 // rejected without its contents ever being touched — the same discipline `workspaces.ts` follows
 // and `workspaces-containment.test.ts` pins.
-import { dirname, isAbsolute, relative, sep } from 'node:path';
+import { dirname, isAbsolute, parse, relative, sep } from 'node:path';
 import { lstat, realpath } from 'node:fs/promises';
 
 const PARENT_DIR_SEGMENT = '..';
@@ -95,23 +95,33 @@ const resolveInside = async (root: string, target: string): Promise<ContainmentR
     : { kind: 'outside' };
 };
 
-const SEPARATORS = new Set(['/', '\\']);
-const DRIVE_SUFFIX = ':';
+// Only the host's own separators. Windows accepts both spellings and `sep` is the backslash
+// there; POSIX has just the one, and the Set collapses the duplicate. Taking the backslash on
+// POSIX too would rewrite a trailing `b\\/` into `b`, naming a different basename — there it is
+// an ordinary filename character.
+const SEPARATORS: ReadonlySet<string> = new Set(['/', sep]);
 
-/** `path` without its trailing separators, unless removing them would change what it names — a
- * filesystem root is all separator, and a Windows `C:` without one is drive-RELATIVE.
+/** `path` without its trailing separators, stopping at the filesystem root so that removing them
+ * cannot change what the path names.
+ *
+ * The root comes from `parse`, which knows every spelling the host has: `/`, `C:\\`, a drive-RELATIVE
+ * `C:` that carries no separator to strip, and a UNC share root. An earlier version approximated it
+ * as "the trimmed path ends in `:`" and so fired for ANY basename ending in a colon — a symlink
+ * named `deadlink:` kept its trailing slash, `lstat` followed it as a directory, and the dangling
+ * link it pointed at was reported as an absence INSIDE the package. `:` is not excluded by the
+ * manifest gate, so that target reached this code from a declared `exports` entry.
  *
  * Scanned rather than matched with `/[/\\]+$/`, which is a polynomial ReDoS: anchoring a
  * quantified class at the end makes the engine retry from every position, and the target here is
  * a path built from a declared `exports` target. Measured on that regex: 156 ms for 10 000 leading
  * separators, 15.6 s for 100 000. This is linear. */
 const withoutTrailingSeparators = (path: string): string => {
+  const rootLength = parse(path).root.length;
   let end = path.length;
-  while (end > 0 && SEPARATORS.has(path.charAt(end - 1))) {
+  while (end > rootLength && SEPARATORS.has(path.charAt(end - 1))) {
     end -= 1;
   }
-  const trimmed = path.slice(0, end);
-  return trimmed === '' || trimmed.endsWith(DRIVE_SUFFIX) ? path : trimmed;
+  return path.slice(0, end);
 };
 
 /** Whether an ABSENCE at `path` is an absence INSIDE the package.
