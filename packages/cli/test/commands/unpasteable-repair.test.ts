@@ -35,7 +35,6 @@ describe('an unregistered package whose command would carry an unprintable value
     ['a newline in the name', '@acme/a\nb', 'packages/ok'],
     ['a carriage return in the name', '@acme/a\rb', 'packages/ok'],
     ['an escape sequence in the name', `@acme/a${ESCAPE}[2Kb`, 'packages/ok'],
-    ['a lone surrogate in the name', `@acme/a${LONE_SURROGATE}b`, 'packages/ok'],
     // The two a name-only gate let through. The path and the key are no safer than the name:
     // `zPackagePath` admits an embedded control character, and so does a ref key.
     ['a newline in the path', '@acme/ok', 'packages/a\nb'],
@@ -46,6 +45,23 @@ describe('an unregistered package whose command would carry an unprintable value
     const line = lineFor({ name, path, status: 'unregistered' });
 
     expect(line).toContain('no single-line command can carry these values');
+    expect(line).not.toContain('refs edit');
+  });
+});
+
+describe('an unregistered package whose name has no UTF-8 encoding', () => {
+  it('offers no command either', () => {
+    expect.hasAssertions();
+
+    const line = lineFor({
+      name: `@acme/a${LONE_SURROGATE}b`,
+      path: 'packages/ok',
+      status: 'unregistered',
+    });
+
+    // Only the absence of a command is asserted, not which sentence explains it: a lone surrogate
+    // is BOTH a value `config.toml` cannot hold and one no printed line can carry, and whichever
+    // check answers first is an implementation detail. Offering a command would not be.
     expect(line).not.toContain('refs edit');
   });
 
