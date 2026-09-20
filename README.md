@@ -60,7 +60,7 @@ Three ways to name the same repository. All of them resolve to the key `github.c
 
 The `npm:` prefix says which registry the name belongs to, so a package and a repository that share a name cannot be confused for one another. A private repository or a self-hosted forge works the same way, and the credentials stay in your git configuration because `refs` refuses to take any in the URL.
 
-The CLI does the same things, and it is worth knowing for scripting or when typing is quicker. `refs sync` is the usual one. [`docs/commands.md`](docs/commands.md) has all of them. We recommend the agent route. It can search a checkout, follow what it finds, and talk with you about it. It also writes the description every ref needs, one per package, from what the source says. A monorepo ships dozens of them, and each one is a small piece of reading somebody would otherwise do by hand before they could write a line about it.
+The CLI does the same things, and it is worth knowing for scripting or when typing is quicker. `refs sync` is the usual one, and `refs doctor` after updating refs: the CLI and the skill each carry a version, and it says when they have drifted apart. [`docs/commands.md`](docs/commands.md) has all of them. We recommend the agent route. It can search a checkout, follow what it finds, and talk with you about it. It also writes the description every ref needs, one per package, from what the source says. A monorepo ships dozens of them, and each one is a small piece of reading somebody would otherwise do by hand before they could write a line about it.
 
 ## Questions that cross repositories
 
