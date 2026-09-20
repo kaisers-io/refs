@@ -43,7 +43,7 @@
   "devDependencies": {
     "@commander-js/extra-typings": "15.0.0",
     "@kaisers-io/refs-core": "workspace:*",
-    "@types/node": "24.13.4",
+    "@types/node": "24.13.5",
     "commander": "15.0.0",
     "smol-toml": "1.8.0",
     "zod": "4.6.2"
