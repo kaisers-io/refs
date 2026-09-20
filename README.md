@@ -9,7 +9,7 @@
   <a href="https://github.com/kaisers-io/refs/actions/workflows/ci.yml"><img src="https://github.com/kaisers-io/refs/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status"></a>
 </p>
 
-# Ask about your dependencies and your team's repositories
+## Ask about your dependencies and your team's repositories
 
 ```
 /refs I want to upgrade effect. what changed since the version we use, and what do I have to adjust
