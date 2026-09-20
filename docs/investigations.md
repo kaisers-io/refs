@@ -9,7 +9,8 @@ Everything here is phrased as something you say to your agent. The CLI equivalen
 ## Upgrading a dependency
 
 ```
-/refs I want to upgrade effect. what changed since the version we use, and what do I have to adjust
+/refs I want to upgrade effect. what changed since the version we use,
+and what do I have to adjust
 ```
 
 Four steps, and the agent does them in order.
@@ -18,12 +19,17 @@ Four steps, and the agent does them in order.
 
 **Find the repository.** `npm:effect` resolves to `github.com/Effect-TS/effect`. So does `https://github.com/Effect-TS/effect`, and so does `git@github.com:Effect-TS/effect.git`.
 
-**Resolve both releases and read the range.** Effect is a monorepo whose packages tag separately, so the package's own convention has to be recorded once. Tell the agent, or run it yourself:
+**Resolve both releases and read the range.** Effect is a monorepo whose packages tag separately, and adding it records each package's own convention, so this resolves without being told anything:
+
+```bash
+refs tag github.com/Effect-TS/effect 3.19.2 --package effect   # effect@3.19.2
+refs tag github.com/Effect-TS/effect 3.22.2 --package effect   # effect@3.22.2
+```
+
+Where a repository gives refs nothing to go on, `refs tag` says so and the convention can be recorded by hand:
 
 ```bash
 refs edit github.com/Effect-TS/effect tag_format 'effect@{version}' --package effect
-refs tag github.com/Effect-TS/effect 3.19.2 --package effect   # effect@3.19.2
-refs tag github.com/Effect-TS/effect 3.22.2 --package effect   # effect@3.22.2
 ```
 
 From there the agent reads commits and diffs between the two tags, scoped to the package's own directory, and quotes what it finds.
@@ -35,7 +41,8 @@ From there the agent reads commits and diffs between the two tags, scoped to the
 ## Who has to change when I change something
 
 ```
-/refs I changed how our orders API paginates. check billing-worker and the admin dashboard: do they call it, and what has to change
+/refs I changed how our orders API paginates. check billing-worker and
+the admin dashboard: do they call it, and what has to change
 ```
 
 This starts in your own repository and runs outwards. The agent reads what you changed, then goes through the consumers you named looking for the call sites: the import, the endpoint, the field you renamed. What comes back is the file and line in each of them, and what has to change there.
@@ -49,7 +56,9 @@ The value is in what it saves. Without it you ask around, or you find out when s
 ## A flow that crosses several repositories
 
 ```
-/refs we are adding retries to checkout-api. follow a payment request through the gateway, checkout-api, the shared client and billing-worker. where could the same request be handled twice, and which tests cover that
+/refs we are adding retries to checkout-api. follow a payment request
+through the gateway, checkout-api, the shared client and billing-worker.
+where could the same request be handled twice, and which tests cover that
 ```
 
 Add every repository that takes part, not only the two at the ends. The agent reads each checkout in turn, quotes the handler on each hop, the idempotency key if there is one, and the tests that pin the behaviour.

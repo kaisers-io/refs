@@ -12,7 +12,8 @@
 ## Ask about your dependencies and your team's repositories
 
 ```
-/refs I want to upgrade effect. what changed since the version we use, and what do I have to adjust
+/refs I want to upgrade effect. what changed since the version we use,
+and what do I have to adjust
 ```
 
 That takes four steps. The agent reads the version your project depends on, finds the repository behind the package, compares that release with the current one, and then goes back through your own code for the places the change touches. Answers name the file and line they came from, so you can check them.
@@ -20,7 +21,8 @@ That takes four steps. The agent reads the version your project depends on, find
 
 
 ```
-/refs I changed how our orders API paginates. check billing-worker and the admin dashboard: do they call it, and what has to change
+/refs I changed how our orders API paginates. check billing-worker and
+the admin dashboard: do they call it, and what has to change
 ```
 
 This one runs the other way. It starts with a change in your own repository and asks what it reaches. The agent reads the consumers you name, finds the call sites, and tells you which ones your change breaks. None of those repositories are public, and no model has seen any of them. `refs` keeps them as read-only git checkouts on your machine, through the git credentials you already have.
@@ -68,7 +70,9 @@ The CLI does the same things, and it is worth knowing for scripting or when typi
 Add every repository that takes part in a flow, not just the two at its ends. A request arrives at a gateway, a checkout service calls a billing worker, and a shared client library sits between them. Once each of them is a ref, one question can follow the whole path:
 
 ```
-/refs we are adding retries to checkout-api. follow a payment request through the gateway, checkout-api, the shared client and billing-worker. where could the same request be handled twice, and which tests cover that
+/refs we are adding retries to checkout-api. follow a payment request
+through the gateway, checkout-api, the shared client and billing-worker.
+where could the same request be handled twice, and which tests cover that
 ```
 
 The agent reads each checkout in turn and names the files it used. What it cannot tell you is whether the deployed versions match what you have checked out, so ask it to name the revisions it read.
@@ -78,7 +82,8 @@ The agent reads each checkout in turn and names the files it used. What it canno
 Reading a library to find out how it does something is the other everyday question, and the answer is spread over files nobody wants to open one at a time. Ask for the shape of it, and for the evidence:
 
 ```
-/refs how does effect run a fiber? draw it as a diagram, then list every source file you inspected and what each one establishes
+/refs how does effect run a fiber? draw it as a diagram, then list every
+source file you inspected and what each one establishes
 ```
 
 The agent reads the checkout, follows the calls, and draws what it found. Underneath comes a table: one row per file, each with the line it read and what that line settles. Every row is a link into your own checkout. Click one and the file opens at that line, so you can check the step instead of taking it.
@@ -98,22 +103,20 @@ And it does not matter which project you are in. The checkouts live in one place
 
 ```
 /refs add effect as a ref
-/refs I use effect 3.19.2. what changed up to 3.22.2, and what do I have to adjust
 ```
 
-Effect is a monorepo, and its packages tag releases separately. Detection records one convention for the whole ref, which is not always the package you asked about. When a version does not resolve, tell the agent which convention the package uses:
-
 ```
-/refs effect tags its own releases as effect@<version>. record that for the effect package
+/refs I use effect 3.19.2. what changed up to 3.22.2,
+and what do I have to adjust
 ```
 
-Then the versions resolve, and the agent reads the range between the two tags. The commit subjects are the repository's own:
+Effect is a monorepo whose packages tag releases separately: `effect` releases as `effect@3.22.2`, while its siblings carry their own names and their own numbers. Adding it works that out for each package, so the versions resolve and the agent reads the range between the two tags. The commit subjects are the repository's own:
 
 ```
 fix(effect): TMap.remove/removeAll clears entire bucket on hash collision (#6233)
 ```
 
-`refs` never invents a tag convention. When it cannot resolve a version it says so, and the tag list is right there to look at.
+`refs` never invents a tag convention. It reads one off a tag the repository actually published. Where a repository gives it nothing to go on it says so rather than guessing, the tag list is right there to look at, and you can tell the agent which convention to record.
 
 The same steps run from the CLI, and [`docs/investigations.md`](docs/investigations.md) shows them.
 
