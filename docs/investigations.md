@@ -104,4 +104,4 @@ Pointing a checkout at a branch other than the default is not supported. `refs s
 
 ## Asking about your own code
 
-Nothing above requires a published package. A repository you name by URL works the same way, and a model that has never seen your code reads it the same way it reads a library. The difference is that a published library usually has documentation to fall back on and your own repositories usually do not, so the source is the whole of the answer.
+Nothing above requires a published package. A repository you name by URL works the same way, and a model that has never seen your code reads it the same way it reads a library.
