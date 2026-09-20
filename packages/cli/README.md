@@ -68,6 +68,8 @@ refs add --proposal proposal.json --json               # finalize
 refs sync --json                                       # fetch what has gone stale
 ```
 
+That middle line is the work the agent does for you. A monorepo ships dozens of packages and each wants a description, written from what the source says rather than copied out of a manifest.
+
 The [full command reference](https://github.com/kaisers-io/refs/blob/main/docs/commands.md) has every flag, every `--json` shape and every exit code.
 
 ## What lives on your machine
