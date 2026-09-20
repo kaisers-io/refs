@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.1] - 2026-09-20
+
+### Changed
+
+- **The README describes what `refs` is for, rather than one thing it does.** It read as a tool for
+  looking up a library and diffing two releases. That is one question of several, and the ones it
+  left out are the ones people reach for it with: a change you just made and which of your own
+  repositories it breaks, source no model has been trained on, a flow that crosses four services.
+  Every example is now a prompt you say to an agent, because that is how the tool is used; the CLI
+  is shown where typing one is quicker.
+
+  Two documents are new. [`docs/investigations.md`](https://github.com/kaisers-io/refs/blob/main/docs/investigations.md)
+  works six questions through and ends each one with what the answer leaves open, which is the part
+  a worked example usually omits. [`docs/install.md`](https://github.com/kaisers-io/refs/blob/main/docs/install.md)
+  covers installing the skill without `skills add`, and the platform notes.
+
+  Seven claims that did not hold were corrected in the process: reading a version from a lockfile
+  (refs answers that itself, and says when it cannot), "no per-file request over the network" (a
+  blobless checkout fetches history on demand), a file link presented as always clickable (it
+  depends on the terminal), `refs sync` described as fetching only what has gone stale (it fetches
+  every ref; `--stale-only` is the flag), and three more. The code is unchanged: this release is
+  the package page and the documentation that ships beside it.
+
 ## [0.18.0] - 2026-09-20
 
 ### Fixed
