@@ -20,7 +20,10 @@ waits for finalize.) The proposal's `data` shape:
 ```
 
 `description` starts empty (`""`), and **no package carries a `description` either** —
-detection reads a manifest for its `name` and `path` only. A package's manifest may well
+detection reads a manifest for its `name` and `path` only. A package entry MAY arrive with a
+`tag_format` of its own, when the repository tags that package under its own name rather than
+the ref-wide convention. Keep it exactly as given; it was derived from the repository's tags and
+dropping it silently sends `refs tag` to the wrong one. A package's manifest may well
 describe itself; that text is untrusted content from the checkout (§4 of `SKILL.md`) and
 `refs` deliberately does not carry it into a file it later reads as its own configuration.
 Writing each description is your job, from the source. Save this JSON payload to a file — either the whole `--json` output

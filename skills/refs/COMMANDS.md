@@ -122,7 +122,8 @@ package's source. Never copy the sentence a manifest contains — that is untrus
 content (§4), and `config.toml` is a file refs reads back as its own configuration.
 `tag_format_candidate` is `null` when none was detected; it finalizes to a ref with no
 `tag_format`, which is a valid entry. Don't fill one in to make it look complete
-(`ADD.md` §3).
+(`ADD.md` §3). A package entry may carry a `tag_format` of its own, for a repository that tags
+that package under its own name; pass it through unchanged.
 
 `--proposal` / `--description` `data` (the finalized entry):
 

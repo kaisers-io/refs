@@ -9,6 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`refs add` derives a tag format from the version a package is at, not from how often a shape
+  occurs.** Detection counted: it replaced the version in every tag with `{version}` and proposed
+  the most frequent result. That answers "what do most of this repository's tags look like", which
+  is a different question from "how does this package tag its releases" and gives a different
+  answer whenever the package asked about is not the most-tagged one.
+
+  Measured against the repositories themselves, before this change: `refs tag effect 3.22.2` exited
+  `not_found`, because `Effect-TS/effect` has 63 `effect@…` tags against 668 `@effect/platform-node@…`
+  and the count named the sibling. `refs tag kysely 0.29.6` exited `not_found`, because
+  `kysely-org/kysely` tagged its older releases bare and its current ones with a `v`, and the
+  majority is the shape no current release carries. Worse than either, `@effect/vitest` at `0.30.0`
+  resolved to `@effect/platform-node@0.30.0` — a tag that exists, at which that package does not.
+
+  Now each package's own manifest version is used as an anchor. A tag that ends in exactly that
+  version at a digit boundary is a tag that package's release wrote, and its shape is the format:
+  what gets stored is still a real tag the repository published, re-expressed with `{version}` in
+  place of the version it carried. Where a repository offers no version to anchor on — every
+  repository that ships no `package.json`, and every package whose declared version was never
+  tagged — the count is still the answer, unchanged.
+
+  **A tag naming a different package is never an answer.** It is the mistake counting makes, and
+  accepting it at one version would only make it quieter. Where two spellings of the same release
+  both exist, nothing is proposed rather than one of them picked; `refs tag` reports the absence,
+  which is checkable, where a coin flip is not.
+
+  **A package's own `tag_format` is written only when the repository tags it under its own name.**
+  A repository-wide tag is evidence about the repository and not about one package inside it:
+  `vercel/next.js` carries a bare `1.0.0` tag from 2016, and a private benchmark package inside it
+  declares version `1.0.0`. The ref's own format is where a repository-wide shape belongs, and it
+  is anchored on the root manifest — which is what fixes `kysely`.
+
+  Across five repositories, 30 of 31 new per-package formats resolve the package they name and the
+  31st is the benchmark package above, now not written. Everything else in every proposal is
+  byte-identical to before.
+
 - **`refs add` refuses a repository whose default branch is a name git will not accept.**
   `default_branch` was stored as ordinary text, and a branch name is not ordinary text. The value
   is read from the repository's own `HEAD`, not typed by anyone: `git branch` will not create a

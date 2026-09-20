@@ -33,6 +33,7 @@ import {
   withLock,
   writeState,
 } from '@kaisers-io/refs-core';
+import { refTagFormat, withTagFormats } from './add-tag-formats.ts';
 import type { CliContext } from '../context.ts';
 import type { ResolvedSource } from './add-source.ts';
 import { discoveryObstacle } from './workspace-diagnostics.ts';
@@ -96,19 +97,28 @@ const detectionWarningFor = (scan: WorkspaceScan): string | undefined =>
       "repository's own workspace declaration is what settles it";
 
 type DetectionContext = {
+  countedTagFormat: TagFormat | null;
   defaultBranch: string;
   resolved: ResolvedSource;
-  tagFormatCandidate: TagFormat | null;
+  /** Every tag, or none at all — see `tagCandidateFrom`. */
+  tags: readonly string[];
 };
 
 /** Shapes one scan into the proposal's detected half. Built key-by-key rather than spread, because
  * `exactOptionalPropertyTypes` distinguishes an absent key from one set to `undefined`. */
 const detectedFrom = (scan: WorkspaceScan, ctx: DetectionContext): DetectedFields => {
-  const packages = buildProposalPackages(
+  const detected = buildProposalPackages(
     scan.packages,
     ctx.resolved.npmDirectory,
     ctx.resolved.npmPkgName,
   );
+  const tagFormatCandidate = refTagFormat({ counted: ctx.countedTagFormat, scan, tags: ctx.tags });
+  const packages = withTagFormats({
+    packages: detected,
+    refFormat: tagFormatCandidate,
+    scan,
+    tags: ctx.tags,
+  });
   const rootPackageName = registeredRootName(scan.packages, packages);
   const detectionWarning = detectionWarningFor(scan);
   return {
@@ -116,7 +126,7 @@ const detectedFrom = (scan: WorkspaceScan, ctx: DetectionContext): DetectedField
     ...(detectionWarning === undefined ? {} : { detectionWarning }),
     packages,
     ...(rootPackageName === undefined ? {} : { rootPackageName }),
-    tagFormatCandidate: ctx.tagFormatCandidate,
+    tagFormatCandidate,
   };
 };
 
@@ -138,10 +148,14 @@ const detectProposalFields = async (
 ): Promise<DetectedFields> => {
   const defaultBranch = await detectDefaultBranch(ctx.runner, dest);
   const tagged = await listTags(ctx.runner, dest);
-  const tagFormatCandidate = tagCandidateFrom(tagged);
+  const countedTagFormat = tagCandidateFrom(tagged);
   progress(ctx, 'detecting workspace packages…');
   const scan = await detectWorkspacePackagesDetailed(dest);
-  return detectedFrom(scan, { defaultBranch, resolved, tagFormatCandidate });
+  // The same `complete` gate the count is under, and for a related reason: an anchored format is
+  // chosen from among the tags that carry the version, so a truncated list can hide the one naming
+  // the package and leave a repository-wide `v{version}` standing in its place.
+  const tags = tagged.complete ? tagged.tags : [];
+  return detectedFrom(scan, { countedTagFormat, defaultBranch, resolved, tags });
 };
 
 type CloneAndDetectOpts = {
