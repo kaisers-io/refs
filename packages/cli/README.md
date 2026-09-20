@@ -42,22 +42,22 @@ You need Node.js 24.2 or newer, and git. On Windows use [Git for Windows](https:
 Then talk to the agent:
 
 ```
-/refs add effect as a ref
+/refs add npm:effect as a ref
 ```
 
 It clones the repository, works out how the project tags its releases, and shows you what it found. Nothing enters your configuration until you approve it.
 
 That happens once. Effect is a ref from then on, and every later question about it goes straight to the checkout, from any project and any session.
 
-Three ways to name the same repository, all of which resolve to the key `github.com/Effect-TS/effect`:
+Three ways to name the same repository. All of them resolve to the key `github.com/Effect-TS/effect`:
 
-```
-npm:effect
-https://github.com/Effect-TS/effect
-git@github.com:Effect-TS/effect.git
-```
+| Source                                | What it is                                                         |
+| ------------------------------------- | ------------------------------------------------------------------ |
+| `npm:effect`                          | The package name. `refs` reads the repository out of the registry. |
+| `https://github.com/Effect-TS/effect` | The repository itself, as you would clone it.                      |
+| `git@github.com:Effect-TS/effect.git` | The same over ssh.                                                 |
 
-npm is a convenience for packages. A private repository or a self-hosted forge works the same way, and the credentials stay in your git configuration because `refs` refuses to take any in the URL.
+The `npm:` prefix says which registry the name belongs to, so a package and a repository that share a name cannot be confused for one another. A private repository or a self-hosted forge works the same way, and the credentials stay in your git configuration because `refs` refuses to take any in the URL.
 
 ## Driving the CLI yourself
 

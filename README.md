@@ -38,28 +38,27 @@ What you save is the bookkeeping. You do not remember where a clone went, paste 
 Everything below is something you say to your agent, and it runs the commands. `/refs` is what reaches the skill in Claude Code. In Codex the same thing is `$refs`.
 
 ```
-/refs add effect as a ref
+/refs add npm:effect as a ref
 ```
 
 The agent clones the repository, works out how the project tags its releases, and shows you what it found. Nothing enters your configuration until you approve it.
 
 That happens once. Effect is a ref from then on, and every later question about it goes straight to the checkout, from any project and any session.
 
-> **TODO screenshot.** The approval step: what the agent found, waiting for your yes.
-> Save it as `assets/screenshots/add-approval.png`, then replace this block with the line below.
+| It asks before it works | It shows you what it found |
+| --- | --- |
+| ![The agent reporting what it detected in the repository and asking how much of it to describe](<https://raw.githubusercontent.com/kaisers-io/refs/main/assets/screenshots/add-scope.png>) | ![The finished proposal: every package with a description written from its own source, waiting for approval](<https://raw.githubusercontent.com/kaisers-io/refs/main/assets/screenshots/add-approval.png>) |
 
-<!-- ![The agent showing what it found about a repository and waiting for approval](https://raw.githubusercontent.com/kaisers-io/refs/main/assets/screenshots/add-approval.png) -->
 
+Three ways to name the same repository. All of them resolve to the key `github.com/Effect-TS/effect`:
 
-Three ways to name the same repository, all of which resolve to the key `github.com/Effect-TS/effect`:
+| Source | What it is |
+| --- | --- |
+| `npm:effect` | The package name. `refs` reads the repository out of the registry. |
+| `https://github.com/Effect-TS/effect` | The repository itself, as you would clone it. |
+| `git@github.com:Effect-TS/effect.git` | The same over ssh. |
 
-```
-npm:effect
-https://github.com/Effect-TS/effect
-git@github.com:Effect-TS/effect.git
-```
-
-npm is a convenience for packages. A private repository or a self-hosted forge works the same way, and the credentials stay in your git configuration because `refs` refuses to take any in the URL.
+The `npm:` prefix says which registry the name belongs to, so a package and a repository that share a name cannot be confused for one another. A private repository or a self-hosted forge works the same way, and the credentials stay in your git configuration because `refs` refuses to take any in the URL.
 
 The CLI does the same things, and it is worth knowing for scripting or when typing is quicker. `refs sync` is the usual one. [`docs/commands.md`](docs/commands.md) has all of them. We recommend the agent route. It can search a checkout, follow what it finds, and talk with you about it. It also writes the description every ref needs, one per package, from what the source says. A monorepo ships dozens of them, and each one is a small piece of reading somebody would otherwise do by hand before they could write a line about it.
 
@@ -102,7 +101,7 @@ And it does not matter which project you are in. The checkouts live in one place
 ## Try it on a real repository
 
 ```
-/refs add effect as a ref
+/refs add npm:effect as a ref
 ```
 
 ```
