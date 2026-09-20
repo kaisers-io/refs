@@ -14,7 +14,7 @@
     "zod": "4.6.2"
   },
   "devDependencies": {
-    "@types/node": "24.13.4"
+    "@types/node": "24.13.5"
   },
   "engines": {
     "node": ">=24.2"
