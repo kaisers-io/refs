@@ -221,6 +221,7 @@ const detectWorkspacePackagesDetailed = async (repoDir: string): Promise<Workspa
     return {
       diagnostics: sortDiagnostics([...declared.diagnostics, { kind: 'no_workspace_declaration' }]),
       packages: [],
+      versions: {},
     };
   }
 
@@ -238,6 +239,7 @@ const detectWorkspacePackagesDetailed = async (repoDir: string): Promise<Workspa
       ...partitioned.diagnostics,
     ]),
     packages: withoutClaimedRoot(deduplicateAndSort(partitioned.packages)),
+    versions: partitioned.versions,
   };
 };
 

@@ -6,6 +6,7 @@ export * from './fs-modes.ts';
 export * from './fs-containment.ts';
 export * from './git/arrivals.ts';
 export * from './git/repo.ts';
+export * from './git/tag-format-version.ts';
 export * from './git/tags.ts';
 export * from './git-url-redact.ts';
 export * from './git-url.ts';

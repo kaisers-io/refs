@@ -95,6 +95,16 @@ const extractPackageName = (data: Record<string, unknown>): string | undefined =
   return undefined;
 };
 
+/** The manifest's own `version`, when it declares one as a string.
+ *
+ * It never reaches `config.toml`. It is evidence for `detectTagFormatForVersion`, which uses it to
+ * pick out a tag the repository actually wrote and hands back that tag's shape — so what is stored
+ * comes from the tag list, as it did before, and this only decides which tag counts. */
+const extractPackageVersion = (data: Record<string, unknown>): string | undefined => {
+  const { version } = data;
+  return typeof version === 'string' ? version : undefined;
+};
+
 /** What a caller is told when a manifest could not be turned into an answer.
  *
  * A fixed string, never the parser's own message. `JSON.parse` embeds the offending input in its
@@ -114,4 +124,10 @@ const extractPackageName = (data: Record<string, unknown>): string | undefined =
  * false statement about a valid document. */
 const MALFORMED_MANIFEST_REASON = 'manifest could not be read or interpreted';
 
-export { MALFORMED_MANIFEST_REASON, collectPnpmPatterns, extractPackageName, parseNpmWorkspaces };
+export {
+  MALFORMED_MANIFEST_REASON,
+  collectPnpmPatterns,
+  extractPackageName,
+  extractPackageVersion,
+  parseNpmWorkspaces,
+};

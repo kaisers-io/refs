@@ -25,6 +25,9 @@ describe('scans with nothing wrong', () => {
     expect(scan).toStrictEqual({
       diagnostics: [{ kind: 'no_workspace_declaration' }],
       packages: [],
+      // Nothing was probed: a repository that declares no workspaces returns before the root is
+      // looked at, so there is no version here either.
+      versions: {},
     });
     // This is the case that must NOT be a failure: most repos look like this.
     expect(scanIsReliable(scan)).toBe(true);

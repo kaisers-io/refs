@@ -94,7 +94,7 @@ describe('dedupe and sort', () => {
 describe('scan reliability', () => {
   it('is reliable with no diagnostics', () => {
     expect.hasAssertions();
-    expect(scanIsReliable({ diagnostics: [], packages: [] })).toBe(true);
+    expect(scanIsReliable({ diagnostics: [], packages: [], versions: {} })).toBe(true);
   });
 
   it.each([
@@ -107,7 +107,7 @@ describe('scan reliability', () => {
     // no resolvable package there and we know it. Marking this unreliable would let one
     // nameless package.json under a workspace glob permanently suppress every removal
     // detection for that repo — and nameless manifests are real (zod's own root has none).
-    expect(scanIsReliable({ diagnostics: [diagnostic], packages: [] })).toBe(true);
+    expect(scanIsReliable({ diagnostics: [diagnostic], packages: [], versions: {} })).toBe(true);
   });
 
   it.each([
@@ -120,7 +120,7 @@ describe('scan reliability', () => {
     expect.hasAssertions();
     // Each of these means the scan may be MISSING packages that really exist — so a name's
     // absence from it proves nothing, and no removal may ever be inferred.
-    expect(scanIsReliable({ diagnostics: [diagnostic], packages: [] })).toBe(false);
+    expect(scanIsReliable({ diagnostics: [diagnostic], packages: [], versions: {} })).toBe(false);
   });
 });
 
