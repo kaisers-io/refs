@@ -25,7 +25,7 @@ That takes four steps. The agent reads the version your project depends on, find
 the admin dashboard: do they call it, and what has to change
 ```
 
-This one runs the other way. It starts with a change in your own repository and asks what it reaches. The agent reads the consumers you name, finds the call sites, and tells you which ones your change breaks. None of those repositories are public, and no model has seen any of them. `refs` keeps them as read-only git checkouts on your machine, through the git credentials you already have.
+This one runs the other way. It starts with a change in your own repository and asks what it reaches. The agent reads the consumers you name, finds the call sites, and tells you which ones your change breaks. None of those repositories are public, and nothing the agent says about them comes from anywhere but the checkout it just read. `refs` keeps them as read-only git checkouts on your machine, through the git credentials you already have.
 
 Name every repository that takes part, not just the two at the ends: a gateway, a shared client and a worker each hold part of the answer. What the agent cannot tell you is whether what runs in production matches what you have checked out, so ask it to name the revisions it read.
 
@@ -47,7 +47,7 @@ The agent clones the repository, works out how the project tags its releases, an
 
 That happens once. Effect is a ref from then on, and every later question about it goes straight to the checkout, from any project and any session.
 
-| It asks before it spends anything | It shows you what it found, and what it is unsure about |
+| It asks how much to describe before writing any of it | It shows you what it found, and what it is unsure about |
 | --- | --- |
 | ![The agent reporting what it detected in the repository and asking how much of it to describe](assets/screenshots/add-scope.png) | ![The finished proposal: every package with a description written from its own source, a note about the tag format it is unsure of, and a request to approve](assets/screenshots/add-approval.png) |
 
@@ -73,7 +73,7 @@ Reading a library to find out how it does something is the other everyday questi
 source file you inspected and what each one establishes
 ```
 
-The agent reads the checkout, follows the calls, and draws what it found. Underneath comes a table: one row per file, each with the line it read and what that line settles. Every row is a link into your own checkout. Click one and the file opens at that line, so you can check the step instead of taking it.
+The agent reads the checkout, follows the calls, and draws what it found. Underneath comes the list the question asked for: one entry per file, the line it read, and what that line settles. Where your terminal or app opens file links, clicking one opens the file at that line, so you can check the step instead of taking it; where it does not, the reference is still there to follow by hand.
 
 It also names the revision it traced, which matters more than it sounds. A checkout can be a release candidate whose internals differ from the version a model learned, and the answer says which one you are looking at.
 
@@ -95,13 +95,13 @@ fix(effect): TMap.remove/removeAll clears entire bucket on hash collision (#6233
 
 `refs` never invents a tag convention. It reads one off a tag the repository actually published. Where a repository gives it nothing to go on it says so rather than guessing, the tag list is right there to look at, and you can tell the agent which convention to record.
 
-Every question on this page also runs from the CLI. [`docs/investigations.md`](docs/investigations.md) works six of them through, command by command, including what each one leaves open.
+[`docs/investigations.md`](docs/investigations.md) works six questions through, with the CLI commands where they help, and says what each answer leaves open.
 
 ## The CLI and the skill
 
 `refs` is two pieces. The CLI does the deterministic work of cloning, refreshing, and resolving a question to the right path or tag. The skill teaches your agent when to reach for the CLI and how to read what comes back.
 
-The agent uses the terminal tools it already has to search a checkout and read the passages that matter. There is no server to configure and no per-file request over the network.
+The agent uses the terminal tools it already has to search a checkout and read the passages that matter. There is no server to configure. Reading the files as they are checked out is local; reading their history can fetch what a blobless clone left out.
 
 The skill does not activate by itself. You reach for it, which is why the questions that need no source code cost you nothing.
 

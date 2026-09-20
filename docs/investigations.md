@@ -15,7 +15,16 @@ and what do I have to adjust
 
 Four steps, and the agent does them in order.
 
-**Find the version in use.** It reads your project's own manifest or lockfile. That is your repository, not a checkout.
+**Find the version in use.** It asks refs, rather than reading a lockfile:
+
+```bash
+refs resolve effect --project <dir> --json   # <dir> imports the dependency
+```
+
+The answer's `installed` carries the version actually on disk, and the name the manifest declares,
+which differs from the query when the dependency was installed under an alias. When nothing is
+installed there, or the layout is one refs cannot read, it says the version is unknown instead of
+guessing one.
 
 **Find the repository.** `npm:effect` resolves to `github.com/Effect-TS/effect`. So does `https://github.com/Effect-TS/effect`, and so does `git@github.com:Effect-TS/effect.git`.
 
@@ -36,7 +45,7 @@ From there the agent reads commits and diffs between the two tags, scoped to the
 
 **Come back to your own code.** A diff of the library is only half an answer to "what do I have to adjust". The agent takes the names that changed and looks for them where you use them, so what comes back is the places in your project the upgrade reaches rather than everything the release touched.
 
-**What stays open.** That last step is a search, not a proof. A call that reaches the changed code through a re-export, a wrapper of your own, or a name you aliased on import will not turn up. Ask it to name the revisions it compared, because a checkout is the default branch at the last fetch and not necessarily the version you have installed.
+**What stays open.** That last step is a search, not a proof. A call that reaches the changed code through a re-export, a wrapper of your own, or a name you aliased on import can be missed. Ask it to name the revisions it compared, because a checkout is the default branch at the last fetch and not necessarily the version you have installed.
 
 ## Who has to change when I change something
 
@@ -51,7 +60,7 @@ The value is in what it saves. Without it you ask around, or you find out when s
 
 **Name the consumers.** `refs` routes a question to a repository. It does not work out which of your refs depend on which, so saying which ones to check is your half of the question. Call them however your team does; where that is not enough to tell which repository you mean, the agent asks, and `refs list --json` shows what you track.
 
-**What stays open.** A search finds the call sites that are there to find. Code that reaches your API through a variable, a generated client, or a configuration value will not turn up. The answer is a list of places to look, not a proof that the rest is safe.
+**What stays open.** A search finds the call sites that are there to find. Code that reaches your API through a variable, a generated client, or a configuration value can be missed. The answer is a list of places to look, not a proof that the rest is safe.
 
 ## A flow that crosses several repositories
 
@@ -63,7 +72,7 @@ where could the same request be handled twice, and which tests cover that
 
 Add every repository that takes part, not only the two at the ends. The agent reads each checkout in turn, quotes the handler on each hop, the idempotency key if there is one, and the tests that pin the behaviour.
 
-This is the case with no alternative. There is no documentation that spans four private repositories and stays current, and no model has seen any of them.
+Nothing here rests on the agent having seen these repositories before. Every hop in the answer comes from a checkout it reads while answering, and it names the files it used, so each hop can be checked.
 
 **What stays open.** Reading tests tells you what behaviour is pinned, not that the suite passes today. The checkouts are default branches, not what is deployed. If the question is about a release, resolve it to a tag first and say which one.
 
@@ -95,4 +104,4 @@ Pointing a checkout at a branch other than the default is not supported. `refs s
 
 ## Asking about your own code
 
-Nothing above requires a published package. A repository you name by URL works the same way, and a model that has never seen your code reads it the same way it reads a library. The difference is that for your own repositories there is no documentation to fall back on, and no training data either.
+Nothing above requires a published package. A repository you name by URL works the same way, and a model that has never seen your code reads it the same way it reads a library. The difference is that a published library usually has documentation to fall back on and your own repositories usually do not, so the source is the whole of the answer.

@@ -16,7 +16,7 @@ That takes four steps. The agent reads the version your project depends on, find
 the admin dashboard: do they call it, and what has to change
 ```
 
-This one runs the other way. It starts with a change in your own repository and asks what it reaches. The agent reads the consumers you name, finds the call sites, and tells you which ones your change breaks. None of those repositories are public, and no model has seen any of them. `refs` keeps them as read-only git checkouts on your machine, through the git credentials you already have.
+This one runs the other way. It starts with a change in your own repository and asks what it reaches. The agent reads the consumers you name, finds the call sites, and tells you which ones your change breaks. None of those repositories are public, and nothing the agent says about them comes from anywhere but the checkout it just read. `refs` keeps them as read-only git checkouts on your machine, through the git credentials you already have.
 
 ## Why not just clone it?
 
@@ -68,7 +68,7 @@ The agent runs these. Typing one yourself is quicker for some of them, and `refs
 refs add npm:effect --dry-run --json > proposal.json
 # fill in every empty description, including each package's
 refs add --proposal proposal.json --json   # finalize
-refs sync --json                           # fetch what has gone stale
+refs sync --json                           # fetch every configured ref
 ```
 
 That middle line is the work the agent does for you. A monorepo ships dozens of packages and each wants a description, written from what the source says rather than copied out of a manifest.

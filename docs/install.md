@@ -15,7 +15,7 @@ npm i -g @kaisers-io/refs
 refs init
 ```
 
-`refs init` creates the refs home and installs the hooks guard. It is safe to run again. It also repairs the access modes of everything `refs` owns, which matters if an older version created the home under a permissive umask.
+`refs init` creates the refs home and installs the hooks guard. It is safe to run again. It also repairs the access modes of the home's own directories and files, which matters if an older version created them under a permissive umask. Checkouts are not touched.
 
 ## The agent skill
 
