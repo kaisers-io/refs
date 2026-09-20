@@ -29,6 +29,8 @@ This one runs the other way. It starts with a change in your own repository and 
 
 Your agent can already clone a repository. Cloning is the easy part. `refs` keeps the repositories you name, sends a question to the right one, refreshes them when they go stale, and gives the agent a repeatable way to read them.
 
+What you save is the bookkeeping. You do not remember where a clone went, paste a path, or open anything first. You say the name, from whichever project you happen to be in.
+
 ## You talk to the agent, not to the CLI
 
 Everything below is something you say to your agent, and it runs the commands. `/refs` is what reaches the skill in Claude Code. In Codex the same thing is `$refs`.
