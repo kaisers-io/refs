@@ -93,10 +93,9 @@ This works in a terminal too. The diagram comes out as text and the file referen
 
 And it does not matter which project you are in. The checkouts live in one place on your machine rather than beside the repository you happen to have open, so the same refs answer from any session. You are in the middle of something, you want to know how Effect does it, and you ask there, in the conversation you already have, instead of going somewhere else and coming back. The question does not have to be about the code in front of you either. Working an idea out, or reading to learn how something is built, reaches the same collection.
 
-> **TODO screenshot.** The agent's answer: the diagram, the table of files it inspected, and a source file open at one of the cited lines.
-> Save it as `assets/screenshots/effect-fiber-diagram.png`, then replace this block with the line below.
-
-<!-- ![The agent's diagram of how Effect runs a fiber, the files it inspected, and one of them open at the cited line](assets/screenshots/effect-fiber-diagram.png) -->
+| The diagram, and a cited file open at its line | The same answer in a terminal |
+| --- | --- |
+| ![An agent's diagram of how Effect runs a fiber, with one of the source files it cited open beside it at that line](assets/screenshots/fiber-diagram-app.png) | ![The same question answered in a terminal, the diagram drawn as text](assets/screenshots/fiber-diagram-terminal.png) |
 
 ## Try it on a real repository
 
