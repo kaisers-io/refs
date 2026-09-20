@@ -33,7 +33,7 @@ refs doctor                        # confirms git, node and the setup are in ord
 
 You need Node.js 24.2 or newer, and git. On Windows use [Git for Windows](https://gitforwindows.org/), because the read-only guards are `sh` scripts and need the shell it ships with. The CLI behaves the same on all three platforms, and its full test suite runs on each of them.
 
-Invoke the skill with `/refs` in Claude Code or `$refs` in Codex. It never activates on its own, so questions that need no source code cost you nothing.
+`/refs` is what reaches the skill in Claude Code. In Codex the same thing is `$refs`. It never activates on its own, so questions that need no source code cost you nothing.
 
 Then talk to the agent:
 

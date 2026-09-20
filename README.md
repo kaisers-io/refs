@@ -31,7 +31,7 @@ Your agent can already clone a repository. Cloning is the easy part. `refs` keep
 
 ## You talk to the agent, not to the CLI
 
-Everything below is something you say to your agent. It runs the commands.
+Everything below is something you say to your agent, and it runs the commands. `/refs` is what reaches the skill in Claude Code. In Codex the same thing is `$refs`.
 
 ```
 /refs add effect as a ref
@@ -117,7 +117,7 @@ The same steps run from the CLI, and [`docs/investigations.md`](docs/investigati
 
 The agent uses the terminal tools it already has to search a checkout and read the passages that matter. There is no server to configure and no per-file request over the network.
 
-Invoke the skill explicitly with `/refs` in Claude Code or `$refs` in Codex. It does not activate by itself, so the questions that need no source code cost you nothing.
+The skill does not activate by itself. You reach for it, which is why the questions that need no source code cost you nothing.
 
 ## Install
 
