@@ -45,9 +45,9 @@ The agent clones the repository, works out how the project tags its releases, an
 
 That happens once. Effect is a ref from then on, and every later question about it goes straight to the checkout, from any project and any session.
 
-| It asks before it works | It shows you what it found |
+| It asks before it spends anything | It shows you what it found, and what it is unsure about |
 | --- | --- |
-| ![The agent reporting what it detected in the repository and asking how much of it to describe](<https://raw.githubusercontent.com/kaisers-io/refs/main/assets/screenshots/add-scope.png>) | ![The finished proposal: every package with a description written from its own source, waiting for approval](<https://raw.githubusercontent.com/kaisers-io/refs/main/assets/screenshots/add-approval.png>) |
+| ![The agent reporting what it detected in the repository and asking how much of it to describe](<https://raw.githubusercontent.com/kaisers-io/refs/main/assets/screenshots/add-scope.png>) | ![The finished proposal: every package with a description written from its own source, a note about the tag format it is unsure of, and a request to approve](<https://raw.githubusercontent.com/kaisers-io/refs/main/assets/screenshots/add-approval.png>) |
 
 
 Three ways to name the same repository. All of them resolve to the key `github.com/Effect-TS/effect`:
