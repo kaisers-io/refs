@@ -25,11 +25,6 @@ import { zTagFormat } from '../schemas/primitives.ts';
 const VERSION_SHAPE = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.+-]+)?$/u;
 const MAX_VERSION_LENGTH = 64;
 
-/** A version triple anywhere in the PREFIX, which `tryDeriveFormat` rejects a tag for too (see
- * `tags.ts`). `compare-1.2.3-to-1.2.3` anchors on `1.2.3` and would otherwise store
- * `compare-1.2.3-to-{version}` — a format that keeps one version pinned inside it forever. */
-const BARE_VERSION = /\d+\.\d+\.\d+/u;
-
 /** The anchor. A prefix ending in a digit or a dot means the version sits INSIDE a longer number,
  * not at its own boundary: `v1.2.0.0` ends with `2.0.0` and has nothing to do with it. */
 const NUMERIC_TAIL = /[0-9.]$/u;
@@ -91,7 +86,7 @@ const prefixBefore = (tag: string, version: string): string | undefined => {
     return undefined;
   }
   const prefix = tag.slice(0, tag.length - version.length);
-  return NUMERIC_TAIL.test(prefix) || BARE_VERSION.test(prefix) ? undefined : prefix;
+  return NUMERIC_TAIL.test(prefix) ? undefined : prefix;
 };
 
 const candidateFrom = (

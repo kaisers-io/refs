@@ -32,19 +32,22 @@ const anchoredFormat = (path: string, name: string, anchor: Anchor): TagFormat |
   return version === undefined ? null : detectTagFormatForVersion(anchor.tags, version, name);
 };
 
-/** The ref's own `tag_format` candidate: anchored on the REPOSITORY ROOT's package, else the
- * counted answer this has always returned.
+/** The ref's own `tag_format` candidate: the repository root's anchored format when that format
+ * does not name the root, else the counted answer this has always returned.
  *
- * The root and nothing else, deliberately. The ref-level format is what every package without its
- * own inherits (`refs tag` reads `package.tag_format ?? ref.tag_format`), so it is a claim about
- * the repository rather than about one member of it — and anchoring it on, say, the package named
- * in `npm:<pkg>` would hand that package's convention to every sibling that has no override.
- * Measured: in a repository that tags `addon@{version}` for one package and `v{version}` for the
- * rest, that is wrong for the rest. A root package IS the repository at that path, so its
- * convention is the repository's; a member's belongs on the member (`withTagFormats`).
+ * One rule, applied at both levels: a format that names a package describes that package, and goes
+ * on that package's entry (`withTagFormats`). A format that names nobody describes the repository,
+ * and only that kind belongs here — because the ref's format is what every package WITHOUT one of
+ * its own inherits (`refs tag` reads `package.tag_format ?? ref.tag_format`).
  *
- * `kysely-org/kysely` is what this is for: its root manifest is the published `kysely`, and
- * counting named the bare `{version}` of its older releases, which no current release carries. */
+ * Being at the repository root is not itself evidence about anything but the root. A repository
+ * whose root releases as `root@2.0.0` while its members release under a plain `v` would otherwise
+ * hand `root@{version}` to a member that has no anchor of its own — and that member's last release
+ * was resolvable before. Sitting in the same directory is not a shared release convention.
+ *
+ * `kysely-org/kysely` is what the remaining case is for: its root manifest is the published
+ * `kysely`, it releases as `v0.29.6`, and counting named the bare `{version}` of its older
+ * releases, which no current release carries. */
 const refTagFormat = (opts: {
   counted: TagFormat | null;
   scan: WorkspaceScan;
@@ -54,10 +57,11 @@ const refTagFormat = (opts: {
   if (root === undefined) {
     return opts.counted;
   }
-  return (
-    anchoredFormat(ROOT_PACKAGE_PATH, root.name, { scan: opts.scan, tags: opts.tags }) ??
-    opts.counted
-  );
+  const anchored = anchoredFormat(ROOT_PACKAGE_PATH, root.name, {
+    scan: opts.scan,
+    tags: opts.tags,
+  });
+  return anchored === null || tagFormatNamesPackage(anchored, root.name) ? opts.counted : anchored;
 };
 
 /** One proposal entry, carrying its own `tag_format` only when the repository tags it under its own

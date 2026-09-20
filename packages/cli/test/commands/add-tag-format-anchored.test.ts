@@ -108,6 +108,34 @@ describe('refs add --dry-run: a member whose version matches a repository-wide t
   );
 });
 
+describe('refs add --dry-run: a root that releases under its own name', () => {
+  it(
+    'keeps that format off the ref, so a sibling without one is unaffected',
+    async () => {
+      expect.hasAssertions();
+      await withResetExitCode(() =>
+        withTempHome(async (homeDir) => {
+          // `fixture-root` is at 0.0.0 and tagged as `fixture-root@0.0.0`; the members release
+          // under a plain `v`. Putting the root's own format on the ref would hand
+          // `fixture-root@{version}` to every member that has no anchor — and `@fixture/a`, whose
+          // last release IS `v1.0.0`, would stop resolving.
+          const fixture = await createFixtureRepo({
+            monorepo: true,
+            monorepoAllDescribed: true,
+            tags: ['fixture-root@0.0.0', 'v1.0.0', 'v0.9.0', 'v0.8.0'],
+          });
+
+          const proposal = await dryRun(homeDir, fixture.url);
+
+          expect(proposal.tag_format_candidate).toBe('v{version}');
+          expect(proposal.packages['fixture-root']?.tag_format).toBe('fixture-root@{version}');
+        }),
+      );
+    },
+    SLOW_IO_TIMEOUT_MS,
+  );
+});
+
 describe('refs add --dry-run: a repository whose older releases tag differently', () => {
   it(
     "proposes the format its current release uses, not the majority's",

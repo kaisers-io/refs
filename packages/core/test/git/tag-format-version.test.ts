@@ -69,12 +69,22 @@ describe('a version that only looks like it is there', () => {
 });
 
 describe('a tag that embeds a second version in front of the one anchored on', () => {
-  it('yields nothing, rather than a format with a version pinned inside it', () => {
+  it('yields nothing, because its prefix names nobody', () => {
     expect.hasAssertions();
 
-    // `compare-1.2.3-to-{version}` passes every other check and renders back to its own tag. It is
-    // still not a format: the version it keeps would be wrong for every other release.
+    // `compare-1.2.3-to-{version}` renders back to its own tag and would pin one version inside a
+    // format forever. What refuses it is the rule that refuses every other unrecognised prefix —
+    // a separate guard against the embedded triple turned out to be unreachable except on a
+    // package whose own NAME holds one, where it was simply wrong.
     expect(detectTagFormatForVersion(['compare-1.2.3-to-1.2.3'], '1.2.3', 'x')).toBeNull();
+  });
+
+  it('is still derived when the triple is part of the package name itself', () => {
+    expect.hasAssertions();
+
+    expect(detectTagFormatForVersion(['pkg-1.2.3@4.5.6'], '4.5.6', 'pkg-1.2.3')).toBe(
+      'pkg-1.2.3@{version}',
+    );
   });
 });
 
