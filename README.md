@@ -27,6 +27,8 @@ the admin dashboard: do they call it, and what has to change
 
 This one runs the other way. It starts with a change in your own repository and asks what it reaches. The agent reads the consumers you name, finds the call sites, and tells you which ones your change breaks. None of those repositories are public, and no model has seen any of them. `refs` keeps them as read-only git checkouts on your machine, through the git credentials you already have.
 
+Name every repository that takes part, not just the two at the ends: a gateway, a shared client and a worker each hold part of the answer. What the agent cannot tell you is whether what runs in production matches what you have checked out, so ask it to name the revisions it read.
+
 ## Why not just clone it?
 
 Your agent can already clone a repository. Cloning is the easy part. `refs` keeps the repositories you name, sends a question to the right one, refreshes them when they go stale, and gives the agent a repeatable way to read them.
@@ -62,20 +64,6 @@ The `npm:` prefix says which registry the name belongs to, so a package and a re
 
 The CLI does the same things, and it is worth knowing for scripting or when typing is quicker. `refs sync` is the usual one, and `refs doctor` after updating refs: the CLI and the skill each carry a version, and it says when they have drifted apart. [`docs/commands.md`](docs/commands.md) has all of them. We recommend the agent route. It can search a checkout, follow what it finds, and talk with you about it. It also writes the description every ref needs, one per package, from what the source says. A monorepo ships dozens of them, and each one is a small piece of reading somebody would otherwise do by hand before they could write a line about it.
 
-## Questions that cross repositories
-
-*An example. The service names are made up, and no answer is implied.*
-
-Add every repository that takes part in a flow, not just the two at its ends. A request arrives at a gateway, a checkout service calls a billing worker, and a shared client library sits between them. Once each of them is a ref, one question can follow the whole path:
-
-```
-/refs we are adding retries to checkout-api. follow a payment request
-through the gateway, checkout-api, the shared client and billing-worker.
-where could the same request be handled twice, and which tests cover that
-```
-
-The agent reads each checkout in turn and names the files it used. What it cannot tell you is whether the deployed versions match what you have checked out, so ask it to name the revisions it read.
-
 ## How does this actually work
 
 Reading a library to find out how it does something is the other everyday question, and the answer is spread over files nobody wants to open one at a time. Ask for the shape of it, and for the evidence:
@@ -97,18 +85,9 @@ And it does not matter which project you are in. The checkouts live in one place
 | --- | --- |
 | ![An agent's diagram of how Effect runs a fiber, with one of the source files it cited open beside it at that line](assets/screenshots/fiber-diagram-app.png) | ![The same question answered in a terminal, the diagram drawn as text](assets/screenshots/fiber-diagram-terminal.png) |
 
-## Try it on a real repository
+## Where the answer comes from
 
-```
-/refs add npm:effect as a ref
-```
-
-```
-/refs I use effect 3.19.2. what changed up to 3.22.2,
-and what do I have to adjust
-```
-
-Effect is a monorepo whose packages tag releases separately: `effect` releases as `effect@3.22.2`, while its siblings carry their own names and their own numbers. Adding it works that out for each package, so the versions resolve and the agent reads the range between the two tags. The commit subjects are the repository's own:
+Turning a version into a tag is the step where a tool can start guessing. Effect is a monorepo whose packages tag releases separately: `effect` releases as `effect@3.22.2`, while its siblings carry their own names and their own numbers. Adding it works that out for each package, so the versions resolve and the agent reads the range between the two tags. The commit subjects are the repository's own:
 
 ```
 fix(effect): TMap.remove/removeAll clears entire bucket on hash collision (#6233)
@@ -116,7 +95,7 @@ fix(effect): TMap.remove/removeAll clears entire bucket on hash collision (#6233
 
 `refs` never invents a tag convention. It reads one off a tag the repository actually published. Where a repository gives it nothing to go on it says so rather than guessing, the tag list is right there to look at, and you can tell the agent which convention to record.
 
-The same steps run from the CLI, and [`docs/investigations.md`](docs/investigations.md) shows them.
+Every question on this page also runs from the CLI. [`docs/investigations.md`](docs/investigations.md) works six of them through, command by command, including what each one leaves open.
 
 ## The CLI and the skill
 
