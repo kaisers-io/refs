@@ -50,7 +50,9 @@ const diagnosticSubject = (diagnostic: WorkspaceDiagnostic): string | undefined 
  * copy of that set to drift. */
 const discoveryObstacle = (scan: WorkspaceScan): string =>
   scan.diagnostics
-    .filter((diagnostic) => !scanIsReliable({ diagnostics: [diagnostic], packages: [] }))
+    .filter(
+      (diagnostic) => !scanIsReliable({ diagnostics: [diagnostic], packages: [], versions: {} }),
+    )
     .map((diagnostic) => {
       const subject = diagnosticSubject(diagnostic);
       return subject === undefined ? diagnostic.kind : `${subject}: ${diagnostic.kind}`;

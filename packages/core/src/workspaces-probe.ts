@@ -6,11 +6,11 @@ import type {
   WorkspaceDiagnostic,
   WorkspacePackage,
 } from './workspaces-patterns.ts';
+import { extractPackageName, extractPackageVersion } from './workspaces-parse.ts';
 import { join, posix } from 'node:path';
 import { readFile, readdir } from 'node:fs/promises';
 import { CURRENT_DIR_SEGMENT } from './workspaces-shapes.ts';
 import type { Dirent } from 'node:fs';
-import { extractPackageName } from './workspaces-parse.ts';
 import { resolveInside } from './fs-containment.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import { toWorkspacePackage } from './workspaces-patterns.ts';
@@ -18,10 +18,13 @@ import { toWorkspacePackage } from './workspaces-patterns.ts';
 type ProbedDir = {
   diagnostic?: WorkspaceDiagnostic;
   pkg?: WorkspacePackage;
+  /** The probed manifest's own `version`, carried beside the package rather than on it — see
+   * `WorkspaceScan.versions`. */
+  version?: string;
 };
 
-// Reads a candidate's package.json and extracts its name. Resolution happens before the read, so
-// a manifest symlinked out of the repo is refused without its contents being touched.
+// Reads a candidate's package.json and extracts its name and version. Resolution happens before
+// the read, so a manifest symlinked out of the repo is refused without its contents being touched.
 const readPackageInfo = async (
   repoDir: string,
   packageDir: string,
@@ -32,7 +35,7 @@ const readPackageInfo = async (
   }
   try {
     const data = JSON.parse(await readFile(located.real, 'utf8')) as Record<string, unknown>;
-    return { name: extractPackageName(data) };
+    return { name: extractPackageName(data), version: extractPackageVersion(data) };
   } catch {
     return undefined;
   }
@@ -50,6 +53,9 @@ const probePackageDir = async (repoDir: string, packageDir: string): Promise<Pro
   }
 
   const pkg = toWorkspacePackage(packageDir, info);
+  if (pkg !== undefined && info.version !== undefined) {
+    return { pkg, version: info.version };
+  }
   if (pkg === undefined) {
     // The manifest read fine; it just declares no usable `name`. Its own kind, and deliberately
     // NOT one that makes a scan unreliable: identity here is the package name, so a manifest
@@ -59,10 +65,24 @@ const probePackageDir = async (repoDir: string, packageDir: string): Promise<Pro
   return { pkg };
 };
 
-// Split the probe results into the packages found and the reasons the rest were not.
+/** Declared versions, keyed by the package path they were read at. A probe with a package but no
+ * version simply contributes nothing — see `WorkspaceScan.versions`. */
+const versionsOf = (probed: readonly ProbedDir[]): Record<string, string> =>
+  Object.fromEntries(
+    probed.flatMap((item) =>
+      item.pkg === undefined || item.version === undefined ? [] : [[item.pkg.path, item.version]],
+    ),
+  );
+
+// Split the probe results into the packages found, their declared versions, and the reasons the
+// rest were not.
 const partitionProbes = (
   probed: readonly ProbedDir[],
-): { diagnostics: WorkspaceDiagnostic[]; packages: WorkspacePackage[] } => {
+): {
+  diagnostics: WorkspaceDiagnostic[];
+  packages: WorkspacePackage[];
+  versions: Record<string, string>;
+} => {
   const diagnostics: WorkspaceDiagnostic[] = [];
   const packages: WorkspacePackage[] = [];
   for (const item of probed) {
@@ -73,7 +93,7 @@ const partitionProbes = (
       packages.push(item.pkg);
     }
   }
-  return { diagnostics, packages };
+  return { diagnostics, packages, versions: versionsOf(probed) };
 };
 
 type ExpandResult = {

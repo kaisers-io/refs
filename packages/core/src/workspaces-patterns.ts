@@ -15,9 +15,10 @@ type WorkspacePackage = {
   path: string;
 };
 
-// Name probed from a package manifest; a non-string field is `undefined`.
+// Name and version probed from a package manifest; a non-string field is `undefined`.
 type PackageManifestInfo = {
   name: string | undefined;
+  version?: string | undefined;
 };
 
 // The decided fate of one workspace pattern: expand a base directory one level, probe a single
@@ -57,6 +58,15 @@ type WorkspaceDiagnostic =
 type WorkspaceScan = {
   diagnostics: WorkspaceDiagnostic[];
   packages: WorkspacePackage[];
+  /** What each probed manifest declares as its own `version`, keyed by the same repo-relative path
+   * `WorkspacePackage.path` carries — absent for a manifest that declares none.
+   *
+   * Beside the packages rather than on them, because `WorkspacePackage` is identity and only
+   * identity: a name and a path are structurally verifiable and are what config is compared
+   * against, and every other consumer of a scan would have had to start ignoring a field. This one
+   * has a single reader — `detectTagFormatForVersion`, which uses a version to pick out a tag the
+   * repository itself wrote and returns that tag's shape. No version is stored anywhere. */
+  versions: Record<string, string>;
 };
 
 // Two kinds are deliberately absent, because both are COMPLETE observations rather than
