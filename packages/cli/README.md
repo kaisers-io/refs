@@ -43,6 +43,8 @@ Then talk to the agent:
 
 It clones the repository, works out how the project tags its releases, and shows you what it found. Nothing enters your configuration until you approve it.
 
+That happens once. Effect is a ref from then on, and every later question about it goes straight to the checkout, from any project and any session.
+
 Three ways to name the same repository, all of which resolve to the key `github.com/Effect-TS/effect`:
 
 ```

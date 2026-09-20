@@ -39,6 +39,8 @@ Everything below is something you say to your agent, and it runs the commands. `
 
 The agent clones the repository, works out how the project tags its releases, and shows you what it found. Nothing enters your configuration until you approve it.
 
+That happens once. Effect is a ref from then on, and every later question about it goes straight to the checkout, from any project and any session.
+
 > **TODO screenshot.** The approval step: what the agent found, waiting for your yes.
 > Save it as `assets/screenshots/add-approval.png`, then replace this block with the line below.
 
