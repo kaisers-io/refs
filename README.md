@@ -83,6 +83,8 @@ It also names the revision it traced, which matters more than it sounds. A check
 
 This works in a terminal too. The diagram comes out as text and the file references are still there.
 
+And it does not matter which project you are in. The checkouts live in one place on your machine rather than beside the repository you happen to have open, so the same refs answer from any session. You are in the middle of something, you want to know how Effect does it, and you ask there, in the conversation you already have, instead of going somewhere else and coming back. The question does not have to be about the code in front of you either. Working an idea out, or reading to learn how something is built, reaches the same collection.
+
 > **TODO screenshot.** The agent's answer: the diagram, the table of files it inspected, and a source file open at one of the cited lines.
 > Save it as `assets/screenshots/effect-fiber-diagram.png`, then replace this block with the line below.
 
@@ -146,7 +148,7 @@ refs doctor
 
 ## What lives on your machine
 
-Checkouts sit under `~/.kaisers-io/refs/sources/` as ordinary git repositories. You can open them in your editor, grep them, and read them without an agent. Set `REFS_HOME` to keep them somewhere else, on another disk for instance, and everything `refs` owns moves with it: see [`docs/configuration.md`](docs/configuration.md). No service holds a copy of your code. What the agent reads is handled under that agent's own model and data settings.
+Checkouts sit under `~/.kaisers-io/refs/sources/` as ordinary git repositories, in one place rather than one per project, so every session reaches the same collection. You can open them in your editor, grep them, and read them without an agent. Set `REFS_HOME` to keep them somewhere else, on another disk for instance, and everything `refs` owns moves with it: see [`docs/configuration.md`](docs/configuration.md). No service holds a copy of your code. What the agent reads is handled under that agent's own model and data settings.
 
 A checkout is the default branch at the revision you last fetched. It is not necessarily the version you have installed, and it does not refresh itself. `refs sync` fetches, and the skill runs it when a checkout has gone stale.
 
