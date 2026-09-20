@@ -12,7 +12,7 @@ Everything here is phrased as something you say to your agent. The CLI equivalen
 /refs I want to upgrade effect. what changed since the version we use, and what do I have to adjust
 ```
 
-Three steps, and the agent does them in order.
+Four steps, and the agent does them in order.
 
 **Find the version in use.** It reads your project's own manifest or lockfile. That is your repository, not a checkout.
 
@@ -28,7 +28,9 @@ refs tag github.com/Effect-TS/effect 3.22.2 --package effect   # effect@3.22.2
 
 From there the agent reads commits and diffs between the two tags, scoped to the package's own directory, and quotes what it finds.
 
-**What stays open.** A diff tells you what changed in the library. It does not tell you what your code does with it. The agent can look for the changed names in your project, and that is a search, not a proof. Ask it to name the revisions it compared, because a checkout is the default branch at the last fetch and not necessarily the version you have installed.
+**Come back to your own code.** A diff of the library is only half an answer to "what do I have to adjust". The agent takes the names that changed and looks for them where you use them, so what comes back is the places in your project the upgrade reaches rather than everything the release touched.
+
+**What stays open.** That last step is a search, not a proof. A call that reaches the changed code through a re-export, a wrapper of your own, or a name you aliased on import will not turn up. Ask it to name the revisions it compared, because a checkout is the default branch at the last fetch and not necessarily the version you have installed.
 
 ## Who has to change when I change something
 

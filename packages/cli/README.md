@@ -8,7 +8,7 @@
 /refs I want to upgrade effect. what changed since the version we use, and what do I have to adjust
 ```
 
-That takes three steps. The agent reads the version your project depends on, finds the repository behind the package, and compares that release with the current one. Answers name the file and line they came from, so you can check them.
+That takes four steps. The agent reads the version your project depends on, finds the repository behind the package, compares that release with the current one, and then goes back through your own code for the places the change touches. Answers name the file and line they came from, so you can check them.
 
 ```
 /refs I changed how our orders API paginates. check billing-worker and the admin dashboard: do they call it, and what has to change
