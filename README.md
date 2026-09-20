@@ -47,7 +47,7 @@ That happens once. Effect is a ref from then on, and every later question about 
 
 | It asks before it spends anything | It shows you what it found, and what it is unsure about |
 | --- | --- |
-| ![The agent reporting what it detected in the repository and asking how much of it to describe](<https://raw.githubusercontent.com/kaisers-io/refs/main/assets/screenshots/add-scope.png>) | ![The finished proposal: every package with a description written from its own source, a note about the tag format it is unsure of, and a request to approve](<https://raw.githubusercontent.com/kaisers-io/refs/main/assets/screenshots/add-approval.png>) |
+| ![The agent reporting what it detected in the repository and asking how much of it to describe](assets/screenshots/add-scope.png) | ![The finished proposal: every package with a description written from its own source, a note about the tag format it is unsure of, and a request to approve](assets/screenshots/add-approval.png) |
 
 
 Three ways to name the same repository. All of them resolve to the key `github.com/Effect-TS/effect`:
@@ -96,7 +96,7 @@ And it does not matter which project you are in. The checkouts live in one place
 > **TODO screenshot.** The agent's answer: the diagram, the table of files it inspected, and a source file open at one of the cited lines.
 > Save it as `assets/screenshots/effect-fiber-diagram.png`, then replace this block with the line below.
 
-<!-- ![The agent's diagram of how Effect runs a fiber, the files it inspected, and one of them open at the cited line](https://raw.githubusercontent.com/kaisers-io/refs/main/assets/screenshots/effect-fiber-diagram.png) -->
+<!-- ![The agent's diagram of how Effect runs a fiber, the files it inspected, and one of them open at the cited line](assets/screenshots/effect-fiber-diagram.png) -->
 
 ## Try it on a real repository
 
