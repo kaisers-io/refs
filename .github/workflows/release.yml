@@ -25,7 +25,7 @@ jobs:
       # No `cache: pnpm` in this workflow (unlike ci.yml): a poisoned or stale restore-key cache
       # is a plausible supply-chain vector for the one workflow with publish reach, so the
       # release pipeline always installs clean.
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .node-version }
       - name: Guard — tag matches packages/cli/package.json version
         # `github.ref_name` is attacker-controlled text once the repo is public (anyone who can
@@ -173,7 +173,7 @@ jobs:
         # This is the ONLY channel that gets `dist/refs.mjs` into `publish`: the artifact built,
         # determinism-checked, and shape-guarded above by this unprivileged (no id-token) job.
         # Short retention — it only needs to survive until `publish` downloads it moments later.
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cli-bundle
           path: packages/cli/dist/refs.mjs
@@ -222,7 +222,7 @@ jobs:
             exit 1
           fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           # Required for npm's Trusted Publishing (OIDC) exchange to target the right registry —
@@ -230,7 +230,7 @@ jobs:
           # (verified from the Node.js release metadata: node v24.20.0 bundles npm 11.19.0).
           registry-url: 'https://registry.npmjs.org'
       - name: Download the CLI bundle built by the unprivileged verify job
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: cli-bundle
           path: packages/cli/dist
