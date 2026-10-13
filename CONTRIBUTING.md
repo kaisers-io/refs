@@ -7,7 +7,7 @@ useful thing you can do before writing code is open an issue and describe the pr
 
 - **Node.js `>=24.2`** is the supported floor for the published CLI, verified in CI against the
   built bundle rather than only the source.
-- **Node 24.20** for development (see `.node-version`). The bundler needs a newer interpreter than
+- **Node 24.21** for development (see `.node-version`). The bundler needs a newer interpreter than
   the floor, so CI builds on the pin and then re-runs the checks on the floor.
 - **pnpm 12 or newer** (`corepack enable` picks up the pinned version automatically). The
   published CLI has no pnpm requirement of its own.

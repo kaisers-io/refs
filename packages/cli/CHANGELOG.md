@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **An invalid `config.toml` is reported in the new parser's words.** The message still carries
   only the fault and its position, never a line of the file, but the fault is named differently
   and the column points at the offending character rather than the start of the line.
-- **Development moved to pnpm 12.** The development toolchain moved too: `oxlint`, `oxfmt`,
+- **Development moved to pnpm 12 and Node 24.21.** The development toolchain moved too: `oxlint`, `oxfmt`,
   `vitest`, `vite`, `tsdown`, and `@types/node` within the 24 line. The published CLI has no pnpm
   requirement of its own.
 

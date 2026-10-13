@@ -15,7 +15,7 @@
     "build": "pnpm -r run build",
     "check": "pnpm lint && pnpm fmt:check && pnpm typecheck && pnpm test",
     "versions": "node scripts/versions.mjs",
-    "skill:audit": "uvx snyk-agent-scan@0.6.0 scan --skills --ci --dangerously-run-mcp-servers --ignore-risks third_party_content_exposure skills",
+    "skill:audit": "uvx snyk-agent-scan@0.6.8 scan --skills --ci --dangerously-run-mcp-servers --ignore-risks third_party_content_exposure skills",
     "skill:eval": "scripts/skill-evals.sh",
     "skill:eval:codex": "scripts/skill-evals.sh codex",
     "refs": "pnpm --filter @kaisers-io/refs build && node packages/cli/bin/refs.mjs"
