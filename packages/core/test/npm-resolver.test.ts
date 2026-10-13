@@ -26,6 +26,12 @@ const unfetchedFetcher = (): { fetcher: Fetcher; isFetched: () => boolean } => {
   return { fetcher, isFetched: () => fetched };
 };
 
+const unparseableFetcher: Fetcher = () =>
+  Promise.resolve({
+    json: () => Promise.reject(new SyntaxError('Unexpected token')),
+    status: HTTP_STATUS_OK,
+  });
+
 const NEXT_REPO_URL = 'git+https://github.com/vercel/next.js.git';
 const LONG_NAME_LENGTH = 215;
 
@@ -189,12 +195,9 @@ describe('directory validation', () => {
 describe('json parsing', () => {
   it('throws validationError when json() rejects with SyntaxError', async () => {
     expect.hasAssertions();
-    const fetcher: Fetcher = () =>
-      Promise.resolve({
-        json: () => Promise.reject(new SyntaxError('Unexpected token')),
-        status: HTTP_STATUS_OK,
-      });
-    await expect(resolveNpmPackage(fetcher, 'pkg')).rejects.toThrow(/not parseable JSON/u);
+    await expect(resolveNpmPackage(unparseableFetcher, 'pkg')).rejects.toThrow(
+      /not parseable JSON/u,
+    );
   });
 });
 
@@ -278,12 +281,8 @@ describe('the registry request', () => {
 
   it('still reports a genuinely unparseable body as unparseable', async () => {
     expect.hasAssertions();
-    const fetcher: Fetcher = () =>
-      Promise.resolve({
-        json: () => Promise.reject(new SyntaxError('Unexpected token')),
-        status: HTTP_STATUS_OK,
-      });
-
-    await expect(resolveNpmPackage(fetcher, 'next')).rejects.toThrow(/not parseable JSON/u);
+    await expect(resolveNpmPackage(unparseableFetcher, 'next')).rejects.toThrow(
+      /not parseable JSON/u,
+    );
   });
 });

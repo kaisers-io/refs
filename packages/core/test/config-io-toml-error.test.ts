@@ -45,7 +45,7 @@ describe('an invalid config.toml', () => {
   it('reports the fault and its position, and nothing of the source', async () => {
     expect.hasAssertions();
     await expect(messageFor(configWithMarkersAround)).resolves.toBe(
-      'invalid TOML in <config>: Invalid TOML document: only letter, numbers, dashes and underscores are allowed in keys (line 6, column 1)',
+      'invalid TOML in <config>: Invalid TOML document: illegal character in key (line 6, column 6)',
     );
   });
 
@@ -61,7 +61,7 @@ describe('an invalid config.toml', () => {
   it('reports a fault that sits nowhere near a url the same way', async () => {
     expect.hasAssertions();
     await expect(messageFor('[meta]\nschema_version = 1\nbroken line\n')).resolves.toBe(
-      'invalid TOML in <config>: Invalid TOML document: incomplete key-value: cannot find end of key (line 3, column 1)',
+      'invalid TOML in <config>: Invalid TOML document: illegal character in key (line 3, column 8)',
     );
   });
 });

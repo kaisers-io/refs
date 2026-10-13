@@ -142,7 +142,7 @@ always available and sometimes the right call.
    plus its immediate context), not the whole file.
 3. Follow only the call sites/imports you actually need.
 4. Use `git log`/`git blame` when history is part of the question — `git log
---oneline` (local) before any `-p` variant, and scope both to the file that
+   --oneline` (local) before any `-p` variant, and scope both to the file that
    matters. What that costs on a blobless checkout is the next point.
 
 Two things worth knowing about these checkouts:
