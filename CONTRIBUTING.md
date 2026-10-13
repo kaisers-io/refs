@@ -7,9 +7,9 @@ useful thing you can do before writing code is open an issue and describe the pr
 
 - **Node.js `>=24.2`** is the supported floor for the published CLI, verified in CI against the
   built bundle rather than only the source.
-- **Node 24.20** for development (see `.node-version`). The bundler needs a newer interpreter than
+- **Node 24.21** for development (see `.node-version`). The bundler needs a newer interpreter than
   the floor, so CI builds on the pin and then re-runs the checks on the floor.
-- **pnpm 11 or newer** (`corepack enable` picks up the pinned version automatically). The
+- **pnpm 12 or newer** (`corepack enable` picks up the pinned version automatically). The
   published CLI has no pnpm requirement of its own.
 
 ```bash
@@ -21,7 +21,7 @@ pnpm refs --version        # builds the CLI, then runs it
 
 `pnpm refs <args>` builds first every time, which takes a few seconds and is incremental. Do not
 write `pnpm refs -- <args>`: pnpm passes the literal `--` through to the CLI, and Commander then
-misreads the arguments. Verified against pnpm 11.9 and 11.10.
+misreads the arguments. Verified against pnpm 11.9, 11.10 and 12.11.
 
 To put a global `refs` on your `PATH` backed by this checkout, build once and link:
 

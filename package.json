@@ -3,8 +3,8 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "packageManager": "pnpm@11.24.0",
-  "engines": { "node": ">=24.2", "pnpm": ">=11" },
+  "packageManager": "pnpm@12.11.2",
+  "engines": { "node": ">=24.2", "pnpm": ">=12" },
   "scripts": {
     "lint": "oxlint",
     "fmt": "oxfmt packages skills evals",
@@ -15,7 +15,7 @@
     "build": "pnpm -r run build",
     "check": "pnpm lint && pnpm fmt:check && pnpm typecheck && pnpm test",
     "versions": "node scripts/versions.mjs",
-    "skill:audit": "uvx snyk-agent-scan@0.6.0 scan --skills --ci --dangerously-run-mcp-servers --ignore-risks third_party_content_exposure skills",
+    "skill:audit": "uvx snyk-agent-scan@0.6.8 scan --skills --ci --dangerously-run-mcp-servers --ignore-risks third_party_content_exposure skills",
     "skill:eval": "scripts/skill-evals.sh",
     "skill:eval:codex": "scripts/skill-evals.sh codex",
     "refs": "pnpm --filter @kaisers-io/refs build && node packages/cli/bin/refs.mjs"
@@ -23,14 +23,14 @@
   "devDependencies": {
     "@tsconfig/node24": "24.0.5",
     "@tsconfig/strictest": "2.0.8",
-    "@types/node": "24.13.4",
-    "@vitest/coverage-v8": "5.0.0",
-    "oxfmt": "0.67.0",
-    "oxlint": "1.82.0",
-    "tsdown": "0.23.0",
+    "@types/node": "24.19.2",
+    "@vitest/coverage-v8": "5.0.4",
+    "oxfmt": "0.72.0",
+    "oxlint": "1.87.0",
+    "tsdown": "0.23.1",
     "typescript": "7.0.2",
-    "vite": "8.3.0",
-    "vitest": "5.0.0",
+    "vite": "8.3.4",
+    "vitest": "5.0.4",
     "yaml": "2.9.1"
   }
 }

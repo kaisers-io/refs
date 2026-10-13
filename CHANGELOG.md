@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **Bundled dependencies moved past known denial-of-service advisories.** `smol-toml` 1.8.0 →
+  1.9.1 fixes quadratic-time parsing ([GHSA-r4xh-jqrq-34v2](https://github.com/advisories/GHSA-r4xh-jqrq-34v2));
+  refs parses `config.toml` with it. `brace-expansion` 5.0.9 → 5.0.12, reached through
+  `minimatch`, fixes unbounded recursion and quadratic expansion
+  ([GHSA-qhr7-859c-m2p7](https://github.com/advisories/GHSA-qhr7-859c-m2p7),
+  [GHSA-6j4f-fj2g-mc7p](https://github.com/advisories/GHSA-6j4f-fj2g-mc7p),
+  [GHSA-q2hr-2g5m-vwhr](https://github.com/advisories/GHSA-q2hr-2g5m-vwhr)); refs matches
+  workspace patterns read from a checkout with it, and a checkout is third-party content. `zod`
+  4.6.2 → 4.6.7. All three are bundled into the published CLI.
+
+### Changed
+
+- **An invalid `config.toml` is reported in the new parser's words.** The message still carries
+  only the fault and its position, never a line of the file, but the fault is named differently
+  and the column points at the offending character rather than the start of the line.
+- **Development moved to pnpm 12 and Node 24.21.** The development toolchain moved too: `oxlint`, `oxfmt`,
+  `vitest`, `vite`, `tsdown`, and `@types/node` within the 24 line. The published CLI has no pnpm
+  requirement of its own.
+
 ## [0.18.1] - 2026-09-20
 
 ### Changed
@@ -363,7 +386,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   name up with plain bracket access, so a name absent from the record resolved up the prototype
   chain: `packages['toString']` answered with `Object.prototype.toString`, which is truthy and
   therefore looked registered. Measured with the built CLI: `refs tag <ref> 1.2.3 --package
-toString` returned a tag, silently using the ref's own format for a package the configuration
+  toString` returned a tag, silently using the ref's own format for a package the configuration
   does not have, and `refs resolve toString --ref <ref>` crashed.
 
   All four now ask whether the record has its own entry under that name, as their siblings already
@@ -812,7 +835,7 @@ can contain one — TOML has no escape for it — so this only affects a hand-bu
   Existing entries are untouched. A description imported from a manifest before this release stays
   exactly as it is — nothing distinguishes it from one written by hand, so nothing rewrites it. To
   review them: `refs show <ref> --packages --json`, and `refs edit <ref> --package <name>
-description "…"` to replace one.
+  description "…"` to replace one.
 
 ### Security
 
@@ -1163,7 +1186,7 @@ long it has been there.
   `checkout.status`, which answers the question `missing` was often assumed to.
 
 - **The "lock is held" error now says who holds it and for how long.** It used to read `lock <name>
-is held — another refs process is running`, which left no way to tell a running `sync` from
+  is held — another refs process is running`, which left no way to tell a running `sync` from
   something that crashed 90 seconds ago. It now names the recorded pid, whether that pid is still
   present, how long the lock has been held, and when it becomes reclaimable.
 
@@ -1690,7 +1713,7 @@ is held — another refs process is running`, which left no way to tell a runnin
 ### Added
 
 - `refs add` now emits progress lines on stderr while it works (`refs: resolving npm
-package '…'…`, `refs: cloning …`, `refs: detecting workspace packages…`) in both
+  package '…'…`, `refs: cloning …`, `refs: detecting workspace packages…`) in both
   human and `--json` mode, so long clones no longer look like a hang. stdout is
   unaffected and stays exactly the parseable envelope in `--json` mode.
 
