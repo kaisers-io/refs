@@ -228,3 +228,16 @@ To add a case, create `evals/<name>/case.yaml` and an executable `scaffold.sh` t
 `../lib.sh`.
 Before you trust a grader, feed it a wrong answer and check that it fails. A grader that passes
 on an empty run pins nothing.
+
+Repair command graders read dedicated command files, never prose. Their committed regexes are
+built by `scripts/skill-evals/command-patterns.mjs`, and the adapter tests check they stay in sync.
+The grammar accepts exactly the fixture's argv, including ref/field/value order, with known
+options in any position and conventional literal quoting. It rejects substitutions, additional
+arguments, comments, redirections and second commands without executing generated text. This is
+a restricted literal grammar, not a general shell parser; exotic equivalent shell spellings may
+fail. Both hosts use the same regex because Claude's [documented grader API](https://code.claude.com/docs/en/plugin-evals#grader-types)
+does not provide a custom script grader. Run its positive and adversarial controls without a model:
+
+```bash
+node --test scripts/skill-evals/graders.test.mjs
+```
