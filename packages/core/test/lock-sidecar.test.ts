@@ -1,7 +1,7 @@
 import { TOKEN_A, TOKEN_B } from './helpers/lock-fixture.ts';
 import { createLeaseSidecar, leaseMtimeMs, touchLeaseSidecar } from '../src/lock-sidecar.ts';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -23,6 +23,18 @@ const seedSidecar = async (lock: string, token: string): Promise<string> => {
   const path = join(lock, `lease-${token}`);
   await utimes(path, OLD_TIME, OLD_TIME);
   return path;
+};
+
+// Observe the timestamp and bytes through one descriptor, so both assertions describe the
+// same file even if its pathname is replaced between filesystem operations.
+const readSidecar = async (path: string) => {
+  const file = await open(path, 'r');
+  try {
+    const info = await file.stat();
+    return { contents: await file.readFile('utf8'), mtimeMs: info.mtimeMs };
+  } finally {
+    await file.close();
+  }
 };
 
 describe('lease sidecar filesystem boundaries', () => {
@@ -54,9 +66,9 @@ describe('lease sidecar renewal', () => {
     const lock = await makeLock();
     const path = await seedSidecar(lock, TOKEN_A);
     await expect(touchLeaseSidecar(lock, TOKEN_A)).resolves.toBe('renewed');
-    const info = await stat(path);
+    const info = await readSidecar(path);
     expect(info.mtimeMs).toBeGreaterThan(OLD_TIME.getTime());
-    await expect(readFile(path, 'utf8')).resolves.toBe('');
+    expect(info.contents).toBe('');
   });
 
   it('never creates a missing sidecar or renews a successor acquisition', async () => {
