@@ -7,8 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `refs sync --concurrency <count>` selects a positive-integer batch limit, keeping the default
+  of four and clamping values above sixteen to limit resource pressure. Invalid values fail
+  before syncing; queued refs continue after failures and results keep target order.
+
 ### Changed
 
+- Documented how to prepare historical-content reads for offline use and the limits of changing
+  `clone_mode` for existing blobless checkouts.
 - Doctor bounds per-checkout Git inspections to four concurrent processes, preserving result order and completing queued checks after Git failures.
 
 ## [0.18.2] - 2026-10-13

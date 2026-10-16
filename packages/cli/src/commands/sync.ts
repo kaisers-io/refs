@@ -1,4 +1,5 @@
 import type { Config, RefKey, RefsHome, State } from '@kaisers-io/refs-core';
+import { DEFAULT_SYNC_CONCURRENCY, parseSyncConcurrency, syncAll } from './sync-core.ts';
 import {
   EXIT,
   checkoutPath,
@@ -23,12 +24,9 @@ import { driftLines } from './drift-lines.ts';
 import { isStale } from './ref-status.ts';
 import { matchRefKey } from './list.ts';
 import { requireEntry } from './ref-context.ts';
-import { syncAll } from './sync-core.ts';
 
-// `refs sync [refs…] [--stale-only]` — fetches (or, if the checkout is missing, re-clones) every
-// requested ref, defaulting to all configured refs. This file owns target resolution, staleness
-// filtering, and human-mode summary formatting; the per-ref clone/sync/lock pipeline is in
-// `sync-core.ts`.
+// Target resolution, staleness filtering, and human output for `refs sync`.
+// The per-ref clone/sync/lock pipeline lives in `sync-core.ts`.
 
 const buildContext = (home: RefsHome, config: Config, key: RefKey): RefSyncContext => ({
   home,
@@ -74,6 +72,7 @@ const filterStale = (
 };
 
 type SyncOptions = {
+  concurrency: number;
   refs: string[];
   staleOnly: boolean;
 };
@@ -85,7 +84,7 @@ type SyncOutcome = {
 };
 
 /** One update check per `refs sync` invocation, deliberately outside the per-ref pipeline: that
- * pipeline fans out four refs at a time (`syncAll`) and turns any throw into a per-ref failure
+ * pipeline fans out a bounded number of refs (`syncAll`) and turns any throw into a per-ref failure
  * recorded in state (`syncOneKey`). A question about this CLI's own version belongs to neither.
  *
  * Only the invocation that actually refreshed the cache announces anything, which is what limits
@@ -126,6 +125,7 @@ const scopeTargets = async (
 type Spinner = ReturnType<CliContext['spinner']>;
 
 type SyncRun = {
+  concurrency: number;
   config: Config;
   ctx: CliContext;
   home: RefsHome;
@@ -136,7 +136,7 @@ type SyncRun = {
 /** The refs and the update check side by side. Once every ref is done, a check still waiting on the
  * registry gets the spinner line instead of a finished count that looks stuck. */
 const syncWithUpdateCheck = (run: SyncRun): Promise<[SyncResultItem[], string[]]> => {
-  const { config, ctx, home, scoped, spinner } = run;
+  const { concurrency, config, ctx, home, scoped, spinner } = run;
   if (scoped.length === 0) {
     return Promise.resolve([[], []]);
   }
@@ -149,7 +149,7 @@ const syncWithUpdateCheck = (run: SyncRun): Promise<[SyncResultItem[], string[]]
     }
   };
   const syncing = async (): Promise<SyncResultItem[]> => {
-    const results = await syncAll(ctx, scoped, spinner);
+    const results = await syncAll(ctx, scoped, { concurrency, spinner });
     if (check.pending) {
       spinner.update('Checking for a newer refs release');
     }
@@ -170,7 +170,14 @@ const runSync = async (
   const scoped = await scopeTargets(home, targets, opts.staleOnly);
   // Concurrent with the refs themselves — a sync that had nothing to do (everything inside its
   // `sync_ttl`) stays the no-op it is, and never touches the network on its own account.
-  const [results, warnings] = await syncWithUpdateCheck({ config, ctx, home, scoped, spinner });
+  const [results, warnings] = await syncWithUpdateCheck({
+    concurrency: opts.concurrency,
+    config,
+    ctx,
+    home,
+    scoped,
+    spinner,
+  });
   const failedCount = results.filter((item) => item.status === 'failed').length;
   return { failedCount, results, warnings };
 };
@@ -246,7 +253,11 @@ const syncHuman = (results: readonly SyncResultItem[]): string[] => {
   return lines;
 };
 
-const buildSyncOptions = (refs: string[], localOpts: { staleOnly?: boolean }): SyncOptions => ({
+const buildSyncOptions = (
+  refs: string[],
+  localOpts: { concurrency: number; staleOnly?: boolean },
+): SyncOptions => ({
+  concurrency: localOpts.concurrency,
   refs,
   staleOnly: localOpts.staleOnly === true,
 });
@@ -258,6 +269,12 @@ const registerSync = (program: RefsCommand, ctx: CliContext): void => {
       'Fetch (or re-clone, if the checkout is missing) configured refs — all by default.',
     )
     .argument('[refs...]', 'ref keys or unique suffixes to sync (default: every configured ref)')
+    .option(
+      '--concurrency <count>',
+      'maximum refs to sync at once (positive integer, clamped to 16)',
+      parseSyncConcurrency,
+      DEFAULT_SYNC_CONCURRENCY,
+    )
     .option('--stale-only', "skip refs whose last sync is still within their ref's sync_ttl")
     .action((refs, localOpts, command) => {
       const opts = cliOptsOf(command);

@@ -878,7 +878,7 @@ Exit codes: `4` (no ref matches), `2` (ambiguous suffix).
 ## `refs sync`
 
 ```
-refs sync [refs...] [--stale-only]
+refs sync [refs...] [--stale-only] [--concurrency <count>]
 ```
 
 Fetches (or re-clones, if the checkout is missing) every requested ref — every configured
@@ -890,6 +890,7 @@ re-cloned regardless of TTL).
 refs sync --json
 refs sync zod left-pad --json
 refs sync --stale-only --json
+refs sync --concurrency 2 --json
 ```
 
 ```json
@@ -928,7 +929,16 @@ was reset back to clean), or `failed` (with an `error` message instead of a clea
 status). A ref skipped entirely by `--stale-only` (within its `sync_ttl` and with an
 existing checkout) produces no result item at all — it's filtered out before syncing, not
 reported as `fresh`. A branch-rename or partial-clone-fallback surfaces as a `warning`
-string on that item, not a failure. Up to 4 refs sync concurrently.
+string on that item, not a failure. Up to 4 refs sync concurrently by default.
+
+`--concurrency <count>` changes this invocation's batch limit. Use a positive decimal integer;
+zero, negative values, fractions, exponents and non-numbers are usage errors (exit `2`, with the
+usual error envelope under `--json`). Values above 16 are clamped to 16, including very large
+integers. A lower limit can reduce pressure on a slow connection or a rate-limited remote.
+The ceiling is a conservative resource guard, four times the unchanged default, not a measured
+throughput optimum or a guarantee against a server's rate limits. The flag bounds concurrent
+ref pipelines, not every subprocess in the operating system. Results retain target order and
+one failed ref releases its slot so queued refs continue. No configuration file change is needed.
 
 ### `structure` — config drift
 
