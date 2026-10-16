@@ -1,0 +1,53 @@
+schema_version: '1.1'
+name: version-compare
+description: >-
+  Three tags on one ref: a real code change between the first two, a README-only change after
+  that, and a version that was never tagged. The grade is the concrete change with history behind
+  it, an honest "no code change", and an honest "does not exist", not two version strings
+  restated.
+plugins: ['../../skills/refs']
+runs: 3
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 30
+  timeout_seconds: 600
+  append_system_prompt: >-
+    Only your last message is read. Finish any background work before you write it, and make it
+    the complete answer.
+  allowed_tools: [Bash, Read, Glob, Grep]
+  prompt: >-
+    /refs In the retrylib ref, what changed in `retry` between v1.0.0 and v1.1.0, and between
+    v1.1.0 and v1.1.1? What changed in v1.2.0? Show the evidence.
+graders:
+  # The change itself: the default for `attempts` went from 3 to 5.
+  - name: names-the-default-change
+    type: regex
+    pattern: 'attempts[\s\S]{0,200}\b3\b[\s\S]{0,80}\b5\b|\b3\b\s*(?:→|->|to)\s*\b5\b[\s\S]{0,120}attempts'
+    flags: i
+  # History behind it: the commit that made the change, by id or by subject. The commit ids are
+  # fixed because the scaffold fixes the commit dates (lib.sh fixed_dates).
+  - name: cites-the-change-commit
+    type: regex
+    pattern: '53f849c|retry five times by default'
+    flags: i
+  # History was actually read between the two tags, not guessed from the version strings.
+  - name: read-history-between-tags
+    type: tool_used
+    tool: Bash
+    input_match: '\bgit\b[^;&|]*\b(?:diff|log|show)\b[^;&|]*v1\.0\.0[^;&|]*v1\.1\.0'
+  # v1.1.1 only edits the README: no code change, and saying so is the right answer.
+  - name: zero-code-diff-reported
+    type: regex
+    pattern: 'v1\.1\.1[\s\S]{0,300}(?:no (?:code|source|functional) changes?|only (?:the )?readme|readme[- ]only|docs?[- ]only|documentation[- ]only|nothing changed in (?:the )?code)'
+    flags: i
+  - name: missing-tag-reported
+    type: regex
+    pattern: 'v1\.2\.0[^\n]{0,160}(?:not exist|doesn.t exist|does not exist|no such|isn.t (?:a |tagged)|is not (?:a |tagged)|not tagged|no (?:v1\.2\.0 )?tag|not found|missing)'
+    flags: i
+  - name: changed-nothing
+    type: tool_used
+    tool: Bash
+    input_match: '(?:sed\s+-i|\btee\b|>\s*[^\s&|]*sources/|\bgit\s+(?:commit|reset|checkout|stash|apply|add|tag)\b|\brefs\s+(?:add|edit|remove)\b)'
+    min: 0
+    max: 0

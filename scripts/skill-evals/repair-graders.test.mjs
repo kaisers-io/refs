@@ -7,44 +7,12 @@
 // controls are commands refs rejects or that are not one command: they must FAIL their grader.
 
 import { deepStrictEqual, strictEqual } from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, writeFile } from 'node:fs/promises';
 import { grade } from './graders.mjs';
+import { graderFrom } from './case-graders.mjs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { tmpdir } from 'node:os';
-
-// Just enough YAML for one grader entry: single-quoted scalars and a one-line flow mapping. The
-// workflow job that runs this has no install, so a YAML library is not an option.
-const scalar = (raw) => {
-  const quoted = /^'(?<body>.*)'$/su.exec(raw)?.groups.body;
-  return quoted === undefined ? raw.trim() : quoted.replaceAll("''", "'");
-};
-
-const targetOf = (raw) => {
-  const path = /path: (?<path>[^ }]+)/u.exec(raw)?.groups.path;
-  return path === undefined ? scalar(raw) : { path, source: 'file' };
-};
-
-const fieldOf = (line) => {
-  const field = /^ {4}(?<key>pattern|match|target): (?<value>.*)$/u.exec(line)?.groups;
-  if (field === undefined) {
-    return {};
-  }
-  return { [field.key]: field.key === 'target' ? targetOf(field.value) : scalar(field.value) };
-};
-
-const graderFrom = async (caseName, name) => {
-  const text = await readFile(new URL(`../../evals/${caseName}/case.yaml`, import.meta.url), 'utf8');
-  const lines = text.split('\n');
-  const start = lines.indexOf(`  - name: ${name}`) + 1;
-  const length = lines.slice(start).findIndex((line) => !line.startsWith('    '));
-  const grader = { name, type: 'regex' };
-  for (const line of lines.slice(start, start + length)) {
-    Object.assign(grader, fieldOf(line));
-  }
-  strictEqual(typeof grader.pattern, 'string', `${caseName} has a grader ${name} with a pattern`);
-  return grader;
-};
 
 const inReply = async (grader, lastMessage) => {
   const result = await grade(grader, { commands: [], cwd: tmpdir(), lastMessage, trace: '' });
