@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **The skill's `refs edit` example names the ref first.** `COMMANDS.md` taught
+  `refs edit --package='<name>' path '<new-path>' '<ref>'`, but `refs edit` reads its positionals
+  in order (`<ref> [field] [value]`). Followed literally, the command looked up a ref called `path`
+  and failed with exit 4. It now reads `refs edit '<ref>' --package='<name>' path '<new-path>'`, the
+  form `INVESTIGATE.md` already used, and a test keeps every three-positional `refs edit` example in
+  the skill ref-first. The same file no longer says `refs add` could not have registered a
+  repository root: `add` probes the root and proposes it unless a member claims its name, so a root
+  reported as `unregistered` predates that probe, was named upstream later, or was left out.
+
 ## [0.18.2] - 2026-10-13
 
 ### Security
