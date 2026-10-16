@@ -18,6 +18,19 @@ credited unless they ask not to be.
 Only the latest released version receives security fixes. `refs` is pre-1.0 and moves quickly;
 there are no long-term support branches.
 
+## Dependency advisory checks
+
+The `dependency-audit` workflow runs on pull requests, main pushes and weekly. It uses the
+`packageManager`-pinned pnpm to audit every document in `pnpm-lock.yaml`, including development,
+optional, package-manager and transitive dependencies. A production-only audit would omit packages
+that are bundled into the published CLI despite being declared as development dependencies.
+
+Run `pnpm audit --audit-level high` locally to reproduce the gate. High and critical advisories
+fail the job; registry/transport failures also fail instead of being reported as a clean scan.
+Inspect the audit log to distinguish those cases, and rerun a transient registry failure.
+This complements GitHub's dependency graph, whose pnpm lockfile coverage can differ; it does not
+submit or repair that graph, and an advisory-free result is not a guarantee against malicious code.
+
 ## What is in scope
 
 - Command injection or argument injection through ref names, URLs, tags, or configuration values.

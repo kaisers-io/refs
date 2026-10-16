@@ -1,0 +1,29 @@
+name: dependency-audit
+on:
+  push: { branches: [main] }
+  pull_request:
+  schedule:
+    - cron: '23 8 * * 1'
+# Advisory data changes even when the lockfile does not. Keep this separate from
+# the build matrix so a registry outage is visible as an audit failure.
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version-file: .node-version, package-manager-cache: false }
+      # packageManager pins pnpm, whose audit reads BOTH lockfile documents,
+      # including package-manager, development, optional and transitive entries.
+      # No install is needed. --prod would omit dependencies bundled into the CLI.
+      # Do not ignore registry errors: an unavailable scan is not a clean scan.
+      - name: Audit the complete lockfile
+        run: pnpm audit --audit-level high
