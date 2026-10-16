@@ -31,25 +31,48 @@ there are no long-term support branches.
   defeat that is in scope.
 
   `core.hooksPath` governs hooks-*directory* discovery, which is what stops a hook file living
-  inside a checkout from running. Other git mechanisms do not route through it. Measured on git
-  2.54 against a real clone with `core.hooksPath` correctly pinned: a configured hook
-  (`[hook "x"] event = post-checkout; command = ./script.sh`) ran the **checkout's** copy of that
-  script during `refs add` and `refs sync`, and an attribute-selected filter
-  (`[filter "y"] smudge = ./script.sh`) ran it during the checkout `refs sync` performs.
-  `core.fsmonitor`'s command form is a third: git runs it with the worktree as its working
-  directory.
+  inside a checkout from running. Other git mechanisms do not route through it, and each of them
+  could run a script the checkout supplies if the invoking user's own git configuration names it by
+  a relative path. A tracked repository cannot create such a definition, and its `.gitattributes`
+  can only choose when an existing filter applies. Measured against real clones with
+  `core.hooksPath` correctly pinned:
 
-  Each needs a definition already present in the invoking user's own git configuration. A tracked
-  repository cannot create one, and its `.gitattributes` can only choose when an existing filter
-  applies. `refs doctor`'s `git-exec-surfaces` check reports such a definition rather than `refs`
-  sanitising the ambient configuration, because that same configuration carries the credential
-  helpers, proxies and `insteadOf` rules a private clone needs.
+  | Mechanism | Example definition | What refs does for its own git commands |
+  | --- | --- | --- |
+  | `core.fsmonitor`, command form | `fsmonitor = ./script.sh` | Switched off with `-c core.fsmonitor=` on every git version. The empty value is used because git 2.35.1 and older run `false` as a program. |
+  | Configured hooks (git 2.54+) | `[hook "x"] event = post-checkout; command = ./script.sh` | Switched off with `-c hook.<event>.enabled=false` for the events refs' commands fire: `post-checkout`, `reference-transaction`, `post-index-change`, `pre-auto-gc`. git reads that per-event switch from 2.55 on. **On 2.54.x it does not exist, configured hooks still run, and `refs doctor`'s `git` check warns.** |
+  | Content filters | `[filter "y"] smudge = ./script.sh`, selected by the checkout's `.gitattributes` | **Left enabled.** A filter decides what a checkout contains, and a `required` filter (git-lfs sets one) fails the checkout outright when emptied. |
 
-  That check reports **presence, not safety**. Whether a given command reaches a checkout's content
-  depends on the command, and deciding that would mean proving an arbitrary interpreter never loads
-  it — `/bin/sh ./script.sh` has an absolute program and runs the checkout's script anyway. It is
-  also a baseline: an `includeIf "gitdir:…"` section can add entries inside a managed checkout that
-  a listing read elsewhere does not show.
+  Both switches are passed as top-level `-c` options. That gives them command scope, above every
+  configuration file and above configuration inherited through `GIT_CONFIG_PARAMETERS` or
+  `GIT_CONFIG_COUNT`. They are not written into a checkout, so an agent's own git commands there
+  run with the user's configuration unchanged. They do not affect hooks-directory hooks, so refs'
+  own `pre-commit`/`pre-push` guard keeps working.
+
+  `refs` does not otherwise sanitise the ambient configuration, because that configuration
+  carries the credential helpers, proxies and `insteadOf` rules a private clone needs. `refs
+  doctor`'s `git-exec-surfaces` check reports the filters and configured hooks it finds. It reports
+  **presence, not safety**. Whether a given command reaches a checkout's content depends on the
+  command, and deciding that would mean proving an arbitrary interpreter never loads it:
+  `/bin/sh ./script.sh` has an absolute program and still runs the checkout's script. The check
+  is also only a baseline, because an `includeIf "gitdir:…"` section can add entries inside a
+  managed checkout that a listing read elsewhere does not show.
+- **An inherited environment redirecting refs' git.** `refs` names a checkout by its path, but git
+  gives `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and their siblings precedence over the working
+  directory, and exports them to every hook it runs. Started from a hook, an alias or a wrapper,
+  `refs` would otherwise run `config`, `reset --hard` and `clean -fd` against the caller's
+  repository. Every child process `refs` starts gets a copy of the environment without the
+  variables git itself clears before working in another repository (`git rev-parse
+  --local-env-vars`, git's `sanitize_repo_env()`). Like git, `refs` keeps `GIT_CONFIG_PARAMETERS`
+  and `GIT_CONFIG_COUNT`, so injected credentials and url rewrites keep working. The managed
+  `core.hooksPath` is also set at command scope during a clone, so configuration injected that way
+  cannot point the initial checkout at hooks the cloned repository ships. A way to make refs'
+  git act on a repository other than the checkout it named is in scope.
+- **Git versions.** `refs` sets no minimum git version. The fsmonitor and hook switches were
+  verified against git 2.25, 2.30, 2.34, 2.39, 2.47, 2.53 and 2.55. The environment handling was
+  verified against 2.30, 2.47 and 2.55. git 2.54 could not be tested directly, and the statement
+  about it rests on git's source. CI runs whichever git each runner image ships. A difference on a
+  git version in that range is in scope.
 - Supply-chain problems in the published `@kaisers-io/refs` package: an unexpected bundled
   dependency, a lifecycle script, or a mismatch between the published artifact and this
   repository.
@@ -83,8 +106,9 @@ dependency is a real residual risk and prose in a skill does not remove it. What
 is narrower, and worth stating exactly:
 
 - `refs` never runs a checkout's own code through a hook *inside* the checkout (the
-  `core.hooksPath` note above), and `refs doctor` reports the configured mechanisms that note
-  describes as outside it.
+  `core.hooksPath` note above). Its own git commands switch off fsmonitor and, on git 2.55 and
+  later, configured hooks, and `refs doctor` reports the mechanisms that remain: filters, and
+  configured hooks on git 2.54.
 - **`refs` never imports a description out of a checkout's manifests.** A package `description` is
   the one field in `config.toml` that exists to hold prose, and workspace detection does not read it
   — it carries a package's name and path and nothing else. Every description is written by whoever
