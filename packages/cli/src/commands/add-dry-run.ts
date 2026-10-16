@@ -38,6 +38,7 @@ import type { CliContext } from '../context.ts';
 import type { ResolvedSource } from './add-source.ts';
 import { discoveryObstacle } from './workspace-diagnostics.ts';
 import { ensureClonedCheckout } from './add-checkout-guards.ts';
+import { networkTimeoutFrom } from '../network-timeout.ts';
 import { progress } from '../output.ts';
 
 // The `--dry-run` core: resolve source → conflict/collision guards → idempotent clone → detect
@@ -146,7 +147,7 @@ const detectProposalFields = async (
   dest: string,
   resolved: ResolvedSource,
 ): Promise<DetectedFields> => {
-  const defaultBranch = await detectDefaultBranch(ctx.runner, dest);
+  const defaultBranch = await detectDefaultBranch(ctx.runner, dest, networkTimeoutFrom(ctx.env));
   const tagged = await listTags(ctx.runner, dest);
   const countedTagFormat = tagCandidateFrom(tagged);
   progress(ctx, 'detecting workspace packages…');

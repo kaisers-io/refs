@@ -55,6 +55,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from `GIT_CONFIG_COUNT` or `GIT_CONFIG_PARAMETERS` outranks it, so a relative `.githooks` injected
   that way ran a hook the cloned repository ships. The clone now also passes it at command scope.
 
+### Added
+
+- **`REFS_NETWORK_TIMEOUT` puts a deadline on the git commands that contact the remote.** Set it
+  to a whole number of seconds and `refs add` and `refs sync` stop a clone, fetch or
+  `remote set-head --auto` that runs longer, instead of holding the ref's lock indefinitely on a
+  stalled server. Off by default, since a fixed limit would cut off a legitimate large clone on a
+  slow link. An unusable value is refused rather than read as "no deadline".
+
+### Changed
+
+- **refs' git no longer waits at a credential prompt nobody can answer.** git asks for https
+  credentials on the terminal, not on its input, so a remote that wanted a password left
+  `refs add` or `refs sync` waiting at a prompt an agent never sees. refs now runs git with
+  `GIT_TERMINAL_PROMPT=0` unless you set that variable yourself, and the failure says how to
+  supply credentials instead: a credential helper, an ssh url, or `GIT_TERMINAL_PROMPT=1`.
+  Credential helpers and `GIT_ASKPASS` are unaffected.
+
+### Fixed
+
+- **A clone that fails part-way no longer leaves a checkout behind that a retry adopts.** A clone
+  stopped before it finished could leave its directory with `.git` and the managed hooks path
+  already in place, and the next `refs add` treated that as a finished checkout and failed on it.
+  refs now removes a checkout directory the failed clone created. It never removes one that existed
+  before the clone started.
+
 ## [0.18.2] - 2026-10-13
 
 ### Security

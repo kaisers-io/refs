@@ -66,3 +66,24 @@ describe('a failing git command', () => {
     expect(message.length).toBeLessThan(MAX_DETAIL_LENGTH);
   });
 });
+
+// refs runs git with `GIT_TERMINAL_PROMPT=0` unless the user set it, so a remote that wants https
+// credentials fails with git's terse wording; the message has to say what to do instead.
+describe('a git command that wanted to prompt for credentials', () => {
+  it('names the ways to supply them', async () => {
+    expect.hasAssertions();
+    const message = await failingClone(
+      "fatal: could not read Username for 'https://example.com': terminal prompts disabled",
+    );
+    expect(message).toContain('terminal prompts disabled');
+    expect(message).toContain('configure a credential helper');
+    expect(message).toContain('GIT_TERMINAL_PROMPT=1');
+  });
+
+  it('is the only failure that gets that hint', async () => {
+    expect.hasAssertions();
+    await expect(failingClone('fatal: repository not found')).resolves.not.toContain(
+      'credential helper',
+    );
+  });
+});
