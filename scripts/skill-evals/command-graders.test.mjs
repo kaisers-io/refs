@@ -1,15 +1,77 @@
 // Only grade text here. In particular, never execute the deliberately hostile command artifacts.
 import { commandPattern, repairPatterns } from './command-patterns.mjs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { strictEqual, throws } from 'node:assert/strict';
 import { grade } from './graders.mjs';
 import { join } from 'node:path';
-import { parse } from 'yaml';
-import { strictEqual } from 'node:assert/strict';
 import { test } from 'node:test';
 import { tmpdir } from 'node:os';
 
-const load = async (name) =>
-  parse(await readFile(new URL(`../../evals/${name}/case.yaml`, import.meta.url), 'utf8'));
+// This CI job deliberately has no installed dependencies. Support only the literal fields
+// these cases use and reject unknown syntax/options instead of silently changing their meaning.
+const readBlock = (block) => {
+  const fields = block
+    .split('\n')
+    .slice(1)
+    .filter((line) => line.trim() && !line.trimStart().startsWith('#'));
+  strictEqual(
+    fields.every((line) => /^    (?:type|pattern|match|target): /u.test(line)),
+    true,
+    'unsupported grader field',
+  );
+  strictEqual(
+    fields.some((line) => line === '    type: regex'),
+    true,
+    'command controls require type: regex',
+  );
+  strictEqual(
+    new Set(fields.map((line) => line.split(':')[0])).size,
+    fields.length,
+    'duplicate grader field',
+  );
+  const pattern = block.match(/^    pattern: '(?<value>.*)'$/mu)?.groups.value;
+  strictEqual(typeof pattern, 'string', 'command controls require a literal one-line pattern');
+  strictEqual(pattern.replaceAll("''", '').includes("'"), false, 'unescaped YAML quote');
+  return { fields, pattern };
+};
+const readTarget = (target) => {
+  if (target === undefined || target === 'trace') {
+    return target;
+  }
+  const path = target.match(/^\{ source: file, path: (?<value>[^ }]+) \}$/u)?.groups.value;
+  strictEqual(typeof path, 'string', 'unsupported grader target');
+  return { path, source: 'file' };
+};
+const readCommandGraders = (text) =>
+  text
+    .split(/^  - name: /mu)
+    .slice(1)
+    .map((block) => {
+      const { fields, pattern } = readBlock(block);
+      const match = fields
+        .find((line) => line.startsWith('    match: '))
+        ?.slice('    match: '.length);
+      strictEqual(
+        match === undefined || match === 'not_contains',
+        true,
+        'unsupported match option',
+      );
+      return {
+        match,
+        name: block.split('\n')[0],
+        pattern: pattern.replaceAll("''", "'"),
+        target: readTarget(
+          fields.find((line) => line.startsWith('    target: '))?.slice('    target: '.length),
+        ),
+        type: 'regex',
+      };
+    });
+const load = async (name) => ({
+  graders: readCommandGraders(
+    await readFile(new URL(`../../evals/${name}/case.yaml`, import.meta.url), 'utf8'),
+  ),
+});
+
 const outcome = async (grader, command) => {
   const cwd = await mkdtemp(join(tmpdir(), 'command-grader-'));
   try {
@@ -25,6 +87,22 @@ const pathCommand =
 const declineCommand =
   "refs edit --package='@toolkit/c$(id)' --decline --path='packages/a b' 'local/fixtures/toolkit'";
 
+test('the dependency-free reader rejects changed grader semantics', () => {
+  const valid =
+    "  - name: g\n    type: regex\n    pattern: 'x'\n    target: { source: file, path: answer.txt }\n";
+  strictEqual(readCommandGraders(valid)[0].pattern, 'x');
+  for (const invalid of [
+    valid.replace('type: regex', 'type: tool_used'),
+    `${valid}    flags: i\n`,
+    `${valid}    match: equals\n`,
+    `${valid}    tool: Bash\n`,
+    valid.replace('source: file', 'source: unknown'),
+    `${valid}    type: regex\n`,
+  ]) {
+    throws(() => readCommandGraders(invalid));
+  }
+});
+
 test('both hosts use the generated exact repair grammars', async () => {
   const definitions = await Promise.all(
     ['drift-repairs', 'quoted-repair'].map((name) => load(name)),
@@ -34,6 +112,12 @@ test('both hosts use the generated exact repair grammars', async () => {
       strictEqual(grader.type, 'regex');
       strictEqual(grader.pattern, repairPatterns[grader.name]);
       strictEqual(grader.target.source, 'file');
+      const paths = {
+        'decline-command-is-quoted': 'decline-command.txt',
+        'path-edit-for-the-relocated-package': 'relocation-command.txt',
+        'removal-for-the-missing-package': 'removal-command.txt',
+      };
+      strictEqual(grader.target.path, paths[grader.name]);
     }
   }
 });
