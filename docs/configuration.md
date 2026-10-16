@@ -183,6 +183,20 @@ Change a global setting with `refs edit settings <key> <value>`; change a per-re
 with `refs edit <ref> <field> <value>` (same field names — see
 [`docs/commands.md`](commands.md)).
 
+#### Blobless checkouts and working offline
+
+A `blobless` checkout has every commit and tree, and the file contents of the checked-out
+revision. The contents of older revisions are fetched from the remote the first time something
+asks for them. Reading and searching the files on disk works offline. Anything that reads history
+does not: `git log -p`, `git diff <old>..<new>`, `git blame` and `git show <old>:<file>` contact
+the remote, and fail without a network connection (or without credentials for a private remote).
+
+For a ref you need offline, use a full clone: `refs edit <ref> clone_mode full` (or
+`refs edit settings clone_mode full` for every ref). `clone_mode` takes effect when a checkout is
+cloned, which means a ref added afterwards or a checkout that `refs sync` finds missing. An existing
+blobless checkout stays blobless until then. With git 2.49 or newer, `git backfill`, run in the
+checkout while online, downloads the missing contents in one go.
+
 ### `[updates]`
 
 ```toml

@@ -55,6 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from `GIT_CONFIG_COUNT` or `GIT_CONFIG_PARAMETERS` outranks it, so a relative `.githooks` injected
   that way ran a hook the cloned repository ships. The clone now also passes it at command scope.
 
+### Fixed
+
+- `refs doctor` no longer starts one `git` process per checkout all at once in its `hooks-guard` and `dirty-checkouts` checks. At most 8 run at a time, so a home with hundreds of refs no longer runs into process or file-descriptor limits. Results and their order are unchanged.
+
 ## [0.18.2] - 2026-10-13
 
 ### Security
