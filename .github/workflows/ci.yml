@@ -5,6 +5,16 @@ on:
 # PR-controlled code runs in every job (install/build/test) — keep the ambient token read-only.
 permissions:
   contents: read
+# A newer push to the same pull request makes the older run's result moot, so it is cancelled.
+# Pushes to main are never cancelled: each one is a commit whose result should stay on record.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+# Every checkout sets `persist-credentials: false`: no step pushes or fetches anything private, and
+# a token left on disk (under RUNNER_TEMP since checkout v6) is one more thing PR-controlled code
+# could read. `timeout-minutes` replaces GitHub's 360-minute default with a few times the observed
+# duration, generous enough for a slow Windows runner or a cold cache.
+#
 # Every `uses:` below is pinned to a commit SHA rather than a moving tag, matching release.yml.
 # A tag is a pointer its owner can move, so `@v7` is a standing agreement to run whatever that
 # repository publishes next — and these actions run in the same job as PR-controlled code. The
@@ -15,8 +25,10 @@ jobs:
     strategy:
       matrix: { os: [ubuntu-latest, macos-latest, windows-latest] }
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .node-version, cache: pnpm }
@@ -44,8 +56,10 @@ jobs:
   check-node-floor:
     name: check (node floor)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .node-version, cache: pnpm }
@@ -84,8 +98,10 @@ jobs:
   # the bump commit is already on main. No pnpm install and no matrix: plain Node, one platform.
   versions:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .node-version }
       - run: node scripts/versions.mjs --check
@@ -98,8 +114,10 @@ jobs:
       - run: node --test scripts/skill-evals/graders.test.mjs
   bundle-determinism:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .node-version, cache: pnpm }
@@ -107,8 +125,10 @@ jobs:
       - run: bash scripts/check-bundle-determinism.sh
   smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .node-version, cache: pnpm }
@@ -132,8 +152,10 @@ jobs:
   # Windows path handling — exactly what a Windows user hits first.
   smoke-windows:
     runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .node-version, cache: pnpm }
