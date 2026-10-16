@@ -109,7 +109,7 @@ The skill does not activate by itself. You reach for it, which is why the questi
 
 ### 1. The CLI
 
-You need Node.js 24.2 or newer, and git. On Windows use [Git for Windows](https://gitforwindows.org/), because the read-only guards are `sh` scripts and need the shell it ships with. The CLI behaves the same on all three platforms, and its full test suite runs on each of them.
+You need Node.js 24.2 or newer, and git. On Windows use [Git for Windows](https://gitforwindows.org/), because the read-only guards are `sh` scripts and need the shell it ships with. The CLI behaves the same on all three platforms, and CI runs the test suite on each of them. Tests that need a POSIX shell, such as the ones that paste printed repair commands into `sh`, are skipped on Windows. Commands refs prints for you to run are quoted for a POSIX shell; on Windows, run them from Git Bash.
 
 ```bash
 npm i -g @kaisers-io/refs

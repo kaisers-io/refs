@@ -495,6 +495,22 @@ affected ref and package with the same wording `refs sync` uses (see
 upstream from one that merely moved. `refs list` deliberately has no equivalent: without
 persisted state it would turn a cheap inventory command into a locking filesystem sweep.
 
+### Printed commands are for a POSIX shell
+
+Where `refs doctor` or `refs sync` prints a command to run, it is quoted for a POSIX shell (`sh`,
+`bash`, `zsh`, and Git Bash on Windows). That covers a repair such as `refs edit --decline …` and
+an `rm` for an orphaned checkout. Under `--json` the same strings are the finding's `register`,
+`decline`, `repoint` and `unregister` fields. Every value that came from a checkout is wrapped in
+single quotes, and a single quote inside one is written `'\''`. That is why a package name or path
+that contains a space, `$(…)` or a backtick still arrives as one literal argument. A value that
+contains a control character gets no printed command at all, because it would not survive being
+printed. The finding is still reported, and `--json` still carries the exact value.
+
+PowerShell and `cmd.exe` quote differently. PowerShell writes a single quote inside a
+single-quoted string as `''`, and `cmd.exe` has no single quotes at all. A printed command whose
+values contain none of these characters usually works there too. One that does should be run from
+Git Bash, which the [install guide](install.md) already requires on Windows for the hooks guard.
+
 ### The `skill` check
 
 The agent skill and the CLI ship through different channels (`npx skills add` from git,
