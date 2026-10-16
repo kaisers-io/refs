@@ -1,3 +1,4 @@
+import { REFUSED_EXIT_CODE, gitVersionRefusal, isVersionProbe } from './git-version-gate.ts';
 import { activeChildren, installCleanupOnce } from './spawn-cleanup.ts';
 import { appendNote, createCollector, withTruncationNote } from './spawn-collector.ts';
 import type { ChildProcess } from 'node:child_process';
@@ -85,11 +86,9 @@ type RunningChild = {
   timeout: ReturnType<typeof armTimeout>;
 };
 
-const startChild = (
-  cmd: string,
-  args: readonly string[],
-  opts: RunOpts | undefined,
-): RunningChild => {
+type StartOpts = (RunOpts & { hooksDir?: string | undefined }) | undefined;
+
+const startChild = (cmd: string, args: readonly string[], opts: StartOpts): RunningChild => {
   // `shell: false` is Node's default, so this changes nothing at runtime — it states the property
   // the rest of the codebase rests on. Every argument refs passes to git is built from values a
   // tracked repository or the user supplied (a url, a ref key, a package path), and none of them is
@@ -104,7 +103,7 @@ const startChild = (
   // `env` is a sanitized COPY of the parent's (child-env.ts): `cwd` is how refs names a repository,
   // and an inherited `GIT_DIR` would silently override it. A git command also gets refs' policy
   // options in front (git-policy.ts), so no call site can forget them.
-  const child = spawn(cmd, withGitPolicy(cmd, args), {
+  const child = spawn(cmd, withGitPolicy(cmd, args, opts?.hooksDir), {
     ...cwdOpt(opts?.cwd),
     env: sanitizedChildEnv(process.env),
     shell: false,
@@ -131,7 +130,7 @@ const startChild = (
 const startChildSafely = (
   cmd: string,
   args: readonly string[],
-  opts: RunOpts | undefined,
+  opts: StartOpts,
 ): RunningChild | RunResult => {
   try {
     return startChild(cmd, args, opts);
@@ -236,10 +235,38 @@ const buildCloseResult = (ctx: CloseContext): RunResult => {
   );
 };
 
+// `hooksDir`: refs' hooks directory, pinned as `core.hooksPath` on every git command.
+type SpawnRunnerOpts = { hooksDir?: string | undefined };
+
 class SpawnRunner implements Runner {
+  readonly #hooksDir: string | undefined;
+  #refusal: Promise<string | undefined> | undefined;
+
+  constructor(opts: SpawnRunnerOpts = {}) {
+    this.#hooksDir = opts.hooksDir;
+  }
+
   async run(cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> {
+    if (cmd === 'git' && !isVersionProbe(args)) {
+      this.#refusal ??= this.#probeRefusal();
+      const refusal = await this.#refusal;
+      if (refusal !== undefined) {
+        return { exitCode: REFUSED_EXIT_CODE, stderr: refusal, stdout: '' };
+      }
+    }
+    return this.#spawn(cmd, args, opts);
+  }
+
+  // Once per runner: a failed probe (no git at all) refuses nothing, and the real command then
+  // fails with its own, clearer error.
+  async #probeRefusal(): Promise<string | undefined> {
+    const probe = await this.#spawn('git', ['--version']);
+    return gitVersionRefusal(probe.stdout);
+  }
+
+  async #spawn(cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> {
     installCleanupOnce();
-    const running = startChildSafely(cmd, args, opts);
+    const running = startChildSafely(cmd, args, { ...opts, hooksDir: this.#hooksDir });
     if (isRunResult(running)) {
       return running;
     }
@@ -264,4 +291,4 @@ export {
   TIMEOUT_EXIT_CODE,
   isTruncated,
 };
-export type { Runner, RunOpts, RunResult };
+export type { Runner, RunOpts, RunResult, SpawnRunnerOpts };

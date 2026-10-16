@@ -18,6 +18,10 @@ import type { DoctorTestHome } from '../helpers/doctor-support.ts';
 //   [hook "x"] event = post-checkout ; command = ./evil.sh     -> ran on `refs add` and `refs sync`
 //   [filter "y"] smudge = ./filter.sh  (selected by .gitattributes) -> ran on the `sync` checkout
 //
+// refs' own commands now run neither (filters are off in every checkout, configured hooks are
+// switched off per event, git 2.54 is refused), so a definition is reported as information: `ok`,
+// naming the key, because an agent's own git commands in a checkout still run it.
+//
 // The check reports PRESENCE, never safety. An earlier version reported only commands that looked
 // repository-relative; `/bin/sh ./evil.sh` has an absolute first token and was measured to run the
 // checkout's script anyway, and `[hook "company.checkout"]` — a dotted subsection, which git
@@ -47,7 +51,7 @@ describe('refs doctor: git configured to run something of its own', () => {
     ['a smudge filter', 'filter.evil.smudge', 'anything'],
     ['a clean filter', 'filter.evil.clean', 'anything'],
     ['a long-running filter', 'filter.evil.process', 'anything'],
-  ])('warns, naming the key: %s', async (_label, key, value) => {
+  ])('names the key and stays ok: %s', async (_label, key, value) => {
     expect.hasAssertions();
     await withResetExitCode(() =>
       withTempHome(async (homeDir) => {
@@ -56,7 +60,8 @@ describe('refs doctor: git configured to run something of its own', () => {
 
         const envelope = await runDoctorJson(setup.ctx, setup.stdout);
 
-        expectCheck(envelope, SURFACE, { detailContains: key, status: 'warn' });
+        expectCheck(envelope, SURFACE, { detailContains: key, status: 'ok' });
+        expectCheck(envelope, SURFACE, { detailContains: 'run none of them', status: 'ok' });
       }),
     );
   });
@@ -78,7 +83,7 @@ describe('refs doctor: git configuration that runs nothing', () => {
 
         const envelope = await runDoctorJson(setup.ctx, setup.stdout);
 
-        expectCheck(envelope, SURFACE, { status: 'ok' });
+        expectCheck(envelope, SURFACE, { detailContains: 'no configured hook', status: 'ok' });
       }),
     );
   });
@@ -98,7 +103,7 @@ describe('refs doctor: git configuration that runs nothing', () => {
 
         const envelope = await runDoctorJson(setup.ctx, setup.stdout);
 
-        expectCheck(envelope, SURFACE, { status: 'ok' });
+        expectCheck(envelope, SURFACE, { detailContains: 'no configured hook', status: 'ok' });
       }),
     );
   });
@@ -114,7 +119,7 @@ describe('refs doctor: a checkout own local config', () => {
 
         const envelope = await runDoctorJson(setup.ctx, setup.stdout);
 
-        expectCheck(envelope, SURFACE, { status: 'ok' });
+        expectCheck(envelope, SURFACE, { detailContains: 'no configured hook', status: 'ok' });
       }),
     );
   });
@@ -200,7 +205,7 @@ describe('refs doctor: a config key written without a value', () => {
 
         const envelope = await runDoctorJson(setup.ctx, setup.stdout);
 
-        expectCheck(envelope, SURFACE, { status: 'ok' });
+        expectCheck(envelope, SURFACE, { detailContains: 'no configured hook', status: 'ok' });
       }),
     );
   });
@@ -222,19 +227,19 @@ describe('refs doctor: a config value carrying a newline', () => {
 
         const envelope = await runDoctorJson(setup.ctx, setup.stdout);
 
-        expectCheck(envelope, SURFACE, { detailContains: 'hook.evil.command', status: 'warn' });
+        expectCheck(envelope, SURFACE, { detailContains: 'hook.evil.command', status: 'ok' });
       }),
     );
   });
 });
 
 // refs switches configured hooks off per event (`hook.<event>.enabled=false`), which git reads from
-// 2.55 on. 2.54 introduced configured hooks with only the per-label switch, so it is the one line
-// on which a configured hook still fires during refs' commands.
+// 2.55 on. 2.54 introduced configured hooks with only the per-label switch, so refs refuses it and
+// the check fails with the same reason.
 describe('refs doctor: the git version, against configured hooks', () => {
   it.each([
-    ['2.54.0', 'git version 2.54.0', 'warn'],
-    ['a 2.54 vendor build', 'git version 2.54.1.windows.1', 'warn'],
+    ['2.54.0', 'git version 2.54.0', 'fail'],
+    ['a 2.54 vendor build', 'git version 2.54.1.windows.1', 'fail'],
     ['2.55.0', 'git version 2.55.0', 'ok'],
     ['2.53.0, which has no configured hooks', 'git version 2.53.0', 'ok'],
     ['a later minor that only starts with 2.54', 'git version 2.540.0', 'ok'],

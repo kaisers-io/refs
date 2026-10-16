@@ -1,5 +1,6 @@
 import type { Config, RefsHome, State } from '@kaisers-io/refs-core';
 import {
+  GUARD_LINE,
   SCHEMA_VERSION,
   writeConfig,
   writeState,
@@ -64,6 +65,9 @@ const markCheckoutPresent = async (
       ? ''
       : `[core]\n\thooksPath = ${gitConfigValue(managed.hooksDir)}\n[remote "origin"]\n\turl = ${gitConfigValue(managed.url)}\n`;
   await writeFile(join(dest, '.git', 'config'), config, 'utf8');
+  // Every checkout refs clones carries the content-filter guard (core git/filter-guard.ts).
+  await mkdir(join(dest, '.git', 'info'));
+  await writeFile(join(dest, '.git', 'info', 'attributes'), `${GUARD_LINE}\n`, 'utf8');
 };
 
 const MS_PER_MINUTE = 60_000;

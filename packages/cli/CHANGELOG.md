@@ -9,20 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- **refs' own git commands no longer run a `core.fsmonitor` command or a configured hook from
-  your git configuration.** `core.hooksPath` keeps a checkout's hook files from running, but git
-  runs an fsmonitor command with the worktree as its working directory, and a configured hook
-  (`[hook "<label>"] event = post-checkout; command = ./script.sh`) is not routed through the hooks
-  directory at all — either could run a script the checkout itself supplies, during `refs add` and
-  `refs sync`. Every git command refs runs now starts with `-c core.fsmonitor=` and
-  `-c hook.<event>.enabled=false` for the events refs' commands fire (`post-checkout`,
-  `reference-transaction`, `post-index-change`, `pre-auto-gc`). The empty fsmonitor value is used
-  because git 2.35.1 and older run `false` as a program. The hook switch is read by git 2.55 and
-  later; on 2.54.x, the one release line with configured hooks but without that switch,
-  `refs doctor`'s `git` check now warns. Neither setting is written into a checkout, so your own
-  git commands there keep your configuration. Content filters stay enabled: they decide what a
-  checkout contains. `git-exec-surfaces` no longer reports an fsmonitor command, since none of
-  refs' commands run it any more.
+- **refs runs git and nothing else: its own git commands no longer run hooks, fsmonitor, content
+  filters or submodule commands.** refs clones repositories to be read, not to run their code, yet
+  several git mechanisms could run a script the checkout itself supplies during `refs add` and
+  `refs sync`. Measured examples: an fsmonitor command (run with the worktree as its working
+  directory), a configured hook (`[hook "<label>"] event = post-checkout; command = ./script.sh`),
+  a filter driver (`[filter "y"] smudge = ./script.sh`, selected by the checkout's own
+  `.gitattributes`), and a relative `core.hooksPath` inherited through `GIT_CONFIG_PARAMETERS`.
+  Each is now off for refs' own commands:
+  - Every git command refs runs starts with `-c core.fsmonitor=`, `-c submodule.recurse=false`,
+    `-c fetch.recurseSubmodules=false`, `-c core.hooksPath=<refs' hooks directory>` and
+    `-c hook.<event>.enabled=false` for every event git documents. The empty fsmonitor value is
+    used because git 2.35.1 and older run `false` as a program.
+  - Content filters are unset for every path in each checkout's `.git/info/attributes`. A new
+    clone gets this from a private clone template before its first checkout; an existing checkout
+    gets it at its next `refs sync`. Files therefore arrive exactly as committed. For git-lfs that
+    means pointer files; `git lfs pull` in the checkout fetches the content. The first sync of an
+    existing checkout that used a filter reports local changes once and rewrites those files to
+    their committed form.
+  - **git 2.54.x is refused.** It has configured hooks but not the per-event switch (git 2.55+),
+    and its hooks can only be disabled by name, which refs cannot know before a clone. refs' git
+    commands fail there with a message naming the versions to install, and `refs doctor`'s `git`
+    check fails with the same reason.
+
+  None of these settings is written into a checkout's configuration, so your own git commands
+  there keep your setup, except that content filters stay off. What refs keeps from your
+  configuration is what the transport needs to authenticate: credential helpers,
+  `core.sshCommand`/`GIT_SSH_COMMAND`, askpass programs and proxies. A repository cannot set any of
+  them. `refs doctor`'s `dirty-checkouts` check skips a checkout without the filter guard until its
+  next sync. `git-exec-surfaces` now reports filters and configured hooks as `ok`, because refs'
+  own commands run none of them; an agent's own git commands in a checkout still can.
+
 - **refs' git commands no longer follow an inherited `GIT_DIR` into another repository.** refs
   names a checkout by its path, but git lets `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and their
   siblings override the working directory, and git exports them to every hook. `refs add` or

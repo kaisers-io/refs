@@ -3,11 +3,11 @@ import { buildSyncResult, excerpt, toBuildSyncResultOpts } from './sync-result.t
 import type { BuiltSyncResult } from './sync-result.ts';
 import type { CloneMode } from '../schemas/primitives.ts';
 import type { RefsHome } from '../home.ts';
-import { assertManagedCheckout } from './managed-checkout.ts';
-import { cloneArgs } from './clone-args.ts';
 import { failureDetail } from './failure-detail.ts';
 import { join } from 'node:path';
+import { prepareManagedCheckout } from './managed-checkout.ts';
 import { validationError } from '../errors.ts';
+import { withCloneArgs } from './clone-args.ts';
 import { writeFileAtomic } from '../fs-atomic.ts';
 
 // Git operations for a "managed checkout": every function takes `runner: Runner` first (real git
@@ -81,8 +81,9 @@ const runOrThrow = async (runner: Runner, spec: CommandSpec): Promise<RunResult>
 // plain `file://` remote without `uploadpack.allowFilter=true`) ignore the filter and warn — that
 // downgrades to `effectiveMode: 'full'` + warning.
 const cloneRepo = async (runner: Runner, opts: CloneOpts): Promise<CloneResult> => {
-  const args = cloneArgs(opts);
-  const cloneResult = await runOrThrow(runner, gitSpec('git clone', args));
+  const cloneResult = await withCloneArgs(opts, (args) =>
+    runOrThrow(runner, gitSpec('git clone', args)),
+  );
   // Kept deliberately, though the clone's own `-c` already wrote it: an older git that does not
   // apply a clone `-c` before checkout would still leave the marker every later guard compares
   // against. Re-writing the same value is idempotent.
@@ -221,7 +222,7 @@ const hardResetToBranch = async (
  * `buildSyncResult` (sync-result.ts) for the status/warning semantics.
  */
 const syncRef = async (runner: Runner, opts: SyncOpts): Promise<SyncResult> => {
-  await assertManagedCheckout(runner, opts.dir, opts.hooksDir);
+  await prepareManagedCheckout(runner, opts.dir, opts.hooksDir);
   const oldSha = await currentSha(runner, opts.dir);
   const syncBranch = await resolveSyncBranch(runner, opts);
   const dirty = await isDirty(runner, opts.dir);

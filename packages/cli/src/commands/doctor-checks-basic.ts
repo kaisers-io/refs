@@ -1,6 +1,7 @@
 import type { CheckDecision, Config, RefsHome } from '@kaisers-io/refs-core';
 import {
   SCHEMA_VERSION,
+  gitVersionRefusal,
   isBehind,
   loadLatestVersion,
   readConfig,
@@ -24,23 +25,14 @@ import { errorMessageOf } from '../output.ts';
 
 const SUCCESS_EXIT_CODE = 0;
 
-// refs switches configured hooks off for its own commands with `hook.<event>.enabled=false`
-// (packages/core/src/proc/git-policy.ts). git 2.54 introduced configured hooks but only reads that
-// switch per hook label; the per-event form arrived in 2.55. So 2.54.x is the one release line on
-// which a hook the user configured still fires on the events refs causes.
-const HOOKS_WITHOUT_EVENT_SWITCH = /^git version 2\.54(?:\.|$)/u;
-
-const gitVersionResult = (version: string): CheckResult =>
-  HOOKS_WITHOUT_EVENT_SWITCH.test(version)
-    ? {
-        detail:
-          `${version} — refs cannot switch configured hooks off per event on git 2.54, so a ` +
-          `[hook] your git configuration defines still fires on the events refs causes; ` +
-          `git 2.55 or later closes this`,
-        name: 'git',
-        status: 'warn',
-      }
-    : { detail: version, name: 'git', status: 'ok' };
+// git 2.54.x is refused by refs' runner before any other git command runs (core
+// proc/git-version-gate.ts), so the check fails with the same reason rather than reporting ok.
+const gitVersionResult = (version: string): CheckResult => {
+  const refusal = gitVersionRefusal(version);
+  return refusal === undefined
+    ? { detail: version, name: 'git', status: 'ok' }
+    : { detail: `${version} — ${refusal}`, name: 'git', status: 'fail' };
+};
 
 const checkGit = async (ctx: CliContext): Promise<CheckResult> => {
   const result = await ctx.runner.run('git', ['--version']);
