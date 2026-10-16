@@ -8,7 +8,7 @@
 //
 // The script resolves its root from `import.meta.url` and takes no root argument, so rather than
 // widen its interface each test copies it into a throwaway tree's `scripts/` directory and runs
-// the copy. The real two files are never read, never written, and never even on the path.
+// the copy. The real three files are never read, never written, and never even on the path.
 
 import { after, test } from 'node:test';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -21,6 +21,7 @@ import { tmpdir } from 'node:os';
 const SCRIPT = fileURLToPath(new URL('versions.mjs', import.meta.url));
 const SOURCE = 'packages/cli/package.json';
 const SKILL = 'skills/refs/SKILL.md';
+const PLUGIN = 'plugin.json';
 
 const EXIT_OK = 0;
 const EXIT_PROBLEMS = 1;
@@ -44,6 +45,7 @@ const skillDoc = (version) =>
 const FILES = {
   [SOURCE]: pkg,
   [SKILL]: skillDoc,
+  [PLUGIN]: pkg,
 };
 
 const trees = [];
@@ -83,10 +85,10 @@ const readTree = (root) =>
 test('--check passes on a consistent tree', async () => {
   const { code, out } = run(await makeTree(), '--check');
   strictEqual(code, EXIT_OK);
-  match(out, /version 1\.2\.3 is consistent across both sites/u);
+  match(out, /version 1\.2\.3 is consistent across all three sites/u);
 });
 
-// The load-bearing case: a wrong value at either site must be caught and named. A wrong source of
+// The load-bearing case: a wrong value at any site must be caught and named. A wrong source of
 // truth is the mirror image — the skill is what gets reported as disagreeing.
 for (const [file, render] of Object.entries(FILES)) {
   test(`--check fails, naming the site, when ${file} alone says ${WRONG}`, async () => {
@@ -140,7 +142,7 @@ test('--set round-trips: --check passes afterwards, and only version lines moved
   const before = new Map(await readTree(root));
   const bump = run(root, '--set', NEXT);
   strictEqual(bump.code, EXIT_OK);
-  match(bump.out, /both version sites now declare 2\.0\.0/u);
+  match(bump.out, /all three version sites now declare 2\.0\.0/u);
   strictEqual(run(root, '--check').code, EXIT_OK);
   for (const [file, current] of await readTree(root)) {
     notStrictEqual(current, before.get(file), `${file} was not bumped`);

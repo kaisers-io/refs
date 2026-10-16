@@ -37,7 +37,7 @@ What you save is the bookkeeping. You do not remember where a clone went, paste 
 
 ## You talk to the agent, not to the CLI
 
-Everything below is something you say to your agent, and it runs the commands. `/refs` is what reaches the skill in Claude Code. In Codex the same thing is `$refs`.
+Everything below is something you say to your agent, and it runs the commands. `/refs` is what reaches the skill in Claude Code. In Codex the standalone skill is `$refs`; the Codex plugin exposes `$refs:refs`.
 
 ```
 /refs add npm:effect as a ref
@@ -123,6 +123,12 @@ npx skills add kaisers-io/refs
 ```
 
 This installs into the current project. Pass `-g` to install once for every project. [`docs/install.md`](docs/install.md) covers the manual copy and the agents that have no global location.
+
+For Codex, you can instead install the same skill as the `refs@refs` plugin. It still
+uses the separately installed CLI above and activates only when you explicitly invoke
+`$refs:refs`. The [Codex plugin instructions](docs/install.md#the-codex-plugin) cover the
+minimal package, installation, updates, removal, and duplicate-skill troubleshooting.
+Choose one skill installation method per Codex setup.
 
 Now check the whole setup:
 

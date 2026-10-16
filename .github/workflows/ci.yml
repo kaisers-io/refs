@@ -79,7 +79,7 @@ jobs:
               console.log("doctor node check ok:", node.detail);
             });
           '
-  # Two files carry the released version (see scripts/versions.mjs). Both are
+  # Three files carry the released version (see scripts/versions.mjs). Both are
   # knowable on a PR, so the disagreement is caught here rather than by the release workflow after
   # the bump commit is already on main. No pnpm install and no matrix: plain Node, one platform.
   versions:
@@ -92,7 +92,7 @@ jobs:
       # The check above only ever sees a tree whose versions agree, so it proves nothing about the
       # failure paths. These do: node's built-in runner (not vitest — that would need an install,
       # and it only collects packages/*) over throwaway fixture trees, never the real five files.
-      - run: node --test scripts/versions.test.mjs
+      - run: node --test scripts/versions.test.mjs scripts/plugin-package.test.mjs
       # The Codex eval runner's grader adapter, which needs no install either. The eval suite itself
       # never runs in CI: it needs a personal login, and every run costs money.
       - run: node --test scripts/skill-evals/graders.test.mjs
