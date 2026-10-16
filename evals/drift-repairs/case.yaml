@@ -25,13 +25,17 @@ graders:
     pattern: '\\"structure\\":\{'
     target: trace
   # A repair counts only in a form refs accepts: the ref (key or suffix), --package, and for the
-  # move the `path` field as a positional pair. `--path=` or a missing ref exits 2.
+  # move the `path` field as a positional pair. `--path=` or a missing ref exits 2. The command is
+  # matched as a whole, in order: it starts a line (or a code span), the ref is the FIRST positional
+  # and `path <value>` follows it, options may sit anywhere, and nothing else may follow on the line.
+  # So the ref after the field pair (refs reads it as `refs edit <ref> <field> <value>` and exits 4),
+  # a wrong ref, a stray extra argument or a command in a `#` comment all fail.
   - name: removal-for-the-missing-package
     type: regex
-    pattern: 'refs edit(?=[^\n;&|]*\s["'']?(?:local/fixtures/)?toolkit["'']?(?:\s|$|`))(?=[^\n;&|]*--package[= ]["'']?@toolkit/slugify["'']?(?:\s|$|`))(?=[^\n;&|]*\s--remove(?:\s|$|`))'
+    pattern: '(?:^|\n|`)[ \t]*(?:\$[ \t]+)?refs edit(?=[^\n;&|]*--package(?:=|[ \t]+)["'']?@toolkit/slugify["'']?(?:\s|$|`))(?=[^\n;&|]*[ \t]--remove(?:\s|$|`))(?:[ \t]+(?:--(?:package|path|description)(?:=|[ \t]+)(?:''[^'']*''|"(?:[^"\\]|\\.)*"|\\.|[^\s''"\\`;&|#])+|--[a-z][a-z-]*))*[ \t]+["'']?(?:local/fixtures/)?toolkit["'']?(?:[ \t]+(?:--(?:package|path|description)(?:=|[ \t]+)(?:''[^'']*''|"(?:[^"\\]|\\.)*"|\\.|[^\s''"\\`;&|#])+|--[a-z][a-z-]*))*(?=[ \t]*(?:$|\n|`))'
   - name: path-edit-for-the-relocated-package
     type: regex
-    pattern: 'refs edit(?=[^\n;&|]*\s["'']?(?:local/fixtures/)?toolkit["'']?(?:\s|$|`))(?=[^\n;&|]*--package[= ]["'']?@toolkit/retry["'']?(?:\s|$|`))(?=[^\n;&|]*\s["'']?path["'']?\s+["'']?packages/retry-policy["'']?(?:\s|$|`))'
+    pattern: '(?:^|\n|`)[ \t]*(?:\$[ \t]+)?refs edit(?=[^\n;&|]*--package(?:=|[ \t]+)["'']?@toolkit/retry["'']?(?:\s|$|`))(?:[ \t]+(?:--(?:package|path|description)(?:=|[ \t]+)(?:''[^'']*''|"(?:[^"\\]|\\.)*"|\\.|[^\s''"\\`;&|#])+|--[a-z][a-z-]*))*[ \t]+["'']?(?:local/fixtures/)?toolkit["'']?(?:[ \t]+(?:--(?:package|path|description)(?:=|[ \t]+)(?:''[^'']*''|"(?:[^"\\]|\\.)*"|\\.|[^\s''"\\`;&|#])+|--[a-z][a-z-]*))*[ \t]+["'']?path["'']?[ \t]+["'']?packages/retry-policy["'']?(?:[ \t]+(?:--(?:package|path|description)(?:=|[ \t]+)(?:''[^'']*''|"(?:[^"\\]|\\.)*"|\\.|[^\s''"\\`;&|#])+|--[a-z][a-z-]*))*(?=[ \t]*(?:$|\n|`))'
   - name: relocated-package-not-removed
     type: regex
     pattern: 'refs edit(?=[^\n;&|]*@toolkit/retry["'']?(?:\s|$|`))(?=[^\n;&|]*\s--remove(?:\s|$|`))'
