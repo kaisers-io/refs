@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- Isolate refs’ Git children from inherited repository-local environment variables, so add
+  and sync cannot redirect their checks or destructive operations into the caller’s repository.
+  Authentication, transport and injected command-scope configuration remain available.
+
 ## [0.18.2] - 2026-10-13
 
 ### Security
