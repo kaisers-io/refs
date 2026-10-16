@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   them. `refs doctor`'s `dirty-checkouts` check skips a checkout without the filter guard until its
   next sync. `git-exec-surfaces` now reports filters and configured hooks as `ok`, because refs'
   own commands run none of them; an agent's own git commands in a checkout still can.
+
 - **refs' git commands no longer follow an inherited `GIT_DIR` into another repository.** refs
   names a checkout by its path, but git lets `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and their
   siblings override the working directory, and git exports them to every hook. `refs add` or
