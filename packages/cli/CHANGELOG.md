@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **Installing this repository's dependencies now fails on a provenance downgrade.**
+  `pnpm-workspace.yaml` sets `trustPolicy: no-downgrade`. pnpm refuses a dependency version
+  published with weaker trust evidence (trusted publishing, provenance) than an earlier release of
+  the same package, which is the usual shape of a publish from a stolen token. The release build
+  installs through the same policy, so this covers the libraries bundled into the published CLI.
+  The current lockfile passes (178 entries), and there are no exceptions.
+
 ## [0.18.2] - 2026-10-13
 
 ### Security
