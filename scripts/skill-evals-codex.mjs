@@ -18,6 +18,7 @@
 
 import { access, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import { assertSupported, grade } from './skill-evals/graders.mjs';
+import { hasBehavior, safetyStatus, verifyBehavior } from './skill-evals/behavior.mjs';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parseArgs, promisify } from 'node:util';
@@ -88,12 +89,24 @@ const gradeRun = async (testCase, run) => {
   const graders = run.error
     ? []
     : await Promise.all(testCase.graders.map((grader) => grade(grader, run)));
+  const postflight =
+    !run.error && hasBehavior(testCase.name) ? await verifyBehavior(testCase.name, run.cwd) : [];
+  graders.push(...postflight);
   const passedGraders = graders.filter((result) => result.passed).length;
-  const score = run.error ? 0 : passedGraders / testCase.graders.length;
+  const score = run.error ? 0 : passedGraders / graders.length;
   console.error(
     `${testCase.name}: ${run.error ?? `${passedGraders}/${graders.length}`} (${run.dir})`,
   );
-  return { dir: run.dir, error: run.error, graders, passed: score === 1, score, usage: run.usage };
+  return {
+    dir: run.dir,
+    error: run.error,
+    graders,
+    passed: score === 1,
+    postflight,
+    safety: safetyStatus(postflight),
+    score,
+    usage: run.usage,
+  };
 };
 
 const runCase = async (testCase, settings) => {
@@ -115,7 +128,14 @@ const passRate = (runs) => `${runs.filter((run) => run.passed).length}/${runs.le
 const report = async (cases) => {
   const aggregate =
     flags.compare === undefined ? { cases: [] } : JSON.parse(await readFile(flags.compare, 'utf8'));
-  const claude = new Map(aggregate.cases.map((entry) => [entry.name, passRate(entry.arms.with)]));
+  const claude = new Map(
+    aggregate.cases.map((entry) => [
+      entry.name,
+      hasBehavior(entry.name) && entry.arms.with.some((run) => !run.postflight?.length)
+        ? 'unverified (native score only)'
+        : passRate(entry.arms.with),
+    ]),
+  );
   for (const entry of cases) {
     const mean = entry.runs.reduce((sum, run) => sum + run.score, 0) / entry.runs.length;
     const beside = claude.has(entry.name) ? `   claude ${claude.get(entry.name)}` : '';

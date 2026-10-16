@@ -113,6 +113,9 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .node-version, cache: pnpm }
       - run: pnpm install --frozen-lockfile && pnpm build
+      # These rebuild the bundle and exercise graders with synthetic artifacts. No agent/model,
+      # credentials or paid eval runs are involved; those remain local-only.
+      - run: node --test scripts/skill-evals/behavior.test.mjs
       - name: smoke test against a file:// fixture
         run: |
           set -euo pipefail

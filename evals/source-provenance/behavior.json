@@ -1,0 +1,36 @@
+{
+  "repos": [
+    {
+      "name": "alpha",
+      "fixture": "alpha",
+      "revision": "750928c6509c8089f00f515b39de70865f4259e6",
+      "git_refs": "refs/heads/main 750928c6509c8089f00f515b39de70865f4259e6\nrefs/remotes/origin/HEAD 750928c6509c8089f00f515b39de70865f4259e6\nrefs/remotes/origin/main 750928c6509c8089f00f515b39de70865f4259e6"
+    },
+    {
+      "name": "beta",
+      "fixture": "beta",
+      "revision": "ab3f9e1afd5d47cb09f2bbed57cdff821247f29a",
+      "git_refs": "refs/heads/main ab3f9e1afd5d47cb09f2bbed57cdff821247f29a\nrefs/remotes/origin/HEAD ab3f9e1afd5d47cb09f2bbed57cdff821247f29a\nrefs/remotes/origin/main ab3f9e1afd5d47cb09f2bbed57cdff821247f29a"
+    }
+  ],
+  "facts": {
+    "alpha_result": 6,
+    "beta_result": 12
+  },
+  "citations": [
+    {
+      "id": "alpha",
+      "repo": "alpha",
+      "path": "src/policy.js",
+      "needle": "Math.min(input * 2, 6)",
+      "revision": "750928c6509c8089f00f515b39de70865f4259e6"
+    },
+    {
+      "id": "beta",
+      "repo": "beta",
+      "path": "src/policy.js",
+      "needle": "input * 3",
+      "revision": "ab3f9e1afd5d47cb09f2bbed57cdff821247f29a"
+    }
+  ]
+}

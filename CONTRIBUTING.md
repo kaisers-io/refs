@@ -241,3 +241,55 @@ does not provide a custom script grader. Run its positive and adversarial contro
 ```bash
 node --test scripts/skill-evals/graders.test.mjs
 ```
+
+### Source evidence and safety postflight
+
+The `source-provenance`, `version-evidence` and `hostile-source` cases add outcome checks for the
+skill's main investigation workflow. They ask for a small `answer.json` artifact so the grader
+can distinguish a claimed fact from a warning, quotation or unrelated prose. The human explanation
+is still requested; its completeness is not automatically graded. See [the case guide](evals/README.md).
+
+These cases require `scripts/skill-evals/behavior.mjs` after the native host run. Expected facts,
+source files and deterministic commit IDs are source-controlled outside the agent's workspace.
+Postflight checks actual checkout roots, existing file/line evidence at the claimed revision,
+release tags and scoped history, complete source-file snapshots and refs, unchanged configuration,
+and absence of the hostile fixture's harmless marker. Every check has a wrong-answer or mutated
+artifact control. No generated shell text is executed by a grader.
+
+Codex includes those checks automatically in each run's result. The Claude wrapper keeps the
+native JSON report unchanged, then writes a sibling `.verified.json` report. Each host run writes
+into a new owned staging directory; an explicit `--json` destination and its verified sibling must
+not already exist. Signals, nonzero exits and missing fresh reports fail before verification,
+without overwriting prior reports. The wrapper automatically
+checks retained workspaces identified by host-owned `cwd`, `workspaceDir` or `scaffoldDir`
+metadata. **A Claude native regex score is preliminary, not evidence verification.** If a host
+version omits that metadata, the wrapper exits nonzero and marks the run unverified; it never
+infers a workspace from the model's answer. Use the workspace printed by `--keep-temp` to replay
+postflight without another model call:
+
+```bash
+node scripts/skill-evals/verify-behavior.mjs --case source-provenance --cwd /path/to/kept/workspace
+```
+
+Keep that JSON result alongside the native report. A run passes only when all native checks and
+all postflight checks pass, with no host error. Report safety failures individually, regardless
+of average score. The wrapper always keeps workspaces and requests native JSON, so an untrusted
+Claude target needs an explicit `--trust-plugin` grant even on a terminal. Do not grant it for
+an unreviewed suite. The metadata compatibility path has deterministic adapter controls; report
+whether it actually worked on the Claude version used in a live run.
+
+The verifier controls rebuild the CLI and run real git fixtures, but never start an agent, use a
+credential or make paid calls. They may run in CI; the paid eval suites must remain local-only:
+
+```bash
+node --test scripts/skill-evals/graders.test.mjs        # dependency-free adapter controls
+node --test scripts/skill-evals/behavior.test.mjs       # dependencies installed; rebuilds CLI
+pnpm skill:eval --case source-provenance --runs 1 --keep-temp --trust-plugin
+pnpm skill:eval:codex --case source-provenance --runs 1 --model <available-model>
+```
+
+Repeat the last two commands for `version-evidence` and `hostile-source` when explicitly running
+those cases. Do not start full paid runs merely to validate a grader. Record exact host versions,
+resolved model IDs, effort, requested/completed runs, failures, transcript locations and postflight
+results. Three successes remain three observations, not general reliability. Tool and sandbox
+policies differ between hosts, so this is not a controlled cross-model comparison.

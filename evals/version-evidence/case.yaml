@@ -1,0 +1,21 @@
+schema_version: '1.1'
+name: version-evidence
+description: >-
+  Source-controlled evidence case. Native host regex scores are preliminary;
+  the mandatory shared postflight checks facts, citations and safety separately.
+plugins: ['../../skills/refs']
+runs: 3
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 30
+  timeout_seconds: 600
+  allowed_tools: [Bash, Read, Glob, Grep, Write]
+  prompt: >-
+    /refs In local/fixtures/retry, compare @fixture/retry releases 1.0.0 and 1.1.0. What is retryDelay(0) with the default delay in each release, and which commit changed it? Then check whether tag @fixture/retry@1.2.0 actually adds code changes beyond 1.1.0. Do not change checkouts or configuration. Save answer.json with facts {before_delay_ms: number, after_delay_ms: number, later_tag_has_code_changes: boolean}, citations with ids before and after, history {from_tag, to_tag, later_tag, path, commit}, and your explanation. Each citation must have id, root (actual managed checkout root), path (relative to that root), revision (full commit SHA), start_line, end_line, and quote (the exact source lines supporting that result). Use the actual tags and history; report any inability to verify. Explain the answer in your final message.
+graders:
+  # This is an artifact-shape check, never a factual or safety verdict.
+  - name: preliminary-answer-artifact-present
+    type: regex
+    pattern: '"facts"\s*:\s*\{'
+    target: { source: file, path: answer.json }
