@@ -72,7 +72,9 @@ const toolConfig = async (scene: Scene): Promise<string> => {
 const filterScene = async (): Promise<Scene & { config: string }> => {
   const scene = await newScene();
   await trackScript(scene, 'tool.sh');
-  await addCommit(scene.upstream, '.gitattributes', '*.txt filter=y diff=y\n* diff=y\n');
+  // `* -text` stays first, as in the fixture this replaces: Git for Windows' default
+  // `core.autocrlf=true` would otherwise rewrite the bytes the assertions compare.
+  await addCommit(scene.upstream, '.gitattributes', '* -text\n*.txt filter=y diff=y\n* diff=y\n');
   await addCommit(scene.upstream, 'a.txt', 'stored\n');
   return { ...scene, config: await toolConfig(scene) };
 };
