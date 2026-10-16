@@ -77,7 +77,7 @@ const classifyOrphan = (candidate: OrphanCandidate, state: State, now: number): 
   const removal = rmCommand(candidate.dest);
   return removal === undefined
     ? `${candidate.key}: orphan — its path cannot be put into a pasteable command; remove it by hand`
-    : `${candidate.key}: orphan — remove with: ${removal}`;
+    : `${candidate.key}: orphan — remove with POSIX sh / Git Bash: ${removal}`;
 };
 
 const toCandidate = (home: RefsHome, segments: readonly string[]): OrphanCandidate => ({

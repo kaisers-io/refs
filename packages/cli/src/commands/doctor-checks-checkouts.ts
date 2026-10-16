@@ -105,7 +105,7 @@ const unexpectedHooksClause = (hooksDir: string, unexpected: readonly string[]):
   return (
     `${names}: not installed by refs — this is the directory git resolves hook names against ` +
     `for every managed checkout, so nothing whose provenance refs cannot account for belongs ` +
-    `in it; remove: ${removal}`
+    `in it; remove with POSIX sh / Git Bash: ${removal}`
   );
 };
 

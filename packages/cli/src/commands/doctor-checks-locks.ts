@@ -88,7 +88,7 @@ const claimLine = (home: RefsHome, lock: InspectedLock): string => {
   const repair =
     command === undefined
       ? 'remove that directory by hand — its path cannot be put into a pasteable command'
-      : `${STOP_FIRST}: ${command}`;
+      : `${STOP_FIRST}; use POSIX sh / Git Bash: ${command}`;
   return (
     `steal claim on ${lock.name}: present${age}. Stealing this lock is blocked while it is here. ` +
     `A reclaim in progress clears it within a moment; if it stays, ${repair}`
@@ -122,7 +122,7 @@ const reclaimPhrase = (home: RefsHome, lock: InspectedLock): string => {
   const command = rmCommand(path);
   return command === undefined
     ? ', not automatically reclaimable — and its path cannot be put into a pasteable command, so it has to be removed by hand'
-    : `, not automatically reclaimable — if it is genuinely abandoned, ${STOP_FIRST}: ${command}`;
+    : `, not automatically reclaimable — if it is genuinely abandoned, ${STOP_FIRST}; use POSIX sh / Git Bash: ${command}`;
 };
 
 const lockLine = (home: RefsHome, lock: InspectedLock): string => {

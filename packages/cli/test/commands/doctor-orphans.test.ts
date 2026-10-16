@@ -43,7 +43,7 @@ describe('refs doctor: (c) true orphan checkout', () => {
         expectCheck(envelope, 'orphans', {
           // Quoted and `--`-terminated: the path can contain spaces (the refs home often does),
           // so an unquoted suggestion would delete the wrong things when pasted.
-          detailContains: `orphan — remove with: rm -rf -- '${orphanDest}'`,
+          detailContains: `orphan — remove with POSIX sh / Git Bash: rm -rf -- '${orphanDest}'`,
           status: 'warn',
         });
       }),
@@ -92,7 +92,7 @@ describe.skipIf(sep === '\\')('refs doctor: an orphan whose path cannot be print
         const envelope = await runDoctorJson(ctx, stdout);
 
         expectCheck(envelope, 'orphans', {
-          detailContains: 'orphan — remove with:',
+          detailContains: 'orphan — remove with POSIX sh / Git Bash:',
           status: 'warn',
         });
       }),
