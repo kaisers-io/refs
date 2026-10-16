@@ -7,6 +7,8 @@
 // input_match sees it, a grader that cannot read its target fails whatever its `match`, and refs'
 // compact JSON output is told apart from the skill docs that describe it.
 
+// eslint-disable-next-line import/no-unassigned-import -- register the command-artifact controls
+import './command-graders.test.mjs';
 import { assertSupported, commandOf, grade } from './graders.mjs';
 import { collect, execWithTimeout, scaffold } from './codex-run.mjs';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
