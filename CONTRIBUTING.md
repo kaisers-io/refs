@@ -59,6 +59,18 @@ It needs [uv](https://docs.astral.sh/uv/getting-started/installation/) and a `SN
 free Snyk account, because the analysis runs server-side. `.github/workflows/skill-audit.yml`
 documents every flag it passes and the one risk that is waived.
 
+If you changed dependencies (`pnpm-lock.yaml` or a `package.json`), CI also runs the lockfile
+audit (`.github/workflows/dependency-audit.yml`, which is also scheduled weekly). It audits every
+package in both of the lockfile's YAML documents, because GitHub's dependency graph no longer reads
+the second one since pnpm 12. It also fails if the audit covered fewer packages than the lockfile
+lists. To run it locally:
+
+```bash
+node scripts/audit-lockfile.mjs   # exit 1 advisories, 2 audit did not run, 3 coverage gap
+```
+
+The job is not blocking yet, so a red result does not stop a merge. Read it anyway.
+
 If you changed what the skill tells an agent to do, run the skill evals as well. See
 [Skill evals](#skill-evals).
 
