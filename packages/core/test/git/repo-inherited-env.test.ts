@@ -155,15 +155,15 @@ describe('git children and repository-locating variables', SUITE_OPTS, () => {
   });
 });
 
+// `GIT_CONFIG_PARAMETERS` in its `'key=value'` form, which is what `git -c` exports and what every
+// git refs runs on reads; `GIT_CONFIG_COUNT` only exists from git 2.31.
 describe('inherited command-scope configuration', SUITE_OPTS, () => {
   it('still reaches git, so injected url rewrites keep working', async () => {
     expect.hasAssertions();
     const scene = await sceneWithDirtySentinel();
     const unreachable = 'https://refs-fixture.invalid/upstream.git';
     const rewrite = {
-      GIT_CONFIG_COUNT: '1',
-      GIT_CONFIG_KEY_0: `url.${scene.fixture.url}.insteadOf`,
-      GIT_CONFIG_VALUE_0: unreachable,
+      GIT_CONFIG_PARAMETERS: `'url.${scene.fixture.url}.insteadOf=${unreachable}'`,
     };
 
     await withEnv(rewrite, () => cloneScene(scene, unreachable));
@@ -176,11 +176,7 @@ describe('inherited command-scope configuration', SUITE_OPTS, () => {
     const scene = await sceneWithDirtySentinel();
     const marker = join(scene.hooksDir, '..', 'upstream-hook-ran');
     await trackHook(scene.fixture.dir, marker);
-    const injected = {
-      GIT_CONFIG_COUNT: '1',
-      GIT_CONFIG_KEY_0: 'core.hooksPath',
-      GIT_CONFIG_VALUE_0: '.githooks',
-    };
+    const injected = { GIT_CONFIG_PARAMETERS: "'core.hooksPath=.githooks'" };
 
     await withEnv(injected, () => cloneScene(scene));
 
