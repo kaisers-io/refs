@@ -40,6 +40,7 @@ const repairLineFor = (report: StructureReport | undefined, key: string, name: s
 };
 
 const BUNDLE = fileURLToPath(new URL('../../dist/refs.mjs', import.meta.url));
+const TSDOWN = fileURLToPath(import.meta.resolve('tsdown/run'));
 
 /** The built bundle, built on demand.
  *
@@ -56,8 +57,10 @@ const BUNDLE = fileURLToPath(new URL('../../dist/refs.mjs', import.meta.url));
 let building: Promise<string> | undefined;
 
 const buildBundle = async (): Promise<string> => {
-  const built = await new SpawnRunner().run('pnpm', ['--filter', '@kaisers-io/refs', 'build'], {
-    cwd: fileURLToPath(new URL('../../../..', import.meta.url)),
+  // Execute the installed Node entry directly: Windows cannot spawn the pnpm .cmd shim
+  // without a shell. This runs the same tsdown configuration as the package's build script.
+  const built = await new SpawnRunner().run(process.execPath, [TSDOWN], {
+    cwd: fileURLToPath(new URL('../..', import.meta.url)),
   });
   expect(built.exitCode, `pnpm build failed: ${built.stderr}`).toBe(SUCCESS);
   return BUNDLE;
