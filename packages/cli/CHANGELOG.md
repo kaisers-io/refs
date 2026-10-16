@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **refs' own git commands no longer run a `core.fsmonitor` command or a configured hook from
+  your git configuration.** `core.hooksPath` keeps a checkout's hook files from running, but git
+  runs an fsmonitor command with the worktree as its working directory, and a configured hook
+  (`[hook "<label>"] event = post-checkout; command = ./script.sh`) is not routed through the hooks
+  directory at all — either could run a script the checkout itself supplies, during `refs add` and
+  `refs sync`. Every git command refs runs now starts with `-c core.fsmonitor=` and
+  `-c hook.<event>.enabled=false` for the events refs' commands fire (`post-checkout`,
+  `reference-transaction`, `post-index-change`, `pre-auto-gc`). The empty fsmonitor value is used
+  because git 2.35.1 and older run `false` as a program. The hook switch is read by git 2.55 and
+  later; on 2.54.x, the one release line with configured hooks but without that switch,
+  `refs doctor`'s `git` check now warns. Neither setting is written into a checkout, so your own
+  git commands there keep your configuration. Content filters stay enabled: they decide what a
+  checkout contains. `git-exec-surfaces` no longer reports an fsmonitor command, since none of
+  refs' commands run it any more.
 - **refs' git commands no longer follow an inherited `GIT_DIR` into another repository.** refs
   names a checkout by its path, but git lets `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and their
   siblings override the working directory, and git exports them to every hook. `refs add` or

@@ -30,8 +30,12 @@ const SURFACE = 'git-exec-surfaces';
 const listing = (entries: readonly (readonly [string, string])[], scope = 'global'): string =>
   entries.map(([key, value]) => `${scope}${NUL}${key}\n${value}${NUL}`).join('');
 
-const scriptConfig = (setup: DoctorTestHome, stdout: string): void => {
-  setup.runner.expect('git --version', { stdout: GIT_VERSION_STDOUT });
+const scriptConfig = (
+  setup: DoctorTestHome,
+  stdout: string,
+  version = GIT_VERSION_STDOUT,
+): void => {
+  setup.runner.expect('git --version', { stdout: version });
   setup.runner.expect('git config --list -z --show-scope', { stdout });
 };
 
@@ -43,7 +47,6 @@ describe('refs doctor: git configured to run something of its own', () => {
     ['a smudge filter', 'filter.evil.smudge', 'anything'],
     ['a clean filter', 'filter.evil.clean', 'anything'],
     ['a long-running filter', 'filter.evil.process', 'anything'],
-    ['an fsmonitor command', 'core.fsmonitor', './monitor'],
   ])('warns, naming the key: %s', async (_label, key, value) => {
     expect.hasAssertions();
     await withResetExitCode(() =>
@@ -63,6 +66,9 @@ describe('refs doctor: git configuration that runs nothing', () => {
   it.each([
     ['an fsmonitor boolean', 'core.fsmonitor', 'true'],
     ['an fsmonitor turned off', 'core.fsmonitor', 'false'],
+    // refs passes `-c core.fsmonitor=` to every git command it runs, so the command form reaches
+    // none of them.
+    ['an fsmonitor command refs switches off', 'core.fsmonitor', './monitor'],
   ])('stays ok: %s', async (_label, key, value) => {
     expect.hasAssertions();
     await withResetExitCode(() =>
@@ -132,7 +138,7 @@ describe('refs doctor: an ordinary git configuration', () => {
         const envelope = await runDoctorJson(setup.ctx, setup.stdout);
 
         expectCheck(envelope, SURFACE, {
-          detailContains: 'no configured hook, filter or fsmonitor command',
+          detailContains: 'no configured hook or filter command',
           status: 'ok',
         });
       }),
@@ -217,6 +223,31 @@ describe('refs doctor: a config value carrying a newline', () => {
         const envelope = await runDoctorJson(setup.ctx, setup.stdout);
 
         expectCheck(envelope, SURFACE, { detailContains: 'hook.evil.command', status: 'warn' });
+      }),
+    );
+  });
+});
+
+// refs switches configured hooks off per event (`hook.<event>.enabled=false`), which git reads from
+// 2.55 on. 2.54 introduced configured hooks with only the per-label switch, so it is the one line
+// on which a configured hook still fires during refs' commands.
+describe('refs doctor: the git version, against configured hooks', () => {
+  it.each([
+    ['2.54.0', 'git version 2.54.0', 'warn'],
+    ['a 2.54 vendor build', 'git version 2.54.1.windows.1', 'warn'],
+    ['2.55.0', 'git version 2.55.0', 'ok'],
+    ['2.53.0, which has no configured hooks', 'git version 2.53.0', 'ok'],
+    ['a later minor that only starts with 2.54', 'git version 2.540.0', 'ok'],
+  ])('reports %s (%s) as %s', async (_label, version, status) => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const setup = await setupInitializedHome(homeDir);
+        scriptConfig(setup, '', version);
+
+        const envelope = await runDoctorJson(setup.ctx, setup.stdout);
+
+        expectCheck(envelope, 'git', { detailContains: version, status });
       }),
     );
   });

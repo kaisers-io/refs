@@ -6,6 +6,7 @@ import { armTimeout } from './spawn-timeout.ts';
 import { once } from 'node:events';
 import { sanitizedChildEnv } from './child-env.ts';
 import { spawn } from 'node:child_process';
+import { withGitPolicy } from './git-policy.ts';
 
 // Thin process-execution seam so `git/repo.ts` never calls `child_process` directly: production
 // code depends on `Runner`, tests depend on `FakeRunner` (fake-runner.ts), and only `SpawnRunner`
@@ -101,8 +102,9 @@ const startChild = (
   // this call and have to be handled as such, not argued with in code.
   //
   // `env` is a sanitized COPY of the parent's (child-env.ts): `cwd` is how refs names a repository,
-  // and an inherited `GIT_DIR` would silently override it.
-  const child = spawn(cmd, args, {
+  // and an inherited `GIT_DIR` would silently override it. A git command also gets refs' policy
+  // options in front (git-policy.ts), so no call site can forget them.
+  const child = spawn(cmd, withGitPolicy(cmd, args), {
     ...cwdOpt(opts?.cwd),
     env: sanitizedChildEnv(process.env),
     shell: false,

@@ -40,11 +40,6 @@ const FIELDS_PER_ENTRY = 2;
 const HOOK_COMMAND = /^hook\.(?<label>.+)\.command$/u;
 const HOOK_ENABLED = /^hook\.(?<label>.+)\.enabled$/u;
 const FILTER_COMMAND = /^filter\..+\.(?:clean|smudge|process)$/u;
-const FSMONITOR = 'core.fsmonitor';
-
-// `core.fsmonitor` takes a boolean OR a command, and git runs the command form with its working
-// directory set to the worktree. Only the command form is an execution surface.
-const FSMONITOR_BOOLEAN = new Set(['', '0', '1', 'false', 'no', 'off', 'on', 'true', 'yes']);
 
 type ConfigEntry = { key: string; scope: string; value: string };
 
@@ -85,10 +80,12 @@ const disabledHooks = (entries: readonly ConfigEntry[]): Set<string> => {
   return new Set([...enabled].filter(([, isOn]) => !isOn).map(([label]) => label));
 };
 
+// `core.fsmonitor`'s command form is NOT reported: refs passes `-c core.fsmonitor=` to every git
+// command it runs (packages/core/src/proc/git-policy.ts), on every git version, so it reaches none
+// of refs' commands. It stays a surface for whatever an agent itself runs in a checkout, which is
+// outside what this check answers. Configured hooks stay reported: refs switches them off per
+// event only from git 2.55 on, and the `git` check warns on 2.54.
 const isExecutionSurface = (entry: ConfigEntry, disabled: ReadonlySet<string>): boolean => {
-  if (entry.key === FSMONITOR) {
-    return !FSMONITOR_BOOLEAN.has(entry.value.trim().toLowerCase());
-  }
   const label = HOOK_COMMAND.exec(entry.key)?.groups?.['label'];
   if (label !== undefined) {
     return !disabled.has(label);
@@ -118,9 +115,10 @@ const unverifiable = (why: string): CheckResult => ({
 const foundSurfaces = (keys: readonly string[]): CheckResult => ({
   detail:
     `${keys.join(', ')}: git runs these itself, and the managed hooks path does not cover them — ` +
-    `a configured hook fires on the events refs causes, a filter is selected by a checkout's own ` +
-    `.gitattributes, and fsmonitor runs in the worktree. Whether one of them reaches a checkout's ` +
-    `content depends on the command, which refs cannot decide for you`,
+    `a filter is selected by a checkout's own .gitattributes, and a configured hook fires on the ` +
+    `events refs causes unless git is 2.55 or later, where refs switches those events off. ` +
+    `Whether one of them reaches a checkout's content depends on the command, which refs cannot ` +
+    `decide for you`,
   name: NAME,
   status: 'warn',
 });
@@ -140,7 +138,7 @@ const checkGitExecSurfaces = async (ctx: CliContext, cwd: string): Promise<Check
   const keys = surfaceKeys(result.stdout);
   return keys.length === 0
     ? {
-        detail: 'no configured hook, filter or fsmonitor command outside a checkout',
+        detail: 'no configured hook or filter command outside a checkout',
         name: NAME,
         status: 'ok',
       }

@@ -24,10 +24,28 @@ import { errorMessageOf } from '../output.ts';
 
 const SUCCESS_EXIT_CODE = 0;
 
+// refs switches configured hooks off for its own commands with `hook.<event>.enabled=false`
+// (packages/core/src/proc/git-policy.ts). git 2.54 introduced configured hooks but only reads that
+// switch per hook label; the per-event form arrived in 2.55. So 2.54.x is the one release line on
+// which a hook the user configured still fires on the events refs causes.
+const HOOKS_WITHOUT_EVENT_SWITCH = /^git version 2\.54(?:\.|$)/u;
+
+const gitVersionResult = (version: string): CheckResult =>
+  HOOKS_WITHOUT_EVENT_SWITCH.test(version)
+    ? {
+        detail:
+          `${version} — refs cannot switch configured hooks off per event on git 2.54, so a ` +
+          `[hook] your git configuration defines still fires on the events refs causes; ` +
+          `git 2.55 or later closes this`,
+        name: 'git',
+        status: 'warn',
+      }
+    : { detail: version, name: 'git', status: 'ok' };
+
 const checkGit = async (ctx: CliContext): Promise<CheckResult> => {
   const result = await ctx.runner.run('git', ['--version']);
   if (result.exitCode === SUCCESS_EXIT_CODE) {
-    return { detail: result.stdout.trim(), name: 'git', status: 'ok' };
+    return gitVersionResult(result.stdout.trim());
   }
   const detail = result.stderr.trim() || `git --version exited with code ${result.exitCode}`;
   return { detail, name: 'git', status: 'fail' };

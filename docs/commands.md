@@ -454,6 +454,12 @@ with a detail saying which switch did it (`[updates].check`, `REFS_UPDATE_CHECK`
 detection). It never `fail`s: an unreachable registry is not a fault of your setup, and a `fail`
 would make `refs doctor` exit non-zero over it.
 
+`git` reports `warn` on git 2.54.x. refs switches configured hooks (`[hook "<label>"]` sections
+in your git configuration) off for the events its own commands fire, using the per-event switch
+git reads from 2.55 on. 2.54 introduced configured hooks but only reads that switch per label, so
+there a hook you configured still runs during `refs add` and `refs sync`. Releases before 2.54 have
+no configured hooks.
+
 Each check's `status` is `ok`, `warn`, or `fail`. As with `sync` (see
 [Exit codes](#exit-codes) above), the envelope is `{"ok":true,...}` even when a check
 reports `fail`
