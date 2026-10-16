@@ -1,2 +1,5 @@
 packages:
   - packages/*
+
+# Reject releases that lose publishing trust evidence; also checked on frozen installs.
+trustPolicy: no-downgrade
