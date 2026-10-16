@@ -215,3 +215,16 @@ test('literal grammar supports spaces, substitutions as data and embedded single
   }
   strictEqual(pattern.test(`refs edit "a'b" --package="x$(id)" --path='a b'`), false);
 });
+
+test('the documented field-edit example has runnable positional order', async () => {
+  const docs = await readFile(new URL('../../skills/refs/COMMANDS.md', import.meta.url), 'utf8');
+  const example = docs.match(/something: `(?<command>[^`]+)`/u)?.groups.command;
+  const command = example
+    ?.replace('<ref>', 'local/fixtures/toolkit')
+    .replace('<name>', '@toolkit/retry')
+    .replace('<new-path>', 'packages/retry-policy');
+  strictEqual(
+    new RegExp(repairPatterns['path-edit-for-the-relocated-package'], 'u').test(command),
+    true,
+  );
+});

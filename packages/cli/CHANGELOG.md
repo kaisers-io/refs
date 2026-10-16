@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Skill command examples keep the ref before field/value positionals, and root-discovery guidance
+  distinguishes the current explicit named-workspace-root probe from older or partial registrations.
+
 - Repair evals reject reordered positionals, extra arguments and indented second commands. Both
   agent hosts grade dedicated command artifacts with the same strict literal grammar and retain
   independent report-only checks.
