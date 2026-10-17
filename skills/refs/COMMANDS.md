@@ -489,7 +489,9 @@ lists those back — but NOT a space or a control character, which `git check-re
 So: run the command refs printed. Every finding in `refs doctor --json` carries its repair commands
 already quoted — `register`, `decline`, `repoint`, `unregister` — beside the raw `name` and `path`,
 including where the human output grouped the finding into a count. Where a finding carries no
-command, there is none to run: report it as found. If you must build a command line yourself,
+command, there is none to run: report it as found. The quoting is POSIX shell syntax, so run the
+command in a POSIX shell. On Windows that is Git Bash, not PowerShell or cmd.exe, which read the
+quotes differently. If you must build a command line yourself,
 single-quote every interpolated value and close-and-reopen the quote around any single quote in it
 (`'a'\''b'`).
 

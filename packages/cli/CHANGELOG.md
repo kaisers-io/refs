@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **The docs say which shell a printed command is for.** The repairs `refs doctor` and `refs sync`
+  suggest, and the next steps some errors name, are POSIX shell syntax: values are single-quoted
+  and an embedded quote is written as `'\''`. PowerShell and cmd.exe read that differently, so on
+  Windows the commands belong in Git Bash. The README and install page also claimed the full test
+  suite runs on Windows. It runs there, but without the tests that need POSIX file modes, a
+  pseudo-terminal, or a POSIX shell to run a printed command through, and the docs now say so.
+
 ## [0.18.2] - 2026-10-13
 
 ### Security
