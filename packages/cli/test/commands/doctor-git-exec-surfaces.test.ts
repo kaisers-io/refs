@@ -1,12 +1,11 @@
+import { describe, expect, it } from 'vitest';
 import {
-  GIT_VERSION_STDOUT,
   expectCheck,
   runDoctorJson,
   setupInitializedHome,
   withResetExitCode,
   withTempHome,
 } from '../helpers/doctor-support.ts';
-import { describe, expect, it } from 'vitest';
 import type { DoctorTestHome } from '../helpers/doctor-support.ts';
 
 // What `core.hooksPath` does NOT cover.
@@ -30,8 +29,12 @@ const SURFACE = 'git-exec-surfaces';
 const listing = (entries: readonly (readonly [string, string])[], scope = 'global'): string =>
   entries.map(([key, value]) => `${scope}${NUL}${key}\n${value}${NUL}`).join('');
 
-const scriptConfig = (setup: DoctorTestHome, stdout: string): void => {
-  setup.runner.expect('git --version', { stdout: GIT_VERSION_STDOUT });
+// The one git with configured hooks that refs' event-level switch does not reach, so the version
+// on which a configured hook is still reported.
+const LABEL_ONLY_GIT = 'git version 2.54.0';
+
+const scriptConfig = (setup: DoctorTestHome, stdout: string, version = LABEL_ONLY_GIT): void => {
+  setup.runner.expect('git --version', { stdout: version });
   setup.runner.expect('git config --list -z --show-scope', { stdout });
 };
 
@@ -146,7 +149,7 @@ describe('refs doctor: a git configuration it could not read whole', () => {
     await withResetExitCode(() =>
       withTempHome(async (homeDir) => {
         const setup = await setupInitializedHome(homeDir);
-        setup.runner.expect('git --version', { stdout: GIT_VERSION_STDOUT });
+        setup.runner.expect('git --version', { stdout: LABEL_ONLY_GIT });
         setup.runner.expect('git config --list -z --show-scope', { exitCode: 1 });
 
         const envelope = await runDoctorJson(setup.ctx, setup.stdout);
@@ -162,7 +165,7 @@ describe('refs doctor: a git configuration it could not read whole', () => {
     await withResetExitCode(() =>
       withTempHome(async (homeDir) => {
         const setup = await setupInitializedHome(homeDir);
-        setup.runner.expect('git --version', { stdout: GIT_VERSION_STDOUT });
+        setup.runner.expect('git --version', { stdout: LABEL_ONLY_GIT });
         // A cut listing keeps the FIRST entries, so it reads as a complete, shorter configuration
         // — and the entry that matters may be past the cut.
         setup.runner.expect('git config --list -z --show-scope', {
@@ -184,7 +187,7 @@ describe('refs doctor: a config key written without a value', () => {
     await withResetExitCode(() =>
       withTempHome(async (homeDir) => {
         const setup = await setupInitializedHome(homeDir);
-        setup.runner.expect('git --version', { stdout: GIT_VERSION_STDOUT });
+        setup.runner.expect('git --version', { stdout: LABEL_ONLY_GIT });
         // git writes a bare key — `[core]` then `bare` on its own line — as a record with no
         // newline in it at all. `core.fsmonitor` in that shape has an empty value, which is one
         // of the boolean spellings and therefore not a command.

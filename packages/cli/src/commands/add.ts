@@ -38,10 +38,12 @@ const dryRunHuman = (key: string, dest: string): string[] => [
   'next: review the proposal, then run refs add --proposal <file> to finalize',
 ];
 
-/** Everything worth saying about one dry-run: the clone's own warning (a partial-clone fallback)
- * and detection's (a workspace declaration it could not fully read). Independent facts, so both
- * are reported rather than one displacing the other. */
+/** Everything worth saying about one dry-run: what git is configured to run (read before the
+ * clone), the clone's own warning (a partial-clone fallback) and detection's (a workspace
+ * declaration it could not fully read). Independent facts, so all are reported rather than one
+ * displacing another. */
 const dryRunWarnings = (outcome: DryRunOutcome): string[] => [
+  ...warningsFor(outcome.execSurfacesWarning),
   ...warningsFor(outcome.warning),
   ...warningsFor(outcome.detectionWarning),
 ];

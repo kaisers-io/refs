@@ -5,6 +5,7 @@ import type { CollectedStream } from './spawn-collector.ts';
 import { armTimeout } from './spawn-timeout.ts';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
+import { withGitExecPolicy } from './git-exec-policy.ts';
 
 // Thin process-execution seam so `git/repo.ts` never calls `child_process` directly: production
 // code depends on `Runner`, tests depend on `FakeRunner` (fake-runner.ts), and only `SpawnRunner`
@@ -98,7 +99,10 @@ const startChild = (
   // It does NOT change what code scanning reports: `js/shell-command-constructed-from-input` and
   // its two siblings were raised again with the option spelled out. They are false positives on
   // this call and have to be handled as such, not argued with in code.
-  const child = spawn(cmd, args, {
+  //
+  // A git process gets refs' execution policy prepended here, the one place every process starts —
+  // see `git-exec-policy.ts`.
+  const child = spawn(cmd, withGitExecPolicy(cmd, args), {
     ...cwdOpt(opts?.cwd),
     shell: false,
     stdio: ['ignore', 'pipe', 'pipe'],
