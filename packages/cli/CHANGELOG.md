@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   git together with the helper processes git started. Before this, those helpers kept running
   after git had exited and refs kept waiting for them. A clone that is cut off this way no longer
   leaves a half-made checkout that the next `refs add` or `refs sync` would take for a working one.
+  Only a clone refs itself started is removed; anything else at that path is left alone.
 
 ## [0.18.2] - 2026-10-13
 

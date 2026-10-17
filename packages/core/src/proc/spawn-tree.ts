@@ -1,4 +1,5 @@
 import type { RunResult } from './runner.ts';
+import { win32 } from 'node:path';
 
 // Process-tree signalling for `timeoutMs` (spawn-timeout.ts).
 //
@@ -23,12 +24,17 @@ type TreeTarget = {
   exec: Exec;
   pid: number;
   platform: NodeJS.Platform;
+  /** Whether the root has not exited yet. */
+  rootAlive: () => boolean;
   /** Every descendant seen so far, across calls. A descendant found at SIGTERM may have been
    * reparented by the time SIGKILL follows, and is then reachable only through this set. */
   seen: Set<number>;
+  /** `%SystemRoot%`, where Windows keeps `taskkill.exe`. */
+  systemRoot: string | undefined;
 };
 
 const SUCCESS_EXIT_CODE = 0;
+const ABSOLUTE_WINDOWS_DIR = /^[a-z]:[\\/]/iu;
 const PS_ARGS = ['-A', '-o', 'pid=', '-o', 'ppid='];
 const PS_COLUMN_COUNT = 2;
 
@@ -79,19 +85,48 @@ const signalPid = (pid: number, signal: TreeSignal): void => {
   }
 };
 
-/** Signals `target.pid` and everything below it. On Windows `taskkill /T` walks the tree itself;
- * it has no polite form for a console process, so both signals become a forced kill there. */
-const signalTree = async (target: TreeTarget, signal: TreeSignal): Promise<void> => {
-  if (target.platform === 'win32') {
-    await target.exec('taskkill', ['/PID', String(target.pid), '/T', '/F']);
+// `taskkill.exe` by absolute path. A bare name is looked up in the current directory before PATH
+// on Windows (libuv's `search_path`), and refs may be running inside a repository that ships a
+// file of that name. Without an absolute `%SystemRoot%` there is no path to trust, and only the
+// direct child is ended.
+const taskkillPath = (systemRoot: string | undefined): string | undefined =>
+  systemRoot !== undefined && ABSOLUTE_WINDOWS_DIR.test(systemRoot)
+    ? win32.join(systemRoot, 'System32', 'taskkill.exe')
+    : undefined;
+
+// `taskkill /T` walks the tree itself, and has no polite form for a console process, so both
+// signals become a forced kill.
+const signalWindowsTree = async (target: TreeTarget, signal: TreeSignal): Promise<void> => {
+  const taskkill = taskkillPath(target.systemRoot);
+  if (taskkill === undefined) {
+    signalPid(target.pid, signal);
     return;
   }
-  for (const pid of await listDescendants(target.exec, target.pid)) {
-    target.seen.add(pid);
+  await target.exec(taskkill, ['/PID', String(target.pid), '/T', '/F']);
+};
+
+const signalPosixTree = async (target: TreeTarget, signal: TreeSignal): Promise<void> => {
+  if (target.rootAlive()) {
+    for (const pid of await listDescendants(target.exec, target.pid)) {
+      target.seen.add(pid);
+    }
+    signalPid(target.pid, signal);
   }
-  signalPid(target.pid, signal);
   for (const pid of target.seen) {
     signalPid(pid, signal);
+  }
+};
+
+/** Signals `target.pid` and everything below it. Once the root has exited and been reaped its
+ * pid is free for reuse, so nothing is aimed at it any more, and on Windows, where taskkill finds
+ * the tree only through a live root, nothing is signalled at all: what is left is the stdio
+ * release spawn-timeout.ts does next. Descendants seen while the root was alive are still
+ * signalled on POSIX. */
+const signalTree = async (target: TreeTarget, signal: TreeSignal): Promise<void> => {
+  if (target.platform !== 'win32') {
+    await signalPosixTree(target, signal);
+  } else if (target.rootAlive()) {
+    await signalWindowsTree(target, signal);
   }
 };
 

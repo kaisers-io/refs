@@ -1,6 +1,6 @@
+import type { Exec, TreeTarget } from '../../src/proc/spawn-tree.ts';
 import { descendantsOf, parseProcessTable, signalTree } from '../../src/proc/spawn-tree.ts';
 import { describe, expect, it } from 'vitest';
-import type { Exec } from '../../src/proc/spawn-tree.ts';
 import type { RunResult } from '../../src/proc/runner.ts';
 
 // The pure half of the process-tree walk a timeout uses to end a command (spawn-tree.ts). The
@@ -55,20 +55,61 @@ describe('walking the process table', () => {
   });
 });
 
+const OK: RunResult = { exitCode: 0, stderr: '', stdout: '' };
+
+/** A tree rooted at an impossible pid, alive unless `overrides` says otherwise. */
+const targetFor = (exec: Exec, overrides: Partial<TreeTarget>): TreeTarget => ({
+  exec,
+  pid: IMPOSSIBLE_PID,
+  platform: 'linux',
+  rootAlive: () => true,
+  seen: new Set<number>(),
+  systemRoot: undefined,
+  ...overrides,
+});
+
 describe('signalling a tree', () => {
-  it('hands the whole tree to taskkill on Windows', async () => {
+  it('hands the whole tree to the taskkill under SystemRoot on Windows', async () => {
     expect.hasAssertions();
-    const { calls, exec } = recordingExec({ exitCode: 0, stderr: '', stdout: '' });
-    await signalTree({ exec, pid: ROOT, platform: 'win32', seen: new Set() }, 'SIGTERM');
-    expect(calls).toStrictEqual([['taskkill', '/PID', String(ROOT), '/T', '/F']]);
+    const { calls, exec } = recordingExec(OK);
+    const target = targetFor(exec, { pid: ROOT, platform: 'win32', systemRoot: 'C:\\Windows' });
+    await signalTree(target, 'SIGTERM');
+    expect(calls).toStrictEqual([
+      [String.raw`C:\Windows\System32\taskkill.exe`, '/PID', String(ROOT), '/T', '/F'],
+    ]);
   });
+
+  it.each([undefined, 'Windows', '.\\'])(
+    'never runs a taskkill found by name, with SystemRoot %s',
+    async (systemRoot) => {
+      expect.hasAssertions();
+      const { calls, exec } = recordingExec(OK);
+      await signalTree(targetFor(exec, { platform: 'win32', systemRoot }), 'SIGTERM');
+      expect(calls).toStrictEqual([]);
+    },
+  );
+
+  it.each(['win32', 'linux'] as const)(
+    'aims nothing at a root that has exited, whose pid may be reused (%s)',
+    async (platform) => {
+      expect.hasAssertions();
+      const { calls, exec } = recordingExec({ ...OK, stdout: TABLE });
+      const target = targetFor(exec, {
+        platform,
+        rootAlive: () => false,
+        systemRoot: 'C:\\Windows',
+      });
+      await signalTree(target, 'SIGTERM');
+      expect(calls).toStrictEqual([]);
+    },
+  );
 
   it('records nothing it could not see when ps fails', async () => {
     expect.hasAssertions();
     const { calls, exec } = recordingExec({ exitCode: FAILED, stderr: 'no ps', stdout: TABLE });
-    const seen = new Set<number>();
-    await signalTree({ exec, pid: IMPOSSIBLE_PID, platform: 'linux', seen }, 'SIGTERM');
+    const target = targetFor(exec, {});
+    await signalTree(target, 'SIGTERM');
     expect(calls).toHaveLength(1);
-    expect([...seen]).toStrictEqual([]);
+    expect([...target.seen]).toStrictEqual([]);
   });
 });

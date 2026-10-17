@@ -27,7 +27,14 @@ const noopTimeout: TimeoutHandle = { clear: () => {}, markedTimedOut: () => fals
 const treeOf = (target: TimeoutTarget): TreeTarget | undefined =>
   target.child.pid === undefined
     ? undefined
-    : { exec: target.exec, pid: target.child.pid, platform: process.platform, seen: new Set() };
+    : {
+        exec: target.exec,
+        pid: target.child.pid,
+        platform: process.platform,
+        rootAlive: () => target.child.exitCode === null && target.child.signalCode === null,
+        seen: new Set(),
+        systemRoot: process.env['SystemRoot'],
+      };
 
 // The last resort that makes `timeoutMs` a wall-clock bound: a process that escaped the tree walk
 // (it daemonized, or `ps` could not see it) may still hold the child's stdout or stderr, and
