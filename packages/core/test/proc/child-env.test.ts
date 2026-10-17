@@ -1,9 +1,9 @@
 import { REPOSITORY_LOCAL_GIT_VARIABLES, childEnv } from '../../src/proc/child-env.ts';
 import { describe, expect, it } from 'vitest';
+import { join, resolve } from 'node:path';
 import { mkdtemp, realpath } from 'node:fs/promises';
 import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { SpawnRunner } from '../../src/proc/runner.ts';
-import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 // What refs' children inherit. The policy is git's own `sanitize_repo_env()`: drop the
@@ -115,7 +115,9 @@ describe('spawned git under an inherited GIT_DIR', SUITE_OPTS, () => {
 
     const seen = await withEnv({ GIT_DIR: join(scratch, 'sentinel', '.git') }, exercise);
 
-    expect(seen).toBe(join(mine, '.git'));
+    // Git for Windows prints the path with forward slashes (`C:/Users/...`); `resolve` puts it in
+    // the platform's own spelling and is the identity for an absolute POSIX path.
+    expect(resolve(seen)).toBe(join(mine, '.git'));
   });
 
   it('still receives command-scope config injected through GIT_CONFIG_COUNT', async () => {
