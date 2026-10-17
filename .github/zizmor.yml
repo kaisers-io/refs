@@ -6,12 +6,3 @@ rules:
   # (`minimumReleaseAge`).
   dependabot-cooldown:
     disable: true
-  # The smoke tests install the tarball the same job just packed from this checkout: that is the
-  # thing under test, not a dependency fetched from outside the lockfile. Listed by line because
-  # zizmor does not read ignore comments inside a `run:` block, so moving one of these lines means
-  # updating its entry here.
-  adhoc-packages:
-    ignore:
-      - ci.yml:140
-      - ci.yml:169
-      - release.yml:173

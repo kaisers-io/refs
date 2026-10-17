@@ -134,7 +134,7 @@ jobs:
         with: { node-version-file: .node-version, cache: pnpm }
       - run: pnpm install --frozen-lockfile && pnpm build
       - name: smoke test against a file:// fixture
-        run: |
+        run: | # zizmor: ignore[adhoc-packages] -- installs the tarball this job just packed
           set -euo pipefail
           npm pack ./packages/cli --pack-destination /tmp
           npm install -g /tmp/kaisers-io-refs-*.tgz
@@ -162,7 +162,7 @@ jobs:
       - run: pnpm install --frozen-lockfile && pnpm build
       - name: smoke test against a file:// fixture (PowerShell)
         shell: pwsh
-        run: |
+        run: | # zizmor: ignore[adhoc-packages] -- installs the tarball this job just packed
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
           npm pack ./packages/cli --pack-destination $env:TEMP
