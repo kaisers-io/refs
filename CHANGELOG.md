@@ -14,9 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   settings such as `GIT_SSH_COMMAND`), which commands pin refs' hooks directory above an inherited
   `core.hooksPath` and which do not, how the time limit ends git and its helpers and when a failed
   clone is removed, how refs' `core.fsmonitor` and configured-hook overrides work on git 2.54 and
-  on 2.55 and later, what still runs (content filters, a hook label named after an event on 2.55,
-  events refs does not list), and which git versions the controls were measured on. refs enforces
-  no minimum git version, and the section says so (#217).
+  later and what they cost, what still runs (content filters), and which git versions the controls
+  were measured on. refs enforces no minimum git version, and the section says so (#217).
 
 ## [0.18.2] - 2026-10-13
 

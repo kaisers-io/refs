@@ -108,13 +108,17 @@ configuration is, with one exception `refs` enforces: the hooks directory. Comma
 configuration outranks the refs-owned `core.hooksPath` stored in a checkout, git exports
 `GIT_CONFIG_PARAMETERS` to every hook started under `git -c`, and a relative value such as
 `.githooks` resolves inside the checkout. A `refs` started from such a hook would run hooks the
-cloned repository tracks. So the clone and every git command of a sync also carry
-`-c core.hooksPath=<refs' hooks directory>` at top level, which git applies after the inherited
-value. Other commands are not pinned, and two of them were measured to run hooks from an
-inherited `core.hooksPath`: `refs doctor`'s dirty-checkout check (`git status`) ran
-`post-index-change` once a tracked file's timestamp had changed (git 2.43.0, 2.54.0 and 2.55.0),
-and `git remote set-head` ran `reference-transaction` (2.54.0 and 2.55.0). `add --dry-run` and a
-re-clone during `sync` run that `set-head` only when a fresh clone has no `origin/HEAD`.
+cloned repository tracks. So these commands also carry `-c core.hooksPath=<refs' hooks directory>`
+at top level, which git applies after the inherited value: the clone, every git command of a
+sync, `refs doctor`'s dirty-checkout check (`git status`, which refreshes the index and so runs
+`post-index-change` once a tracked file's timestamp has changed), and the `git remote set-head`
+that default-branch detection falls back to when a checkout has no `origin/HEAD` (from git 2.54
+that ref update runs `reference-transaction`). The other git commands `refs` runs against a
+checkout are not pinned: configuration reads and the marker write, `remote get-url`/`set-url`,
+`rev-parse`, `symbolic-ref`, `show-ref`, the tag listing, `ls-tree`, `show <rev>:<path>` and the
+tree-to-tree `diff --name-only`. Each was run under an inherited relative `core.hooksPath`, with a
+hook of every documented name tracked by the checkout, on git 2.43.0, 2.54.0 and 2.55.0, and none
+ran a hook.
 
 Two more defaults bound how long git can hold `refs`, which matters because `refs` holds the ref's
 lock meanwhile. `GIT_TERMINAL_PROMPT` is `0` unless the user has set it, so git fails instead of
@@ -141,22 +145,32 @@ reads them after inherited command-scope configuration, so a `GIT_CONFIG_PARAMET
 2.55.0). The events switched off are the ones `refs`' own commands fire: `post-checkout`,
 `post-index-change`, `pre-auto-gc` and `reference-transaction`.
 
-git 2.54 has configured hooks but no event-level switch. There `refs` adds one
-`hook.<label>.enabled=false` per label, read from the configuration and every file it includes,
-conditional or not, as the note above says. The command fails with the reason, and git is not
-started, when that graph cannot be read whole: an include `refs` cannot read, more than 10 levels or
-64 files, a relative include set outside a file, or a label containing `=`. It also fails when an
-include lies inside the checkout the command works on.
+The event switch is not enough on its own. git 2.54 has configured hooks but no event-level
+switch. git 2.55 has one, but it reads `hook.<name>.enabled` as a label's switch once the
+configuration gives a hook label that name: with `[hook "post-checkout"] command = …` defined,
+`hook.post-checkout.enabled=false` switches off that one label, and every other label on
+`post-checkout` still runs. So on every git from 2.54 `refs` also adds one
+`hook.<label>.enabled=false` per label, whatever its event, read from the configuration and every
+file it includes, conditional or not, as the note above says. The event switches stay as a second
+layer. The command fails with the reason, and git is not started, when that graph cannot be read
+whole: an include `refs` cannot read, more than 10 levels or 64 files, a relative include set
+outside a file, or a label containing `=`. It also fails when an include lies inside the checkout
+the command works on, which for a clone is its destination, however many global options precede
+the `clone`.
 
 None of these options affects hooks in the hooks directory, so `refs`' commit and push guard still
-runs. The cost is fsmonitor's acceleration for `refs`' own `status`, `checkout` and `reset`, which
-refresh the index by a full scan instead.
+runs. One cost is fsmonitor's acceleration for `refs`' own `status`, `checkout` and `reset`, which
+refresh the index by a full scan instead. The other, on git 2.54 and later, is the label inventory
+before every git command: `git --version` once per run, then a configuration listing plus two
+reads per configuration file for each command. A no-op `refs sync` of one ref, with one global
+configuration file, started 12 git processes on git 2.43.0 and 67 on 2.54.0 and 2.55.0, and took
+about 310 ms against 530 ms in one run each.
 
-| git        | fsmonitor command | configured hooks, for `refs`' own commands          |
-| ---------- | ----------------- | --------------------------------------------------- |
-| below 2.54 | off               | do not exist in this git                            |
-| 2.54       | off               | off, by label; git not started if one may be missed |
-| 2.55 on    | off               | off, by event, for the four events above            |
+| git        | fsmonitor command | configured hooks, for `refs`' own commands                    |
+| ---------- | ----------------- | ------------------------------------------------------------- |
+| below 2.54 | off               | do not exist in this git                                      |
+| 2.54       | off               | off, by label; git not started if one may be missed           |
+| 2.55 on    | off               | off, by label and event; git not started if one may be missed |
 
 **What still runs.**
 
@@ -165,15 +179,10 @@ refresh the index by a full scan instead.
   `refs` can therefore still run a filter command the user's configuration defines, and nothing
   here claims otherwise. `refs doctor`'s `git-exec-surfaces` check and the warning `refs add` gives
   before it clones list them. A warning is not neutralisation.
-- **On git 2.55 and later, a configured hook for one of those events when the configuration also
-  defines a hook label with that event's name**, such as `[hook "post-checkout"] command = …`. git
-  then reads `hook.post-checkout.enabled=false` as that label's switch instead of the event's, so
-  other labels on `post-checkout` still run. Measured on 2.55.0 during `refs add`, which reported
-  nothing. On 2.54 the label inventory switches them off.
-- **On git 2.55 and later, a hook event `refs` does not list.** The list is fixed. A future git that
-  fires another event during `refs`' operations runs configured hooks for it until the list is
-  extended. On 2.54 a label is switched off whatever its event.
-- **Hooks from an inherited `core.hooksPath`** in the commands it is not pinned for (above).
+- **Hooks from an inherited `core.hooksPath` in a command that is not pinned.** None of today's
+  unpinned commands ran one (above). The pin is added per call site, so a git command `refs` adds
+  later, or an existing one that starts writing refs or the index, is covered only if its call
+  site adds it.
 
 Checked and not triggered by the commands `refs` runs, so not overridden: `diff.external` and
 textconv drivers (`refs`' only diff is `--name-only`, and its `git show <rev>:<path>` prints the
