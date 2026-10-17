@@ -80,17 +80,17 @@ const runOrThrow = async (runner: Runner, spec: CommandSpec): Promise<RunResult>
 // plain `file://` remote without `uploadpack.allowFilter=true`) ignore the filter and warn — that
 // downgrades to `effectiveMode: 'full'` + warning.
 const cloneRepo = async (runner: Runner, opts: CloneOpts): Promise<CloneResult> => {
-  // `-c core.hooksPath=…` on the clone ITSELF, not afterwards. git applies a clone's `-c` once the
-  // new repository is initialized and BEFORE it fetches and checks out, so this is the only form
-  // that covers the checkout the clone performs. Setting it afterwards leaves that checkout
-  // governed by the ambient config: a user-level RELATIVE `core.hooksPath` (`.githooks`, say)
-  // resolves inside the tree being cloned, so an upstream-tracked hook of that name runs — during
-  // `add --dry-run`, before anyone has approved the ref. `-c` also persists into the new repo's
-  // local config, which is what the `git config` call below then only re-affirms.
-  // The interpolation is safe and both reasons are verified: there is no shell (`SpawnRunner`
-  // always spawns an argv array), and a newline in a `-c` value cannot smuggle a second setting —
-  // git 2.54 stores the whole string as ONE value. `hooksDir` is refs-owned in any case.
-  const args = ['clone', '-q', '-c', `core.hooksPath=${opts.hooksDir}`];
+  // Command-scope injection is intentionally retained for credentials and URL rewrites.
+  // Pin hooksPath at command scope too: clone's own -c is only repository-local and loses
+  // to inherited GIT_CONFIG_PARAMETERS/COUNT. Keep both so the managed marker persists.
+  const args = [
+    '-c',
+    `core.hooksPath=${opts.hooksDir}`,
+    'clone',
+    '-q',
+    '-c',
+    `core.hooksPath=${opts.hooksDir}`,
+  ];
   if (opts.mode === 'blobless') {
     args.push('--filter=blob:none');
   }

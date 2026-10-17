@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Isolate refs’ Git children from inherited repository-local environment variables, so add
   and sync cannot redirect their checks or destructive operations into the caller’s repository.
   Authentication, transport and injected command-scope configuration remain available.
+  Pin the clone hooks path at command scope too, so retained injected configuration cannot
+  redirect the initial checkout to hooks supplied by the cloned repository.
 
 ## [0.18.2] - 2026-10-13
 

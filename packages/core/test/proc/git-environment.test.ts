@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { execFile } from 'node:child_process';
 import { gitEnvironment } from '../../src/proc/git-environment.ts';
+import { promisify } from 'node:util';
 
 const LOCAL_NAMES = [
   'GIT_ALTERNATE_OBJECT_DIRECTORIES',
@@ -46,5 +48,19 @@ describe('git child environment', () => {
     const env = { Git_Dir: 'sentinel', Path: 'path', git_index_file: 'index' };
     expect(gitEnvironment(env, 'win32')).toStrictEqual({ Path: 'path' });
     expect(gitEnvironment(env, 'linux')).toStrictEqual(env);
+  });
+});
+
+describe('installed Git environment contract', () => {
+  it('removes every repository variable Git reports except injected configuration', async () => {
+    expect.hasAssertions();
+    const { stdout } = await promisify(execFile)('git', ['rev-parse', '--local-env-vars']);
+    const names = stdout.trim().split(/\r?\n/u);
+    const inherited = Object.fromEntries(names.map((name) => [name, 'sentinel']));
+    const retained = Object.keys(gitEnvironment(inherited));
+    const injected = names.filter((name) =>
+      ['GIT_CONFIG_COUNT', 'GIT_CONFIG_PARAMETERS'].includes(name),
+    );
+    expect(retained.toSorted()).toStrictEqual(injected.toSorted());
   });
 });
