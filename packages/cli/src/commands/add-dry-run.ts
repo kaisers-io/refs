@@ -38,6 +38,7 @@ import type { CliContext } from '../context.ts';
 import type { ResolvedSource } from './add-source.ts';
 import { discoveryObstacle } from './workspace-diagnostics.ts';
 import { ensureClonedCheckout } from './add-checkout-guards.ts';
+import { execSurfacesWarning } from './doctor-checks-git-config.ts';
 import { progress } from '../output.ts';
 
 // The `--dry-run` core: resolve source → conflict/collision guards → idempotent clone → detect
@@ -46,11 +47,12 @@ import { progress } from '../output.ts';
 
 type DryRunOutcome = {
   dest: string;
-  /** Two independent things can be worth saying about one dry-run — the clone fell back, and the
-   * scan could not read the workspace declaration — so they are collected rather than competing
-   * for one `warning` field. The envelope's `warnings` is already an array. */
+  /** Independent facts — the scan could not read the workspace declaration, git is configured to
+   * run something — are collected, not merged into `warning`: the envelope's is an array. */
   detectionWarning?: string;
   effectiveCloneMode?: CloneMode;
+  /** `doctor`'s `git-exec-surfaces` finding, read before the clone. */
+  execSurfacesWarning?: string;
   proposal: Proposal;
   /** The detected workspace root's package name, when its manifest declares one. Carried on the
    * in-process outcome rather than in the serialized `Proposal`: only the one-shot `--description`
@@ -167,6 +169,7 @@ type CloneAndDetectOpts = {
 
 type CloneAndDetectResult = {
   effectiveMode?: CloneMode;
+  execSurfacesWarning?: string;
   fields: DetectedFields;
   warning?: string;
 };
@@ -176,6 +179,7 @@ type CloneAndDetectResult = {
 // `refs sync`/`refs add` on the same ref.
 const cloneAndDetect = (ctx: CliContext, opts: CloneAndDetectOpts): Promise<CloneAndDetectResult> =>
   withLock(opts.home, refLockName(opts.resolved.key), async () => {
+    const surfaces = await execSurfacesWarning(ctx, opts.home.root);
     const cloneOutcome = await ensureClonedCheckout(ctx, {
       allowFileUrls: allowFileUrlsFrom(ctx.env),
       cloneUrl: opts.resolved.cloneUrl,
@@ -185,7 +189,10 @@ const cloneAndDetect = (ctx: CliContext, opts: CloneAndDetectOpts): Promise<Clon
       mode: opts.cloneMode,
     });
     const fields = await detectProposalFields(ctx, opts.dest, opts.resolved);
-    const result: CloneAndDetectResult = { fields };
+    const result: CloneAndDetectResult = {
+      fields,
+      ...(surfaces === undefined ? {} : { execSurfacesWarning: surfaces }),
+    };
     if (cloneOutcome.effectiveMode !== undefined) {
       result.effectiveMode = cloneOutcome.effectiveMode;
     }
@@ -231,11 +238,12 @@ const proposalFrom = (fields: DetectedFields, resolved: ResolvedSource): Proposa
 
 /** Assembled in one expression, with the same conditional-spread idiom `detectedFrom` uses above:
  * `exactOptionalPropertyTypes` distinguishes an absent key from one set to `undefined`, and all
- * four of these are genuinely absent most of the time. */
+ * five of these are genuinely absent most of the time. */
 const buildDryRunOutcome = (opts: BuildDryRunOutcomeOpts): DryRunOutcome => {
-  const { effectiveMode, fields, warning } = opts.cloneResult;
+  const { effectiveMode, execSurfacesWarning: surfaces, fields, warning } = opts.cloneResult;
   return {
     dest: opts.dest,
+    ...(surfaces === undefined ? {} : { execSurfacesWarning: surfaces }),
     proposal: proposalFrom(fields, opts.resolved),
     ...(fields.detectionWarning === undefined ? {} : { detectionWarning: fields.detectionWarning }),
     ...(fields.rootPackageName === undefined ? {} : { rootPackageName: fields.rootPackageName }),

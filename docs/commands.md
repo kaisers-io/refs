@@ -134,7 +134,10 @@ Adds a git reference in **two phases**: propose, then finalize. Exactly one of
    (idempotently — a healthy existing checkout is reused, not re-cloned), detects its
    default branch, tag-format candidate, and any workspace packages, and writes a
    reviewable `Proposal` — nothing is added to `config.toml` yet. The checkout itself,
-   however, does exist on disk after this step.
+   however, does exist on disk after this step. Before it clones, it also reports what the
+   git configuration will run during that clone and later syncs, as a `warnings` entry
+   beginning `git-exec-surfaces:` (see
+   [the `git-exec-surfaces` check](#the-git-exec-surfaces-check)).
 2. **Finalize** (`refs add --proposal <file|->`): reads a completed proposal (edited by a
    human/agent to fill in `description`), re-verifies the checkout's identity, and writes
    the ref into `config.toml`/`state.json`.
@@ -400,7 +403,7 @@ missing/unreadable config is a top-level error, not a per-ref one).
 refs doctor
 ```
 
-Runs the environment/integrity checks, always in this order: `git`, `node`, `config`,
+Runs the environment/integrity checks, always in this order: `git`, `git-exec-surfaces`, `node`, `config`,
 `hooks-guard`, `dirty-checkouts`, `config-drift`, `orphans`, `locks`, `skill`, `cli-update`, `ssh-auth` (the last one only runs
 when a configured ref uses an `ssh` transport URL). Every check runs to completion
 regardless of earlier failures.
@@ -458,6 +461,27 @@ Each check's `status` is `ok`, `warn`, or `fail`. As with `sync` (see
 [Exit codes](#exit-codes) above), the envelope is `{"ok":true,...}` even when a check
 reports `fail`
 — but the process exits `1` in that case.
+
+### The `git-exec-surfaces` check
+
+Reports what in the git configuration refs' own git invocations inherit can make git run a command
+by itself, beyond the hooks directory refs pins per checkout. Every git process refs starts runs
+with `core.fsmonitor` emptied and configured hooks switched off for each event refs causes
+(`hook.<event>.enabled=false`), so what is left to report is:
+
+- **Content filters** (`filter.<name>.clean`, `smudge`, `process`). They stay enabled: turning one
+  off changes what the checkout contains, and a required filter such as git-lfs's fails the
+  checkout outright.
+- **Configured hooks refs did not disable.** The event-level switch exists from git 2.55, but a
+  hook label named after an event takes it over. So on git 2.54 and later refs also disables
+  every label it finds in the configuration and its includes, conditional or not, and refuses to
+  start git when it cannot read them all; a hook is listed here only when no switch reached it,
+  such as when `git --version` cannot be read. Before 2.54 git has no configured hooks.
+
+It reports presence, not safety, and reads the configuration from the refs home, so an
+`includeIf "gitdir:…"` section that applies only inside a checkout is not in its listing. `refs add`
+gives the same finding as a `warnings` entry beginning `git-exec-surfaces:`, read before it clones —
+a warning, not protection.
 
 ### The `locks` check
 
