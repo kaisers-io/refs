@@ -228,3 +228,11 @@ To add a case, create `evals/<name>/case.yaml` and an executable `scaffold.sh` t
 `../lib.sh`.
 Before you trust a grader, feed it a wrong answer and check that it fails. A grader that passes
 on an empty run pins nothing.
+
+A grader for a command the agent hands over reads a file the prompt asks it to write, never the
+reply: prose cannot tell a command from one inside a comment or a warning. Its pattern is not
+written by hand. `scripts/skill-evals/command-grammar.mjs` builds it from the exact argv (the
+positionals in order, the options in any position and each at most once, every value one literal
+shell word, nothing after the command). Change the argv there, run
+`node scripts/skill-evals/command-grammar.mjs --write`, and add the wrong commands it must reject
+to `scripts/skill-evals/repair-graders.test.mjs`, which CI runs without a model.
