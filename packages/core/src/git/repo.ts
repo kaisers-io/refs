@@ -4,6 +4,7 @@ import type { BuiltSyncResult } from './sync-result.ts';
 import type { CloneMode } from '../schemas/primitives.ts';
 import type { RefsHome } from '../home.ts';
 import { assertManagedCheckout } from './managed-checkout.ts';
+import { cloneArgs } from './clone-args.ts';
 import { failureDetail } from './failure-detail.ts';
 import { join } from 'node:path';
 import { validationError } from '../errors.ts';
@@ -80,26 +81,7 @@ const runOrThrow = async (runner: Runner, spec: CommandSpec): Promise<RunResult>
 // plain `file://` remote without `uploadpack.allowFilter=true`) ignore the filter and warn — that
 // downgrades to `effectiveMode: 'full'` + warning.
 const cloneRepo = async (runner: Runner, opts: CloneOpts): Promise<CloneResult> => {
-  // `-c core.hooksPath=…` on the clone ITSELF, not afterwards. git applies a clone's `-c` once the
-  // new repository is initialized and BEFORE it fetches and checks out, so this is the only form
-  // that covers the checkout the clone performs. Setting it afterwards leaves that checkout
-  // governed by the ambient config: a user-level RELATIVE `core.hooksPath` (`.githooks`, say)
-  // resolves inside the tree being cloned, so an upstream-tracked hook of that name runs — during
-  // `add --dry-run`, before anyone has approved the ref. `-c` also persists into the new repo's
-  // local config, which is what the `git config` call below then only re-affirms.
-  // The interpolation is safe and both reasons are verified: there is no shell (`SpawnRunner`
-  // always spawns an argv array), and a newline in a `-c` value cannot smuggle a second setting —
-  // git 2.54 stores the whole string as ONE value. `hooksDir` is refs-owned in any case.
-  const args = ['clone', '-q', '-c', `core.hooksPath=${opts.hooksDir}`];
-  if (opts.mode === 'blobless') {
-    args.push('--filter=blob:none');
-  }
-  // `--` ends option parsing, so a url shaped like a flag can only be read as the repository to
-  // clone. git would otherwise honour `--upload-pack=<cmd>` and run it. `canonicalizeGitUrl`
-  // already refuses such urls, but only where a url is first accepted: `sync` re-reads it from
-  // config, which validates it as a non-empty string and nothing more. This makes the property
-  // hold at the call itself rather than resting on something having been checked earlier.
-  args.push('--', opts.cloneUrl, opts.dest);
+  const args = cloneArgs(opts);
   const cloneResult = await runOrThrow(runner, gitSpec('git clone', args));
   // Kept deliberately, though the clone's own `-c` already wrote it: an older git that does not
   // apply a clone `-c` before checkout would still leave the marker every later guard compares

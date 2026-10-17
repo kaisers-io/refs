@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **refs' git commands no longer follow an inherited `GIT_DIR` into another repository.** refs
+  names a checkout by its path, but git lets `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and their
+  siblings override the working directory, and git exports them to every hook. `refs add` or
+  `refs sync` started from a hook, an alias or a wrapper that exported them ran its git commands
+  against the caller's repository: a clone stamped refs' read-only hooks path onto it, blocking
+  its commits, and a sync's `reset --hard` and `clean -fd` discarded its uncommitted and untracked
+  files. Every child refs starts now gets a copy of the environment without the variables git
+  itself clears before working in another repository (`git rev-parse --local-env-vars`). Like git,
+  refs keeps `GIT_CONFIG_PARAMETERS` and `GIT_CONFIG_COUNT`, so configuration injected that way —
+  credentials, `insteadOf` rewrites — still applies. The user's own environment is not changed.
+- **An inherited `core.hooksPath` can no longer govern a clone's checkout.** The managed hooks path
+  was set with `clone -c`, which is repository-local configuration; command-scope configuration
+  from `GIT_CONFIG_COUNT` or `GIT_CONFIG_PARAMETERS` outranks it, so a relative `.githooks` injected
+  that way ran a hook the cloned repository ships. The clone now also passes it at command scope.
+
 ## [0.18.2] - 2026-10-13
 
 ### Security
