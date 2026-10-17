@@ -18,9 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A git command that stops making progress now ends.** Each git command refs runs gets a time
   limit, `REFS_GIT_TIMEOUT` seconds (default 900, `0` for no limit). When it runs out, refs ends
   git together with the helper processes git started. Before this, those helpers kept running
-  after git had exited and refs kept waiting for them. A clone that is cut off this way no longer
-  leaves a half-made checkout that the next `refs add` or `refs sync` would take for a working one.
-  Only a clone refs itself started is removed; anything else at that path is left alone.
+  after git had exited and refs kept waiting for them. refs waits until the processes it found are
+  gone, and forces any that ignore the request to stop; git exiting first does not cut that
+  short. A clone that is cut off this way no longer leaves a half-made checkout that the next
+  `refs add` or `refs sync` would take for a working one. Only a clone refs itself started is
+  removed; anything else at that path is left alone. If refs cannot confirm that every process
+  the clone started has ended, it does not delete the checkout under a process that may still be
+  writing to it: it leaves it in place, marks it so that refs will not use it, and says so.
 
 ## [0.18.2] - 2026-10-13
 

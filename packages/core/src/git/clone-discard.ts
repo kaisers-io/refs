@@ -2,6 +2,7 @@ import type { RunResult, Runner } from '../proc/runner.ts';
 import { gitSpec, runOrThrow } from './run-or-throw.ts';
 import { lstat, rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { validationError } from '../errors.ts';
 
 // The clone step of `cloneRepo` (repo.ts), with the removal of what a failed clone leaves behind.
 //
@@ -21,6 +22,13 @@ import { join } from 'node:path';
 //   nested ref (`host/group/project/sub`) creates its parent, which is this `dest`, under a lock
 //   of its own. Nothing without `.git` can be adopted, so leaving it costs nothing.
 // Callers have already containment-checked `dest` and hold the ref's lock.
+//
+// Neither fact says the clone has stopped writing. When the timeout could not confirm that every
+// process the clone started has ended (`RunResult.cleanupUncertain`, spawn-confirm.ts), removing
+// `dest` would race whatever still writes into it, and a survivor could recreate part of it after
+// the removal. The leftover is then kept, and only its `core.hooksPath` marker is unset: every
+// reuse path compares that marker before adopting a checkout, so the next `refs add` or
+// `refs sync` refuses it instead of taking it for a healthy one.
 
 type DiscardOpts = { dest: string; hooksDir: string };
 
@@ -41,6 +49,46 @@ const entryExists = async (path: string): Promise<boolean> => {
 const isLeftover = async (dest: string, existed: boolean): Promise<boolean> =>
   !existed && (await entryExists(join(dest, '.git')));
 
+/** `runner`, noting whether any run it made reported `cleanupUncertain`. */
+const watchingCleanup = (runner: Runner): { runner: Runner; uncertain: () => boolean } => {
+  let uncertain = false;
+  return {
+    runner: {
+      run: async (cmd, args, opts) => {
+        const result = await runner.run(cmd, args, opts);
+        uncertain ||= result.cleanupUncertain === true;
+        return result;
+      },
+    },
+    uncertain: () => uncertain,
+  };
+};
+
+/** Leaves the leftover at `dest` in place but unadoptable, and answers the error that says so. */
+const quarantine = async (runner: Runner, dest: string, error: unknown): Promise<Error> => {
+  await runner.run('git', ['config', '--local', '--unset', 'core.hooksPath'], { cwd: dest });
+  const detail = error instanceof Error ? error.message : String(error);
+  return validationError(
+    `${detail} — processes the clone started may still be running, so refs left ${dest} in ` +
+      'place and unmarked it; refs will not use it, remove it once they have exited',
+  );
+};
+
+type FailedClone = { dest: string; existed: boolean; runner: Runner; uncertain: boolean };
+
+/** Removes or quarantines what the failed clone left, if it left anything; answers the error to
+ * throw. */
+const afterFailure = async (failed: FailedClone, error: unknown): Promise<unknown> => {
+  if (!(await isLeftover(failed.dest, failed.existed))) {
+    return error;
+  }
+  if (failed.uncertain) {
+    return quarantine(failed.runner, failed.dest, error);
+  }
+  await rm(failed.dest, { force: true, maxRetries: CLEANUP_RETRIES, recursive: true });
+  return error;
+};
+
 /** Runs the clone and stamps the marker, removing `opts.dest` again if either fails and it holds
  * a clone this call started. */
 const cloneOrDiscard = async (
@@ -49,8 +97,9 @@ const cloneOrDiscard = async (
   args: readonly string[],
 ): Promise<RunResult> => {
   const existed = await entryExists(opts.dest);
+  const watched = watchingCleanup(runner);
   try {
-    const result = await runOrThrow(runner, gitSpec('git clone', args));
+    const result = await runOrThrow(watched.runner, gitSpec('git clone', args));
     // Kept deliberately, though the clone's own `-c` already wrote it: an older git that does not
     // apply a clone `-c` before checkout would still leave the marker every later guard compares
     // against. Re-writing the same value is idempotent.
@@ -60,10 +109,8 @@ const cloneOrDiscard = async (
     );
     return result;
   } catch (error) {
-    if (await isLeftover(opts.dest, existed)) {
-      await rm(opts.dest, { force: true, maxRetries: CLEANUP_RETRIES, recursive: true });
-    }
-    throw error;
+    const failed = { dest: opts.dest, existed, runner, uncertain: watched.uncertain() };
+    throw await afterFailure(failed, error);
   }
 };
 

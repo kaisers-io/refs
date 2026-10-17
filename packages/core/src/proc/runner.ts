@@ -1,9 +1,9 @@
 import { activeChildren, installCleanupOnce } from './spawn-cleanup.ts';
 import { appendNote, createCollector, withTruncationNote } from './spawn-collector.ts';
+import { armTimeout, withCleanupUncertainty } from './spawn-timeout.ts';
 import type { ChildProcess } from 'node:child_process';
 import type { CollectedStream } from './spawn-collector.ts';
 import type { Exec } from './spawn-tree.ts';
-import { armTimeout } from './spawn-timeout.ts';
 import { childEnv } from './spawn-env.ts';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
@@ -26,6 +26,11 @@ type RunResult = {
   stderr: string;
   exitCode: number;
   timedOut?: boolean;
+  // Present-and-`true` only on a timed-out result whose process tree could not be confirmed ended
+  // (spawn-confirm.ts): something the command started may still be running and writing. A caller
+  // must then not treat what the command was writing to as abandoned — not remove it, not reuse
+  // it. Never an explicit `false`.
+  cleanupUncertain?: true;
   // Present-and-`true` only when the collector's byte cap cut `stdout` short (see
   // `spawn-collector.ts`) — never an explicit `false`, so callers branch on `=== true`. Callers
   // that parse `stdout` line-by-line MUST treat a byte-truncated result as incomplete: the last
@@ -188,6 +193,7 @@ type CloseContext = {
   errorMessage: string | undefined;
   timedOut: boolean;
   timeoutMs: number | undefined;
+  treeEnded: boolean;
 };
 
 const resolveExitCode = (code: number | null): number => {
@@ -222,7 +228,10 @@ const buildCloseResult = (ctx: CloseContext): RunResult => {
     // showed. The flag is what callers are told to trust, so it has to be right wherever it is
     // computed.
     return withStdoutTruncation(
-      normalizeTimedOutResult(ctx.stderr.text, ctx.timeoutMs),
+      withCleanupUncertainty(
+        normalizeTimedOutResult(ctx.stderr.text, ctx.timeoutMs),
+        ctx.treeEnded,
+      ),
       ctx.stdout,
     );
   }
@@ -267,7 +276,8 @@ class SpawnRunner implements Runner {
     }
     const outcome = await waitForClose(running.child);
     activeChildren.delete(running.child);
-    running.timeout.clear();
+    // After a timeout this waits for the escalation, not just for `close`: see spawn-confirm.ts.
+    const treeEnded = await running.timeout.settle();
     return buildCloseResult({
       code: outcome.code,
       errorMessage: outcome.errorMessage,
@@ -275,6 +285,7 @@ class SpawnRunner implements Runner {
       stdout: running.stdoutCollector.finish(),
       timedOut: running.timeout.markedTimedOut(),
       timeoutMs,
+      treeEnded,
     });
   }
 }

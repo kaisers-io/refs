@@ -22,6 +22,9 @@ type TreeSignal = 'SIGTERM' | 'SIGKILL';
 
 type TreeTarget = {
   exec: Exec;
+  /** Set once a `ps` listing failed: the tree's descendants are then unknown, and that the tree
+   * ended can no longer be confirmed (spawn-confirm.ts). */
+  listFailed?: boolean;
   pid: number;
   platform: NodeJS.Platform;
   /** Whether the root has not exited yet. */
@@ -67,12 +70,13 @@ const descendantsOf = (children: Map<number, number[]>, root: number): number[] 
   return found;
 };
 
-/** The descendants `ps` can see right now; none when `ps` is missing or fails. A failure to look
- * leaves the direct child as the only target, which is what was signalled before this existed. */
-const listDescendants = async (exec: Exec, pid: number): Promise<number[]> => {
+/** The descendants `ps` can see right now; `undefined` when `ps` is missing or fails. A failure
+ * to look leaves the direct child as the only target, which is what was signalled before this
+ * existed, and is recorded so nobody later takes the tree for confirmed ended. */
+const listDescendants = async (exec: Exec, pid: number): Promise<number[] | undefined> => {
   const result = await exec('ps', PS_ARGS);
   if (result.exitCode !== SUCCESS_EXIT_CODE) {
-    return [];
+    return undefined;
   }
   return descendantsOf(parseProcessTable(result.stdout), pid);
 };
@@ -107,7 +111,9 @@ const signalWindowsTree = async (target: TreeTarget, signal: TreeSignal): Promis
 
 const signalPosixTree = async (target: TreeTarget, signal: TreeSignal): Promise<void> => {
   if (target.rootAlive()) {
-    for (const pid of await listDescendants(target.exec, target.pid)) {
+    const listed = await listDescendants(target.exec, target.pid);
+    target.listFailed = target.listFailed === true || listed === undefined;
+    for (const pid of listed ?? []) {
       target.seen.add(pid);
     }
     signalPid(target.pid, signal);

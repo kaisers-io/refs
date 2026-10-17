@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { lstat, mkdir, mkdtemp, stat, symlink, writeFile } from 'node:fs/promises';
 import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { SpawnRunner } from '../../src/proc/runner.ts';
+import { assertManagedCheckout } from '../../src/git/managed-checkout.ts';
 import { cloneRepo } from '../../src/git/repo.ts';
 import { createFixtureRepo } from '../helpers/fixture-repo.ts';
 import { join } from 'node:path';
@@ -20,8 +21,9 @@ import { tmpdir } from 'node:os';
 const SUITE_OPTS = { timeout: SLOW_IO_TIMEOUT_MS };
 const TIMEOUT_EXIT_CODE = 124;
 
-/** Real git, except that a clone reports a timeout after it has populated its destination. */
-const killedAfterWriting = (): Runner => {
+/** Real git, except that a clone reports a timeout after it has populated its destination, and,
+ * with `uncertain`, that the timeout could not confirm the clone's processes ended. */
+const killedAfterWriting = (uncertain = false): Runner => {
   const real = new SpawnRunner();
   return {
     run: async (cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> => {
@@ -29,12 +31,13 @@ const killedAfterWriting = (): Runner => {
       if (args[0] !== 'clone') {
         return result;
       }
-      return {
+      const timedOut: RunResult = {
         exitCode: TIMEOUT_EXIT_CODE,
         stderr: 'refs: command timed out',
         stdout: '',
         timedOut: true,
       };
+      return uncertain ? { ...timedOut, cleanupUncertain: true } : timedOut;
     },
   };
 };
@@ -90,6 +93,24 @@ describe('a clone that fails after writing', SUITE_OPTS, () => {
     const failed = await cloneInto(dest);
     expect(failed).toBeInstanceOf(Error);
     await expect(exists(dest)).resolves.toBe(true);
+  });
+});
+
+describe('a timed-out clone whose processes may still run', SUITE_OPTS, () => {
+  it('keeps the destination, but unmarked, so nothing adopts it', async () => {
+    expect.hasAssertions();
+    const dest = join(await scratchDir(), 'sources', 'repo');
+    const hooksDir = await scratchDir();
+    const fixture = await createFixtureRepo();
+    const opts = { cloneUrl: fixture.url, dest, hooksDir, mode: 'full' } as const;
+    await expect(cloneRepo(killedAfterWriting(true), opts)).rejects.toThrow(
+      /may still be running/u,
+    );
+    await expect(exists(join(dest, '.git'))).resolves.toBe(true);
+    // The guard every reuse path runs before touching a checkout.
+    await expect(assertManagedCheckout(new SpawnRunner(), dest, hooksDir)).rejects.toThrow(
+      /not a refs-managed checkout/u,
+    );
   });
 });
 
