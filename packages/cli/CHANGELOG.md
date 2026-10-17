@@ -22,8 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   checkout with a repository-local `core.hooksPath`, but command-scope configuration outranks it,
   and git exports `GIT_CONFIG_PARAMETERS` to every hook started under `git -c`. An inherited
   relative `core.hooksPath=.githooks` therefore made `refs add` and `refs sync` run hooks the
-  cloned repository tracks itself. The clone and every git command of a sync now pass refs' hooks
-  directory at command scope as well.
+  cloned repository tracks itself. The clone, every git command of a sync, `refs doctor`'s
+  dirty-checkout check (whose `git status` refreshes the index and runs `post-index-change`) and
+  the `origin/HEAD` refresh that `add --dry-run` and a re-clone fall back to (which runs
+  `reference-transaction` from git 2.54) now pass refs' hooks directory at command scope as well.
 
 ## [0.18.2] - 2026-10-13
 

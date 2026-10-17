@@ -168,23 +168,25 @@ describe('default-branch detection retry', () => {
     expect.hasAssertions();
     const dir = await makeManagedCheckoutDir();
     const runner = new FakeRunner();
-    runner.expect('git symbolic-ref --short refs/remotes/origin/HEAD', {
+    runner.expect(`${PINNED} symbolic-ref --short refs/remotes/origin/HEAD`, {
       exitCode: 1,
       stderr: 'fatal: ref refs/remotes/origin/HEAD is not a symbolic ref\n',
     });
-    runner.expect('git remote set-head origin --auto', {});
-    runner.expect('git symbolic-ref --short refs/remotes/origin/HEAD', { stdout: 'origin/main\n' });
-    await expect(detectDefaultBranch(runner, dir)).resolves.toBe('main');
+    runner.expect(`${PINNED} remote set-head origin --auto`, {});
+    runner.expect(`${PINNED} symbolic-ref --short refs/remotes/origin/HEAD`, {
+      stdout: 'origin/main\n',
+    });
+    await expect(detectDefaultBranch(runner, dir, MANAGED_HOOKS_MARKER)).resolves.toBe('main');
   });
 
   it('throws the actionable error when the branch stays undetectable after the refresh', async () => {
     expect.hasAssertions();
     const dir = await makeManagedCheckoutDir();
     const runner = new FakeRunner();
-    runner.expect('git symbolic-ref --short refs/remotes/origin/HEAD', { exitCode: 1 });
-    runner.expect('git remote set-head origin --auto', {});
-    runner.expect('git symbolic-ref --short refs/remotes/origin/HEAD', { exitCode: 1 });
-    await expect(detectDefaultBranch(runner, dir)).rejects.toThrow(
+    runner.expect(`${PINNED} symbolic-ref --short refs/remotes/origin/HEAD`, { exitCode: 1 });
+    runner.expect(`${PINNED} remote set-head origin --auto`, {});
+    runner.expect(`${PINNED} symbolic-ref --short refs/remotes/origin/HEAD`, { exitCode: 1 });
+    await expect(detectDefaultBranch(runner, dir, MANAGED_HOOKS_MARKER)).rejects.toThrow(
       /could not detect the default branch/u,
     );
   });

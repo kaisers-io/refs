@@ -2,13 +2,11 @@ import type { RunResult, Runner } from '../proc/runner.ts';
 import { buildSyncResult, excerpt, toBuildSyncResultOpts } from './sync-result.ts';
 import type { BuiltSyncResult } from './sync-result.ts';
 import type { CloneMode } from '../schemas/primitives.ts';
-import type { RefsHome } from '../home.ts';
 import { assertManagedCheckout } from './managed-checkout.ts';
 import { failureDetail } from './failure-detail.ts';
-import { join } from 'node:path';
 import { pinHooksPath } from './pinned-hooks.ts';
+import { readDefaultBranch } from './default-branch.ts';
 import { validationError } from '../errors.ts';
-import { writeFileAtomic } from '../fs-atomic.ts';
 
 // Git operations for a "managed checkout": every function takes `runner: Runner` first (real git
 // via SpawnRunner in production, scripted via FakeRunner in unit tests). Implements the clone
@@ -39,7 +37,6 @@ type SyncOpts = {
 type SyncResult = BuiltSyncResult;
 
 const SUCCESS_EXIT_CODE = 0;
-const HOOK_MODE = 0o755;
 
 // Git's wording (git 2.50.1 / Apple Git-155, verified against a plain `file://` remote —
 // see repo.test.ts) when the server ignores `--filter=...` and performs a full clone instead.
@@ -121,38 +118,6 @@ const cloneRepo = async (runner: Runner, opts: CloneOpts): Promise<CloneResult> 
   };
 };
 
-// One attempt at resolving `origin/HEAD`; `undefined` if the ref doesn't exist (yet) — the caller
-// decides whether to refresh and retry.
-const tryReadOriginHead = async (runner: Runner, dir: string): Promise<string | undefined> => {
-  const result = await runner.run('git', ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], {
-    cwd: dir,
-  });
-  if (result.exitCode !== SUCCESS_EXIT_CODE) {
-    return undefined;
-  }
-  const branch = result.stdout.trim();
-  const ORIGIN_PREFIX = 'origin/';
-  if (branch.startsWith(ORIGIN_PREFIX)) {
-    return branch.slice(ORIGIN_PREFIX.length);
-  }
-  return branch;
-};
-
-// Resolves the remote's default branch via `refs/remotes/origin/HEAD`; if stale/absent, refreshes
-// with `git remote set-head origin --auto` and retries once. Throws if still undetectable.
-const detectDefaultBranch = async (runner: Runner, dir: string): Promise<string> => {
-  const direct = await tryReadOriginHead(runner, dir);
-  if (direct !== undefined) {
-    return direct;
-  }
-  await runner.run('git', ['remote', 'set-head', 'origin', '--auto'], { cwd: dir });
-  const retried = await tryReadOriginHead(runner, dir);
-  if (retried !== undefined) {
-    return retried;
-  }
-  throw validationError(`could not detect the default branch for checkout: ${dir}`);
-};
-
 const currentSha = async (runner: Runner, dir: string): Promise<string> => {
   const result = await runOrThrow(
     runner,
@@ -186,7 +151,7 @@ const resolveSyncBranch = async (
   const setHeadResult = await runner.run('git', ['remote', 'set-head', 'origin', '--auto'], {
     cwd: opts.dir,
   });
-  const branch = await detectDefaultBranch(runner, opts.dir);
+  const branch = await readDefaultBranch(runner, opts.dir);
   const result: { branch: string; branchRenamedTo?: string; warning?: string } = { branch };
   if (branch !== opts.defaultBranch) {
     result.branchRenamedTo = branch;
@@ -267,32 +232,9 @@ const tagExists = async (runner: Runner, dir: string, tag: string): Promise<bool
   return result.exitCode === SUCCESS_EXIT_CODE;
 };
 
-const GUARD_HOOK_SCRIPT = [
-  '#!/bin/sh',
-  'echo "refs: this checkout is a managed read-only reference — commits are blocked" >&2',
-  'exit 1',
-  '',
-].join('\n');
-
-// Writes `hooks/pre-commit` + `hooks/pre-push` (0o755) into the shared hooks dir: with
-// `core.hooksPath` pointed here per checkout (`cloneRepo`), git rejects any commit/push there.
-const installHooksGuard = async (home: RefsHome): Promise<void> => {
-  await Promise.all(
-    ['pre-commit', 'pre-push'].map(async (name) => {
-      await writeFileAtomic(join(home.hooksDir, name), GUARD_HOOK_SCRIPT, HOOK_MODE);
-    }),
-  );
-};
-
+export { detectDefaultBranch } from './default-branch.ts';
+export { installHooksGuard } from './hooks-guard.ts';
 export { isGitCheckout } from './managed-checkout.ts';
 export type { SyncStatus } from './sync-result.ts';
-export {
-  cloneRepo,
-  detectDefaultBranch,
-  gitSpec,
-  installHooksGuard,
-  runOrThrow,
-  syncRef,
-  tagExists,
-};
+export { cloneRepo, gitSpec, runOrThrow, syncRef, tagExists };
 export type { CloneResult, SyncResult };

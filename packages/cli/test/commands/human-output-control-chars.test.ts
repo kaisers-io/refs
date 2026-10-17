@@ -48,7 +48,11 @@ const seedHostileCheckout = async (setup: DoctorTestHome): Promise<string> => {
     { stdout: setup.home.hooksDir },
     { cwd: dest },
   );
-  setup.runner.expect('git status --porcelain', { stdout: '' }, { cwd: dest });
+  setup.runner.expect(
+    `git -c core.hooksPath=${setup.home.hooksDir} status --porcelain`,
+    { stdout: '' },
+    { cwd: dest },
+  );
   return dest;
 };
 

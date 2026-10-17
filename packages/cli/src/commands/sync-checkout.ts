@@ -108,7 +108,7 @@ const syncMissingCheckout = async (
     hooksDir: rsc.home.hooksDir,
     mode: cloneMode,
   });
-  const actualBranch = await detectDefaultBranch(ctx.runner, dest);
+  const actualBranch = await detectDefaultBranch(ctx.runner, dest, rsc.home.hooksDir);
   const headSha = await resolveCheckoutHead(ctx.runner, {
     allowFileUrls: allowFileUrlsFrom(ctx.env),
     dest,
