@@ -1,0 +1,34 @@
+name: workflow-audit
+# Static analysis of this repository's GitHub Actions workflows with zizmor
+# (https://docs.zizmor.sh/audits/): template injection, credential persistence, cache poisoning,
+# excessive permissions, unpinned or impostor action references.
+#
+# Path-filtered to changes that can alter a workflow's behaviour. Pinned to an exact zizmor version
+# and run through uvx, like the skill scanners in skill-audit.yml, so no third-party action runs
+# here. Every finding fails the job, at zizmor's default persona; a deliberate exception goes in
+# .github/zizmor.yml with its reason, never into a looser threshold.
+#
+# GH_TOKEN (read-only, contents: read) turns on the online audits, such as impostor commits and
+# known-vulnerable actions. `--format github` puts findings on the diff as annotations.
+on:
+  push:
+    branches: [main]
+    paths: ['.github/**']
+  pull_request:
+    paths: ['.github/**']
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  zizmor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - run: pipx install uv
+      - run: uvx zizmor@1.31.1 --format github .github
+        env:
+          GH_TOKEN: ${{ github.token }}
