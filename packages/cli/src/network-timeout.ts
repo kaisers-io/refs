@@ -4,10 +4,10 @@ import { usageError } from '@kaisers-io/refs-core';
 // remote — clone, fetch, and `remote set-head --auto`. Off unless set: a fixed default would
 // abort a legitimate large clone on a slow link, and how long is too long is the user's call.
 //
-// What it bounds: refs stops the git process at the deadline (SIGTERM, then SIGKILL) and then
-// waits for whatever still holds git's output — the remote helper, `index-pack` — to exit. That
-// wait is what makes removing a half-finished clone safe, so the bound is the deadline plus that
-// wind-down, not a hard wall-clock limit.
+// What it bounds: at the deadline refs stops git and the helpers it started — the remote helper,
+// `index-pack`, ssh — as one process group or tree (core's spawn-timeout.ts; SIGTERM, then
+// SIGKILL), and waits for their output pipes to close before removing a half-finished clone. The
+// bound is the deadline plus that short wind-down, not a hard wall-clock limit.
 //
 // An unusable value is refused rather than ignored: a typo silently meaning "no deadline" is
 // exactly the hang the variable exists to prevent.

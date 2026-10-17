@@ -67,7 +67,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to a whole number of seconds and `refs add` and `refs sync` stop a clone, fetch or
   `remote set-head --auto` that runs longer, instead of holding the ref's lock indefinitely on a
   stalled server. Off by default, since a fixed limit would cut off a legitimate large clone on a
-  slow link. An unusable value is refused rather than read as "no deadline".
+  slow link. An unusable value is refused rather than read as "no deadline". At the deadline refs
+  stops git together with the helpers it started (the https remote helper, `index-pack`, ssh),
+  which would otherwise keep waiting on the server; with a deadline set those commands cannot
+  prompt on the terminal, so use a credential helper, `GIT_ASKPASS` or an ssh agent.
 
 ### Changed
 
