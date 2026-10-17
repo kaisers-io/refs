@@ -6,4 +6,5 @@ packages:
 # The lockfile is re-checked on every install because trustLockfile stays at its default false.
 # Add a reviewed exception to trustPolicyExclude as `name@version`; avoid
 # trustPolicyIgnoreAfter, which waives the check by age rather than by review.
+# https://pnpm.io/settings/dependency-resolution#trustpolicy
 trustPolicy: no-downgrade

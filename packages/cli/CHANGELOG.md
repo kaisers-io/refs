@@ -13,7 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pnpm-workspace.yaml` sets pnpm's `trustPolicy: no-downgrade`: a version published without the
   trusted-publisher or provenance evidence an earlier release of the same package had, the usual
   sign of a stolen publish token, now fails `pnpm install`, including when it is already in the
-  lockfile. The published CLI is unaffected.
+  lockfile. The release build installs through the same policy, so this also covers the
+  libraries bundled into the published CLI; the CLI's runtime behaviour is unchanged.
 
 ## [0.18.2] - 2026-10-13
 
