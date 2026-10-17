@@ -1,8 +1,11 @@
+import { PLUGIN_UPDATE_HINT, codexPluginCandidates } from './doctor-skill-plugin.ts';
 import { readFile, realpath } from 'node:fs/promises';
 import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
+import type { SkillCandidate } from './doctor-skill-locations.ts';
 import { comparePlainVersions } from '@kaisers-io/refs-core';
-import { join } from 'node:path';
+
+import { skillCandidatesOf } from './doctor-skill-locations.ts';
 
 // `refs doctor`'s `skill` check: reads the installed skill's YAML frontmatter out of every install
 // location it knows about and compares the `metadata.cli_version` it pins against the running CLI
@@ -10,134 +13,14 @@ import { join } from 'node:path';
 // are environment probes rather than filesystem lookups) when the location table below grew past
 // what the two could share under the repo's 300-line cap.
 
-const AGENTS_SKILL_SEGMENTS = ['.agents', 'skills', 'refs', 'SKILL.md'] as const;
-const AGENT_HOME_SKILL_SEGMENTS = ['skills', 'refs', 'SKILL.md'] as const;
-const PROJECT_CLAUDE_SKILL_SEGMENTS = ['.claude', 'skills', 'refs', 'SKILL.md'] as const;
 const SKILL_INSTALL_HINT = 'npx skills add kaisers-io/refs';
 const CLI_UPDATE_HINT = 'npm i -g @kaisers-io/refs@latest';
-
-type SkillCandidate = {
-  display: string;
-  label: string;
-  path: string;
-};
-
-/** A location's base directory paired with the short form the "not found" message names it by. The
- * two always travel together because an env override moves both at once: `$CLAUDE_CONFIG_DIR` does
- * not just change where the check looks, it changes which directory it is honest to name. */
-type SkillRoot = {
-  display: string;
-  path: string;
-};
-
-const rootOf = (path: string | undefined, display: string): SkillRoot | undefined =>
-  path === undefined ? undefined : { display, path };
-
-/** One agent's own configuration directory, honouring the installer's env override
- * (`$CLAUDE_CONFIG_DIR`, `$CODEX_HOME`) exactly as `vercel-labs/skills`' `src/agents.ts` resolves
- * it: a set, non-blank override wins over `<home>/<dirName>` outright — a user who sets either has
- * no `~/.claude`/`~/.codex` at all. Read through `ctx.env`, never `process.env`, like every other
- * environment read in this package — the overrides still come from the environment, only the home
- * directory behind them does not. An absent home with no override yields no candidate rather than
- * a `join()` on `undefined`. */
-type AgentHomeArgs = {
-  dirName: string;
-  env: NodeJS.ProcessEnv;
-  home: string | undefined;
-  overrideName: string;
-};
-
-const agentHomeOf = (args: AgentHomeArgs): SkillRoot | undefined => {
-  const { dirName, env, home, overrideName } = args;
-  const override = env[overrideName]?.trim();
-  if (override !== undefined && override.length > 0) {
-    return { display: override, path: override };
-  }
-  return rootOf(home === undefined ? undefined : join(home, dirName), `~/${dirName}`);
-};
-
-/** The locations an installed skill is looked for — best-effort, and deliberately short.
- *
- * None of these paths is a stable contract. They are `vercel-labs/skills`' implementation detail:
- * the canonical directory has moved before, the README table documenting it is generated from the
- * installer's own source (and is already wrong for Codex), and 74 agents carry a global directory
- * each. Enumerating them is not a strategy, so this covers the installer's canonical location plus
- * the two agents `refs` documents an invocation for, Claude Code and Codex. Three consequences
- * worth knowing:
- *
- * - Project scope is the installer's DEFAULT (`-g` is opt-in), and `skills add` implies `-y` when
- *   it detects it is running inside an agent — so an agent-driven install lands in
- *   `<cwd>/.agents/skills/refs` and never touches `$HOME`. That is why the project entries exist.
- * - A single-target install (`skills add … -a claude-code`, with or without `-g`) silently switches
- *   to copy mode, as does a symlink failure on a filesystem without symlink support, so the
- *   per-agent directories can hold real, independent copies that drift from the shared one — not
- *   just symlinks into it.
- * - Copy mode skips the canonical directory outright, so `-a claude-code` at project scope — the
- *   installer's default scope — writes ONLY `<cwd>/.claude/skills/refs`, and nothing under
- *   `.agents` at all. That is the last entry, and note it takes NO env override: unlike the global
- *   directory, the installer's project path is a literal relative `.claude/skills`, so
- *   `$CLAUDE_CONFIG_DIR` does not move it. Codex needs no counterpart: it is a universal agent, so
- *   its project install resolves to `./.agents/skills` in every mode, copy included.
- *
- * The three global entries resolve their base from `ctx.homedir`, which `realContext()` fills from
- * `os.homedir()` — the same call the installer makes. Reading `$HOME` instead used to agree with it
- * everywhere except native Windows, where the variable is typically unset: all three entries
- * vanished there and a correctly installed skill reported as missing.
- *
- * A miss here is a `warn`, never a `fail`, and that is not a hedge: the skill's own capability gate
- * (`SKILL.md` §1) depends on none of this. It runs `refs --version` and compares the result against
- * the pin in the file the agent has already loaded, so a skill this check cannot see still gates
- * itself correctly. This check is a convenience for whoever runs `refs doctor`, not the gate.
- *
- * Order: the canonical global first, so a symlinked install is named by the directory holding the
- * real copy rather than by whichever agent links at it (`uniqueByRealPath` keeps the first entry);
- * then the two per-agent globals; then project scope last — the narrowest reach, and the only pair
- * whose meaning depends on where `refs doctor` happened to be run, canonical before per-agent there
- * too, for the same reason. */
-const skillCandidatesOf = (ctx: CliContext): SkillCandidate[] => {
-  // An empty `homedir` is treated as no home at all: `os.homedir()` returns a string on every
-  // platform, but a blank one would turn `join(home, '.agents')` into a path relative to the
-  // process's cwd — a lookup somewhere nobody installs to, reported as if it were `~`.
-  const home = ctx.homedir.length > 0 ? ctx.homedir : undefined;
-  const locations = [
-    { label: 'shared ~/.agents', root: rootOf(home, '~/.agents'), segments: AGENTS_SKILL_SEGMENTS },
-    {
-      label: 'Claude Code',
-      root: agentHomeOf({
-        dirName: '.claude',
-        env: ctx.env,
-        home,
-        overrideName: 'CLAUDE_CONFIG_DIR',
-      }),
-      segments: AGENT_HOME_SKILL_SEGMENTS,
-    },
-    {
-      label: 'Codex',
-      root: agentHomeOf({ dirName: '.codex', env: ctx.env, home, overrideName: 'CODEX_HOME' }),
-      segments: AGENT_HOME_SKILL_SEGMENTS,
-    },
-    {
-      label: 'project ./.agents',
-      root: rootOf(ctx.cwd, './.agents'),
-      segments: AGENTS_SKILL_SEGMENTS,
-    },
-    {
-      label: 'project ./.claude',
-      root: rootOf(ctx.cwd, './.claude'),
-      segments: PROJECT_CLAUDE_SKILL_SEGMENTS,
-    },
-  ];
-  return locations.flatMap(({ label, root, segments }) =>
-    root === undefined
-      ? []
-      : [{ display: root.display, label, path: join(root.path, ...segments) }],
-  );
-};
 
 type FoundSkill = {
   label: string;
   realPath: string;
   source: string;
+  plugin?: boolean;
 };
 
 /** `realpath` before `readFile` so a symlinked install can be recognised as one copy rather than
@@ -145,10 +28,16 @@ type FoundSkill = {
  * five) and an unreadable one both mean "nothing to compare here", and an install that exists
  * nowhere falls through to `notFoundOf` below. Read-only throughout: `refs` writes nothing outside
  * `REFS_HOME`, and this check touches no path with anything but `realpath`/`readFile`. */
-const readSkillAt = async (path: string, label: string): Promise<FoundSkill | undefined> => {
+const readSkillAt = async (candidate: SkillCandidate): Promise<FoundSkill | undefined> => {
+  const { label, path, plugin } = candidate;
   try {
     const resolved = await realpath(path);
-    return { label, realPath: resolved, source: await readFile(resolved, 'utf8') };
+    return {
+      label,
+      realPath: resolved,
+      source: await readFile(resolved, 'utf8'),
+      ...(plugin === undefined ? {} : { plugin }),
+    };
   } catch {
     return undefined;
   }
@@ -237,20 +126,22 @@ type SkillVersionArgs = {
   cliVersion: string;
   label: string;
   skillVersion: string | undefined;
+  plugin?: boolean;
 };
 
 const buildSkillVersionCheck = (args: SkillVersionArgs): CheckResult => {
   const { cliVersion, label, skillVersion } = args;
+  const updateHint = args.plugin === true ? PLUGIN_UPDATE_HINT : SKILL_INSTALL_HINT;
   if (skillVersion === undefined) {
     return {
-      detail: `the refs skill (${label}) predates the version gate — update it: ${SKILL_INSTALL_HINT}`,
+      detail: `the refs skill (${label}) predates the version gate — update it: ${updateHint}`,
       name: 'skill',
       status: 'warn',
     };
   }
   const verdict = compareSkillVersion(skillVersion, cliVersion);
   return {
-    detail: `${label}: ${DETAIL_BY_VERDICT[verdict](skillVersion, cliVersion)}`,
+    detail: `${label}: ${DETAIL_BY_VERDICT[verdict](skillVersion, cliVersion).replace(SKILL_INSTALL_HINT, updateHint)}`,
     name: 'skill',
     status: verdict === 'match' ? 'ok' : 'warn',
   };
@@ -282,18 +173,30 @@ const notFoundOf = (candidates: readonly SkillCandidate[]): CheckResult => ({
  * not be hidden by a current shared one. The `detail` names the location so the fix is
  * unambiguous. */
 const checkSkill = async (ctx: CliContext): Promise<CheckResult> => {
-  const candidates = skillCandidatesOf(ctx);
-  const found = await Promise.all(
-    candidates.map((candidate) => readSkillAt(candidate.path, candidate.label)),
-  );
-  const checks = uniqueByRealPath(found.filter((entry) => entry !== undefined)).map((entry) =>
+  const plugin = await codexPluginCandidates(ctx);
+  const candidates = [...skillCandidatesOf(ctx), ...plugin.candidates];
+  const loaded = await Promise.all(candidates.map((candidate) => readSkillAt(candidate)));
+  const found = uniqueByRealPath(loaded.filter((entry) => entry !== undefined));
+  const checks = found.map((entry) =>
     buildSkillVersionCheck({
       cliVersion: ctx.cliVersion,
       label: entry.label,
       skillVersion: skillCliVersionOf(entry.source),
+      ...(entry.plugin === undefined ? {} : { plugin: entry.plugin }),
     }),
   );
-  return checks.find((check) => check.status !== 'ok') ?? checks[0] ?? notFoundOf(candidates);
+  const result =
+    plugin.warning ??
+    checks.find((check) => check.status !== 'ok') ??
+    checks[0] ??
+    notFoundOf(candidates);
+  return found.some((entry) => entry.plugin === true) &&
+    found.some((entry) => entry.plugin !== true)
+    ? {
+        ...result,
+        detail: `${result.detail}; both plugin and standalone copies are installed — Codex can show refs and refs:refs; choose one installation method to avoid duplicates`,
+      }
+    : result;
 };
 
 export { checkSkill };

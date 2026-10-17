@@ -1,14 +1,15 @@
 #!/usr/bin/env node
-// Keeps the version this repo releases identical across the two files that carry it:
+// Keeps the version this repo releases identical across the three files that carry it:
 //
 //   packages/cli/package.json  .version   (the source of truth)
 //   skills/refs/SKILL.md       frontmatter metadata.cli_version
+//   plugin.json               .version
 //
 //   node scripts/versions.mjs --check          report every disagreement, exit 1 if any
-//   node scripts/versions.mjs --set <version>  write <version> to both sites
+//   node scripts/versions.mjs --set <version>  write <version> to all sites
 //
 // Why they must agree. The skill ships from git (`npx skills add`) while the CLI ships from npm, so
-// the two can drift; `refs doctor`'s `skill` check and the skill's own capability gate both compare
+// these channels can drift; `refs doctor`'s `skill` check and the skill's own capability gate both compare
 // the pinned `cli_version` against the running CLI, so a release whose skill still pins the previous
 // version makes every user's doctor report a false mismatch.
 //
@@ -29,6 +30,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 const SOURCE_OF_TRUTH = 'packages/cli/package.json';
 const SKILL = 'skills/refs/SKILL.md';
+const PLUGIN = 'plugin.json';
 const EXIT_PROBLEMS = 1;
 const EXIT_USAGE = 2;
 const ARGV_START = 2;
@@ -49,7 +51,7 @@ const CLI_VERSION_KEY = /^[ \t]*cli_version[ \t]*:/gmu;
 const CLI_VERSION_LINE =
   /^(?<indent>[ \t]*)cli_version:[ \t]*(?<quote>['"]?)(?<version>[^'"\s]+)\k<quote>[ \t]*$/mu;
 
-// `--set`'s argument is validated rather than trusted: a typo written into both files is exactly
+// `--set`'s argument is validated rather than trusted: a typo written into all files is exactly
 // the mess this script exists to prevent. SemVer proper (semver.org's own regex, minus its capture
 // groups), not a laxer `\d+.\d+.\d+`: no leading zeros in the numeric components or in a numeric
 // prerelease identifier, so `01.2.3` and `1.2.3-01` are refused here rather than at `npm publish`.
@@ -164,7 +166,8 @@ const readSites = async () => {
   const jsonSite = await readJsonSite(SOURCE_OF_TRUTH);
   const skillText = await readText(SKILL);
   const skill = skillText === undefined ? undefined : skillSite(skillText);
-  return [jsonSite, skill].filter((site) => site !== undefined);
+  const plugin = await readJsonSite(PLUGIN);
+  return [jsonSite, skill, plugin].filter((site) => site !== undefined);
 };
 
 /** The value every other site must equal. Unusable on its own means there is nothing to check. */
@@ -187,12 +190,12 @@ const check = async () => {
   if (problems.length > 0) {
     reportProblems();
   } else {
-    console.log(`version ${expected} is consistent across both sites (source ${SOURCE_OF_TRUTH})`);
+    console.log(`version ${expected} is consistent across all three sites (source ${SOURCE_OF_TRUTH})`);
   }
 };
 
 /**
- * Sequential, not `Promise.all`: two separate files cannot be written atomically, so the next best
+ * Sequential, not `Promise.all`: separate files cannot be written atomically, so the next best
  * thing is damage that is bounded and nameable. Each file is announced as it lands, and a failure
  * names what already carries the new version and what may be half-written — enough for whoever is
  * mid-release to know exactly what to revert.
@@ -210,7 +213,7 @@ const writeEdits = async (edits, version) => {
     }
     console.log(`${file}: ${before === version ? `already ${version}` : `${before} -> ${version}`}`);
   }
-  console.log(`both version sites now declare ${version}`);
+  console.log(`all three version sites now declare ${version}`);
 };
 
 /** Returns whether writing began — only then is "nothing was written" a lie the caller must not tell. */

@@ -37,7 +37,10 @@ any command.
   `refs --version` once the user confirms, then take the branch below.
 - **A version** → compare it against `metadata.cli_version` above. Where a branch below
   calls for a fix, print it for the user to run: `npm i -g @kaisers-io/refs@<cli_version>`
-  (CLI behind), `npx skills add kaisers-io/refs` (skill behind).
+  (CLI behind), `npx skills add kaisers-io/refs` (standalone skill behind). For a Codex
+  plugin invocation (`refs:refs`), tell the user to refresh its marketplace or rebuild its
+  local package, then run `codex plugin add refs@refs` instead of installing a second
+  standalone copy. Do not perform those update steps yourself.
   - Equal → continue.
   - Either side isn't a plain `x.y.z` (e.g. `0.6.0-rc.1`) → don't name a side; report both
     versions, suggest both fixes, and stop.

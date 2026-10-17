@@ -1,0 +1,22 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "refs",
+  "version": "0.18.2",
+  "description": "Answer questions about dependencies from their real source, history, and releases. Requires the external refs CLI, Node.js 24.2 or newer, and git.",
+  "author": { "name": "kaisers-io" },
+  "homepage": "https://github.com/kaisers-io/refs",
+  "repository": "https://github.com/kaisers-io/refs",
+  "license": "MIT",
+  "keywords": ["dependencies", "source-code", "git"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Refs",
+        "shortDescription": "Answer from real dependency source",
+        "developerName": "kaisers-io",
+        "category": "Developer Tools",
+        "capabilities": []
+      }
+    }
+  }
+}
