@@ -20,6 +20,7 @@ export * from './npm-resolver.ts';
 export * from './package-identity.ts';
 export * from './proc/fake-runner.ts';
 export * from './proc/runner.ts';
+export * from './proc/timeout-policy.ts';
 export * from './entry-points.ts';
 export * from './schemas/branch-name.ts';
 export * from './schemas/config.ts';

@@ -1,10 +1,12 @@
-import type { RunResult, Runner } from '../proc/runner.ts';
 import { buildSyncResult, excerpt, toBuildSyncResultOpts } from './sync-result.ts';
+import { gitSpec, runOrThrow } from './run-or-throw.ts';
 import type { BuiltSyncResult } from './sync-result.ts';
 import type { CloneMode } from '../schemas/primitives.ts';
+import type { CommandSpec } from './run-or-throw.ts';
 import type { RefsHome } from '../home.ts';
+import type { Runner } from '../proc/runner.ts';
 import { assertManagedCheckout } from './managed-checkout.ts';
-import { failureDetail } from './failure-detail.ts';
+import { cloneOrDiscard } from './clone-discard.ts';
 import { join } from 'node:path';
 import { validationError } from '../errors.ts';
 import { writeFileAtomic } from '../fs-atomic.ts';
@@ -44,38 +46,6 @@ const HOOK_MODE = 0o755;
 // see repo.test.ts) when the server ignores `--filter=...` and performs a full clone instead.
 const FILTER_NOT_HONOURED_PATTERN = /filtering not recognized/iu;
 
-type CommandSpec = {
-  action: string;
-  cmd: string;
-  args: readonly string[];
-  cwd?: string;
-};
-
-const cwdOpt = (cwd: string | undefined): { cwd?: string } => (cwd === undefined ? {} : { cwd });
-
-// Shorthand for the `{ action, args, cmd: 'git', cwd }` shape passed to `runOrThrow` below.
-const gitSpec = (action: string, args: readonly string[], cwd?: string): CommandSpec => ({
-  action,
-  args,
-  cmd: 'git',
-  ...cwdOpt(cwd),
-});
-
-// Runs one command and throws `validationError` on a non-zero exit — opts IN to "failure is an
-// exception" on top of `Runner.run`'s "failure is data" contract, for steps with no sane way to
-// continue past a failure (a failed clone/checkout/reset leaves nothing useful to return).
-// Returns the whole `RunResult`, not just its two streams. The narrower shape was why `listTags`
-// had to detect a capped stream by matching the note in `stderr`: `stdoutTruncated` is the fact
-// the runner publishes, and it was not reachable through here.
-const runOrThrow = async (runner: Runner, spec: CommandSpec): Promise<RunResult> => {
-  const result = await runner.run(spec.cmd, spec.args, cwdOpt(spec.cwd));
-  if (result.exitCode === SUCCESS_EXIT_CODE) {
-    return result;
-  }
-  const raw = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
-  throw validationError(`${spec.action} failed: ${failureDetail(raw)}`);
-};
-
 // `git clone` into `opts.dest` (`--filter=blob:none` when blobless). Some servers (verified: a
 // plain `file://` remote without `uploadpack.allowFilter=true`) ignore the filter and warn — that
 // downgrades to `effectiveMode: 'full'` + warning.
@@ -100,15 +70,7 @@ const cloneRepo = async (runner: Runner, opts: CloneOpts): Promise<CloneResult> 
   // config, which validates it as a non-empty string and nothing more. This makes the property
   // hold at the call itself rather than resting on something having been checked earlier.
   args.push('--', opts.cloneUrl, opts.dest);
-  const cloneResult = await runOrThrow(runner, gitSpec('git clone', args));
-  // Kept deliberately, though the clone's own `-c` already wrote it: an older git that does not
-  // apply a clone `-c` before checkout would still leave the marker every later guard compares
-  // against. Re-writing the same value is idempotent.
-  await runOrThrow(
-    runner,
-    gitSpec('git config core.hooksPath', ['config', 'core.hooksPath', opts.hooksDir], opts.dest),
-  );
-
+  const cloneResult = await cloneOrDiscard(runner, opts, args);
   const filterIgnored =
     opts.mode === 'blobless' && FILTER_NOT_HONOURED_PATTERN.test(cloneResult.stderr);
   if (!filterIgnored) {
@@ -285,13 +247,6 @@ const installHooksGuard = async (home: RefsHome): Promise<void> => {
 
 export { isGitCheckout } from './managed-checkout.ts';
 export type { SyncStatus } from './sync-result.ts';
-export {
-  cloneRepo,
-  detectDefaultBranch,
-  gitSpec,
-  installHooksGuard,
-  runOrThrow,
-  syncRef,
-  tagExists,
-};
+export { gitSpec, runOrThrow } from './run-or-throw.ts';
+export { cloneRepo, detectDefaultBranch, installHooksGuard, syncRef, tagExists };
 export type { CloneResult, SyncResult };

@@ -45,7 +45,7 @@ stuck with it.
 
 ## Other environment variables
 
-`REFS_HOME` is the only one meant for everyday use. Five others are read:
+`REFS_HOME` is the only one meant for everyday use. Seven others are read:
 
 | Variable                | Read by                | Effect                                                                                                                                       |
 | ----------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -54,6 +54,8 @@ stuck with it.
 | `REFS_PROGRESS`         | `refs sync`, `refs doctor` | `0` turns off the progress spinner these commands draw on stderr while they work. It is already off with `--json`, when stderr is not a terminal, with `TERM=dumb`, and in CI. |
 | `REFS_UPDATE_CHECK`     | `refs sync`, `refs doctor` | `0` never contacts the npm registry, `1` always does. Overrides `[updates].check`; any other value is ignored. See [`[updates]`](#updates). |
 | `REFS_ALLOW_FILE_URLS`  | `refs add`, `refs sync` | Set to `1` to accept `file://` sources. **A test-only escape hatch** — real remotes are `https`/`ssh`, and this exists so the suite and the packaged-CLI smoke tests can work against a local fixture repository without a network. Do not set it in normal use. |
+| `REFS_GIT_TIMEOUT`      | every command that runs git | How many seconds one git command may run before refs ends it, together with any helper processes git started (default `900`, `0` for no limit). It exists to end hangs, such as a server that stops answering, not to limit slow transfers; raise it if a first clone of a very large repository over a slow link needs longer. Any value that is not a whole number of seconds is ignored. |
+| `GIT_TERMINAL_PROMPT`   | git, through refs      | refs sets it to `0` for the git it runs unless you set it yourself, so git fails instead of waiting at a username or password prompt that an agent cannot answer. Credential helpers and `GIT_ASKPASS` keep working. Set it to `1` if you type HTTPS credentials by hand. |
 
 ## Home directory layout
 

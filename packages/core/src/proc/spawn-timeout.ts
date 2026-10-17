@@ -1,12 +1,14 @@
+import type { Exec, TreeTarget } from './spawn-tree.ts';
 import type { ChildProcess } from 'node:child_process';
+import { signalTree } from './spawn-tree.ts';
 
-// `timeoutMs` enforcement for `SpawnRunner` (runner.ts): SIGTERM when the deadline expires,
-// escalating to SIGKILL if the child ignores it.
+// `timeoutMs` enforcement for `SpawnRunner` (runner.ts): SIGTERM to the child's whole process
+// tree when the deadline expires, escalating to SIGKILL if anything in it ignores that.
 
 // Grace period between the `SIGTERM` a `timeoutMs` expiry sends and the forced `SIGKILL`
-// escalation if the child ignores it — the same SIGTERM-then-SIGKILL-after-a-delay shape common
-// process-execution libraries use (shorter here: every `refs` command is a short git/ssh
-// invocation, never a long-running daemon that might need time to flush state on `SIGTERM`).
+// escalation — the same SIGTERM-then-SIGKILL-after-a-delay shape common process-execution
+// libraries use. Long enough for `git clone` to remove the destination it half populated, which
+// it does on SIGTERM and cannot do on SIGKILL.
 const KILL_GRACE_MS = 2000;
 
 type TimeoutHandle = {
@@ -14,28 +16,69 @@ type TimeoutHandle = {
   clear: () => void;
 };
 
+type TimeoutTarget = {
+  child: ChildProcess;
+  exec: Exec;
+  timeoutMs: number | undefined;
+};
+
 const noopTimeout: TimeoutHandle = { clear: () => {}, markedTimedOut: () => false };
 
-// Arms a `SIGTERM` at `timeoutMs`, escalating to `SIGKILL` after `KILL_GRACE_MS` if the child is
-// still alive — both timers are cleared as soon as the child's `close` event fires, whichever
-// comes first (see `runner.ts#SpawnRunner.run`). `timeoutMs === undefined` arms nothing. Both
-// signals target only the DIRECT child, never its whole process tree: a descendant it forked that
-// inherited the stdio pipes can keep them open (delaying `close`) after the child itself is dead
-// while the descendant is still alive — that is deliberate: `close` then waits for the pipes to
-// drain rather than the runner force-killing processes it did not start.
-const armTimeout = (child: ChildProcess, timeoutMs: number | undefined): TimeoutHandle => {
-  if (timeoutMs === undefined) {
+const treeOf = (target: TimeoutTarget): TreeTarget | undefined =>
+  target.child.pid === undefined
+    ? undefined
+    : {
+        exec: target.exec,
+        pid: target.child.pid,
+        platform: process.platform,
+        rootAlive: () => target.child.exitCode === null && target.child.signalCode === null,
+        seen: new Set(),
+        systemRoot: process.env['SystemRoot'],
+      };
+
+// The last resort that makes `timeoutMs` a wall-clock bound: a process that escaped the tree walk
+// (it daemonized, or `ps` could not see it) may still hold the child's stdout or stderr, and
+// `close` waits for both. Destroying our ends lets `close` fire once the direct child has exited.
+const releaseStdio = (child: ChildProcess): void => {
+  child.stdout?.destroy();
+  child.stderr?.destroy();
+};
+
+const terminate = async (child: ChildProcess, tree: TreeTarget | undefined): Promise<void> => {
+  if (tree === undefined) {
+    child.kill('SIGTERM');
+    return;
+  }
+  await signalTree(tree, 'SIGTERM');
+};
+
+const escalate = async (child: ChildProcess, tree: TreeTarget | undefined): Promise<void> => {
+  if (tree === undefined) {
+    child.kill('SIGKILL');
+  } else {
+    await signalTree(tree, 'SIGKILL');
+  }
+  releaseStdio(child);
+};
+
+// Arms a tree-wide `SIGTERM` at `timeoutMs`, escalating to `SIGKILL` and releasing the stdio pipes
+// after `KILL_GRACE_MS` — both timers are cleared as soon as the child's `close` event fires,
+// whichever comes first (see `runner.ts#SpawnRunner.run`). `timeoutMs === undefined` arms nothing.
+const armTimeout = (target: TimeoutTarget): TimeoutHandle => {
+  if (target.timeoutMs === undefined) {
     return noopTimeout;
   }
+  const { child } = target;
+  const tree = treeOf(target);
   let timedOut = false;
   let killTimer: NodeJS.Timeout | undefined = undefined;
   const termTimer = setTimeout(() => {
     timedOut = true;
-    child.kill('SIGTERM');
+    void terminate(child, tree);
     killTimer = setTimeout(() => {
-      child.kill('SIGKILL');
+      void escalate(child, tree);
     }, KILL_GRACE_MS);
-  }, timeoutMs);
+  }, target.timeoutMs);
   return {
     clear: () => {
       clearTimeout(termTimer);
