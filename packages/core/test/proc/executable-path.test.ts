@@ -26,7 +26,8 @@ const runnable = async (path: string): Promise<string> => {
 };
 
 describe('resolving a bare command name', () => {
-  it('takes the first absolute PATH directory that holds it', async () => {
+  // POSIX resolution on the real file system: needs POSIX paths and the execute bit.
+  it.skipIf(IS_WINDOWS)('takes the first absolute PATH directory that holds it', async () => {
     expect.hasAssertions();
     const dir = await scratch();
     await Promise.all([mkdir(join(dir, 'a')), mkdir(join(dir, 'b'))]);
@@ -42,7 +43,8 @@ describe('resolving a bare command name', () => {
     await expect(resolveExecutable('sh', env, 'linux')).resolves.toBeUndefined();
   });
 
-  it('skips a directory or a file without the execute bit', async () => {
+  // POSIX resolution on the real file system: needs POSIX paths and the execute bit.
+  it.skipIf(IS_WINDOWS)('skips a directory or a file without the execute bit', async () => {
     expect.hasAssertions();
     const dir = await scratch();
     await mkdir(join(dir, 'tool'));
