@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Local skill evals cover source-answer provenance, release comparisons and hostile repository
+  instructions. Shared deterministic postflight checks real evidence and final safety state;
+  missing artifacts, stale reports, interrupted hosts or unsupported host metadata cannot become
+  a verified pass.
+
 ### Fixed
 
 - Repair evals reject reordered positionals, extra arguments and indented second commands. Both

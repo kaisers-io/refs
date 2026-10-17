@@ -1,0 +1,18 @@
+[meta]
+cli_version = "{{version}}"
+schema_version = 1
+
+[refs."local/fixtures/alpha"]
+default_branch = "main"
+description = "Deterministic source investigation fixture."
+url = "file://{{cwd}}/fixtures/alpha"
+
+[refs."local/fixtures/beta"]
+default_branch = "main"
+description = "Deterministic source investigation fixture."
+url = "file://{{cwd}}/fixtures/beta"
+
+[settings]
+clone_mode = "full"
+git_transport = "https"
+sync_ttl = "1h"

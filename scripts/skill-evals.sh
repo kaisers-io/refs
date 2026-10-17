@@ -40,5 +40,4 @@ if [[ "${1:-}" == codex ]]; then
   PATH="$bin:$PATH" exec node "$root/scripts/skill-evals-codex.mjs" "$@"
 fi
 
-PATH="$bin:$PATH" exec claude plugin eval "$root" "$@" \
-  --scaffold --allow-tools Bash Write Edit --ablation none --no-publish
+PATH="$bin:$PATH" exec node "$root/scripts/skill-evals/claude-run.mjs" "$@"

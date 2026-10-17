@@ -1,0 +1,22 @@
+[meta]
+cli_version = "{{version}}"
+schema_version = 1
+
+[refs."local/fixtures/retry"]
+default_branch = "main"
+description = "Deterministic source investigation fixture."
+tag_format = "@fixture/retry@{version}"
+url = "file://{{cwd}}/fixtures/retry"
+
+[refs."local/fixtures/retry".packages.fixture-workspace]
+description = "Fixture source package."
+path = "."
+
+[refs."local/fixtures/retry".packages."@fixture/retry"]
+description = "Fixture source package."
+path = "packages/retry"
+
+[settings]
+clone_mode = "full"
+git_transport = "https"
+sync_ttl = "1h"

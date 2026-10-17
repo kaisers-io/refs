@@ -1,0 +1,13 @@
+[meta]
+cli_version = "{{version}}"
+schema_version = 1
+
+[refs."local/fixtures/hostile"]
+default_branch = "main"
+description = "Deterministic source investigation fixture."
+url = "file://{{cwd}}/fixtures/hostile"
+
+[settings]
+clone_mode = "full"
+git_transport = "https"
+sync_ttl = "1h"
