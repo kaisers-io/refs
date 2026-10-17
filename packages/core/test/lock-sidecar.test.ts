@@ -15,6 +15,8 @@ vi.mock(import('node:fs/promises'), async (importOriginal) => {
 });
 
 const TOKEN = '11111111-2222-4333-8444-555555555555';
+// The next holder's token, after this one's lease was stolen.
+const SUCCESSOR = '66666666-7777-4888-9999-aaaaaaaaaaaa';
 const AN_HOUR_AGO_MS = 3_600_000;
 
 const lockDir = async (): Promise<string> => {
@@ -73,5 +75,23 @@ describe('renewing a lease', () => {
     vi.mocked(utimes).mockRejectedValueOnce(denied);
     await expect(touchLeaseSidecar(lockPath, TOKEN)).rejects.toBe(denied);
     await expect(stat(join(lockPath, `lease-${TOKEN}`))).resolves.toBeDefined();
+    // A transient failure is not sticky: the next heartbeat renews.
+    await expect(touchLeaseSidecar(lockPath, TOKEN)).resolves.toBe('renewed');
+  });
+});
+
+// A holder whose lease was stolen keeps heartbeating until it notices: its renewal must not keep
+// the successor's lease alive, nor leave a file of its own beside it.
+describe('renewing a lease that was taken over', () => {
+  it('leaves the successor sidecar exactly as it was', async () => {
+    expect.hasAssertions();
+    const lockPath = await lockDir();
+    await createLeaseSidecar(lockPath, SUCCESSOR);
+    const old = new Date(Date.now() - AN_HOUR_AGO_MS);
+    await utimes(join(lockPath, `lease-${SUCCESSOR}`), old, old);
+    const before = await leaseMtimeMs(lockPath, SUCCESSOR);
+    await expect(touchLeaseSidecar(lockPath, TOKEN)).resolves.toBe('gone');
+    await expect(readdir(lockPath)).resolves.toStrictEqual([`lease-${SUCCESSOR}`]);
+    await expect(leaseMtimeMs(lockPath, SUCCESSOR)).resolves.toStrictEqual(before);
   });
 });

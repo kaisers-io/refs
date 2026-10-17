@@ -1,9 +1,9 @@
-import { access, rm } from 'node:fs/promises';
+import { access, readFile, rm, rmdir, unlink, writeFile } from 'node:fs/promises';
 import { checkoutPath, readConfig, resolveHome, zRefKey } from '@kaisers-io/refs-core';
 import { describe, expect, it, vi } from 'vitest';
+import { dirname, join } from 'node:path';
 import { markCheckoutPresent, seedConfig } from '../helpers/ref-fixtures.ts';
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
-import { dirname } from 'node:path';
 import { run } from '../../src/main.ts';
 import { testContext } from '../helpers/context.ts';
 
@@ -42,6 +42,7 @@ vi.mock(import('node:fs/promises'), async (importOriginal) => {
     ...actual,
     lstat: wrap('lstat', actual.lstat as never) as typeof actual.lstat,
     readdir: wrap('readdir', actual.readdir as never) as typeof actual.readdir,
+    rm: wrap('rm', actual.rm),
     rmdir: wrap('rmdir', actual.rmdir),
   };
 });
@@ -167,6 +168,76 @@ describe('refs remove: losing a pruning race to another process is not an error'
       expect(envelope).toMatchObject({ data: { removed_checkout: true }, ok: true });
       await expect(exists(dirname(scene.owner))).resolves.toBe(false);
       await expect(exists(scene.home.sourcesDir)).resolves.toBe(true);
+      await expect(isRegistered(scene)).resolves.toBe(false);
+    });
+  });
+});
+
+type PartialScene = { gone: string; kept: string };
+
+/** The checkout gets two files; `rm` on it deletes the first and then fails. */
+const failPartWay = async (scene: Scene): Promise<PartialScene> => {
+  const gone = join(scene.dest, 'deleted-first');
+  const kept = join(scene.dest, 'kept');
+  await Promise.all([writeFile(gone, 'x'), writeFile(kept, 'checkout data')]);
+  faults.set(`rm ${scene.dest}`, async () => {
+    await unlink(gone);
+    throw fsError('EIO');
+  });
+  return { gone, kept };
+};
+
+describe('refs remove: a deletion that stops part-way', () => {
+  it('keeps the entry and what is left', async () => {
+    expect.hasAssertions();
+    await inScene(async (scene) => {
+      const { gone, kept } = await failPartWay(scene);
+
+      const { envelope } = await scene.remove();
+
+      expect(envelope['ok']).toBe(false);
+      await expect(isRegistered(scene)).resolves.toBe(true);
+      await expect(exists(gone)).resolves.toBe(false);
+      await expect(readFile(kept, 'utf8')).resolves.toBe('checkout data');
+    });
+  });
+
+  it('finishes the job on a re-run', async () => {
+    expect.hasAssertions();
+    await inScene(async (scene) => {
+      await failPartWay(scene);
+      await scene.remove();
+
+      const { envelope } = await scene.remove();
+
+      expect(envelope).toMatchObject({ data: { removed_checkout: true }, ok: true });
+      await expect(exists(scene.dest)).resolves.toBe(false);
+      await expect(isRegistered(scene)).resolves.toBe(false);
+    });
+  });
+});
+
+// Between pruning's `readdir` (empty) and its `rmdir`, another process puts something in the
+// parent — a concurrent `refs add` of a sibling ref under the same owner. `rmdir` refuses a
+// non-empty directory, which is exactly where pruning stops anyway: the removal succeeded.
+describe('refs remove: a sibling arriving while parents are pruned', () => {
+  it('stops pruning there, keeps the sibling, and still unregisters the ref', async () => {
+    expect.hasAssertions();
+    await inScene(async (scene) => {
+      const sibling = join(scene.owner, 'arrived');
+      faults.set(`rmdir ${scene.owner}`, async () => {
+        await writeFile(sibling, 'a sibling checkout');
+        return rmdir(scene.owner) as Promise<never>;
+      });
+
+      const { envelope, exitCode } = await scene.remove();
+
+      expect({ envelope, exitCode }).toMatchObject({
+        envelope: { data: { removed_checkout: true }, ok: true },
+        exitCode: undefined,
+      });
+      await expect(readFile(sibling, 'utf8')).resolves.toBe('a sibling checkout');
+      await expect(exists(scene.dest)).resolves.toBe(false);
       await expect(isRegistered(scene)).resolves.toBe(false);
     });
   });
