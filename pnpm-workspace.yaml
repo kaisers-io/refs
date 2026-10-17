@@ -1,2 +1,10 @@
 packages:
   - packages/*
+
+# Refuse a dependency version published with weaker trust evidence (trusted publisher,
+# provenance) than an earlier release of the same package: the usual sign of a stolen token.
+# The lockfile is re-checked on every install because trustLockfile stays at its default false.
+# Add a reviewed exception to trustPolicyExclude as `name@version`; avoid
+# trustPolicyIgnoreAfter, which waives the check by age rather than by review.
+# https://pnpm.io/settings/dependency-resolution#trustpolicy
+trustPolicy: no-downgrade
