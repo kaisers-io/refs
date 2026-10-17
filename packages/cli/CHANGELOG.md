@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Define the reference-only execution boundary in the README, security policy and agent skill:
+  inspect source without running its code, respect safety refusals, and distinguish refs' Git
+  controls from direct Git inspection and trusted external authentication tools. Document the
+  inherited Git environment, conditional configuration checks and tested Git versions.
+
 ### Fixed
 
 - Bound Git operations, including lazy partial-clone fetches, with a configurable ten-minute

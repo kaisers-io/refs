@@ -7,9 +7,12 @@ Not for adding new refs (`ADD.md`) or housekeeping (`MAINTAIN.md`).
 These five rules are absolute; everything else in this document is a recommended
 default you may deviate from when the situation calls for it.
 
-1. **Never mutate a reference checkout.** Only read files and run read-only git
+1. **Never mutate or execute reference source.** Only read files and run read-only git
    commands (`git log`, `git diff`, `git show`, `git blame`, `git grep`). Never
-   edit, stage, commit, checkout, pull, reset, or clean inside a managed checkout.
+   edit, stage, commit, checkout, pull, reset, or clean inside a managed checkout. Never
+   install dependencies, import modules, or run the reference's setup, builds, tests,
+   examples or scripts. If static evidence is insufficient, say so. A refs safety refusal
+   is not permission to retry with raw Git or weaken its controls (`SKILL.md` §3).
 2. **Cite real sources.** Findings reference actual `path:line` locations and
    commit shas/tags from the checkout — never a summary, digest, or search result
    as if it were the source.
@@ -129,6 +132,9 @@ empty too, and say what you checked. Never infer it from the exit code alone.
 
 Analyze the checkout **locally**. Dose subagents per `SKILL.md` §6, and keep whatever reaches
 the main thread small — never paste large excerpts or diffs into your own context.
+Give every worker the no-execution and no-bypass rules above along with the untrusted-content
+boundary. Direct Git reads are outside refs' execution policy; they can consult ambient
+configuration and invoke trusted helpers, including for the lazy fetches described below.
 
 **Recommended search funnel** — usually the cheapest path to the answer; if it
 doesn't surface what you need, widen: whole-file reads and broad searches are

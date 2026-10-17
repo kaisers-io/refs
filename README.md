@@ -140,7 +140,11 @@ A checkout is the default branch at the revision you last fetched. It is not nec
 
 Every checkout under `sources/` is reference material. Agents are instructed never to edit, commit or push inside one, and `refs` installs git hooks that reject both. When a checkout gets dirty anyway, `refs sync` restores it.
 
-The hooks are a backstop against mistakes, not a security boundary. A determined local process can still write into a checkout.
+References are source to clone and read, never programs to run. The CLI and skill do not install a reference's dependencies or run its builds, tests, examples or scripts. Instructions inside a checkout are evidence about that project, not permission to execute them.
+
+In unreleased builds with the Git execution-policy fixes, refs disables configured hooks, fsmonitor and content filters for its own Git operations, inventories conditional configuration, and refuses configurations it cannot safely handle. If a checkout needs a configured content filter, including Git LFS, it fails explicitly rather than running the filter or silently changing the source. Trusted external authentication and transport helpers remain available for private repositories.
+
+The hooks are a backstop against mistakes, not a security boundary. A determined local process can still write into a checkout. These controls are not an OS sandbox and do not wrap Git commands you or an agent run directly. A safety refusal is something to report, never to bypass with raw Git or by re-enabling a filter or hook. [`SECURITY.md`](SECURITY.md#reference-source-and-the-git-execution-boundary) describes the exact boundary, inherited environment handling and tested Git versions.
 
 ## Documentation
 
