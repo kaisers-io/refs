@@ -150,6 +150,16 @@ describe('doctor: the not-found message names the plugin cache', () => {
     });
   });
 
+  // No home directory and no `$CODEX_HOME`: there is no Codex home to search, so the message must
+  // not claim a plugin cache was looked at, least of all one relative to the working directory.
+  it('names no plugin cache when there is no Codex home', async () => {
+    expect.hasAssertions();
+    const result = await skillCheckOf('', CURRENT);
+    expect(result.status).toBe('warn');
+    expect(result.detail).toContain('refs skill not found');
+    expect(result.detail).not.toContain('plugins/cache');
+  });
+
   it('uses the tilde form without an override', async () => {
     expect.hasAssertions();
     await withTempHome(async (homeDir) => {
