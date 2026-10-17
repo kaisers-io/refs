@@ -69,8 +69,11 @@ Some output contains a command for you to run: the repairs `refs doctor` and `re
 (`refs edit …`, `rm -rf -- …`, `rmdir -- …`), and the next step a few errors name. Under `--json`
 they appear in the same text, and a `config-drift` finding also carries its `refs edit` repairs as
 fields of their own. Every one of them is written for a **POSIX shell** (`sh`, `bash`, `zsh`, or
-Git Bash on Windows). Each value in it is single-quoted, and a single quote inside a value is
-written as `'\''`. A value that cannot be printed as one line in that form gets no command at all.
+Git Bash on Windows). Each value in it is single-quoted, so a space, `$(…)` or a backtick in it
+stays literal, and a single quote inside a value is written as `'\''`. A repair whose value holds
+a control character or malformed Unicode is not printed at all, because the printed line would not
+be the value. The finding is still reported, and a `config-drift` finding under `--json` still
+carries the raw `name` and `path`.
 
 PowerShell and cmd.exe are not covered. PowerShell writes a single quote inside a single-quoted
 string as `''` and also treats typographic quotes such as `’` as quote characters, and cmd.exe

@@ -6,7 +6,7 @@ The short path is in the [README](../README.md). This page covers the rest.
 
 Node.js 24.2 or newer, and git.
 
-On Windows use [Git for Windows](https://gitforwindows.org/). The read-only guards are `sh` scripts and need the shell it ships with. The CLI behaves the same on macOS, Linux and Windows, and its test suite runs on each of them. Some tests are skipped on Windows because they need POSIX file modes, a pseudo-terminal, or a POSIX shell to run a printed command through.
+On Windows use [Git for Windows](https://gitforwindows.org/). The read-only guards are `sh` scripts and need the shell it ships with. The CLI behaves the same on macOS, Linux and Windows, and CI runs its test suite on each of them. Some tests are skipped on Windows, mostly ones that need POSIX file modes, a pseudo-terminal, a POSIX shell to run a printed command through, or a file name Windows does not allow (a control character or a colon).
 
 The commands refs prints for you to run, such as the repairs `refs doctor` suggests, are written for a POSIX shell. On Windows, run them in the Git Bash that Git for Windows installs. See [Commands refs prints](commands.md#commands-refs-prints) for why PowerShell and cmd.exe are not covered.
 
