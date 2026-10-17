@@ -44,8 +44,15 @@ pnpm check                 # lint + format check + typecheck + tests
 ```
 
 That is exactly what CI runs, on Linux, macOS and Windows, and once more on the Node 24.2 floor.
-CI adds a coverage gate, a version-consistency check, a bundle-determinism check, and a smoke test
-of the packaged CLI on Linux and Windows.
+CI adds a coverage gate, a version-consistency check, a bundle-determinism check, a smoke test
+of the packaged CLI on Linux and Windows, and a [zizmor](https://docs.zizmor.sh/) audit of the
+workflows and `dependabot.yml`. If you touched anything under `.github/`, run that audit locally
+first; it needs [uv](https://docs.astral.sh/uv/getting-started/installation/), and the version
+is the one pinned in `ci.yml`:
+
+```bash
+uvx zizmor@1.31.1 .        # with GH_TOKEN set, it also runs the online audits CI runs
+```
 
 If you touched anything under `skills/`, CI also runs the skill audit (`.github/workflows/skill-audit.yml`),
 which is the pre-flight for the vendor audits skills.sh publishes on the skill's public page after

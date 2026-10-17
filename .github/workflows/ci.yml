@@ -5,6 +5,24 @@ on:
 # PR-controlled code runs in every job (install/build/test) — keep the ambient token read-only.
 permissions:
   contents: read
+# A newer push to a pull request makes the older run's answer moot, so that run is cancelled.
+# Pushes to main get a group of their own (the run id) and are never cancelled or replaced: a
+# shared group would not do, because GitHub keeps at most one run pending per group and cancels
+# the one it displaces. Every commit on main keeps a complete result, which is what tells a later
+# bisect where a break came in. `github.ref` (refs/pull/<n>/merge) rather than the head branch
+# name, which two forks can share.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
+# Every checkout sets `persist-credentials: false`. No step talks to the remote after the
+# checkout, and a token left on the runner is reachable by every later step that runs PR-controlled
+# code (install scripts, tests). Checkout v6+ keeps it under RUNNER_TEMP instead of .git/config,
+# which narrows the ways it leaks without removing it.
+#
+# Every job has a `timeout-minutes` several times its observed duration — the slowest, `check` on
+# Windows, has taken up to about 6.5 minutes. It exists to stop a hung run in minutes rather than
+# GitHub's 360-minute default, not to police speed, so a slow runner must never come near it.
+#
 # Every `uses:` below is pinned to a commit SHA rather than a moving tag, matching release.yml.
 # A tag is a pointer its owner can move, so `@v7` is a standing agreement to run whatever that
 # repository publishes next — and these actions run in the same job as PR-controlled code. The
@@ -15,8 +33,10 @@ jobs:
     strategy:
       matrix: { os: [ubuntu-latest, macos-latest, windows-latest] }
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .node-version, cache: pnpm }
@@ -44,8 +64,10 @@ jobs:
   check-node-floor:
     name: check (node floor)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .node-version, cache: pnpm }
@@ -84,8 +106,10 @@ jobs:
   # the bump commit is already on main. No pnpm install and no matrix: plain Node, one platform.
   versions:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .node-version }
       - run: node scripts/versions.mjs --check
@@ -96,10 +120,35 @@ jobs:
       # The Codex eval runner's grader adapter, which needs no install either. The eval suite itself
       # never runs in CI: it needs a personal login, and every run costs money.
       - run: node --test scripts/skill-evals/graders.test.mjs
-  bundle-determinism:
+  # Static audit of this repository's GitHub Actions setup (workflows and dependabot.yml) with
+  # zizmor at its default `regular` persona: https://docs.zizmor.sh/audits/. Any finding fails the
+  # job (exit codes 11-14); `--format github` turns each one into an annotation on the diff. A
+  # finding that is accepted rather than fixed carries a `# zizmor: ignore[<rule>]` comment at the
+  # site, with the reason, so the waiver is reviewed with the code it waives.
+  #
+  # Run from PyPI through uvx at an exact version, as in skill-audit.yml, rather than through
+  # zizmor-action, which uploads SARIF and so needs `security-events: write` — a permission a fork
+  # pull request is never granted. Dependabot does not see this pin; bump it by hand.
+  #
+  # GH_TOKEN enables the online audits (impostor commits behind a pinned SHA, known-vulnerable
+  # actions, ref confusion). They only read public repository data, which the read-only token a
+  # fork pull request gets is enough for.
+  zizmor:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - run: pipx install uv
+      - run: uvx zizmor@1.31.1 --format github .
+        env:
+          GH_TOKEN: ${{ github.token }}
+  bundle-determinism:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .node-version, cache: pnpm }
@@ -107,14 +156,18 @@ jobs:
       - run: bash scripts/check-bundle-determinism.sh
   smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .node-version, cache: pnpm }
       - run: pnpm install --frozen-lockfile && pnpm build
       - name: smoke test against a file:// fixture
-        run: |
+        # zizmor's adhoc-packages flags the global install below. It installs the tarball this job
+        # just packed from the checked-out tree — installing it the way a user does is the test.
+        run: | # zizmor: ignore[adhoc-packages] installs the locally packed tarball under test
           set -euo pipefail
           npm pack ./packages/cli --pack-destination /tmp
           npm install -g /tmp/kaisers-io-refs-*.tgz
@@ -132,15 +185,17 @@ jobs:
   # Windows path handling — exactly what a Windows user hits first.
   smoke-windows:
     runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .node-version, cache: pnpm }
       - run: pnpm install --frozen-lockfile && pnpm build
       - name: smoke test against a file:// fixture (PowerShell)
         shell: pwsh
-        run: |
+        run: | # zizmor: ignore[adhoc-packages] installs the locally packed tarball under test
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
           npm pack ./packages/cli --pack-destination $env:TEMP
