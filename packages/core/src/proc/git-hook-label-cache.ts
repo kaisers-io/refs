@@ -29,7 +29,8 @@
 // global or system configuration file while refs runs, which is the same race as editing it a
 // moment after git read it — as is a file edited and restored within the inventory itself.
 
-import { readFile, stat } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { open } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 // What a path held: its content, `NOT_A_FILE` for something git cannot read as one (the command
@@ -43,16 +44,23 @@ type Entry = {
 
 const NOT_A_FILE = '\0not a regular file';
 
-/** The path's snapshot. Anything but its absence that stops reading it throws. */
+// Non-blocking, so opening a FIFO does not wait for a writer. Windows has no such flag.
+const OPEN_FLAGS = constants.O_RDONLY | (constants.O_NONBLOCK ?? 0);
+
+/** The path's snapshot, from ONE open file — what was checked is what was read. A path that
+ * exists but cannot be opened is `NOT_A_FILE`: git cannot read it either, and refuses. */
 const snapshotOf = async (path: string): Promise<Snapshot> => {
+  const handle = await open(path, OPEN_FLAGS).catch(
+    (error: unknown) => (error as NodeJS.ErrnoException).code === 'ENOENT',
+  );
+  if (typeof handle === 'boolean') {
+    return handle ? undefined : NOT_A_FILE;
+  }
   try {
-    const found = await stat(path);
-    return found.isFile() ? await readFile(path, 'latin1') : NOT_A_FILE;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return undefined;
-    }
-    throw error;
+    const found = await handle.stat();
+    return found.isFile() ? await handle.readFile('latin1') : NOT_A_FILE;
+  } finally {
+    await handle.close();
   }
 };
 
