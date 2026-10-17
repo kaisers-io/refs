@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **git can no longer keep `refs add` or `refs sync` waiting forever.** git asks for a missing
+  HTTPS username or password on the terminal itself, so a remote that needed credentials, with no
+  credential helper set up, left refs at a prompt that an agent cannot answer, while refs held the
+  lock for that ref. refs now runs git with `GIT_TERMINAL_PROMPT=0` unless you set it yourself. git
+  then fails at that point with a message that names credential helpers. Set
+  `GIT_TERMINAL_PROMPT=1` to type credentials by hand again.
+- **A git command that stops making progress now ends.** Each git command refs runs gets a time
+  limit, `REFS_GIT_TIMEOUT` seconds (default 900, `0` for no limit). When it runs out, refs ends
+  git together with the helper processes git started. Before this, those helpers kept running
+  after git had exited and refs kept waiting for them. refs waits until the processes it found are
+  gone, and forces any that ignore the request to stop; git exiting first does not cut that
+  short. A clone that is cut off this way no longer leaves a half-made checkout that the next
+  `refs add` or `refs sync` would take for a working one. Only a clone refs itself started is
+  removed; anything else at that path is left alone. If refs cannot confirm that every process
+  the clone started has ended, it does not delete the checkout under a process that may still be
+  writing to it: it leaves it in place, marks it so that refs will not use it, and says so.
+
 ## [0.18.2] - 2026-10-13
 
 ### Security

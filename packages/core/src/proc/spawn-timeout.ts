@@ -1,50 +1,108 @@
+import type { Exec, TreeTarget } from './spawn-tree.ts';
 import type { ChildProcess } from 'node:child_process';
+import type { RunResult } from './runner.ts';
+import { appendNote } from './spawn-collector.ts';
+import { signalTree } from './spawn-tree.ts';
+import { treeEnded } from './spawn-confirm.ts';
 
-// `timeoutMs` enforcement for `SpawnRunner` (runner.ts): SIGTERM when the deadline expires,
-// escalating to SIGKILL if the child ignores it.
+// `timeoutMs` enforcement for `SpawnRunner` (runner.ts): SIGTERM to the child's whole process
+// tree when the deadline expires, escalating to SIGKILL if anything in it ignores that, and
+// reporting whether the tree was then seen gone.
 
 // Grace period between the `SIGTERM` a `timeoutMs` expiry sends and the forced `SIGKILL`
-// escalation if the child ignores it — the same SIGTERM-then-SIGKILL-after-a-delay shape common
-// process-execution libraries use (shorter here: every `refs` command is a short git/ssh
-// invocation, never a long-running daemon that might need time to flush state on `SIGTERM`).
+// escalation — the same SIGTERM-then-SIGKILL-after-a-delay shape common process-execution
+// libraries use. Long enough for `git clone` to remove the destination it half populated, which
+// it does on SIGTERM and cannot do on SIGKILL.
 const KILL_GRACE_MS = 2000;
+
+// How long the tree gets to be seen gone after the SIGKILL. SIGKILL cannot be caught, so this only
+// covers reaping and a process stuck in an uninterruptible wait.
+const CONFIRM_AFTER_KILL_MS = 1000;
 
 type TimeoutHandle = {
   markedTimedOut: () => boolean;
-  clear: () => void;
+  /** Called once the child's `close` has fired. Before the deadline it disarms everything and
+   * answers `true`. After it, it waits for the escalation to finish and answers whether every
+   * known process of the tree was seen gone (spawn-confirm.ts). */
+  settle: () => Promise<boolean>;
 };
 
-const noopTimeout: TimeoutHandle = { clear: () => {}, markedTimedOut: () => false };
+type TimeoutTarget = {
+  child: ChildProcess;
+  exec: Exec;
+  timeoutMs: number | undefined;
+};
 
-// Arms a `SIGTERM` at `timeoutMs`, escalating to `SIGKILL` after `KILL_GRACE_MS` if the child is
-// still alive — both timers are cleared as soon as the child's `close` event fires, whichever
-// comes first (see `runner.ts#SpawnRunner.run`). `timeoutMs === undefined` arms nothing. Both
-// signals target only the DIRECT child, never its whole process tree: a descendant it forked that
-// inherited the stdio pipes can keep them open (delaying `close`) after the child itself is dead
-// while the descendant is still alive — that is deliberate: `close` then waits for the pipes to
-// drain rather than the runner force-killing processes it did not start.
-const armTimeout = (child: ChildProcess, timeoutMs: number | undefined): TimeoutHandle => {
-  if (timeoutMs === undefined) {
+const noopTimeout: TimeoutHandle = {
+  markedTimedOut: () => false,
+  settle: () => Promise.resolve(true),
+};
+
+const treeOf = (target: TimeoutTarget, pid: number): TreeTarget => ({
+  exec: target.exec,
+  pid,
+  platform: process.platform,
+  rootAlive: () => target.child.exitCode === null && target.child.signalCode === null,
+  seen: new Set(),
+  systemRoot: process.env['SystemRoot'],
+});
+
+// The last resort that makes `timeoutMs` a wall-clock bound: a process that escaped the tree walk
+// (it daemonized, or `ps` could not see it) may still hold the child's stdout or stderr, and
+// `close` waits for both. Destroying our ends lets `close` fire once the direct child has exited.
+const releaseStdio = (child: ChildProcess): void => {
+  child.stdout?.destroy();
+  child.stderr?.destroy();
+};
+
+// SIGTERM to the tree, then SIGKILL to whatever of it is still running after `KILL_GRACE_MS`.
+// Runs to its end whether or not the direct child's `close` fired in between: that event says
+// nothing about descendants that no longer hold its pipes. Answers whether the tree was confirmed
+// ended; a failed `ps` listing means it was not.
+const enforce = async (tree: TreeTarget): Promise<boolean> => {
+  await signalTree(tree, 'SIGTERM');
+  let ended = await treeEnded(tree, KILL_GRACE_MS);
+  if (!ended) {
+    await signalTree(tree, 'SIGKILL');
+    ended = await treeEnded(tree, CONFIRM_AFTER_KILL_MS);
+  }
+  return ended && tree.listFailed !== true;
+};
+
+// Arms a tree-wide `SIGTERM` at `timeoutMs` (see `enforce`), and releases the stdio pipes
+// `KILL_GRACE_MS` later if `close` has not fired by then. `settle` is what `runner.ts` awaits
+// after `close`. `timeoutMs === undefined`, or a child that never started, arms nothing.
+const armTimeout = (target: TimeoutTarget): TimeoutHandle => {
+  const { child } = target;
+  if (target.timeoutMs === undefined || child.pid === undefined) {
     return noopTimeout;
   }
-  let timedOut = false;
-  let killTimer: NodeJS.Timeout | undefined = undefined;
+  const tree = treeOf(target, child.pid);
+  let enforcement: Promise<boolean> | undefined = undefined;
+  let releaseTimer: NodeJS.Timeout | undefined = undefined;
   const termTimer = setTimeout(() => {
-    timedOut = true;
-    child.kill('SIGTERM');
-    killTimer = setTimeout(() => {
-      child.kill('SIGKILL');
+    enforcement = enforce(tree);
+    releaseTimer = setTimeout(() => {
+      releaseStdio(child);
     }, KILL_GRACE_MS);
-  }, timeoutMs);
+  }, target.timeoutMs);
   return {
-    clear: () => {
+    markedTimedOut: () => enforcement !== undefined,
+    settle: async () => {
       clearTimeout(termTimer);
-      if (killTimer !== undefined) {
-        clearTimeout(killTimer);
-      }
+      clearTimeout(releaseTimer);
+      return (await enforcement) ?? true;
     },
-    markedTimedOut: () => timedOut,
   };
 };
 
-export { armTimeout };
+const UNCERTAIN_NOTE = 'refs: processes the command started may still be running';
+
+/** A timed-out `result` as published when `settle` answered `treeEnded`: flagged, with a note,
+ * when the tree was not confirmed ended. */
+const withCleanupUncertainty = (result: RunResult, ended: boolean): RunResult =>
+  ended
+    ? result
+    : { ...result, cleanupUncertain: true, stderr: appendNote(result.stderr, UNCERTAIN_NOTE) };
+
+export { armTimeout, withCleanupUncertainty };
