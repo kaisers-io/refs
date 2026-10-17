@@ -126,9 +126,11 @@ jobs:
   # finding that is accepted rather than fixed carries a `# zizmor: ignore[<rule>]` comment at the
   # site, with the reason, so the waiver is reviewed with the code it waives.
   #
-  # Run from PyPI through uvx at an exact version, as in skill-audit.yml, rather than through
+  # Run from PyPI at an exact version through the runner's own pipx, rather than through
   # zizmor-action, which uploads SARIF and so needs `security-events: write` — a permission a fork
-  # pull request is never granted. Dependabot does not see this pin; bump it by hand.
+  # pull request is never granted. `pipx run --spec` and nothing else: the zizmor wheel has no
+  # Python dependencies, so the pin is the whole install, where bootstrapping uv first would add an
+  # unpinned `pipx install uv` in front of it. Dependabot does not see this pin; bump it by hand.
   #
   # GH_TOKEN enables the online audits (impostor commits behind a pinned SHA, known-vulnerable
   # actions, ref confusion). They only read public repository data, which the read-only token a
@@ -144,8 +146,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
-      - run: pipx install uv
-      - run: uvx zizmor@1.31.1 --strict-collection --format github .
+      - run: pipx run --spec zizmor==1.31.1 zizmor --strict-collection --format github .
         env:
           GH_TOKEN: ${{ github.token }}
   bundle-determinism:
