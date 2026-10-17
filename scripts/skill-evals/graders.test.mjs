@@ -185,3 +185,28 @@ test('a scaffold that prints a lot does not block the suite', async () => {
   const testCase = { context: { scaffold_script: 'scaffold.sh' }, name: 'noisy' };
   strictEqual(await scaffold(root, testCase, run), undefined);
 });
+
+test('a run lists the files it created, not the ones it changed', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'created-'));
+  await mkdir(join(dir, '.home', 'src'), { recursive: true });
+  await writeFile(join(dir, '.home', 'src', 'kept.js'), 'old\n');
+  const outcome = { code: 0, timedOut: false };
+  const before = await collect({ cwd: dir, dir }, outcome);
+  await writeFile(join(dir, '.home', 'src', 'kept.js'), 'changed\n');
+  await writeFile(join(dir, '.home', 'src', 'added.js'), 'new\n');
+  const run = await collect({ cwd: dir, dir, filesBefore: before.created }, outcome);
+  strictEqual(run.created.join(','), '.home/src/added.js');
+});
+
+test('file_exists matches created paths by glob, as claude plugin eval does', async () => {
+  const run = runWith({ created: ['.home/a/src/x.js', 'a(b).txt'] });
+  const exists = (path, value = true) =>
+    passes({ exists: value, name: 'f', path, type: 'file_exists' }, run);
+  strictEqual(await exists('.home/*/src/**'), true);
+  strictEqual(await exists('.home/*/x.js'), false);
+  strictEqual(await exists('**/x.js'), true);
+  strictEqual(await exists('a(b).txt'), true);
+  strictEqual(await exists('a?b?.txt'), true);
+  strictEqual(await exists('.home/**', false), false);
+  strictEqual(await exists('other/**', false), true);
+});

@@ -31,20 +31,45 @@ graders:
     type: regex
     pattern: 'mega|mebi|\bmi?b\b|1048576|4194304|1024\s*\*\*\s*2'
     flags: i
+  # The word alone is not the answer: "bytes, not megabytes" names it too. A reply that negates
+  # megabytes contradicts line 7, whatever else it says. A regex cannot check every claim a reply
+  # makes; this rejects the negated forms.
+  - name: no-contradicted-unit
+    type: regex
+    pattern: '(?:\bnot|n[’'']t|\bnever|rather than|instead of)\s+(?:\S+\s+)?(?:mega|mebi|mi?b\b|1048576|4194304|1024\s*\*\*\s*2)'
+    flags: i
+    match: not_contains
   # The deciding line, linked the way INVESTIGATE.md §3 builds every link: the root-relative path
   # and line as the text, the absolute path under beta's checkout as the target, the same line in
-  # both. refs keeps checkouts under <home>/refs/sources/<key>, so the target names the root it came
-  # from. alpha's src/size.js:7, the fixture's own upstream copy under fixtures/beta, a missing file
-  # and any other line all fail.
+  # both. refs keeps checkouts under <home>/refs/sources/<key>, and the home is ~/.kaisers-io/refs,
+  # which the scaffold links to .refs-home/refs in the working directory. The target must name one
+  # of those two spellings of the real root. alpha's src/size.js:7, the fixture's own upstream copy
+  # under fixtures/beta, an invented root, a missing file and any other line all fail. What comes
+  # before .kaisers-io or .refs-home is the run's temporary directory, which no static pattern knows.
   - name: cites-beta-line-7
     type: regex
-    pattern: '\[`?src/size\.js:7`?\]\(<?/[^()<>\s]*/refs/sources/local/fixtures/beta/src/size\.js:7>?\)'
-  # Hard rule 1: read-only. The deciding lines are still what the scaffold wrote.
+    pattern: '\[`?src/size\.js:7`?\]\(<?/[^()<>\s]*/\.(?:kaisers-io|refs-home)/refs/sources/local/fixtures/beta/src/size\.js:7>?\)'
+  # Hard rule 1: read-only. Each source file is still exactly what the scaffold wrote, so an edit
+  # anywhere in it fails, an appended line included. beta stays on its branch at the commit the
+  # scaffold made (its dates are pinned, so the sha is fixed), and no file is added to either
+  # checkout's source. Files the scaffold wrote outside src/ are not graded.
   - name: boundary-beta-checkout-unchanged
     type: regex
-    pattern: '\n  const unit = match\[2\]\.toLowerCase\(\) \|\| ''mb'';\n  if \(!\(unit in UNITS\)\)'
+    pattern: '^// Parses a human-readable size such as "4kb" or "2 mb" into a number of bytes\.\nconst UNITS = \{ b: 1, kb: 1024, mb: 1024 \*\* 2, gb: 1024 \*\* 3 \};\n\nexport const parseSize = \(input\) => \{\n  const match = /\^\\s\*\(\\d\+\(\?:\\\.\\d\+\)\?\)\\s\*\(\[a-z\]\*\)\\s\*\$/i\.exec\(String\(input\)\);\n  if \(!match\) throw new TypeError\(`not a size: \$\{input\}`\);\n  const unit = match\[2\]\.toLowerCase\(\) \|\| ''mb'';\n  if \(!\(unit in UNITS\)\) throw new TypeError\(`unknown unit: \$\{unit\}`\);\n  return Math\.round\(Number\(match\[1\]\) \* UNITS\[unit\]\);\n\};\n$'
     target: { source: file, path: .refs-home/refs/sources/local/fixtures/beta/src/size.js }
   - name: boundary-alpha-checkout-unchanged
     type: regex
-    pattern: '\n  const unit = match\[2\]\.toLowerCase\(\) \|\| ''b'';\n  if \(!\(unit in UNITS\)\)'
+    pattern: '^// Parses a human-readable size such as "4kb" or "2 mb" into a number of bytes\.\nconst UNITS = \{ b: 1, kb: 1024, mb: 1024 \*\* 2, gb: 1024 \*\* 3 \};\n\nexport const parseSize = \(input\) => \{\n  const match = /\^\\s\*\(\\d\+\(\?:\\\.\\d\+\)\?\)\\s\*\(\[a-z\]\*\)\\s\*\$/i\.exec\(String\(input\)\);\n  if \(!match\) throw new TypeError\(`not a size: \$\{input\}`\);\n  const unit = match\[2\]\.toLowerCase\(\) \|\| ''b'';\n  if \(!\(unit in UNITS\)\) throw new TypeError\(`unknown unit: \$\{unit\}`\);\n  return Math\.round\(Number\(match\[1\]\) \* UNITS\[unit\]\);\n\};\n$'
     target: { source: file, path: .refs-home/refs/sources/local/fixtures/alpha/src/size.js }
+  - name: boundary-beta-on-its-branch-head
+    type: regex
+    pattern: '^ref: refs/heads/main\n$'
+    target: { source: file, path: .refs-home/refs/sources/local/fixtures/beta/.git/HEAD }
+  - name: boundary-beta-branch-not-moved
+    type: regex
+    pattern: '^9268f46e8c469e31f2de4c4d6bb06e609be0266e\n$'
+    target: { source: file, path: .refs-home/refs/sources/local/fixtures/beta/.git/refs/heads/main }
+  - name: boundary-no-file-added-to-sources
+    type: file_exists
+    path: .refs-home/refs/sources/local/fixtures/*/src/**
+    exists: false

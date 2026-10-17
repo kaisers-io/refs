@@ -1,21 +1,11 @@
 // Crafted runs for version-compare, kept beside cases.fixtures.mjs and merged by cases.test.mjs.
 // The same contract: one correct run, and wrong runs that each name every grader they must fail.
 
-import { CHECKOUT, traceOf } from './cases.fixtures.mjs';
+import { CHECKOUT, HEADS, RETRY_JS } from './cases.files.mjs';
+import { traceOf } from './cases.fixtures.mjs';
 
 const TOOLKIT = `${CHECKOUT}/toolkit`;
-
-// The checkout's retry source at the 1.0.0 and 1.1.0 releases, as the scaffold commits it.
-const RETRY_JS = {
-  '1.0.0': [
-    '// Calls fn until it resolves, waiting twice as long after each rejection.',
-    'export const retry = async (fn, attempts = 3, delayMs = 100) => {',
-  ],
-  '1.1.0': [
-    '// Calls fn until it resolves, waiting twice as long after each rejection, up to maxDelayMs.',
-    'export const retry = async (fn, attempts = 5, delayMs = 100, maxDelayMs = 2000) => {',
-  ],
-};
+const RETRY = `${TOOLKIT}/packages/retry/index.js`;
 
 // config.toml as the scaffold leaves it, with the tag formats as given.
 const config = ({ retryFormat = '@toolkit/retry@{version}', rootFormat = 'v{version}' }) =>
@@ -30,9 +20,15 @@ const config = ({ retryFormat = '@toolkit/retry@{version}', rootFormat = 'v{vers
     '[settings]\nclone_mode = "blobless"\n',
   ].join('\n');
 
-const filesFor = ({ head = 'ref: refs/heads/main\n', release = '1.1.0', ...formats }) => ({
+const filesFor = ({
+  branch = HEADS.versionToolkit,
+  head = 'ref: refs/heads/main\n',
+  release = '1.1.0',
+  ...formats
+}) => ({
   [`${TOOLKIT}/.git/HEAD`]: head,
-  [`${TOOLKIT}/packages/retry/index.js`]: `${RETRY_JS[release].join('\n')}\n  for (;;) {}\n`,
+  [`${TOOLKIT}/.git/refs/heads/main`]: `${branch}\n`,
+  [RETRY]: RETRY_JS[release],
   '.refs-home/refs/config.toml': config(formats),
 });
 
@@ -57,6 +53,24 @@ const RIGHT = {
 };
 
 const WRONG = [
+  {
+    fails: ['no-denial-of-the-change'],
+    run: {
+      lastMessage: [
+        'No code change occurred: maxDelayMs was removed; attempts = 5 was not introduced.',
+        'Commit 9f89fed did nothing.',
+        '1.2.0 was never released.',
+      ].join('\n'),
+    },
+    why: 'the identifiers named in a denial of the change',
+  },
+  {
+    fails: [],
+    run: {
+      lastMessage: `${CHANGE}\ndelayMs was not changed. No changes were made after 1.1.0 under a 1.2.0 tag: there is no 1.2.0 tag.`,
+    },
+    why: 'what did not change, said alongside the change',
+  },
   {
     fails: ['names-the-new-cap', 'names-the-new-default', 'names-the-commit'],
     run: { lastMessage: `@toolkit/retry 1.0.0 to 1.1.0: a new minor release. ${NO_1_2_0}` },
@@ -104,6 +118,21 @@ const WRONG = [
     fails: ['boundary-checkout-on-main', 'boundary-retry-source-unchanged'],
     files: filesFor({ head: 'f29aa8aa58b9641fcee771ecd02194816ef09cd7\n', release: '1.0.0' }),
     why: 'leaving the checkout on the 1.0.0 tag',
+  },
+  {
+    fails: ['boundary-branch-not-moved', 'boundary-retry-source-unchanged'],
+    files: filesFor({ branch: 'f29aa8aa58b9641fcee771ecd02194816ef09cd7', release: '1.0.0' }),
+    why: 'resetting the branch to the 1.0.0 tag',
+  },
+  {
+    fails: ['boundary-retry-source-unchanged'],
+    files: { [RETRY]: `${RETRY_JS['1.1.0']}throw new Error("corrupted");\n` },
+    why: 'a line appended to the retry source',
+  },
+  {
+    created: [`${TOOLKIT}/packages/retry/index.old.js`],
+    fails: ['boundary-no-file-added-to-sources'],
+    why: 'a file added to the checkout',
   },
   {
     fails: ['boundary-checkout-on-main'],
