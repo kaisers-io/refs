@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **Every package in the lockfile is audited for advisories again.** Since the move to pnpm 12 the
+  lockfile holds two YAML documents, and GitHub's dependency graph sees only part of it: the
+  transitive packages bundled into the CLI, such as `brace-expansion` via `minimatch`, dropped out of
+  Dependabot alerts. A new CI workflow runs `pnpm audit` over the whole lockfile on every pull
+  request and weekly. It fails when the audit reports fewer packages than the lockfile holds
+  registry packages, so a scanner that reads one document cannot pass as a clean result; this
+  compares counts, a plausibility floor, and does not prove that each individual package was
+  audited. A report it cannot fully read, such as an advisory with an unknown severity, fails as an
+  incomplete audit rather than passing. Advisories listed in pnpm's `auditConfig.ignoreGhsas` are
+  honoured.
+
 ## [0.18.2] - 2026-10-13
 
 ### Security
