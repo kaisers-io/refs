@@ -140,6 +140,8 @@ A checkout is the default branch at the revision you last fetched. It is not nec
 
 Every checkout under `sources/` is reference material. Agents are instructed never to edit, commit or push inside one, and `refs` installs git hooks that reject both. When a checkout gets dirty anyway, `refs sync` restores it.
 
+References are source to clone and read, never programs to run. `refs` runs git and nothing from a checkout: no hooks, no content filters, no install or build scripts, and git itself is never picked up from the checkout. The skill tells agents the same: do not install a reference's dependencies or run its code, and report a refs safety refusal instead of working around it. [`SECURITY.md`](SECURITY.md) states the exact boundary.
+
 The hooks are a backstop against mistakes, not a security boundary. A determined local process can still write into a checkout.
 
 ## Documentation

@@ -51,7 +51,8 @@ there are no long-term support branches.
   drivers (refs' only `diff` is `--name-only`, and `git show <rev>:<path>` prints a blob without
   textconv). Both are covered by a real-git test. refs runs no aliases, editors or `git lfs`
   commands, and never runs a package manager or script in a checkout. The only program refs starts
-  besides git is your own `ssh` client, for `refs doctor`'s ssh authentication probe.
+  besides git is your own `ssh` client, for `refs doctor`'s ssh authentication probe; both are
+  started by absolute path (below).
 
   The `-c` options are passed as top-level options, which gives them command scope, above every
   configuration file. They are not written into a checkout, so an agent's own git commands there run
@@ -80,6 +81,15 @@ there are no long-term support branches.
   `core.hooksPath` is also set at command scope during a clone, so configuration injected that way
   cannot point the initial checkout at hooks the cloned repository ships. A way to make refs'
   git act on a repository other than the checkout it named is in scope.
+- **Which program runs as git.** refs runs its git commands with the working directory inside a
+  checkout, which is somebody else's repository. Starting the bare name `git` would let that
+  repository supply the program: on Windows, process creation looks in the working directory before
+  `PATH` (a committed `git.exe` or `git.com` would run), and on every platform an empty or relative
+  `PATH` entry means the working directory. refs looks `git` (and `ssh`) up itself, in absolute `PATH`
+  entries only, and starts the absolute path it found; when there is none, the command fails with a
+  message instead of falling back to the bare name. Covered by real-process tests: a planted `./git`
+  with an empty `PATH` entry on POSIX, a planted `git.exe` in the checkout on Windows. A way to make
+  refs start a program from a checkout is in scope.
 - **Git versions.** `refs` sets no minimum git version and refuses only 2.54.x (see above). The
   fsmonitor switch was verified against git 2.25, 2.30, 2.34, 2.39, 2.47, 2.53 and 2.55. The hook,
   filter, hooks-path and submodule handling was verified against 2.30, 2.39, 2.47, 2.53 and 2.55,
