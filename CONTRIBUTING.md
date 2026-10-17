@@ -44,8 +44,15 @@ pnpm check                 # lint + format check + typecheck + tests
 ```
 
 That is exactly what CI runs, on Linux, macOS and Windows, and once more on the Node 24.2 floor.
-CI adds a coverage gate, a version-consistency check, a bundle-determinism check, and a smoke test
-of the packaged CLI on Linux and Windows.
+CI adds a coverage gate, a version-consistency check, a bundle-determinism check, a smoke test
+of the packaged CLI on Linux and Windows, and a [zizmor](https://docs.zizmor.sh/) audit of the
+workflows and `dependabot.yml`. If you touched anything under `.github/`, run that audit locally
+first, at the version pinned in `ci.yml`. CI runs it through [pipx](https://pipx.pypa.io/);
+`uvx zizmor@1.31.1` runs the same release if you have uv instead:
+
+```bash
+pipx run --spec zizmor==1.31.1 zizmor --strict-collection .   # with GH_TOKEN set, it also runs the online audits
+```
 
 If you touched anything under `skills/`, CI also runs the skill audit (`.github/workflows/skill-audit.yml`),
 which is the pre-flight for the vendor audits skills.sh publishes on the skill's public page after
