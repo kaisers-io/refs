@@ -47,6 +47,19 @@ That is exactly what CI runs, on Linux, macOS and Windows, and once more on the 
 CI adds a coverage gate, a version-consistency check, a bundle-determinism check, and a smoke test
 of the packaged CLI on Linux and Windows.
 
+A separate workflow (`.github/workflows/audit.yml`) audits every package in `pnpm-lock.yaml` for
+known advisories, on each pull request and weekly. It can turn red on a pull request that changed no
+dependency, because advisories are published independently of this repository. GitHub's own
+dependency graph reads only part of the pnpm 12 lockfile, so this is the check that covers the
+transitive packages. To run it locally:
+
+```bash
+node scripts/audit-lockfile.mjs   # exit 1 advisories, 2 lockfile partly unaudited, 3 audit incomplete
+```
+
+To accept an advisory that does not apply, add its GHSA ID to `auditConfig.ignoreGhsas` in
+`pnpm-workspace.yaml`, with a comment saying why; the check honours pnpm's ignore list.
+
 If you touched anything under `skills/`, CI also runs the skill audit (`.github/workflows/skill-audit.yml`),
 which is the pre-flight for the vendor audits skills.sh publishes on the skill's public page after
 release. To run the same gate locally:
