@@ -70,6 +70,9 @@ The packaging script needs only Node.js, not pnpm or a build. Its destination mu
 already exist. It copies `plugin.json`, `LICENSE`, and `skills/refs`, including the
 supporting Markdown and icon. The marketplace entry is outside the installed plugin.
 There is one maintained skill source; packaging does not edit its instructions.
+The packager rejects executable files, scripts, unsupported skill assets, and manifest hooks,
+MCP servers or app declarations. Its supported content is root Markdown, agents/openai.yaml,
+and PNG/JPEG/WebP/GIF images under assets. New asset types require an explicit packaging update.
 The installed plugin contains no repository history, tests, CLI sources, dependencies,
 or developer configuration. Keep the generated marketplace directory for updates.
 
