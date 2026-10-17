@@ -60,6 +60,37 @@ describe('lease sidecar filesystem boundaries', () => {
   });
 });
 
+describe('invalid tokens cannot renew lease sidecars', () => {
+  it('rejects a trailing control character without attempting a filesystem write', async () => {
+    expect.hasAssertions();
+    const lock = await makeLock();
+    const token = `${TOKEN_A}\n`;
+    const callsBefore = vi.mocked(utimes).mock.calls.length;
+    await expect(leaseMtimeMs(lock, token)).resolves.toStrictEqual({ state: 'absent' });
+    await expect(touchLeaseSidecar(lock, token)).resolves.toBe('gone');
+    expect(utimes).toHaveBeenCalledTimes(callsBefore);
+  });
+
+  it.each(['', '../outside', 'lease/../../outside'])(
+    'does not read or touch a file through token %j',
+    async (token) => {
+      expect.hasAssertions();
+      const lock = await makeLock();
+      await mkdir(join(lock, 'lease-..'));
+      await mkdir(join(lock, 'lease-lease'));
+      const target = join(lock, `lease-${token}`);
+      await writeFile(target, 'keep');
+      await utimes(target, OLD_TIME, OLD_TIME);
+      await expect(leaseMtimeMs(lock, token)).resolves.toStrictEqual({ state: 'absent' });
+      await expect(touchLeaseSidecar(lock, token)).resolves.toBe('gone');
+      await expect(readSidecar(target)).resolves.toStrictEqual({
+        contents: 'keep',
+        mtimeMs: OLD_TIME.getTime(),
+      });
+    },
+  );
+});
+
 describe('lease sidecar renewal', () => {
   it('renews the actual timestamp without changing sidecar contents', async () => {
     expect.hasAssertions();

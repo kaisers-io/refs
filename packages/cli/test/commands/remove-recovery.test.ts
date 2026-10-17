@@ -65,7 +65,9 @@ const actual = await vi.importActual<{ rm: typeof rm; rmdir: typeof rmdir }>('no
 const arm = (operation: string, path: string, effect: () => Promise<void>): void => {
   Object.assign(fault, { effect, operation, path });
   onTestFinished(() => {
+    const pending = fault.effect;
     fault.effect = undefined;
+    expect(pending, 'the armed filesystem fault must be exercised').toBeUndefined();
   });
 };
 const ioError = (): NodeJS.ErrnoException =>
@@ -95,6 +97,7 @@ describe('remove failure recovery', () => {
 
 const failureCases = [
   { method: 'lstat', name: 'checkout inspection', target: (fixture: Fixture) => fixture.dest },
+  { method: 'rmdir', name: 'parent removal', target: (fixture: Fixture) => dirname(fixture.dest) },
   {
     method: 'lstat',
     name: 'parent inspection',
