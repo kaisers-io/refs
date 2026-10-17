@@ -2,6 +2,7 @@ import type { RefSyncContext, RefSyncOutcome, SyncStatus } from './sync-checkout
 import { applySyncSuccess, recordFailure } from './sync-state.ts';
 import { createSemaphore, runGated } from './sync-semaphore.ts';
 import type { CliContext } from '../context.ts';
+import { DEFAULT_SYNC_CONCURRENCY } from './sync-concurrency.ts';
 import type { Spinner } from '../spinner.ts';
 import type { StructureReport } from './drift-report.ts';
 import { errorMessageOf } from '../output.ts';
@@ -86,10 +87,6 @@ const syncOneKey = async (ctx: CliContext, rsc: RefSyncContext): Promise<SyncRes
   }
 };
 
-// Cap on how many refs `syncAll` syncs at once — a named constant per the repo's no-magic-numbers
-// style, not tuned against any particular measurement.
-const SYNC_CONCURRENCY_CAP = 4;
-
 /** Reshapes one `Promise.allSettled` slot back into a `SyncResultItem` — the `'rejected'` branch
  * is pure defense-in-depth (`syncOneKey` above already catches everything it can), so the batch
  * still degrades to a `'failed'` entry instead of crashing outright if something truly unexpected
@@ -106,7 +103,7 @@ const toResultItem = (
   return settled.value;
 };
 
-/** Syncs every target in `targets`, at most `SYNC_CONCURRENCY_CAP` at a time, via
+/** Syncs every target in `targets`, at most `concurrency` at a time (`sync-concurrency.ts`), via
  * `Promise.allSettled` over a tiny inline semaphore (`sync-semaphore.ts`) — the batch never
  * aborts: each target's own failure (or, in the defensive fallback above, a rejection `syncOneKey`
  * somehow didn't catch) becomes its own `'failed'` result item alongside every other target's real
@@ -114,9 +111,10 @@ const toResultItem = (
 const syncAll = async (
   ctx: CliContext,
   targets: readonly RefSyncContext[],
-  spinner?: Spinner,
+  options: { concurrency?: number; spinner?: Spinner | undefined } = {},
 ): Promise<SyncResultItem[]> => {
-  const sem = createSemaphore(SYNC_CONCURRENCY_CAP);
+  const { concurrency = DEFAULT_SYNC_CONCURRENCY, spinner } = options;
+  const sem = createSemaphore(concurrency);
   const tracker = spinner === undefined ? undefined : syncTracker(spinner, targets.length);
   const settled = await Promise.allSettled(
     targets.map((rsc) =>
@@ -144,4 +142,5 @@ const syncAll = async (
 };
 
 export { syncAll, syncOneOrThrow };
+export { syncConcurrencyFrom } from './sync-concurrency.ts';
 export type { SyncItemStatus, SyncResultItem };

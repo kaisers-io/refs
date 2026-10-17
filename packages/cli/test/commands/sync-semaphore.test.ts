@@ -1,4 +1,4 @@
-import { createSemaphore, runGated } from '../../src/commands/sync-semaphore.ts';
+import { createSemaphore, mapGated, runGated } from '../../src/commands/sync-semaphore.ts';
 import { describe, expect, it } from 'vitest';
 import { setImmediate as settle } from 'node:timers/promises';
 
@@ -75,5 +75,29 @@ describe('sync semaphore', () => {
     await expect(failing).rejects.toThrow('boom');
     await next;
     expect(order).toStrictEqual(['ran']);
+  });
+});
+
+describe('gated mapping over a list', () => {
+  it('keeps item order when later items finish first, with at most `limit` in flight', async () => {
+    expect.hasAssertions();
+    // Item `n` takes `n` ticks, so the first items finish last.
+    const ITEMS = 6;
+    const items = Array.from({ length: ITEMS }, (_unused, index) => ITEMS - 1 - index);
+    const limit = 2;
+    let inFlight = 0;
+    let peak = 0;
+    const results = await mapGated(items, limit, async (item) => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      for (let tick = 0; tick < item; tick += 1) {
+        // oxlint-disable-next-line no-await-in-loop -- each tick lets the others run
+        await settle();
+      }
+      inFlight -= 1;
+      return `r${item}`;
+    });
+    expect(results).toStrictEqual(items.map((item) => `r${item}`));
+    expect(peak).toBe(limit);
   });
 });

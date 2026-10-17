@@ -16,6 +16,7 @@ import {
 } from '@kaisers-io/refs-core';
 import type { SyncItemStatus, SyncResultItem } from './sync-core.ts';
 import { cliOptsOf, emit, withSpinner, wrapAction } from '../output.ts';
+import { syncAll, syncConcurrencyFrom } from './sync-core.ts';
 import type { CliContext } from '../context.ts';
 import type { RefSyncContext } from './sync-checkout.ts';
 import type { RefsCommand } from './registry.ts';
@@ -23,7 +24,6 @@ import { driftLines } from './drift-lines.ts';
 import { isStale } from './ref-status.ts';
 import { matchRefKey } from './list.ts';
 import { requireEntry } from './ref-context.ts';
-import { syncAll } from './sync-core.ts';
 
 // `refs sync [refs…] [--stale-only]` — fetches (or, if the checkout is missing, re-clones) every
 // requested ref, defaulting to all configured refs. This file owns target resolution, staleness
@@ -74,6 +74,7 @@ const filterStale = (
 };
 
 type SyncOptions = {
+  concurrency: number;
   refs: string[];
   staleOnly: boolean;
 };
@@ -126,6 +127,7 @@ const scopeTargets = async (
 type Spinner = ReturnType<CliContext['spinner']>;
 
 type SyncRun = {
+  concurrency: number;
   config: Config;
   ctx: CliContext;
   home: RefsHome;
@@ -136,7 +138,7 @@ type SyncRun = {
 /** The refs and the update check side by side. Once every ref is done, a check still waiting on the
  * registry gets the spinner line instead of a finished count that looks stuck. */
 const syncWithUpdateCheck = (run: SyncRun): Promise<[SyncResultItem[], string[]]> => {
-  const { config, ctx, home, scoped, spinner } = run;
+  const { concurrency, config, ctx, home, scoped, spinner } = run;
   if (scoped.length === 0) {
     return Promise.resolve([[], []]);
   }
@@ -149,7 +151,7 @@ const syncWithUpdateCheck = (run: SyncRun): Promise<[SyncResultItem[], string[]]
     }
   };
   const syncing = async (): Promise<SyncResultItem[]> => {
-    const results = await syncAll(ctx, scoped, spinner);
+    const results = await syncAll(ctx, scoped, { concurrency, spinner });
     if (check.pending) {
       spinner.update('Checking for a newer refs release');
     }
@@ -170,7 +172,9 @@ const runSync = async (
   const scoped = await scopeTargets(home, targets, opts.staleOnly);
   // Concurrent with the refs themselves — a sync that had nothing to do (everything inside its
   // `sync_ttl`) stays the no-op it is, and never touches the network on its own account.
-  const [results, warnings] = await syncWithUpdateCheck({ config, ctx, home, scoped, spinner });
+  const { concurrency } = opts;
+  const run = { concurrency, config, ctx, home, scoped, spinner };
+  const [results, warnings] = await syncWithUpdateCheck(run);
   const failedCount = results.filter((item) => item.status === 'failed').length;
   return { failedCount, results, warnings };
 };
@@ -246,7 +250,11 @@ const syncHuman = (results: readonly SyncResultItem[]): string[] => {
   return lines;
 };
 
-const buildSyncOptions = (refs: string[], localOpts: { staleOnly?: boolean }): SyncOptions => ({
+const buildSyncOptions = (
+  refs: string[],
+  localOpts: { concurrency?: string; staleOnly?: boolean },
+): SyncOptions => ({
+  concurrency: syncConcurrencyFrom(localOpts.concurrency),
   refs,
   staleOnly: localOpts.staleOnly === true,
 });
@@ -259,6 +267,7 @@ const registerSync = (program: RefsCommand, ctx: CliContext): void => {
     )
     .argument('[refs...]', 'ref keys or unique suffixes to sync (default: every configured ref)')
     .option('--stale-only', "skip refs whose last sync is still within their ref's sync_ttl")
+    .option('--concurrency <n>', 'sync at most <n> refs at once, 1 to 16 (default: 4)')
     .action((refs, localOpts, command) => {
       const opts = cliOptsOf(command);
       return wrapAction(ctx, opts, async () => {
