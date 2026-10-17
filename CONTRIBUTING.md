@@ -71,7 +71,7 @@ that directory it is `node bin/refs.mjs <args>`; from the repository root,
 - **Loosening configuration to make a check pass.** `.oxlintrc.json`, the vitest configs, and the
   coverage thresholds are the contract. If a rule is genuinely wrong, say so and argue the case.
   Do not turn it off to get a green tick.
-- **Editing version numbers by hand.** Two files carry the released version and CI compares them.
+- **Editing version numbers by hand.** Three files carry the released version and CI compares them.
   Use `pnpm versions --set <version>`.
 - **Changing only one changelog.** `CHANGELOG.md` and `packages/cli/CHANGELOG.md` must stay
   byte-identical, and the release workflow enforces it with `cmp`. The packaged copy is what npm

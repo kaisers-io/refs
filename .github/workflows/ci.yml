@@ -79,7 +79,7 @@ jobs:
               console.log("doctor node check ok:", node.detail);
             });
           '
-  # Two files carry the released version (see scripts/versions.mjs). Both are
+  # Three files carry the released version (see scripts/versions.mjs). All are
   # knowable on a PR, so the disagreement is caught here rather than by the release workflow after
   # the bump commit is already on main. No pnpm install and no matrix: plain Node, one platform.
   versions:

@@ -37,7 +37,7 @@ What you save is the bookkeeping. You do not remember where a clone went, paste 
 
 ## You talk to the agent, not to the CLI
 
-Everything below is something you say to your agent, and it runs the commands. `/refs` is what reaches the skill in Claude Code. In Codex the same thing is `$refs`.
+Everything below is something you say to your agent, and it runs the commands. `/refs` is what reaches the skill in Claude Code. In Codex the same thing is `$refs`, or `$refs:refs` with the Codex plugin.
 
 ```
 /refs add npm:effect as a ref
@@ -124,6 +124,15 @@ npx skills add kaisers-io/refs
 
 This installs into the current project. Pass `-g` to install once for every project. [`docs/install.md`](docs/install.md) covers the manual copy and the agents that have no global location.
 
+Codex users can install it as a Codex plugin instead. Pick one way, not both:
+
+```bash
+codex plugin marketplace add kaisers-io/refs --sparse .agents/plugins --sparse skills
+codex plugin add refs@kaisers-io
+```
+
+In Codex the plugin's skill is `$refs:refs`. [`docs/install.md`](docs/install.md#the-codex-plugin) covers updates, removal and the duplicate you get with both.
+
 Now check the whole setup:
 
 ```bash
@@ -147,7 +156,7 @@ The hooks are a backstop against mistakes, not a security boundary. A determined
 - [`docs/investigations.md`](docs/investigations.md) works through the questions above in full, including what each answer leaves open.
 - [`docs/commands.md`](docs/commands.md) covers every command, its flags, its `--json` output and its exit codes.
 - [`docs/configuration.md`](docs/configuration.md) explains `config.toml`, `state.json`, the per-ref settings and `REFS_HOME`.
-- [`docs/install.md`](docs/install.md) has the manual skill copy, the platform notes and what `refs doctor` checks.
+- [`docs/install.md`](docs/install.md) has the manual skill copy, the Codex plugin, the platform notes and what `refs doctor` checks.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) has the toolchain, the local development loop and what a pull request has to pass.
 - [`SECURITY.md`](SECURITY.md) is what to read before reporting a vulnerability.
 

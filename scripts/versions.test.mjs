@@ -8,7 +8,7 @@
 //
 // The script resolves its root from `import.meta.url` and takes no root argument, so rather than
 // widen its interface each test copies it into a throwaway tree's `scripts/` directory and runs
-// the copy. The real two files are never read, never written, and never even on the path.
+// the copy. The real version files are never read, never written, and never even on the path.
 
 import { after, test } from 'node:test';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -21,6 +21,7 @@ import { tmpdir } from 'node:os';
 const SCRIPT = fileURLToPath(new URL('versions.mjs', import.meta.url));
 const SOURCE = 'packages/cli/package.json';
 const SKILL = 'skills/refs/SKILL.md';
+const PLUGIN = 'skills/.codex-plugin/plugin.json';
 
 const EXIT_OK = 0;
 const EXIT_PROBLEMS = 1;
@@ -38,12 +39,15 @@ const WRONG = '9.9.9';
 // Fixture renderers, one per site, shaped like the real files: `"version"` always starts its own
 // line, because that is what the script's surgical rewrite anchors to.
 const pkg = (version) => `{\n  "name": "@kaisers-io/refs",\n  "version": "${version}",\n  "type": "module"\n}\n`;
+const pluginManifest = (version) =>
+  `{\n  "name": "refs",\n  "version": "${version}",\n  "skills": "./refs",\n  "interface": { "displayName": "Refs" }\n}\n`;
 const skillDoc = (version) =>
   `---\nname: refs\nmetadata:\n  cli_version: '${version}'\n---\n\n# refs\n\nProse about version pins.\n`;
 
 const FILES = {
   [SOURCE]: pkg,
   [SKILL]: skillDoc,
+  [PLUGIN]: pluginManifest,
 };
 
 const trees = [];
@@ -83,7 +87,7 @@ const readTree = (root) =>
 test('--check passes on a consistent tree', async () => {
   const { code, out } = run(await makeTree(), '--check');
   strictEqual(code, EXIT_OK);
-  match(out, /version 1\.2\.3 is consistent across both sites/u);
+  match(out, /version 1\.2\.3 is consistent across every site/u);
 });
 
 // The load-bearing case: a wrong value at either site must be caught and named. A wrong source of
@@ -140,7 +144,7 @@ test('--set round-trips: --check passes afterwards, and only version lines moved
   const before = new Map(await readTree(root));
   const bump = run(root, '--set', NEXT);
   strictEqual(bump.code, EXIT_OK);
-  match(bump.out, /both version sites now declare 2\.0\.0/u);
+  match(bump.out, /every version site now declares 2\.0\.0/u);
   strictEqual(run(root, '--check').code, EXIT_OK);
   for (const [file, current] of await readTree(root)) {
     notStrictEqual(current, before.get(file), `${file} was not bumped`);

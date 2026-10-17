@@ -1,16 +1,19 @@
 #!/usr/bin/env node
-// Keeps the version this repo releases identical across the two files that carry it:
+// Keeps the version this repo releases identical across the three files that carry it:
 //
-//   packages/cli/package.json  .version   (the source of truth)
-//   skills/refs/SKILL.md       frontmatter metadata.cli_version
+//   packages/cli/package.json          .version   (the source of truth)
+//   skills/refs/SKILL.md               frontmatter metadata.cli_version
+//   skills/.codex-plugin/plugin.json   .version
 //
 //   node scripts/versions.mjs --check          report every disagreement, exit 1 if any
-//   node scripts/versions.mjs --set <version>  write <version> to both sites
+//   node scripts/versions.mjs --set <version>  write <version> to every site
 //
 // Why they must agree. The skill ships from git (`npx skills add`) while the CLI ships from npm, so
 // the two can drift; `refs doctor`'s `skill` check and the skill's own capability gate both compare
 // the pinned `cli_version` against the running CLI, so a release whose skill still pins the previous
-// version makes every user's doctor report a false mismatch.
+// version makes every user's doctor report a false mismatch. The Codex plugin manifest's version
+// is what Codex compares on `codex plugin marketplace upgrade` and names its cache directory after,
+// so a release that leaves it behind ships the new skill to nobody who installed the plugin.
 //
 // Every value here is knowable on a pull request, so `--check` runs in CI on every PR as well as at
 // release — earlier than the two tag-push guards it replaced. Plain Node with zero dependencies, so
@@ -29,6 +32,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 const SOURCE_OF_TRUTH = 'packages/cli/package.json';
 const SKILL = 'skills/refs/SKILL.md';
+const CODEX_PLUGIN = 'skills/.codex-plugin/plugin.json';
 const EXIT_PROBLEMS = 1;
 const EXIT_USAGE = 2;
 const ARGV_START = 2;
@@ -113,7 +117,7 @@ const rewriteJson = ({ file, text, version }) => {
   problem(`${file} would not carry version ${version} after the edit — left untouched`);
 };
 
-/** The source-of-truth site: its declared version, and how to rewrite it. */
+/** A JSON site (the source of truth, or the Codex plugin manifest): its version, and how to rewrite it. */
 const readJsonSite = async (file) => {
   const text = await readText(file);
   const data = text === undefined ? undefined : parseJsonObject(file, text);
@@ -164,7 +168,8 @@ const readSites = async () => {
   const jsonSite = await readJsonSite(SOURCE_OF_TRUTH);
   const skillText = await readText(SKILL);
   const skill = skillText === undefined ? undefined : skillSite(skillText);
-  return [jsonSite, skill].filter((site) => site !== undefined);
+  const plugin = await readJsonSite(CODEX_PLUGIN);
+  return [jsonSite, skill, plugin].filter((site) => site !== undefined);
 };
 
 /** The value every other site must equal. Unusable on its own means there is nothing to check. */
@@ -187,12 +192,12 @@ const check = async () => {
   if (problems.length > 0) {
     reportProblems();
   } else {
-    console.log(`version ${expected} is consistent across both sites (source ${SOURCE_OF_TRUTH})`);
+    console.log(`version ${expected} is consistent across every site (source ${SOURCE_OF_TRUTH})`);
   }
 };
 
 /**
- * Sequential, not `Promise.all`: two separate files cannot be written atomically, so the next best
+ * Sequential, not `Promise.all`: separate files cannot be written atomically, so the next best
  * thing is damage that is bounded and nameable. Each file is announced as it lands, and a failure
  * names what already carries the new version and what may be half-written — enough for whoever is
  * mid-release to know exactly what to revert.
@@ -210,7 +215,7 @@ const writeEdits = async (edits, version) => {
     }
     console.log(`${file}: ${before === version ? `already ${version}` : `${before} -> ${version}`}`);
   }
-  console.log(`both version sites now declare ${version}`);
+  console.log(`every version site now declares ${version}`);
 };
 
 /** Returns whether writing began — only then is "nothing was written" a lie the caller must not tell. */
