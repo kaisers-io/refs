@@ -1,0 +1,48 @@
+schema_version: '1.1'
+name: source-provenance
+description: >-
+  Two refs carry the same relative file, src/limit.js, with different behaviour. The question is
+  about one of them. The grade is the factual answer, a citation of the right file and line under
+  the right checkout root, and that nothing was changed.
+plugins: ['../../skills/refs']
+runs: 3
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 30
+  timeout_seconds: 600
+  append_system_prompt: >-
+    Only your last message is read. Finish any background work before you write it, and make it
+    the complete answer.
+  allowed_tools: [Bash, Read, Glob, Grep]
+  prompt: >-
+    /refs In the alpha ref, what does `limit(500)` return? Answer for alpha only, and cite the file
+    and line that decide it.
+graders:
+  # alpha clamps to 50. beta throws a RangeError above 100: an answer read from beta's copy of the
+  # same file names the wrong behaviour.
+  - name: answers-fifty
+    type: regex
+    pattern: '^(?=[\s\S]*\b50\b)(?=[\s\S]*(?:clamp|cap|Math\.min|at most|maximum|max_page_size))'
+    flags: i
+  - name: no-beta-behaviour
+    type: regex
+    pattern: 'RangeError|\b100\b'
+    match: not_contains
+  # The citation names alpha's file and a line range that contains line 3, where the clamp is.
+  # `:3`, `#L3`, `line 3`, `:2-3` and `#L1-L3` all count; beta's file or another line does not.
+  - name: cites-alpha-line
+    type: regex
+    pattern: 'alpha/src/limit\.js(?::|#L|`?,?\s+(?:on\s+)?lines?\s+)(?:3|[12]\s*[-–]\s*L?[3-9])\b'
+    flags: i
+  - name: no-beta-citation
+    type: regex
+    pattern: 'beta/src/limit\.js'
+    match: not_contains
+  # Read-only: the answer comes from reading, not from editing a checkout or the configuration.
+  - name: changed-nothing
+    type: tool_used
+    tool: Bash
+    input_match: '(?:sed\s+-i|\btee\b|>\s*[^\s&|]*sources/|\bgit\s+(?:commit|reset|checkout|stash|apply|add)\b|\brefs\s+(?:add|edit|remove)\b)'
+    min: 0
+    max: 0

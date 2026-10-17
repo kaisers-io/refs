@@ -228,6 +228,9 @@ To add a case, create `evals/<name>/case.yaml` and an executable `scaffold.sh` t
 `../lib.sh`.
 Before you trust a grader, feed it a wrong answer and check that it fails. A grader that passes
 on an empty run pins nothing.
+Put those wrong answers in a test: `scripts/skill-evals/repair-graders.test.mjs` and
+`core-workflow-graders.test.mjs` read each grader from its `case.yaml` and check it against right
+and wrong samples, without an install and without a model run, in CI.
 
 A grader for a command the agent hands over reads a file the prompt asks it to write, never the
 reply: prose cannot tell a command from one inside a comment or a warning. Its pattern is not
