@@ -1,7 +1,7 @@
 // A documentation grammar check, not a shell parser or executor. Examples use placeholders.
 import { deepStrictEqual, ok } from 'node:assert/strict';
-import { join } from 'node:path';
 import { readFile, readdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import { test } from 'node:test';
 
 const skill = new URL('../../skills/refs/', import.meta.url);
