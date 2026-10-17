@@ -6,6 +6,7 @@ import type { RefsHome } from '../home.ts';
 import { assertManagedCheckout } from './managed-checkout.ts';
 import { failureDetail } from './failure-detail.ts';
 import { join } from 'node:path';
+import { pinHooksPath } from './pinned-hooks.ts';
 import { validationError } from '../errors.ts';
 import { writeFileAtomic } from '../fs-atomic.ts';
 
@@ -86,8 +87,8 @@ const cloneRepo = async (runner: Runner, opts: CloneOpts): Promise<CloneResult> 
   // governed by the ambient config: a user-level RELATIVE `core.hooksPath` (`.githooks`, say)
   // resolves inside the tree being cloned, so an upstream-tracked hook of that name runs — during
   // `add --dry-run`, before anyone has approved the ref. `-c` also persists into the new repo's
-  // local config, which is what the `git config` call below then only re-affirms.
-  // The interpolation is safe and both reasons are verified: there is no shell (`SpawnRunner`
+  // local config, which the `git config` call below only re-affirms. It is ALSO pinned at command
+  // scope (`pinned-hooks.ts`): inherited `-c` config outranks the local value. The interpolation is safe and both reasons are verified: there is no shell (`SpawnRunner`
   // always spawns an argv array), and a newline in a `-c` value cannot smuggle a second setting —
   // git 2.54 stores the whole string as ONE value. `hooksDir` is refs-owned in any case.
   const args = ['clone', '-q', '-c', `core.hooksPath=${opts.hooksDir}`];
@@ -100,7 +101,8 @@ const cloneRepo = async (runner: Runner, opts: CloneOpts): Promise<CloneResult> 
   // config, which validates it as a non-empty string and nothing more. This makes the property
   // hold at the call itself rather than resting on something having been checked earlier.
   args.push('--', opts.cloneUrl, opts.dest);
-  const cloneResult = await runOrThrow(runner, gitSpec('git clone', args));
+  const pinned = pinHooksPath(runner, opts.hooksDir);
+  const cloneResult = await runOrThrow(pinned, gitSpec('git clone', args));
   // Kept deliberately, though the clone's own `-c` already wrote it: an older git that does not
   // apply a clone `-c` before checkout would still leave the marker every later guard compares
   // against. Re-writing the same value is idempotent.
@@ -109,9 +111,7 @@ const cloneRepo = async (runner: Runner, opts: CloneOpts): Promise<CloneResult> 
     gitSpec('git config core.hooksPath', ['config', 'core.hooksPath', opts.hooksDir], opts.dest),
   );
 
-  const filterIgnored =
-    opts.mode === 'blobless' && FILTER_NOT_HONOURED_PATTERN.test(cloneResult.stderr);
-  if (!filterIgnored) {
+  if (opts.mode !== 'blobless' || !FILTER_NOT_HONOURED_PATTERN.test(cloneResult.stderr)) {
     return { effectiveMode: opts.mode };
   }
   return {
@@ -240,11 +240,12 @@ const hardResetToBranch = async (
  */
 const syncRef = async (runner: Runner, opts: SyncOpts): Promise<SyncResult> => {
   await assertManagedCheckout(runner, opts.dir, opts.hooksDir);
-  const oldSha = await currentSha(runner, opts.dir);
-  const syncBranch = await resolveSyncBranch(runner, opts);
-  const dirty = await isDirty(runner, opts.dir);
-  await hardResetToBranch(runner, { branch: syncBranch.branch, dir: opts.dir, dirty });
-  const newSha = await currentSha(runner, opts.dir);
+  const pinned = pinHooksPath(runner, opts.hooksDir);
+  const oldSha = await currentSha(pinned, opts.dir);
+  const syncBranch = await resolveSyncBranch(pinned, opts);
+  const dirty = await isDirty(pinned, opts.dir);
+  await hardResetToBranch(pinned, { branch: syncBranch.branch, dir: opts.dir, dirty });
+  const newSha = await currentSha(pinned, opts.dir);
   return buildSyncResult(toBuildSyncResultOpts(syncBranch, dirty, { newSha, oldSha }));
 };
 

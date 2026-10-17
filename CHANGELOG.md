@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every process it starts, the same set git itself removes before running a command in another
   repository. Command-scope configuration (`GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT` and its
   pairs) and settings such as `GIT_SSH_COMMAND`, `GIT_ASKPASS` and proxies still pass through.
+- **An inherited `core.hooksPath` no longer runs a checkout's own hooks.** refs marks each
+  checkout with a repository-local `core.hooksPath`, but command-scope configuration outranks it,
+  and git exports `GIT_CONFIG_PARAMETERS` to every hook started under `git -c`. An inherited
+  relative `core.hooksPath=.githooks` therefore made `refs add` and `refs sync` run hooks the
+  cloned repository tracks itself. The clone and every git command of a sync now pass refs' hooks
+  directory at command scope as well.
 
 ## [0.18.2] - 2026-10-13
 
