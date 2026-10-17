@@ -54,7 +54,11 @@ const seedManyCheckouts = async (homeDir: string): Promise<Fixture> => {
 /** Answers `odd` for the one checkout at `ODD_INDEX` and `rest` for every other one. */
 const installRunner = (fixture: Fixture, answers: Answers): PeakRunner => {
   const oddDest = checkoutPath(fixture.home, zRefKey.parse(keyAt(ODD_INDEX)));
-  const runner = createPeakRunner((_args, cwd) => (cwd === oddDest ? answers.odd : answers.rest));
+  const runner = createPeakRunner({
+    respond: (_args, cwd) => (cwd === oddDest ? answers.odd : answers.rest),
+    total: CHECKOUT_COUNT,
+    width: CHECKOUT_GIT_CONCURRENCY,
+  });
   fixture.ctx.runner = runner;
   return runner;
 };

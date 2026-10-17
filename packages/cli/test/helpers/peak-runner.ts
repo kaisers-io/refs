@@ -1,15 +1,25 @@
 import type { RunResult, Runner } from '@kaisers-io/refs-core';
 
 // A `Runner` that records how many `run` calls were in flight at once. Calls are held, unanswered,
-// until no new call has arrived for `QUIET_MS`, and then all answered together. So every caller
-// that is ALLOWED to start does reach the runner before any of them finishes, even when each does
-// some file-system work first: an unbounded fan-out shows its full width, and a capped one shows
-// exactly its cap. Answers come from `respond`, keyed on the call, so the code under test still
-// sees results it can tell apart and a test can check each one landed against the right item.
+// behind a barrier that opens only once the expected number of callers has arrived: `width` of
+// them, or every call still to come when fewer than that remain out of `total`. A capped fan-out
+// therefore shows exactly its cap however late any one allowed caller starts, because nothing is
+// answered until the last of them is there. Answers come from `respond`, keyed on the call, so the
+// code under test still sees results it can tell apart and a test can check each one landed
+// against the right item.
+//
+// Two bounded waits keep the barrier honest in both directions:
+// - Once the barrier is full it stays shut for `GRACE_MS` more, so callers beyond the cap that
+//   are already on their way are counted. A capped fan-out cannot produce one, so this wait never
+//   changes its peak; it only gives an unbounded one the room to show its width.
+// - If the barrier never fills, because fewer callers than expected could start, everyone is
+//   released after `STALL_MS` and `peak()` throws, naming how many arrived. That is a capped
+//   fan-out narrower than expected, reported as such rather than as a timeout.
 
-// Long enough to cover the lock and directory work `sync` does before its first git call on a busy
-// machine; short enough that a batch of a few rounds stays well inside the test timeout.
-const QUIET_MS = 100;
+const GRACE_MS = 50;
+// Far above the lock and directory work `sync` does before its first git call on a busy machine,
+// and well inside vitest's per-test timeout.
+const STALL_MS = 2000;
 
 type PeakRunner = Runner & {
   calls: () => number;
@@ -18,34 +28,65 @@ type PeakRunner = Runner & {
 
 type Responder = (args: readonly string[], cwd: string | undefined) => Partial<RunResult>;
 
-type Counters = { calls: number; inFlight: number; peak: number };
-
-/** Holds callers until the runner has been quiet for `QUIET_MS`, then releases all of them, the
- * most recent first. */
-const createQuietGate = (): (() => Promise<void>) => {
-  let held: (() => void)[] = [];
-  let timer: NodeJS.Timeout | undefined = undefined;
-  const releaseAll = (): void => {
-    // Last in, first out: completion order is then the reverse of start order, so a caller that
-    // collected results as they finished, instead of by input position, would misattribute them.
-    const waking = held.toReversed();
-    held = [];
-    for (const wake of waking) {
-      wake();
-    }
-  };
-  return () => {
-    const { promise, resolve } = Promise.withResolvers<void>();
-    held.push(resolve);
-    clearTimeout(timer);
-    timer = setTimeout(releaseAll, QUIET_MS);
-    return promise;
-  };
+type PeakRunnerOptions = {
+  respond: Responder;
+  // Every `run` call the code under test will make.
+  total: number;
+  // How many calls should be in flight at once.
+  width: number;
 };
 
-const createPeakRunner = (respond: Responder): PeakRunner => {
-  const counters: Counters = { calls: 0, inFlight: 0, peak: 0 };
-  const waitForQuiet = createQuietGate();
+type Barrier = {
+  held: (() => void)[];
+  released: number;
+  stall: string | undefined;
+  timer: NodeJS.Timeout | undefined;
+};
+
+/** Wakes every held caller, the most recent first. Last in, first out: completion order is then
+ * the reverse of start order, so a caller that collected results as they finished, instead of by
+ * input position, would misattribute them. */
+const releaseAll = (barrier: Barrier): void => {
+  const waking = barrier.held.toReversed();
+  barrier.held = [];
+  barrier.released += waking.length;
+  clearTimeout(barrier.timer);
+  barrier.timer = undefined;
+  for (const wake of waking) {
+    wake();
+  }
+};
+
+const createBarrier = ({
+  total,
+  width,
+}: PeakRunnerOptions): { barrier: Barrier; wait: () => Promise<void> } => {
+  const barrier: Barrier = { held: [], released: 0, stall: undefined, timer: undefined };
+  const onStall = (expected: number): void => {
+    barrier.stall ??= `only ${barrier.held.length} of ${expected} expected callers arrived`;
+    releaseAll(barrier);
+  };
+  const wait = (): Promise<void> => {
+    // The verdict is in after one stall; holding later rounds would only add a stall each.
+    if (barrier.stall !== undefined) {
+      return Promise.resolve();
+    }
+    const { promise, resolve } = Promise.withResolvers<void>();
+    barrier.held.push(resolve);
+    const expected = Math.min(width, total - barrier.released);
+    clearTimeout(barrier.timer);
+    barrier.timer =
+      barrier.held.length >= expected
+        ? setTimeout(releaseAll, GRACE_MS, barrier)
+        : setTimeout(onStall, STALL_MS, expected);
+    return promise;
+  };
+  return { barrier, wait };
+};
+
+const createPeakRunner = (options: PeakRunnerOptions): PeakRunner => {
+  const counters = { calls: 0, inFlight: 0, peak: 0 };
+  const { barrier, wait } = createBarrier(options);
   const run = async (
     _cmd: string,
     args: readonly string[],
@@ -54,12 +95,18 @@ const createPeakRunner = (respond: Responder): PeakRunner => {
     counters.calls += 1;
     counters.inFlight += 1;
     counters.peak = Math.max(counters.peak, counters.inFlight);
-    await waitForQuiet();
+    await wait();
     counters.inFlight -= 1;
-    return { exitCode: 0, stderr: '', stdout: '', ...respond(args, opts?.cwd) };
+    return { exitCode: 0, stderr: '', stdout: '', ...options.respond(args, opts?.cwd) };
   };
-  return { calls: () => counters.calls, peak: () => counters.peak, run };
+  const peak = (): number => {
+    if (barrier.stall !== undefined) {
+      throw new Error(`PeakRunner barrier stalled: ${barrier.stall}`);
+    }
+    return counters.peak;
+  };
+  return { calls: () => counters.calls, peak, run };
 };
 
 export { createPeakRunner };
-export type { PeakRunner };
+export type { PeakRunner, PeakRunnerOptions };

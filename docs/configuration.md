@@ -203,10 +203,13 @@ To have the whole history on disk before going offline:
   delete the checkout (its path is `local_path` in `refs show <ref> --json`), and run
   `refs sync <ref>`, which clones it again in full. `refs remove` followed by `refs add`
   does the same when `clone_mode` is set globally.
-- **Without re-cloning:** with Git 2.49 or later, `git backfill` inside the checkout
-  downloads every blob reachable from `HEAD`. Git marks the command experimental. The
-  checkout stays a partial clone, so run it again after a `refs sync` that brought new
-  history.
+- **Without re-cloning, for the checked-out branch only:** with Git 2.49 or later,
+  `git backfill` inside the checkout downloads the blobs reachable from `HEAD`, which is
+  the history of the branch refs checked out. That is less than the whole history: what
+  only other branches or tags reach stays missing, and in a checkout where you enabled
+  sparse-checkout yourself it fetches only paths inside the sparse patterns unless given
+  `--no-sparse`. Git marks the command experimental. The checkout stays a partial clone,
+  so run it again after a `refs sync` that brought new history.
 
 ### `[updates]`
 

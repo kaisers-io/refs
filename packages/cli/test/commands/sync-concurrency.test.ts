@@ -54,10 +54,19 @@ const targetsFor = (home: RefsHome): RefSyncContext[] => {
 };
 
 /** Runs one batch and returns the peak number of clones in flight, after checking that every ref
- * came back as its own failure in input order. */
-const peakOfBatch = async (homeDir: string, env: NodeJS.ProcessEnv): Promise<number> => {
+ * came back as its own failure in input order. `width` is the peak the case expects: the runner
+ * holds clones until that many are in flight, so a late starter cannot hide one. */
+const peakOfBatch = async (
+  homeDir: string,
+  env: NodeJS.ProcessEnv,
+  width: number,
+): Promise<number> => {
   const ctx = await homeWithRefs(homeDir, env);
-  const runner = createPeakRunner(() => ({ exitCode: GIT_FATAL_EXIT, stderr: 'fatal: offline' }));
+  const runner = createPeakRunner({
+    respond: () => ({ exitCode: GIT_FATAL_EXIT, stderr: 'fatal: offline' }),
+    total: REF_COUNT,
+    width,
+  });
   ctx.runner = runner;
   const results = await syncAll(ctx, targetsFor(resolveHome(ctx.env)));
   expect(results.map((item) => [item.key, item.status])).toStrictEqual(
@@ -92,7 +101,7 @@ describe('sync concurrency setting', () => {
   ])('syncAll with %j keeps at most %i clones in flight', async (env, expected) => {
     expect.hasAssertions();
     await withTempHome(async (homeDir) => {
-      await expect(peakOfBatch(homeDir, env)).resolves.toBe(expected);
+      await expect(peakOfBatch(homeDir, env, expected)).resolves.toBe(expected);
     });
   });
 });
