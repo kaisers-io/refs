@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { join, sep } from 'node:path';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
-import { SpawnRunner } from '../../src/proc/runner.ts';
+import { execFile } from 'node:child_process';
 import { isBranchName } from '../../src/schemas/branch-name.ts';
-import { mkdtemp } from 'node:fs/promises';
+import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
 import { zConfig } from '../../src/schemas/config.ts';
 
@@ -19,6 +20,8 @@ import { zConfig } from '../../src/schemas/config.ts';
 // option-shaped name is a fair comparison rather than an argument-parsing accident.
 
 const SUCCESS = 0;
+const exec = promisify(execFile);
+const ORACLE_TIMEOUT_MS = 10_000;
 /** Enough combinations that a broken generator cannot pass by producing none. */
 const CANDIDATE_FLOOR = 900;
 /** The ranges where the rule turns, rather than every codepoint: one git invocation per name, and
@@ -112,22 +115,43 @@ const candidates = (): string[] => [
   ]),
 ];
 
-/** git's own answer, from a throwaway repository. */
-const gitAccepts = async (runner: SpawnRunner, cwd: string, name: string): Promise<boolean> => {
-  const result = await runner.run('git', ['check-ref-format', '--branch', name], { cwd });
-  return result.exitCode === SUCCESS;
+/** Git is the independent schema oracle, not the refs execution-policy runner. A policy
+ * refusal must never masquerade as Git rejecting a name. No ambient config or repository is read. */
+const oracleGit = async (cwd: string, args: string[]): Promise<void> => {
+  await exec('git', args, {
+    cwd,
+    env: {
+      GIT_CONFIG_GLOBAL: join(cwd, 'absent-config'),
+      GIT_CONFIG_NOSYSTEM: '1',
+      HOME: cwd,
+      PATH: process.env['PATH'],
+    },
+    timeout: ORACLE_TIMEOUT_MS,
+  });
 };
 
-/** Every name where this repository's rule and git's disagree. Empty is the assertion. */
-const disagreementsWithGit = async (names: readonly string[]): Promise<string[]> => {
-  const runner = new SpawnRunner();
-  const dir = await mkdtemp(join(tmpdir(), 'refs-branch-'));
-  await runner.run('git', ['init', '-q', '.'], { cwd: dir });
+const gitAccepts = async (cwd: string, name: string): Promise<boolean> => {
+  try {
+    await oracleGit(cwd, ['check-ref-format', '--branch', name]);
+    return true;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      'code' in error &&
+      typeof error.code === 'number' &&
+      error.code !== SUCCESS
+    ) {
+      return false;
+    }
+    throw error;
+  }
+};
+
+const compareNames = async (dir: string, names: readonly string[]): Promise<string[]> => {
   const found: string[] = [];
   for (const name of names) {
-    // Serial on purpose: one `git` per name, and the point is the comparison rather than speed.
-    // eslint-disable-next-line no-await-in-loop -- see above
-    const fromGit = await gitAccepts(runner, dir, name);
+    // eslint-disable-next-line no-await-in-loop -- preserve a serial independent Git comparison
+    const fromGit = await gitAccepts(dir, name);
     found.push(
       ...(fromGit === isBranchName(name)
         ? []
@@ -135,6 +159,17 @@ const disagreementsWithGit = async (names: readonly string[]): Promise<string[]>
     );
   }
   return found;
+};
+
+/** Every name where this repository's rule and Git's disagree. Empty is the assertion. */
+const disagreementsWithGit = async (names: readonly string[]): Promise<string[]> => {
+  const dir = await mkdtemp(join(tmpdir(), 'refs-branch-'));
+  try {
+    await oracleGit(dir, ['init', '-q', '.']);
+    return await compareNames(dir, names);
+  } finally {
+    await rm(dir, { force: true, recursive: true });
+  }
 };
 
 // POSIX only, for cost rather than for correctness: the rule is git's and does not vary by

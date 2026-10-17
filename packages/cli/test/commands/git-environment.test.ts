@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { describe, expect, it, onTestFinished } from 'vitest';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { cliBundle } from '../helpers/printed-command.ts';
 import { createFixtureRepo } from '../helpers/fixture-repo.ts';
@@ -16,6 +16,11 @@ const setup = async (): Promise<Fixture> => {
   await cliBundle();
   const root = await mkdtemp(join(tmpdir(), 'refs-isolation-'));
   const upstream = await createFixtureRepo();
+  onTestFinished(async () => {
+    await Promise.all(
+      [root, upstream.dir].map((path) => rm(path, { force: true, recursive: true })),
+    );
+  });
   const sentinel = join(root, 'sentinel');
   const env = {
     ...process.env,

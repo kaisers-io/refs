@@ -1,32 +1,9 @@
 import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
 
-// `git-exec-surfaces` — the git configuration that decides what a git invocation runs, beyond the
-// hooks directory refs pins.
-//
-// `core.hooksPath` is the project's stated code-execution boundary for checkouts, and within its
-// own terms it holds: it governs hooks-DIRECTORY discovery, so a hook file inside a checkout never
-// runs. Other mechanisms do not route through it. Measured on git 2.54 against a real clone with
-// `core.hooksPath` correctly pinned at a refs-owned directory:
-//
-//   [hook "x"] event = post-checkout ; command = ./evil.sh
-//     -> ran during `refs add` and during `refs sync`
-//   [filter "y"] smudge = ./filter.sh   (selected by the checkout's own .gitattributes)
-//     -> ran during the checkout `refs sync` performs
-//
-// Each needs a definition already in the invoking user's own git configuration. A tracked
-// repository cannot create one; its `.gitattributes` can only choose when an existing filter
-// applies. So this reports rather than refuses, and refs does not discard the ambient
-// configuration — the same configuration carries the credential helpers, proxies and `insteadOf`
-// rules a private clone needs.
-//
-// What this does NOT do is judge whether a particular command is dangerous. An earlier version
-// reported only commands that looked repository-relative, which is unsound in both directions and
-// was measured to be: `/bin/sh ./evil.sh` has an absolute first token and runs the checkout's
-// script anyway, while `"/usr/local/bin/linter"` is absolute and would have been reported because
-// of the quote. Deciding safety would mean proving an arbitrary interpreter never loads checkout
-// content. Presence is decidable; safety is not — so presence is what this reports, and `ok` means
-// the configuration defines none of these at all.
+// Baseline diagnostic, separate from the shared runner's fail-closed execution policy. It
+// reports definitions outside checkouts, including ones enforcement disables. Conditional
+// includes applicable only to a checkout may be absent here; enforcement traverses them all.
 
 const SUCCESS_EXIT_CODE = 0;
 const NAME = 'git-exec-surfaces';
@@ -37,9 +14,9 @@ const FIELDS_PER_ENTRY = 2;
 // A subsection name may itself contain dots — `[hook "company.checkout"]` is valid — so the
 // subsection is everything between the section and the final property. A narrower `[^.]+` missed
 // exactly that shape, which was measured to run.
-const HOOK_COMMAND = /^hook\.(?<label>.+)\.command$/u;
-const HOOK_ENABLED = /^hook\.(?<label>.+)\.enabled$/u;
-const FILTER_COMMAND = /^filter\..+\.(?:clean|smudge|process)$/u;
+const HOOK_COMMAND = /^hook\.(?<label>.*)\.command$/su;
+const HOOK_ENABLED = /^hook\.(?<label>.*)\.enabled$/su;
+const FILTER_COMMAND = /^filter\..*\.(?:clean|smudge|process)$/su;
 const FSMONITOR = 'core.fsmonitor';
 
 // `core.fsmonitor` takes a boolean OR a command, and git runs the command form with its working
@@ -117,10 +94,11 @@ const unverifiable = (why: string): CheckResult => ({
 
 const foundSurfaces = (keys: readonly string[]): CheckResult => ({
   detail:
-    `${keys.join(', ')}: git runs these itself, and the managed hooks path does not cover them — ` +
-    `a configured hook fires on the events refs causes, a filter is selected by a checkout's own ` +
-    `.gitattributes, and fsmonitor runs in the worktree. Whether one of them reaches a checkout's ` +
-    `content depends on the command, which refs cannot decide for you`,
+    `${keys.join(', ')}: ambient execution configuration is present. ` +
+    'refs disables configured hooks and fsmonitor for its own Git operations. ' +
+    'Configured content filters cannot execute; selecting one fails rather than silently changing content. ' +
+    'Every operation checks all reachable includes and refuses unverifiable configuration. ' +
+    'This diagnostic alone is only a baseline; trusted authentication and transport tools remain enabled',
   name: NAME,
   status: 'warn',
 });

@@ -190,7 +190,9 @@ const checkoutStatusFor = async (
   ctx: CliContext,
   item: ExistingCheckout,
 ): Promise<CheckoutStatus> => {
-  const result = await ctx.runner.run('git', ['status', '--porcelain'], { cwd: item.dest });
+  const result = await ctx.runner.run('git', ['status', '--porcelain', '--ignore-submodules=all'], {
+    cwd: item.dest,
+  });
   if (result.exitCode !== SUCCESS_EXIT_CODE) {
     return { broken: true, detail: result.stderr.trim(), dirty: false, key: item.key };
   }

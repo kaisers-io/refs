@@ -43,6 +43,7 @@ const dryRunHuman = (key: string, dest: string): string[] => [
  * are reported rather than one displacing the other. */
 const dryRunWarnings = (outcome: DryRunOutcome): string[] => [
   ...warningsFor(outcome.warning),
+  ...warningsFor(outcome.gitWarning),
   ...warningsFor(outcome.detectionWarning),
 ];
 

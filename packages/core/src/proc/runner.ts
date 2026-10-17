@@ -6,17 +6,8 @@ import { armTimeout } from './spawn-timeout.ts';
 import { gitEnvironment } from './git-environment.ts';
 import { gitTimeout } from './git-timeout.ts';
 import { once } from 'node:events';
+import { runProtectedGit } from './protected-git.ts';
 import { spawn } from 'node:child_process';
-
-// Thin process-execution seam so `git/repo.ts` never calls `child_process` directly: production
-// code depends on `Runner`, tests depend on `FakeRunner` (fake-runner.ts), and only `SpawnRunner`
-// touches a real child process. `run()` never throws on a non-zero exit — a failed git command is
-// data (inspect `exitCode`/`stderr`), not a control-flow exception; callers decide what a given
-// exit code means for their operation.
-//
-// Built directly on `node:child_process.spawn` (never `execFile`/promisified variants, whose
-// throw-on-everything semantics fight the never-throw contract above, and never `shell: true` —
-// every caller passes `cmd`/`args` as separate values, so there is never a shell to inject into).
 
 type RunResult = {
   stdout: string;
@@ -25,37 +16,26 @@ type RunResult = {
   timedOut?: boolean;
   /** Tree termination was not confirmed; callers must retain/quarantine any checkout. */
   terminationFailed?: true;
-  // Present-and-`true` only when the collector's byte cap cut `stdout` short (see
-  // `spawn-collector.ts`) — never an explicit `false`, so callers branch on `=== true`. Callers
-  // that parse stdout must treat a byte-truncated result as incomplete.
   stdoutTruncated?: true;
 };
 
 type RunOpts = {
   cwd?: string;
   timeoutMs?: number;
+  gitHooksPath?: string;
 };
+
+type SpawnOpts = RunOpts & { gitEnvironment?: NodeJS.ProcessEnv; gitExecutable?: string };
 
 type Runner = {
   readonly terminationFailed?: boolean;
   run: (cmd: string, args: readonly string[], opts?: RunOpts) => Promise<RunResult>;
 };
 
-// A killed-by-signal result has no real exit code — fall back to a generic non-zero code so
-// `Runner.run`'s contract (`exitCode: number`, never throws) always holds.
 const SIGNAL_KILLED_EXIT_CODE = 1;
 
-// `timeout(1)`'s own well-known "command timed out" exit code convention, reused here (rather than
-// inventing a fresh number) purely so log/detail output reads familiarly. It is NOT a reliable
-// signal on its own — a child can genuinely exit 124 of its own accord — so callers that need to
-// distinguish "this `run()` was killed by its own `timeoutMs`" from a real exit 124 must branch on
-// `RunResult.timedOut` (below) instead of this code.
 const TIMEOUT_EXIT_CODE = 124;
 
-// Node's own `spawn()` reports a failure to even start the child (ENOENT, EACCES, ...) via an
-// `error` event rather than a normal exit — `127` is the shell convention for "command not found",
-// reused here for the same "reads familiarly in logs" reason as `TIMEOUT_EXIT_CODE` above. Nothing
-// in this codebase branches on this exact number today.
 const SPAWN_ERROR_EXIT_CODE = 127;
 
 const cwdOpt = (cwd: string | undefined): { cwd?: string } => (cwd === undefined ? {} : { cwd });
@@ -63,12 +43,6 @@ const cwdOpt = (cwd: string | undefined): { cwd?: string } => (cwd === undefined
 const withTimeoutNote = (stderr: string, timeoutMs: number | undefined): string =>
   appendNote(stderr, `refs: command timed out after ${String(timeoutMs)}ms`);
 
-// Normalizes a `run()` killed by its own `timeoutMs` into the plain `RunResult` shape both callers
-// and `FakeRunner` already understand: `TIMEOUT_EXIT_CODE` for readable logging, `timedOut: true`
-// as the actual, unambiguous signal a caller must branch on (a real child that exits 124 on its
-// own gets this same `exitCode` but never this flag), and the timeout note so `--verbose`/log
-// output still explains why the command has no real output. `stdout` is always discarded here —
-// a timed-out command's partial stdout is never useful to callers, so it is always discarded.
 const normalizeTimedOutResult = (stderr: string, timeoutMs: number | undefined): RunResult => ({
   exitCode: TIMEOUT_EXIT_CODE,
   stderr: withTimeoutNote(stderr, timeoutMs),
@@ -87,23 +61,13 @@ type RunningChild = {
 const startChild = (
   cmd: string,
   args: readonly string[],
-  opts: RunOpts | undefined,
+  opts: SpawnOpts | undefined,
 ): RunningChild => {
-  // `shell: false` is Node's default, so this changes nothing at runtime — it states the property
-  // the rest of the codebase rests on. Every argument refs passes to git is built from values a
-  // tracked repository or the user supplied (a url, a ref key, a package path), and none of them is
-  // shell-quoted on the way in, because there is no shell to quote for: `spawn` with an argv array
-  // performs an execve. Measured with a `-c core.hooksPath=/tmp/hooks; touch /tmp/PWNED` value —
-  // the file is not created.
-  //
-  // It does NOT change what code scanning reports: `js/shell-command-constructed-from-input` and
-  // its two siblings were raised again with the option spelled out. They are false positives on
-  // this call and have to be handled as such, not argued with in code.
   const timeoutMs = gitTimeout(cmd, opts?.timeoutMs);
-  const child = spawn(cmd, args, {
+  const child = spawn(cmd === 'git' ? (opts?.gitExecutable ?? cmd) : cmd, args, {
     detached: process.platform !== 'win32',
     ...cwdOpt(opts?.cwd),
-    ...(cmd === 'git' ? { env: gitEnvironment(process.env) } : {}),
+    ...(cmd === 'git' ? { env: opts?.gitEnvironment ?? gitEnvironment(process.env) } : {}),
     shell: false,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -120,15 +84,10 @@ const startChild = (
   return { child, stderrCollector, stdoutCollector, timeout, timeoutMs };
 };
 
-// The never-throw contract's last hole: `spawn()` itself can throw SYNCHRONOUSLY on an invalid
-// argument shape (e.g. an empty `cmd` throws ERR_INVALID_ARG_VALUE) — before any `error` event
-// could ever fire. Unreachable from today's call sites (all pass literal 'git'/'ssh'), but the
-// `Runner` contract is frozen: no input may escape `run()` as a rejection. Normalized to the same
-// `SPAWN_ERROR_EXIT_CODE` shape as the async `error`-event path (`waitForClose`'s catch below).
 const startChildSafely = (
   cmd: string,
   args: readonly string[],
-  opts: RunOpts | undefined,
+  opts: SpawnOpts | undefined,
 ): RunningChild | RunResult => {
   try {
     return startChild(cmd, args, opts);
@@ -151,13 +110,6 @@ const errorMessageOf = (error: unknown): string => {
   return String(error);
 };
 
-// `node:events`' `once()` gives `'error'` special handling: awaiting any OTHER event (here,
-// `'close'`) still rejects the returned promise if the child ever emits `'error'` (ENOENT,
-// EACCES, ...) — regardless of whether a plain `.on('error', ...)` listener is also attached.
-// Catching that rejection is what turns a spawn failure into `RunResult` data instead of a thrown
-// exception, preserving `Runner.run`'s never-throw contract. `close` itself still resolves this
-// promise in every other case — including a genuinely signal-killed child (`code: null`) — so
-// resolution always happens once the child's stdio streams are fully drained, never on `exit`.
 const waitForClose = async (child: ChildProcess): Promise<CloseOutcome> => {
   try {
     const [code] = (await once(child, 'close')) as [number | null, NodeJS.Signals | null];
@@ -191,8 +143,6 @@ const resolveExitCode = (code: number | null): number => {
  * prefix of a structured document can parse perfectly well as a smaller, different document. */
 const isTruncated = (result: RunResult): boolean => result.stdoutTruncated === true;
 
-// `exactOptionalPropertyTypes` + the `stdoutTruncated?: true` shape (see `RunResult`): the flag
-// is added only when the stdout collector actually hit its byte cap, never set to `false`.
 const withStdoutTruncation = (result: RunResult, stdout: CollectedStream): RunResult => {
   if (!stdout.truncated) {
     return result;
@@ -202,12 +152,6 @@ const withStdoutTruncation = (result: RunResult, stdout: CollectedStream): RunRe
 
 const buildCloseResult = (ctx: CloseContext): RunResult => {
   if (ctx.timedOut) {
-    // Truncation is published here too. A run can both hit the stream cap and then time out, and
-    // this branch reported only the timeout, dropping the flag — not disagreeing with the stderr
-    // note, which this branch never reaches either, but silently losing the fact. Unreachable for
-    // every caller that branches on `timedOut` or on the exit code first, which is why it never
-    // showed. The flag is what callers are told to trust, so it has to be right wherever it is
-    // computed.
     return withStdoutTruncation(
       normalizeTimedOutResult(ctx.stderr.text, ctx.timeoutMs),
       ctx.stdout,
@@ -263,7 +207,7 @@ const finishChild = async (running: RunningChild, outcome: CloseOutcome): Promis
 const runProcess = async (
   cmd: string,
   args: readonly string[],
-  opts?: RunOpts,
+  opts?: SpawnOpts,
 ): Promise<RunResult> => {
   installCleanupOnce();
   const running = startChildSafely(cmd, args, opts);
@@ -281,12 +225,34 @@ const runProcess = async (
 class SpawnRunner implements Runner {
   terminationFailed = false;
 
-  async run(cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> {
+  readonly #gitHooksPath: string | undefined;
+
+  constructor(gitHooksPath?: string) {
+    this.#gitHooksPath = gitHooksPath;
+  }
+
+  async #runRaw(cmd: string, args: readonly string[], opts?: SpawnOpts): Promise<RunResult> {
     const result = this.terminationFailed
       ? unsafeResult('refs: refusing further commands after unconfirmed subprocess termination')
       : await runProcess(cmd, args, opts);
     this.terminationFailed ||= result.terminationFailed === true;
     return result;
+  }
+
+  async run(cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> {
+    const configured =
+      this.#gitHooksPath === undefined ? opts : { gitHooksPath: this.#gitHooksPath, ...opts };
+    const result =
+      cmd === 'git'
+        ? await runProtectedGit(
+            (query, options) => this.#runRaw('git', query, options),
+            args,
+            configured,
+          )
+        : await this.#runRaw(cmd, args, configured);
+    return this.terminationFailed && result.terminationFailed !== true
+      ? unsafeResult('refs: Git safety inventory could not confirm subprocess termination')
+      : result;
   }
 }
 
@@ -297,4 +263,4 @@ export {
   TIMEOUT_EXIT_CODE,
   isTruncated,
 };
-export type { Runner, RunOpts, RunResult };
+export type { Runner, RunOpts, RunResult, SpawnOpts };

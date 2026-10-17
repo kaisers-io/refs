@@ -8,12 +8,12 @@ import {
   syncRef,
   tagExists,
 } from '../../src/git/repo.ts';
+import { createManagedHome, managedHooksFixture } from '../helpers/managed-hooks-fixture.ts';
 import { describe, expect, it } from 'vitest';
 import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { SpawnRunner } from '../../src/proc/runner.ts';
 import { join } from 'node:path';
 import { listTags } from '../../src/git/tags.ts';
-import { resolveHome } from '../../src/home.ts';
 import { tmpdir } from 'node:os';
 
 // Real git integration suite: exercises SpawnRunner against actual git repos ('file://' fixtures),
@@ -27,14 +27,6 @@ const SUITE_OPTS = { timeout: SLOW_IO_TIMEOUT_MS };
 const runner = new SpawnRunner();
 
 const makeDest = (): Promise<string> => mkdtemp(join(tmpdir(), 'refs-checkout-'));
-// `ReturnType<typeof resolveHome>` (not a named `RefsHome` type import) sidesteps this repo's
-// Known `no-duplicate-imports` / `consistent-type-specifier-style` conflict — see the identical
-// Convention in test/home.test.ts.
-const makeHome = async (): Promise<ReturnType<typeof resolveHome>> => {
-  const dir = await mkdtemp(join(tmpdir(), 'refs-home-'));
-  return resolveHome({ REFS_HOME: dir });
-};
-
 const plainClone = async (url: string, dest: string): Promise<void> => {
   const result = await runner.run('git', ['clone', '-q', '--', url, dest]);
   if (result.exitCode === SUCCESS_EXIT_CODE) {
@@ -47,16 +39,16 @@ const plainClone = async (url: string, dest: string): Promise<void> => {
 // is given — the marker `cloneRepo` stamps on every checkout it produces. See
 // `managed-checkout-guard.test.ts`. Fixtures that only need a plain clone plus that marker (not
 // the full `cloneRepo`/`installHooksGuard` machinery) use this instead of `plainClone` directly.
-const MANAGED_HOOKS_MARKER = '/managed-checkout-marker';
+const managedHooks = managedHooksFixture();
 
 const managedClone = async (url: string, dest: string): Promise<void> => {
   await plainClone(url, dest);
-  await runner.run('git', ['config', 'core.hooksPath', MANAGED_HOOKS_MARKER], { cwd: dest });
+  await runner.run('git', ['config', 'core.hooksPath', managedHooks.hooksDir], { cwd: dest });
 };
 
 /** `syncRef` against a checkout carrying the marker, with the hooks directory it must match. */
 const syncManaged = (dir: string) =>
-  syncRef(runner, { defaultBranch: 'main', dir, hooksDir: MANAGED_HOOKS_MARKER });
+  syncRef(runner, { defaultBranch: 'main', dir, hooksDir: managedHooks.hooksDir });
 
 const headSha = async (dir: string): Promise<string> => {
   const result = await runner.run('git', ['rev-parse', 'HEAD'], { cwd: dir });
@@ -79,7 +71,7 @@ describe('cloneRepo()', SUITE_OPTS, () => {
   it('clones blobless from a file:// fixture, configures hooksPath, reports effective mode', async () => {
     expect.hasAssertions();
     const fixture = await createFixtureRepo();
-    const home = await makeHome();
+    const home = await createManagedHome();
     const dest = await makeDest();
 
     const result = await cloneRepo(runner, {
@@ -207,7 +199,7 @@ describe('syncRef() restore semantics', SUITE_OPTS, () => {
     const result = await syncRef(runner, {
       defaultBranch: 'main',
       dir,
-      hooksDir: MANAGED_HOOKS_MARKER,
+      hooksDir: managedHooks.hooksDir,
     });
 
     expect(result.status).toBe('restored');
@@ -250,7 +242,7 @@ describe('listTags / tagExists', SUITE_OPTS, () => {
 describe('installHooksGuard()', SUITE_OPTS, () => {
   it('blocks commits inside a guarded checkout', async () => {
     expect.hasAssertions();
-    const [fixture, home] = await Promise.all([createFixtureRepo(), makeHome()]);
+    const [fixture, home] = await Promise.all([createFixtureRepo(), createManagedHome()]);
     await installHooksGuard(home);
     const dest = await makeDest();
     await cloneRepo(runner, { cloneUrl: fixture.url, dest, hooksDir: home.hooksDir, mode: 'full' });

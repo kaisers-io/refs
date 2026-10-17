@@ -18,6 +18,52 @@ credited unless they ask not to be.
 Only the latest released version receives security fixes. `refs` is pre-1.0 and moves quickly;
 there are no long-term support branches.
 
+## Git execution controls in unreleased builds
+
+References are source to clone and read, never programs to run. Before its own Git operations,
+refs inventories system, global, repository, worktree and injected command-scope configuration,
+then recursively visits every include, including inactive `includeIf` branches. Git itself parses
+and expands paths. Unreadable, cyclic, oversized, malformed or unrepresentable configuration
+fails closed. Like Git, refs may ignore a missing external include, but only after checking that
+no current or prospective reference checkout can create or redirect it. Existing symlink targets
+and path prefixes are checked too; dangling links and unresolved dot components are refused.
+Windows drive-rooted includes are inspected on every relevant client worktree drive; unsupported
+device-namespace paths are refused. Config and helper paths are checked through every intermediate
+alias, not only at their final targets. On macOS and Windows, a still-absent protected directory also protects
+its nearest existing ancestor against missing config/helper paths, avoiding guesses about filesystem
+case, Unicode and Windows short-name aliases. This can refuse missing sibling paths until the protected directory exists;
+the CLI creates its owned source directories before cloning. Config loaded from reference content is refused. New clones use an empty template so
+template config cannot introduce uninspected commands.
+
+Each inventoried configured hook is disabled by friendly name. This covers Git 2.54 (which lacks
+event switches) and the event-name collision in Git 2.55. Traditional hooks use the refs-owned
+hooks directory in command scope; fsmonitor receives an empty value, safe on Git 2.35.1 as well.
+Configured filters have their commands emptied and `required=true`: an unrelated checkout still
+works, but selecting a filter fails explicitly. refs never silently substitutes unfiltered content.
+Automatic maintenance and submodule recursion are disabled. Custom remote helpers, upload-pack
+commands and alternate-ref commands outside the supported policy are refused.
+
+Authentication and transport remain a **trusted local toolchain boundary**. Credential helpers,
+askpass, SSH/proxy commands, the Git executable and its helper search paths must be trustworthy and
+must not load code from reference directories. refs rejects relative or reference-owned executable
+search paths, identifiable checkout-relative helper/script paths, relative SSH configuration paths,
+and unsupported shell control or expansion syntax. Simple external credential helpers and SSH
+commands remain usable for private repositories. These checks are deliberately bounded: the selected
+external programs, their runtime environment, and the configuration they themselves load remain
+trusted. refs cannot prove arbitrary local programs never interpret a reference file.
+
+Transport selection is restricted to HTTP(S), SSH, Git and file transport, respecting any stricter
+caller allowlist. `REFS_ALLOW_FILE_URLS=1` permits explicit local source URLs; a trusted `insteadOf`
+rule can also select file transport. Local source repository metadata is trusted, including any
+server-side configuration used by its upload-pack process. Client policy is not a sandbox for a
+local Git server. Concurrent hostile changes to trusted local configuration or executables are
+outside this guarantee.
+
+`add` prints the execution-surface baseline before cloning, including on stderr with `--json`.
+That diagnostic is visibility, not approval or the enforcement inventory. The shared Git runner
+applies the same policy during inspection, final registration and later sync. The historical
+measurements below describe the vulnerabilities that motivated these controls.
+
 ## What is in scope
 
 - Command injection or argument injection through ref names, URLs, tags, or configuration values.
@@ -31,7 +77,7 @@ there are no long-term support branches.
   defeat that is in scope.
 
   `core.hooksPath` governs hooks-*directory* discovery, which is what stops a hook file living
-  inside a checkout from running. Other git mechanisms do not route through it. Measured on git
+  inside a checkout from running. Other git mechanisms do not route through it. Before these controls, measured on git
   2.54 against a real clone with `core.hooksPath` correctly pinned: a configured hook
   (`[hook "x"] event = post-checkout; command = ./script.sh`) ran the **checkout's** copy of that
   script during `refs add` and `refs sync`, and an attribute-selected filter
@@ -41,9 +87,8 @@ there are no long-term support branches.
 
   Each needs a definition already present in the invoking user's own git configuration. A tracked
   repository cannot create one, and its `.gitattributes` can only choose when an existing filter
-  applies. `refs doctor`'s `git-exec-surfaces` check reports such a definition rather than `refs`
-  sanitising the ambient configuration, because that same configuration carries the credential
-  helpers, proxies and `insteadOf` rules a private clone needs.
+  applies. `refs doctor`'s `git-exec-surfaces` check reports such definitions. Enforcement now disables the relevant execution mechanisms while
+  preserving trusted credential helpers, proxies and `insteadOf` rules needed by private clones.
 
   That check reports **presence, not safety**. Whether a given command reaches a checkout's content
   depends on the command, and deciding that would mean proving an arbitrary interpreter never loads
@@ -83,8 +128,8 @@ dependency is a real residual risk and prose in a skill does not remove it. What
 is narrower, and worth stating exactly:
 
 - `refs` never runs a checkout's own code through a hook *inside* the checkout (the
-  `core.hooksPath` note above), and `refs doctor` reports the configured mechanisms that note
-  describes as outside it.
+  `core.hooksPath` note above), and its execution policy additionally covers configured hooks, filters and fsmonitor as
+  described above. Trusted local authentication and transport programs are a separate assumption.
 - **`refs` never imports a description out of a checkout's manifests.** A package `description` is
   the one field in `config.toml` that exists to hold prose, and workspace detection does not read it
   — it carries a package's name and path and nothing else. Every description is written by whoever

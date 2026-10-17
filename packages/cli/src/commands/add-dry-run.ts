@@ -36,6 +36,7 @@ import {
 import { refTagFormat, withTagFormats } from './add-tag-formats.ts';
 import type { CliContext } from '../context.ts';
 import type { ResolvedSource } from './add-source.ts';
+import { addGitWarning } from './add-git-warning.ts';
 import { discoveryObstacle } from './workspace-diagnostics.ts';
 import { ensureClonedCheckout } from './add-checkout-guards.ts';
 import { progress } from '../output.ts';
@@ -47,6 +48,7 @@ import { withCheckoutProtection } from './clone-lifecycle.ts';
 
 type DryRunOutcome = {
   dest: string;
+  gitWarning?: string;
   /** Two independent things can be worth saying about one dry-run — the clone fell back, and the
    * scan could not read the workspace declaration — so they are collected rather than competing
    * for one `warning` field. The envelope's `warnings` is already an array. */
@@ -167,17 +169,16 @@ type CloneAndDetectOpts = {
 };
 
 type CloneAndDetectResult = {
+  gitWarning?: string;
   effectiveMode?: CloneMode;
   fields: DetectedFields;
   warning?: string;
 };
 
-// Clone (idempotent — reuses a healthy existing checkout) and detect, both under the per-ref lock:
-// keeps the checkout stable between cloning and reading it back, rather than racing a concurrent
-// `refs sync`/`refs add` on the same ref.
 const cloneAndDetect = (ctx: CliContext, opts: CloneAndDetectOpts): Promise<CloneAndDetectResult> =>
   withLock(opts.home, refLockName(opts.resolved.key), () =>
     withCheckoutProtection(ctx.runner, opts, async () => {
+      const gitWarning = await addGitWarning(ctx, opts.home.root);
       const cloneOutcome = await ensureClonedCheckout(ctx, {
         allowFileUrls: allowFileUrlsFrom(ctx.env),
         cloneUrl: opts.resolved.cloneUrl,
@@ -187,7 +188,10 @@ const cloneAndDetect = (ctx: CliContext, opts: CloneAndDetectOpts): Promise<Clon
         mode: opts.cloneMode,
       });
       const fields = await detectProposalFields(ctx, opts.dest, opts.resolved);
-      const result: CloneAndDetectResult = { fields };
+      const result: CloneAndDetectResult = {
+        fields,
+        ...(gitWarning === undefined ? {} : { gitWarning }),
+      };
       if (cloneOutcome.effectiveMode !== undefined) {
         result.effectiveMode = cloneOutcome.effectiveMode;
       }
@@ -236,9 +240,10 @@ const proposalFrom = (fields: DetectedFields, resolved: ResolvedSource): Proposa
  * `exactOptionalPropertyTypes` distinguishes an absent key from one set to `undefined`, and all
  * four of these are genuinely absent most of the time. */
 const buildDryRunOutcome = (opts: BuildDryRunOutcomeOpts): DryRunOutcome => {
-  const { effectiveMode, fields, warning } = opts.cloneResult;
+  const { effectiveMode, fields, gitWarning, warning } = opts.cloneResult;
   return {
     dest: opts.dest,
+    ...(gitWarning === undefined ? {} : { gitWarning }),
     proposal: proposalFrom(fields, opts.resolved),
     ...(fields.detectionWarning === undefined ? {} : { detectionWarning: fields.detectionWarning }),
     ...(fields.rootPackageName === undefined ? {} : { rootPackageName: fields.rootPackageName }),

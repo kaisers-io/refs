@@ -16,6 +16,10 @@ const REPOSITORY_VARIABLES = new Set([
   'GIT_SHALLOW_FILE',
   'GIT_COMMON_DIR',
   'GIT_INTERNAL_SUPER_PREFIX',
+  // Git for Windows can redirect these streams before main(), hiding configuration inventory.
+  'GIT_REDIRECT_STDIN',
+  'GIT_REDIRECT_STDOUT',
+  'GIT_REDIRECT_STDERR',
 ]);
 
 // Never modify process.env: refs may be embedded, or invoked from a Git hook that still needs

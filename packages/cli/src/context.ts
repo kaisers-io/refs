@@ -1,5 +1,5 @@
 import type { Fetcher, Runner } from '@kaisers-io/refs-core';
-import { SpawnRunner } from '@kaisers-io/refs-core';
+import { SpawnRunner, resolveHome } from '@kaisers-io/refs-core';
 import type { Spinner } from './spinner.ts';
 import { createSpinner } from './spinner.ts';
 import { homedir } from 'node:os';
@@ -79,6 +79,16 @@ const safeHomedir = (): string => {
   }
 };
 
+// Help/version still work when the OS cannot resolve a home. Checkout commands resolve their
+// home separately and cannot operate without it; an explicit REFS_HOME remains sufficient.
+const realRunner = (): SpawnRunner => {
+  try {
+    return new SpawnRunner(resolveHome(process.env).hooksDir);
+  } catch {
+    return new SpawnRunner();
+  }
+};
+
 const realContext = (): CliContext => ({
   cliVersion: pkg.version,
   cwd: process.cwd(),
@@ -93,7 +103,7 @@ const realContext = (): CliContext => ({
     process.stdout.write(`${line}\n`);
   },
   readStdin: readRealStdin,
-  runner: new SpawnRunner(),
+  runner: realRunner(),
   spinner: () =>
     createSpinner({ env: process.env, platform: process.platform, stream: process.stderr }),
 });

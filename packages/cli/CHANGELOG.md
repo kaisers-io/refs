@@ -23,6 +23,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Prevent configured hooks, fsmonitor and content filters from executing reference source during
+  refs' Git operations. Inventory every reachable Git include, including inactive conditional
+  includes, and refuse configurations that cannot be verified. Missing external includes remain
+  compatible with Git and CI checkout authentication after prospective-path and alias checks.
+  Validate intermediate configuration and helper aliases, not only their final external targets.
+  Refuse non-directory include ancestors consistently across platforms.
+  Filters selected by attributes fail
+  explicitly instead of executing or silently changing checkout content. Preserve trusted
+  authentication and supported transport configuration; disable custom clone templates, automatic
+  maintenance and submodule recursion. Show the execution diagnostic before cloning.
+
 - Isolate refs’ Git children from inherited repository-local environment variables, so add
   and sync cannot redirect their checks or destructive operations into the caller’s repository.
   Authentication, transport and injected command-scope configuration remain available.

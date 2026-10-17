@@ -18,6 +18,9 @@ const LOCAL_NAMES = [
   'GIT_SHALLOW_FILE',
   'GIT_COMMON_DIR',
   'GIT_INTERNAL_SUPER_PREFIX',
+  'GIT_REDIRECT_STDIN',
+  'GIT_REDIRECT_STDOUT',
+  'GIT_REDIRECT_STDERR',
 ];
 const RETAINED = {
   GIT_ASKPASS: 'askpass',
@@ -59,7 +62,12 @@ describe('git child environment', () => {
 
   it('recognizes mixed-case names only on Windows', () => {
     expect.hasAssertions();
-    const env = { Git_Dir: 'sentinel', Path: 'path', git_index_file: 'index' };
+    const env = {
+      Git_Dir: 'sentinel',
+      Git_Redirect_Stdout: 'hidden',
+      Path: 'path',
+      git_index_file: 'index',
+    };
     expect(gitEnvironment(env, 'win32')).toStrictEqual({ GIT_TERMINAL_PROMPT: '0', Path: 'path' });
     expect(gitEnvironment(env, 'linux')).toStrictEqual({ ...env, GIT_TERMINAL_PROMPT: '0' });
   });
