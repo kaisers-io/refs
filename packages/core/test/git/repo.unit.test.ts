@@ -198,7 +198,7 @@ describe('cloneRepo argument hygiene', () => {
 
   const cloneWith = async (mode: 'blobless' | 'full'): Promise<readonly string[]> => {
     const runner = new FakeRunner();
-    runner.expect('git clone', {});
+    runner.expect('git -c core.hooksPath=/tmp/refs-unit-hooks clone', {});
     runner.expect('git config core.hooksPath', {});
     await cloneRepo(runner, {
       cloneUrl: HOSTILE_URL,
@@ -212,6 +212,8 @@ describe('cloneRepo argument hygiene', () => {
   it('puts `--` before the url so a flag-shaped url cannot be read as an option', async () => {
     expect.hasAssertions();
     await expect(cloneWith('full')).resolves.toStrictEqual([
+      '-c',
+      'core.hooksPath=/tmp/refs-unit-hooks',
       'clone',
       '-q',
       '-c',
@@ -225,6 +227,8 @@ describe('cloneRepo argument hygiene', () => {
   it('keeps the filter ahead of `--`, where git still reads it as an option', async () => {
     expect.hasAssertions();
     await expect(cloneWith('blobless')).resolves.toStrictEqual([
+      '-c',
+      'core.hooksPath=/tmp/refs-unit-hooks',
       'clone',
       '-q',
       '-c',

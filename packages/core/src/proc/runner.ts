@@ -3,6 +3,7 @@ import { appendNote, createCollector, withTruncationNote } from './spawn-collect
 import type { ChildProcess } from 'node:child_process';
 import type { CollectedStream } from './spawn-collector.ts';
 import { armTimeout } from './spawn-timeout.ts';
+import { gitEnvironment } from './git-environment.ts';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
 
@@ -100,6 +101,7 @@ const startChild = (
   // this call and have to be handled as such, not argued with in code.
   const child = spawn(cmd, args, {
     ...cwdOpt(opts?.cwd),
+    ...(cmd === 'git' ? { env: gitEnvironment(process.env) } : {}),
     shell: false,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
