@@ -14,7 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   transitive packages bundled into the CLI, such as `brace-expansion` via `minimatch`, dropped out of
   Dependabot alerts. A new CI workflow runs `pnpm audit` over the whole lockfile on every pull
   request and weekly, and fails when the audit covers fewer registry packages than the lockfile
-  holds, so a scanner that reads one document cannot pass as a clean result.
+  holds, so a scanner that reads one document cannot pass as a clean result. Advisories listed in
+  pnpm's `auditConfig.ignoreGhsas` are honoured.
 
 ## [0.18.2] - 2026-10-13
 

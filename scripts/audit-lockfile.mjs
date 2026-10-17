@@ -21,6 +21,7 @@
 //
 // Exit codes keep the three failures apart, because they call for different responses:
 //   0  every package audited, no advisory at severity low or above
+//      (advisories ignored through pnpm's `auditConfig.ignoreGhsas` do not count)
 //   1  advisories found
 //   2  the audit covered fewer packages than the lockfile's registry packages
 //   3  the audit did not complete (registry or network error): NOT a clean result
@@ -36,7 +37,7 @@ const EXIT_ADVISORIES = 1;
 const EXIT_COVERAGE = 2;
 const EXIT_INCOMPLETE = 3;
 // `info` is reported but never fails the run: it is not a vulnerability.
-const FAILING_SEVERITIES = ['low', 'moderate', 'high', 'critical'];
+const FAILING_SEVERITIES = new Set(['low', 'moderate', 'high', 'critical']);
 // Lines of pnpm's own error output quoted when the audit did not complete.
 const DETAIL_LINES = 5;
 
@@ -74,8 +75,14 @@ const lockfileInventory = (text) => {
   };
 };
 
-const countFailing = (vulnerabilities) =>
-  FAILING_SEVERITIES.reduce((sum, severity) => sum + (Number(vulnerabilities[severity]) || 0), 0);
+// Read from `advisories`, not `metadata.vulnerabilities`: pnpm drops the advisories a repository
+// ignores through `auditConfig.ignoreGhsas` from the first and exits 0, but still counts them in the
+// second (pnpm 12.11.2). Counting metadata would keep the run red over an advisory the maintainers
+// chose to ignore, with no advisory left to name.
+const failingAdvisories = (report) =>
+  Object.values(report.advisories).filter((advisory) =>
+    FAILING_SEVERITIES.has(advisory?.severity),
+  );
 
 const parseJson = (text) => {
   try {
@@ -100,8 +107,10 @@ const parseReport = ({ status, stdout, stderr }) => {
   const report = parseJson(stdout);
   const metadata = report?.metadata;
   const complete =
-    typeof metadata?.totalDependencies === 'number' && typeof metadata.vulnerabilities === 'object';
-  if (!complete || (status !== 0 && countFailing(metadata.vulnerabilities) === 0)) {
+    typeof metadata?.totalDependencies === 'number' &&
+    typeof metadata.vulnerabilities === 'object' &&
+    typeof report.advisories === 'object';
+  if (!complete || (status !== 0 && failingAdvisories(report).length === 0)) {
     const detail = firstLines(stderr || stdout) || 'no output';
     throw new AuditFailureError(
       `pnpm audit did not complete (exit ${status}): ${detail}. This is not a clean result.`,
@@ -129,8 +138,8 @@ const checkCoverage = (inventory, report) => {
   }
 };
 
-const describeAdvisories = (report) =>
-  Object.values(report.advisories ?? {}).map((advisory) => {
+const describeAdvisories = (advisories) =>
+  advisories.map((advisory) => {
     const versions = [...new Set((advisory.findings ?? []).map((finding) => finding.version))];
     const at = versions.length > 0 ? `@${versions.join(',')}` : '';
     return `${advisory.severity}: ${advisory.module_name}${at} ${advisory.title} ${advisory.url ?? ''}`.trim();
@@ -158,21 +167,23 @@ const runAudit = async () => {
   return { status, stderr, stdout };
 };
 
-const report = (inventory, { metadata }) => {
+const report = (inventory, { metadata }, failing) => {
   console.log(
     `pnpm audit covered ${metadata.totalDependencies} packages; ${LOCKFILE} holds ${inventory.packages.size} ` +
       `registry packages (${perDocument(inventory)}).`,
   );
-  console.log(`advisories by severity: ${JSON.stringify(metadata.vulnerabilities)}`);
+  console.log(`pnpm metadata by severity, ignored advisories included: ${JSON.stringify(metadata.vulnerabilities)}`);
+  console.log(`advisories at low or above, after auditConfig ignores: ${failing.length}`);
 };
 
 const main = async () => {
   const inventory = lockfileInventory(await readFile(LOCKFILE, 'utf8'));
   const audit = parseReport(await runAudit());
   checkCoverage(inventory, audit);
-  report(inventory, audit);
-  if (countFailing(audit.metadata.vulnerabilities) > 0) {
-    for (const line of describeAdvisories(audit)) {
+  const failing = failingAdvisories(audit);
+  report(inventory, audit, failing);
+  if (failing.length > 0) {
+    for (const line of describeAdvisories(failing)) {
       console.error(`::error::${line}`);
     }
     process.exitCode = EXIT_ADVISORIES;

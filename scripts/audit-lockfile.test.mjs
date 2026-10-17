@@ -79,6 +79,8 @@ const PACKAGES = 4;
 const FIRST_DOCUMENT_ONLY = 2;
 // pnpm also counts some entries that are not registry packages, such as `node@runtime:`.
 const MORE_THAN_REGISTRY = 5;
+const IGNORED_MODERATE = 2;
+const IGNORED_HIGH = 3;
 
 const severities = (moderate) => ({ critical: 0, high: 0, info: 0, low: 0, moderate });
 
@@ -173,9 +175,21 @@ test('advisories fail the run and name the package, version and advisory', async
   );
 });
 
+// pnpm 12.11.2 with `auditConfig.ignoreGhsas` covering every advisory: `advisories` is empty and the
+// exit is 0, but `metadata.vulnerabilities` still counts the ignored ones.
+test('advisories ignored through pnpm’s auditConfig do not fail the run', async () => {
+  const report = clean(PACKAGES);
+  // The counts pnpm reported for this repository at 0.18.1 with all five advisories ignored.
+  report.metadata.vulnerabilities = { ...severities(IGNORED_MODERATE), high: IGNORED_HIGH };
+  const result = await run({ stdout: report });
+  strictEqual(result.status, EXIT_OK, result.stderr);
+  match(result.stdout, /advisories at low or above, after auditConfig ignores: 0/u);
+});
+
 test('an info-level advisory alone does not fail the run', async () => {
   const report = clean(PACKAGES);
   report.metadata.vulnerabilities.info = 1;
+  report.advisories = { 2: { ...advisory.advisories[1], severity: 'info' } };
   const result = await run({ stdout: report });
   strictEqual(result.status, EXIT_OK, result.stderr);
 });

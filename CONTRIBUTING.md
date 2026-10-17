@@ -57,6 +57,9 @@ transitive packages. To run it locally:
 node scripts/audit-lockfile.mjs   # exit 1 advisories, 2 lockfile partly unaudited, 3 audit incomplete
 ```
 
+To accept an advisory that does not apply, add its GHSA ID to `auditConfig.ignoreGhsas` in
+`pnpm-workspace.yaml`, with a comment saying why; the check honours pnpm's ignore list.
+
 If you touched anything under `skills/`, CI also runs the skill audit (`.github/workflows/skill-audit.yml`),
 which is the pre-flight for the vendor audits skills.sh publishes on the skill's public page after
 release. To run the same gate locally:
