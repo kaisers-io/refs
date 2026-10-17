@@ -39,6 +39,7 @@ import type { ResolvedSource } from './add-source.ts';
 import { discoveryObstacle } from './workspace-diagnostics.ts';
 import { ensureClonedCheckout } from './add-checkout-guards.ts';
 import { progress } from '../output.ts';
+import { withCheckoutProtection } from './clone-lifecycle.ts';
 
 // The `--dry-run` core: resolve source → conflict/collision guards → idempotent clone → detect
 // default branch/tags/workspace packages → shape a `Proposal`. Shared by both `refs add --dry-run`
@@ -175,25 +176,27 @@ type CloneAndDetectResult = {
 // keeps the checkout stable between cloning and reading it back, rather than racing a concurrent
 // `refs sync`/`refs add` on the same ref.
 const cloneAndDetect = (ctx: CliContext, opts: CloneAndDetectOpts): Promise<CloneAndDetectResult> =>
-  withLock(opts.home, refLockName(opts.resolved.key), async () => {
-    const cloneOutcome = await ensureClonedCheckout(ctx, {
-      allowFileUrls: allowFileUrlsFrom(ctx.env),
-      cloneUrl: opts.resolved.cloneUrl,
-      dest: opts.dest,
-      home: opts.home,
-      hooksDir: opts.home.hooksDir,
-      mode: opts.cloneMode,
-    });
-    const fields = await detectProposalFields(ctx, opts.dest, opts.resolved);
-    const result: CloneAndDetectResult = { fields };
-    if (cloneOutcome.effectiveMode !== undefined) {
-      result.effectiveMode = cloneOutcome.effectiveMode;
-    }
-    if (cloneOutcome.warning !== undefined) {
-      result.warning = cloneOutcome.warning;
-    }
-    return result;
-  });
+  withLock(opts.home, refLockName(opts.resolved.key), () =>
+    withCheckoutProtection(ctx.runner, opts, async () => {
+      const cloneOutcome = await ensureClonedCheckout(ctx, {
+        allowFileUrls: allowFileUrlsFrom(ctx.env),
+        cloneUrl: opts.resolved.cloneUrl,
+        dest: opts.dest,
+        home: opts.home,
+        hooksDir: opts.home.hooksDir,
+        mode: opts.cloneMode,
+      });
+      const fields = await detectProposalFields(ctx, opts.dest, opts.resolved);
+      const result: CloneAndDetectResult = { fields };
+      if (cloneOutcome.effectiveMode !== undefined) {
+        result.effectiveMode = cloneOutcome.effectiveMode;
+      }
+      if (cloneOutcome.warning !== undefined) {
+        result.warning = cloneOutcome.warning;
+      }
+      return result;
+    }),
+  );
 
 type BuildDryRunOutcomeOpts = {
   cloneResult: CloneAndDetectResult;

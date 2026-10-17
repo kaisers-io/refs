@@ -32,9 +32,23 @@ const RETAINED = {
   GIT_TRACE: '1',
   HTTPS_PROXY: 'proxy',
   PATH: 'path',
+  SSH_ASKPASS: 'ssh-askpass',
+  SSH_AUTH_SOCK: '/dummy-agent-socket',
 };
 
 describe('git child environment', () => {
+  it('defaults terminal prompts off, preserving askpass and explicit overrides', () => {
+    expect.hasAssertions();
+    expect(gitEnvironment({ GIT_ASKPASS: 'askpass' })).toStrictEqual({
+      GIT_ASKPASS: 'askpass',
+      GIT_TERMINAL_PROMPT: '0',
+    });
+    expect(gitEnvironment({ GIT_TERMINAL_PROMPT: '' })['GIT_TERMINAL_PROMPT']).toBe('');
+    expect(gitEnvironment({ Git_Terminal_Prompt: '1' }, 'win32')).toStrictEqual({
+      Git_Terminal_Prompt: '1',
+    });
+  });
+
   it('removes every repository-local variable without mutating its parent', () => {
     expect.hasAssertions();
     const inherited = Object.fromEntries(LOCAL_NAMES.map((key) => [key, 'sentinel']));
@@ -46,8 +60,8 @@ describe('git child environment', () => {
   it('recognizes mixed-case names only on Windows', () => {
     expect.hasAssertions();
     const env = { Git_Dir: 'sentinel', Path: 'path', git_index_file: 'index' };
-    expect(gitEnvironment(env, 'win32')).toStrictEqual({ Path: 'path' });
-    expect(gitEnvironment(env, 'linux')).toStrictEqual(env);
+    expect(gitEnvironment(env, 'win32')).toStrictEqual({ GIT_TERMINAL_PROMPT: '0', Path: 'path' });
+    expect(gitEnvironment(env, 'linux')).toStrictEqual({ ...env, GIT_TERMINAL_PROMPT: '0' });
   });
 });
 
@@ -57,7 +71,7 @@ describe('installed Git environment contract', () => {
     const { stdout } = await promisify(execFile)('git', ['rev-parse', '--local-env-vars']);
     const names = stdout.trim().split(/\r?\n/u);
     const inherited = Object.fromEntries(names.map((name) => [name, 'sentinel']));
-    const retained = Object.keys(gitEnvironment(inherited));
+    const retained = Object.keys(gitEnvironment(inherited)).filter((name) => names.includes(name));
     const injected = names.filter((name) =>
       ['GIT_CONFIG_COUNT', 'GIT_CONFIG_PARAMETERS'].includes(name),
     );

@@ -1,6 +1,7 @@
 import type { Config, RefsHome, State } from '@kaisers-io/refs-core';
 import { isEnoent, isGitCheckout, readState, zState } from '@kaisers-io/refs-core';
 import type { CheckResult } from './doctor-types.ts';
+import { hasIncompleteClone } from './clone-lifecycle.ts';
 import { join } from 'node:path';
 import { readdir } from 'node:fs/promises';
 import { rmCommand } from '../shell-quote.ts';
@@ -42,7 +43,7 @@ const findCheckoutSegments = async (
   dir: string,
   segments: readonly string[],
 ): Promise<string[][]> => {
-  if (isGitCheckout(dir)) {
+  if (hasIncompleteClone(dir) || isGitCheckout(dir)) {
     return [[...segments]];
   }
   const names = await listSubdirNames(dir);
@@ -68,6 +69,9 @@ type OrphanCandidate = {
 };
 
 const classifyOrphan = (candidate: OrphanCandidate, state: State, now: number): string => {
+  if (hasIncompleteClone(candidate.dest)) {
+    return `${candidate.key}: quarantined checkout — stop any remaining Git/helper processes before manual cleanup`;
+  }
   if (isFreshPendingProposal(state, candidate.key, now)) {
     return `${candidate.key}: pending add`;
   }

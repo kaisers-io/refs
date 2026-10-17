@@ -24,7 +24,7 @@ import { join } from 'node:path';
 // `--`; `option-injection.test.ts` covers that separately. This file is about the shell.
 
 const SRC = join(import.meta.dirname, '..', '..', 'src');
-/** The one module allowed to start a process. */
+/** The general process seam; process-tree.ts only launches the fixed taskkill utility. */
 const RUNNER = 'proc/runner.ts';
 /** Always a shell, whatever is passed: no argv form, no `shell` option to turn off. */
 const SHELL_APIS = ['exec', 'execSync', 'execFile', 'execFileSync', 'spawnSync'];
@@ -54,7 +54,7 @@ const productionSources = async (): Promise<{ path: string; text: string }[]> =>
 const IMPORTS_VALUE = /^import\s+(?!type\b)[^;]*from\s+'node:child_process';/mu;
 
 describe('the process-execution surface', () => {
-  it('starts a process in exactly one module', async () => {
+  it('limits process creation to the runner and fixed taskkill helper', async () => {
     expect.hasAssertions();
 
     const sources = await productionSources();
@@ -64,19 +64,20 @@ describe('the process-execution surface', () => {
 
     // Not a style rule. Every guard that keeps a value out of a command — the `--` terminators, the
     // url canonicalisation, the hooks-path ownership — is written once, at this seam. A second
-    // entry point is a second place to remember all of them.
-    expect(starters).toStrictEqual([RUNNER]);
+    expect(starters.toSorted()).toStrictEqual(['proc/process-tree.ts', RUNNER]);
   });
 
   it('never reaches for an API that is a shell by construction', async () => {
     expect.hasAssertions();
 
     const sources = await productionSources();
-    const offenders = sources.flatMap((file) =>
-      SHELL_APIS.filter((api) =>
-        new RegExp(String.raw`\b${api}\b[^\n]*from\s+'node:child_process'`, 'u').test(file.text),
-      ).map((api) => `${file.path}: ${api}`),
-    );
+    const offenders = sources
+      .filter((file) => file.path !== 'proc/process-tree.ts')
+      .flatMap((file) =>
+        SHELL_APIS.filter((api) =>
+          new RegExp(String.raw`\b${api}\b[^\n]*from\s+'node:child_process'`, 'u').test(file.text),
+        ).map((api) => `${file.path}: ${api}`),
+      );
 
     // `execSync('git ' + value)` is the shape the whole quoting discipline assumes does not exist.
     // It has no `shell: false` to reach for, so nothing downstream can make it safe.

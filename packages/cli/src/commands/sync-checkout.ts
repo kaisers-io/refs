@@ -1,5 +1,6 @@
 import type { CloneMode, RefEntry, RefKey, RefsHome, Settings } from '@kaisers-io/refs-core';
 import { allowFileUrlsFrom, refLockName } from './add-source.ts';
+import { assertCloneComplete, withCheckoutProtection, withFreshClone } from './clone-lifecycle.ts';
 import {
   assertInsideSources,
   checkoutPath,
@@ -102,12 +103,14 @@ const syncMissingCheckout = async (
 ): Promise<RefSyncOutcome> => {
   await mkdir(dirname(dest), { recursive: true });
   const cloneMode = resolveSetting('clone_mode', rsc.ref, rsc.settings);
-  const cloneResult = await cloneRepo(ctx.runner, {
-    cloneUrl: rsc.ref.url,
-    dest,
-    hooksDir: rsc.home.hooksDir,
-    mode: cloneMode,
-  });
+  const cloneResult = await withFreshClone({ dest, home: rsc.home, runner: ctx.runner }, () =>
+    cloneRepo(ctx.runner, {
+      cloneUrl: rsc.ref.url,
+      dest,
+      hooksDir: rsc.home.hooksDir,
+      mode: cloneMode,
+    }),
+  );
   const actualBranch = await detectDefaultBranch(ctx.runner, dest);
   const headSha = await resolveCheckoutHead(ctx.runner, {
     allowFileUrls: allowFileUrlsFrom(ctx.env),
@@ -165,6 +168,7 @@ const gitOutcomeFor = (
   // this the EXISTING branch would hard-reset/clean a checkout physically outside sources/,
   // and the MISSING branch's `mkdir`+`cloneRepo` would write outside it.
   assertInsideSources(rsc.home, dest);
+  assertCloneComplete(dest);
   if (!isGitCheckout(dest)) {
     return syncMissingCheckout(ctx, rsc, dest);
   }
@@ -211,11 +215,13 @@ const arrivalsFor = async (
  * caused by the fetch: a checkout that has been up to date for weeks is exactly where a stale
  * locator survives longest, and skipping it would make the probe blind to its own best case. */
 const syncCheckout = (ctx: CliContext, rsc: RefSyncContext): Promise<RefSyncOutcome> =>
-  withLock(rsc.home, refLockName(rsc.key), async () => {
+  withLock(rsc.home, refLockName(rsc.key), () => {
     const dest = checkoutPath(rsc.home, rsc.key);
-    const outcome = await gitOutcomeFor(ctx, rsc, dest);
-    const discovery = await arrivalsFor(ctx, dest, outcome);
-    return { ...outcome, structure: await probeRefStructure(dest, rsc.ref, discovery) };
+    return withCheckoutProtection(ctx.runner, { dest, home: rsc.home }, async () => {
+      const outcome = await gitOutcomeFor(ctx, rsc, dest);
+      const discovery = await arrivalsFor(ctx, dest, outcome);
+      return { ...outcome, structure: await probeRefStructure(dest, rsc.ref, discovery) };
+    });
   });
 
 export { syncCheckout };

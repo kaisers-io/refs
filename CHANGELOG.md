@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Bound Git operations, including lazy partial-clone fetches, with a configurable ten-minute
+  deadline (`REFS_GIT_TIMEOUT_MS`; `0` disables it). Timeout cleanup targets owned POSIX process
+  groups and bounds Windows `taskkill`. Unconfirmed timeout cancellation quarantines the checkout
+  instead of deleting files or allowing reuse; recovery requires verifying that helpers stopped.
+  Descendants that retain no output pipes after normal command completion are not detected.
+  Failed fresh clones are removed only when refs created their destination and termination did
+  not report uncertainty. Incomplete markers also prevent destructive removal across invocations.
+  Unconfirmed cancellation diagnostics retain the command's configured deadline alongside the
+  termination failure reason.
+- Default Git terminal credential prompts off while preserving explicit overrides, credential
+  helpers, askpass and SSH configuration. Authentication failures explain how to configure them.
+
 ### Security
 
 - Isolate refs’ Git children from inherited repository-local environment variables, so add
