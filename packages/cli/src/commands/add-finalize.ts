@@ -16,6 +16,7 @@ import type { CliContext } from '../context.ts';
 import type { FinalizedRefInput } from './add-packages.ts';
 import { buildRefEntry } from './add-packages.ts';
 import { resolveCheckoutHead } from './add-checkout-guards.ts';
+import { withCheckoutProtection } from './clone-lifecycle.ts';
 import { z } from 'zod';
 
 // The finalize write path: `finalizeRef` re-verifies the checkout, then lands the new config and
@@ -101,13 +102,15 @@ const finalizeRef = async (
   const allowFileUrls = allowFileUrlsFrom(ctx.env);
   const headSha = await withLock(opts.home, refLockName(opts.ref.key), () => {
     assertInsideSources(opts.home, opts.dest);
-    return resolveCheckoutHead(ctx.runner, {
-      allowFileUrls,
-      dest: opts.dest,
-      expectedUrl: opts.ref.url,
-      hooksDir: opts.home.hooksDir,
-      key: opts.ref.key,
-    });
+    return withCheckoutProtection(ctx.runner, opts, () =>
+      resolveCheckoutHead(ctx.runner, {
+        allowFileUrls,
+        dest: opts.dest,
+        expectedUrl: opts.ref.url,
+        hooksDir: opts.home.hooksDir,
+        key: opts.ref.key,
+      }),
+    );
   });
   return withLock(opts.home, 'home', async () => {
     const { config, entry, state } = await buildValidatedFinalDocs(opts, headSha);

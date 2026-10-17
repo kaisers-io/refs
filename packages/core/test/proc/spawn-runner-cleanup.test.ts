@@ -1,4 +1,4 @@
-import { access, mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { execFile, spawn } from 'node:child_process';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
@@ -12,9 +12,9 @@ import { tmpdir } from 'node:os';
 
 // Parent-death cleanup suite (task brief requirement 7): when the process HOSTING a `SpawnRunner`
 // is itself killed by SIGINT/SIGTERM/SIGHUP mid-`run()`, the real child that `run()` is waiting on
-// must not survive as an orphan. Exercised via a real three-process chain — this test process,
+// must not survive as an orphan. Exercised via a real four-process chain — this test process,
 // a "middle" node process (`spawn-runner-cleanup-child.mjs`, a stand-in for a `refs` CLI
-// invocation) that calls `SpawnRunner#run()` on a long `sleep`, and the `sleep` itself — because
+// invocation) that calls `SpawnRunner#run()` on a long `sleep`, the direct child and its descendant writer — because
 // the cleanup this proves (`spawn-cleanup.ts`'s signal handlers) only fires in the real process
 // that installed it; a mock or in-process fake could never demonstrate the actual OS-level effect.
 
@@ -144,6 +144,13 @@ const requireMiddlePid = (child: ChildProcess): number => {
 type Scenario = {
   childAliveBeforeKill: boolean;
   childAliveAfterKill: boolean;
+  descendantStopped: boolean;
+};
+
+const writerStopped = async (marker: string): Promise<boolean> => {
+  const before = await readFile(marker, 'utf8');
+  await delay(POLL_INTERVAL_MS);
+  return (await readFile(marker, 'utf8')) === before;
 };
 
 // Spawns the middle process, waits for its hang-holding child to actually start, kills the
@@ -163,11 +170,15 @@ const runParentDeathScenario = async (dir: string): Promise<Scenario> => {
   middle.kill(CATCHABLE_KILL_SIGNAL);
   await waitUntil(() => !isPidAlive(childPid), DEATH_TIMEOUT_MS);
 
-  return { childAliveAfterKill: isPidAlive(childPid), childAliveBeforeKill };
+  return {
+    childAliveAfterKill: isPidAlive(childPid),
+    childAliveBeforeKill,
+    descendantStopped: await writerStopped(marker),
+  };
 };
 
 describe('parent-death cleanup', { timeout: SLOW_IO_TIMEOUT_MS }, () => {
-  it('kills the real child a SpawnRunner#run() is waiting on when the host process gets a catchable termination signal', async () => {
+  it('kills the real child and its descendant writer when the host receives a catchable termination signal', async () => {
     expect.hasAssertions();
     const dir = await mkdtemp(join(tmpdir(), 'refs-spawn-cleanup-'));
 
@@ -175,6 +186,7 @@ describe('parent-death cleanup', { timeout: SLOW_IO_TIMEOUT_MS }, () => {
       const scenario = await runParentDeathScenario(dir);
       expect(scenario.childAliveBeforeKill).toBe(true);
       expect(scenario.childAliveAfterKill).toBe(false);
+      expect(scenario.descendantStopped).toBe(true);
     } finally {
       await rm(dir, { force: true, recursive: true });
     }

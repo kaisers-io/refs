@@ -45,7 +45,7 @@ stuck with it.
 
 ## Other environment variables
 
-`REFS_HOME` is the only one meant for everyday use. Five others are read:
+`REFS_HOME` is the only one meant for everyday use. The following additional controls are read:
 
 | Variable                | Read by                | Effect                                                                                                                                       |
 | ----------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -54,6 +54,43 @@ stuck with it.
 | `REFS_PROGRESS`         | `refs sync`, `refs doctor` | `0` turns off the progress spinner these commands draw on stderr while they work. It is already off with `--json`, when stderr is not a terminal, with `TERM=dumb`, and in CI. |
 | `REFS_UPDATE_CHECK`     | `refs sync`, `refs doctor` | `0` never contacts the npm registry, `1` always does. Overrides `[updates].check`; any other value is ignored. See [`[updates]`](#updates). |
 | `REFS_ALLOW_FILE_URLS`  | `refs add`, `refs sync` | Set to `1` to accept `file://` sources. **A test-only escape hatch** — real remotes are `https`/`ssh`, and this exists so the suite and the packaged-CLI smoke tests can work against a local fixture repository without a network. Do not set it in normal use. |
+
+## Git credentials and deadlines
+
+Git children default `GIT_TERMINAL_PROMPT` to `0` when it is absent. Configure a Git credential
+helper or `GIT_ASKPASS` for HTTPS authentication. An explicit `GIT_TERMINAL_PROMPT` value is
+preserved. On POSIX, process-tree isolation starts a separate session without a controlling
+terminal; use a credential helper or askpass rather than relying on `/dev/tty`. refs does not replace `GIT_SSH_COMMAND`, `core.sshCommand`, SSH agent settings or
+credential helpers; an SSH or GUI/helper prompt can still need user interaction.
+
+Every Git command has a ten-minute deadline, including `clone`, `fetch`, `remote set-head --auto`
+and commands that can lazily fetch missing objects from a blobless checkout. Set
+`REFS_GIT_TIMEOUT_MS` to a whole number of milliseconds (1–2147483647) for slow repositories, or
+`0` to disable the deadline. Invalid values fail before starting Git. The deadline applies to
+one command, not the entire multi-command sync. Shutdown allows another two seconds for POSIX
+process-group escalation or five seconds for Windows `taskkill /T /F`.
+
+On POSIX, timeouts terminate the owned process group before cleanup. On Windows, refs waits for
+`taskkill` to finish successfully. This is not a Job Object: Windows process-tree ownership is
+not guaranteed after a parent or intermediate helper exits. If an attempted timeout cancellation
+finds the direct child already exited, or `taskkill` fails or times out, refs reports unconfirmed
+termination rather than waiting indefinitely on inherited pipes or claiming the helpers stopped.
+The runner refuses further commands, and the affected checkout is quarantined with a persistent
+incomplete marker.
+
+Normal command completion is not proof that all descendants stopped. On either platform, a
+helper that outlives its parent without retaining output pipes is not detected after normal
+close and does not automatically trigger quarantine. Process groups and the Windows `taskkill`
+fallback are not a sandbox for trusted helpers that deliberately outlive the command.
+
+A failed fresh clone is removed only when refs owns its destination and termination did not
+report uncertainty; an existing checkout is never removed because a fetch failed. An
+uncatchable interruption can also leave an incomplete marker beside a clone directory. refs
+refuses to reuse, synchronize or remove marked checkouts, including from a new invocation after
+the operation lock expires. First verify that any remaining Git/helper processes have stopped;
+then manually remove the checkout and its incomplete marker using the paths in the diagnostic.
+Do not remove the marker alone while a helper could still be writing. Unconfirmed Windows
+timeout cancellation requires this manual recovery; it is not guaranteed tree termination.
 
 ## Home directory layout
 

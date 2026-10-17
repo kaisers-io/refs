@@ -14,6 +14,7 @@ import { cliOptsOf, emit, warningsFor, wrapAction } from '../output.ts';
 import { lstat, readdir, rm, rmdir } from 'node:fs/promises';
 import type { CliContext } from '../context.ts';
 import type { RefsCommand } from './registry.ts';
+import { assertCloneComplete } from './clone-lifecycle.ts';
 import { dirname } from 'node:path';
 import { matchRefKey } from './list.ts';
 import { refLockName } from './add-source.ts';
@@ -166,6 +167,7 @@ type CheckoutRemoval = {
  * of `refs remove` is a safe, idempotent way to finish the job (`checkoutExists` sees nothing left
  * to remove and `dropRefEntries` clears the now-stale entry). */
 const removeCheckout = async (home: RefsHome, dest: string): Promise<CheckoutRemoval> => {
+  assertCloneComplete(dest);
   const present = await checkoutExists(dest);
   if (!present) {
     return { removedCheckout: false, warning: MISSING_CHECKOUT_WARNING };

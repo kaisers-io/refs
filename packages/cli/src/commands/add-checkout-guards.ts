@@ -1,4 +1,5 @@
 import type { CloneMode, RefKey, RefsHome, Runner } from '@kaisers-io/refs-core';
+import { assertCloneComplete, withFreshClone } from './clone-lifecycle.ts';
 import {
   assertInsideSources,
   canonicalizeGitUrl,
@@ -96,6 +97,7 @@ const ensureManagedCheckout = async (
   runner: Runner,
   opts: { dest: string; hooksDir: string },
 ): Promise<void> => {
+  assertCloneComplete(opts.dest);
   const result = await runner.run('git', ['config', '--local', 'core.hooksPath'], {
     cwd: opts.dest,
   });
@@ -122,7 +124,9 @@ const cloneFresh = async (
 ): Promise<{ effectiveMode?: CloneMode; warning?: string }> => {
   await mkdir(dirname(opts.dest), { recursive: true });
   progress(ctx, `cloning ${redactUrl(opts.cloneUrl)} into ${opts.dest}…`);
-  const result = await cloneRepo(ctx.runner, opts);
+  const result = await withFreshClone({ ...opts, runner: ctx.runner }, () =>
+    cloneRepo(ctx.runner, opts),
+  );
   if (result.warning === undefined) {
     return { effectiveMode: result.effectiveMode };
   }
@@ -149,6 +153,7 @@ const ensureClonedCheckout = async (
   opts: CloneCheckoutOpts,
 ): Promise<{ effectiveMode?: CloneMode; warning?: string }> => {
   assertInsideSources(opts.home, opts.dest);
+  assertCloneComplete(opts.dest);
   if (isGitCheckout(opts.dest)) {
     await ensureCheckoutOrigin(ctx.runner, {
       allowFileUrls: opts.allowFileUrls,

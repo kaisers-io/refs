@@ -1,4 +1,5 @@
 import type { ChildProcess } from 'node:child_process';
+import { killProcessTreeSync } from './process-tree.ts';
 
 // Parent-death cleanup for `SpawnRunner`'s children (runner.ts): ensures no spawned git/ssh
 // process outlives the CLI itself.
@@ -23,7 +24,7 @@ import type { ChildProcess } from 'node:child_process';
 //   terminates the process directly on Windows instead of restoring a default disposition — same
 //   observable outcome (children killed, process ends), different numeric exit code. A hard kill
 //   (`taskkill /F`) bypasses this cleanup exactly like `kill -9` does on POSIX.
-// - On any of those signals: `SIGKILL` every active child (best-effort — a child that
+// - On any of those signals: `SIGKILL` every active child process tree (best-effort — a child that
 //   already exited just no-ops), remove OUR OWN listener for that exact signal, then re-raise it
 //   against this same process (`process.kill(process.pid, signal)`). With our listener gone,
 //   Node's default disposition for that signal applies next — the process terminates exactly as
@@ -31,8 +32,8 @@ import type { ChildProcess } from 'node:child_process';
 //   default exit codes/behavior": the only observable side effect this adds is the child cleanup,
 //   never a change to how the CLI process itself exits.
 // - `process.on('exit', ...)` is also wired, for the plain synchronous-shutdown case (e.g. an
-//   uncaught throw unwinds normally to `process.exit`) — `ChildProcess#kill()` is a synchronous
-//   syscall, safe to call from an `'exit'` handler.
+//   uncaught throw unwinds normally to `process.exit`) — POSIX group signaling is synchronous; Windows uses a fixed taskkill /T /F
+//   call, awaited synchronously because an 'exit' handler cannot await promises.
 // - Deliberately NOT hooking `uncaughtException`/`unhandledRejection`: either would change crash
 //   semantics (Node's default is to print and exit 1), which is outside this seam's job. Leaking a
 //   child on a bug this module doesn't otherwise handle is an acceptable trade for never turning a
@@ -44,7 +45,8 @@ let cleanupInstalled = false;
 const killActiveChildren = (): void => {
   for (const child of activeChildren) {
     try {
-      child.kill('SIGKILL');
+      // eslint-disable-next-line node/no-sync -- exit cleanup must finish before the host exits
+      killProcessTreeSync(child);
     } catch {
       // Already dead (or never really started) — nothing left to clean up.
     }

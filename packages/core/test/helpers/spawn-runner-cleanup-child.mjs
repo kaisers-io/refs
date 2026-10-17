@@ -4,7 +4,7 @@
 // parent is killed. Imports `SpawnRunner` straight from source (`.ts`, relying on Node 24's native
 // type-stripping — the same runtime this repo requires) rather than a build step, kicks off a
 // long-hanging `node -e` child through it (no `timeoutMs`; `node`, not `sh`/`sleep`, so the chain
-// is identical on Windows), which writes `markerPath` once it has actually started — the test
+// is identical on Windows), whose descendant writes `markerPath` once it has actually started — the test
 // polls for that file before sending this process a signal, so it never races the child not
 // existing yet.
 
@@ -14,8 +14,13 @@ const CLI_ARGS_OFFSET = 2;
 const [markerPath] = process.argv.slice(CLI_ARGS_OFFSET);
 const runner = new SpawnRunner();
 
-const MARKER_THEN_HANG_SCRIPT =
-  "require('node:fs').writeFileSync(process.argv[1], ''); setTimeout(() => {}, 30000);";
+const DESCENDANT_WRITER =
+  "const fs = require('node:fs'); fs.writeFileSync(process.argv[1], 'started'); setInterval(() => fs.appendFileSync(process.argv[1], 'x'), 20); setTimeout(() => process.exit(0), 30000);";
+const MARKER_THEN_HANG_SCRIPT = `
+  require('node:child_process').spawn(process.execPath,
+    ['-e', ${JSON.stringify(DESCENDANT_WRITER)}, process.argv[1]], { stdio: 'ignore' });
+  setTimeout(() => {}, 30000);
+`;
 
 // Never expected to resolve in the test's happy path (this process is killed by a catchable
 // signal first, which `SpawnRunner`'s own installed handler re-raises after cleanup — see

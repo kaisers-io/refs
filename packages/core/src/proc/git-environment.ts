@@ -23,11 +23,19 @@ const REPOSITORY_VARIABLES = new Set([
 const gitEnvironment = (
   env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform = process.platform,
-): NodeJS.ProcessEnv =>
-  Object.fromEntries(
+): NodeJS.ProcessEnv => {
+  const clean = Object.fromEntries(
     Object.entries(env).filter(
       ([key]) => !REPOSITORY_VARIABLES.has(platform === 'win32' ? key.toUpperCase() : key),
     ),
   );
+  const prompt = Object.keys(clean).find(
+    (key) => (platform === 'win32' ? key.toUpperCase() : key) === 'GIT_TERMINAL_PROMPT',
+  );
+  if (prompt === undefined || clean[prompt] === undefined) {
+    clean['GIT_TERMINAL_PROMPT'] = '0';
+  }
+  return clean;
+};
 
 export { gitEnvironment };

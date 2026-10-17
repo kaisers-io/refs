@@ -4,6 +4,7 @@ import type { ChildProcess } from 'node:child_process';
 import type { CollectedStream } from './spawn-collector.ts';
 import { armTimeout } from './spawn-timeout.ts';
 import { gitEnvironment } from './git-environment.ts';
+import { gitTimeout } from './git-timeout.ts';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
 
@@ -16,19 +17,17 @@ import { spawn } from 'node:child_process';
 // Built directly on `node:child_process.spawn` (never `execFile`/promisified variants, whose
 // throw-on-everything semantics fight the never-throw contract above, and never `shell: true` —
 // every caller passes `cmd`/`args` as separate values, so there is never a shell to inject into).
-// Byte-capped stream collection lives in `spawn-collector.ts`, `timeoutMs` escalation in
-// `spawn-timeout.ts`, and parent-death child cleanup in `spawn-cleanup.ts`.
 
 type RunResult = {
   stdout: string;
   stderr: string;
   exitCode: number;
   timedOut?: boolean;
+  /** Tree termination was not confirmed; callers must retain/quarantine any checkout. */
+  terminationFailed?: true;
   // Present-and-`true` only when the collector's byte cap cut `stdout` short (see
   // `spawn-collector.ts`) — never an explicit `false`, so callers branch on `=== true`. Callers
-  // that parse `stdout` line-by-line MUST treat a byte-truncated result as incomplete: the last
-  // line may be a partial fragment, and counting lines no longer proves anything about how much
-  // output the child really produced.
+  // that parse stdout must treat a byte-truncated result as incomplete.
   stdoutTruncated?: true;
 };
 
@@ -38,6 +37,7 @@ type RunOpts = {
 };
 
 type Runner = {
+  readonly terminationFailed?: boolean;
   run: (cmd: string, args: readonly string[], opts?: RunOpts) => Promise<RunResult>;
 };
 
@@ -55,8 +55,7 @@ const TIMEOUT_EXIT_CODE = 124;
 // Node's own `spawn()` reports a failure to even start the child (ENOENT, EACCES, ...) via an
 // `error` event rather than a normal exit — `127` is the shell convention for "command not found",
 // reused here for the same "reads familiarly in logs" reason as `TIMEOUT_EXIT_CODE` above. Nothing
-// in this codebase branches on this exact number today (every caller either checks
-// `exitCode === 0` or reads `stderr`), so there is no compatibility reason to pick anything else.
+// in this codebase branches on this exact number today.
 const SPAWN_ERROR_EXIT_CODE = 127;
 
 const cwdOpt = (cwd: string | undefined): { cwd?: string } => (cwd === undefined ? {} : { cwd });
@@ -82,6 +81,7 @@ type RunningChild = {
   stdoutCollector: ReturnType<typeof createCollector>;
   stderrCollector: ReturnType<typeof createCollector>;
   timeout: ReturnType<typeof armTimeout>;
+  timeoutMs: number | undefined;
 };
 
 const startChild = (
@@ -99,7 +99,9 @@ const startChild = (
   // It does NOT change what code scanning reports: `js/shell-command-constructed-from-input` and
   // its two siblings were raised again with the option spelled out. They are false positives on
   // this call and have to be handled as such, not argued with in code.
+  const timeoutMs = gitTimeout(cmd, opts?.timeoutMs);
   const child = spawn(cmd, args, {
+    detached: process.platform !== 'win32',
     ...cwdOpt(opts?.cwd),
     ...(cmd === 'git' ? { env: gitEnvironment(process.env) } : {}),
     shell: false,
@@ -114,8 +116,8 @@ const startChild = (
   child.stderr.on('data', (chunk: Buffer) => {
     stderrCollector.push(chunk);
   });
-  const timeout = armTimeout(child, opts?.timeoutMs);
-  return { child, stderrCollector, stdoutCollector, timeout };
+  const timeout = armTimeout(child, timeoutMs);
+  return { child, stderrCollector, stdoutCollector, timeout, timeoutMs };
 };
 
 // The never-throw contract's last hole: `spawn()` itself can throw SYNCHRONOUSLY on an invalid
@@ -231,24 +233,60 @@ const buildCloseResult = (ctx: CloseContext): RunResult => {
   );
 };
 
+const unsafeResult = (message: string): RunResult => ({
+  exitCode: TIMEOUT_EXIT_CODE,
+  stderr: message,
+  stdout: '',
+  terminationFailed: true,
+  timedOut: true,
+});
+
+const finishChild = async (running: RunningChild, outcome: CloseOutcome): Promise<RunResult> => {
+  const failure = await running.timeout.finish();
+  if (failure !== undefined) {
+    running.child.stdout?.destroy();
+    running.child.stderr?.destroy();
+    running.child.unref();
+    return unsafeResult(withTimeoutNote(failure, running.timeoutMs));
+  }
+  activeChildren.delete(running.child);
+  return buildCloseResult({
+    code: outcome.code,
+    errorMessage: outcome.errorMessage,
+    stderr: running.stderrCollector.finish(),
+    stdout: running.stdoutCollector.finish(),
+    timedOut: running.timeout.markedTimedOut(),
+    timeoutMs: running.timeoutMs,
+  });
+};
+
+const runProcess = async (
+  cmd: string,
+  args: readonly string[],
+  opts?: RunOpts,
+): Promise<RunResult> => {
+  installCleanupOnce();
+  const running = startChildSafely(cmd, args, opts);
+  if (isRunResult(running)) {
+    return running;
+  }
+  const outcome = await Promise.race([
+    waitForClose(running.child),
+    // eslint-disable-next-line unicorn/no-null -- same signal-killed shape as waitForClose
+    running.timeout.failure.then((errorMessage) => ({ code: null, errorMessage })),
+  ]);
+  return finishChild(running, outcome);
+};
+
 class SpawnRunner implements Runner {
+  terminationFailed = false;
+
   async run(cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> {
-    installCleanupOnce();
-    const running = startChildSafely(cmd, args, opts);
-    if (isRunResult(running)) {
-      return running;
-    }
-    const outcome = await waitForClose(running.child);
-    activeChildren.delete(running.child);
-    running.timeout.clear();
-    return buildCloseResult({
-      code: outcome.code,
-      errorMessage: outcome.errorMessage,
-      stderr: running.stderrCollector.finish(),
-      stdout: running.stdoutCollector.finish(),
-      timedOut: running.timeout.markedTimedOut(),
-      timeoutMs: opts?.timeoutMs,
-    });
+    const result = this.terminationFailed
+      ? unsafeResult('refs: refusing further commands after unconfirmed subprocess termination')
+      : await runProcess(cmd, args, opts);
+    this.terminationFailed ||= result.terminationFailed === true;
+    return result;
   }
 }
 

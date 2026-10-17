@@ -14,10 +14,13 @@ const DETAIL_TRUNCATION_SUFFIX = '… (truncated)';
 
 /** A child's output, redacted and bounded, ready to go into a failure message. */
 const failureDetail = (raw: string): string => {
+  const guidance = /terminal prompts disabled/iu.test(raw)
+    ? '\nConfigure a Git credential helper or GIT_ASKPASS; refs does not provide a controlling terminal.'
+    : '';
   const redacted = redactUrlsInText(raw);
   return redacted.length <= MAX_DETAIL_LENGTH
-    ? redacted
-    : `${redacted.slice(0, MAX_DETAIL_LENGTH)}${DETAIL_TRUNCATION_SUFFIX}`;
+    ? `${redacted}${guidance}`
+    : `${redacted.slice(0, MAX_DETAIL_LENGTH)}${DETAIL_TRUNCATION_SUFFIX}${guidance}`;
 };
 
 export { DETAIL_TRUNCATION_SUFFIX, MAX_DETAIL_LENGTH, failureDetail };

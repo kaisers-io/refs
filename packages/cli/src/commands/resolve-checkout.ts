@@ -1,5 +1,6 @@
 import { canonicalizeGitUrl, resolveInside } from '@kaisers-io/refs-core';
 import { lstat, readFile } from 'node:fs/promises';
+import { hasIncompleteClone } from './clone-lifecycle.ts';
 import { join } from 'node:path';
 import { readGitConfigValues } from './git-config-read.ts';
 
@@ -201,7 +202,9 @@ const inspectCheckout = async (opts: InspectOpts): Promise<CheckoutInfo> => {
   if (contained !== undefined) {
     return contained;
   }
-  const shape = await gitDirVerdict(opts.dest);
+  const shape = hasIncompleteClone(opts.dest)
+    ? unmanaged('clone_incomplete')
+    : await gitDirVerdict(opts.dest);
   if (shape !== undefined) {
     return shape;
   }
