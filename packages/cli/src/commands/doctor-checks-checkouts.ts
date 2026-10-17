@@ -1,6 +1,12 @@
-import type { Config, RefKey, RefsHome } from '@kaisers-io/refs-core';
+import type { Config, RefKey, RefsHome, Runner } from '@kaisers-io/refs-core';
 import { access, constants, readdir } from 'node:fs/promises';
-import { checkoutPath, isEnoent, isGitCheckout, zRefKey } from '@kaisers-io/refs-core';
+import {
+  checkoutPath,
+  isEnoent,
+  isGitCheckout,
+  pinHooksPath,
+  zRefKey,
+} from '@kaisers-io/refs-core';
 import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
 import { join } from 'node:path';
@@ -185,12 +191,17 @@ type CheckoutStatus = {
  * denied on the working tree) means the checkout couldn't be inspected at all — that is a
  * `broken` checkout, distinct from (and reported instead of) a merely `dirty` one: an empty
  * `stdout` from a FAILED command is not the same fact as an empty `stdout` from a SUCCESSFUL one,
- * and treating them alike would silently report a broken checkout as clean. */
+ * and treating them alike would silently report a broken checkout as clean.
+ *
+ * `runner` carries refs' hooks pin (`pinHooksPath`). `status` refreshes the index when stat data
+ * went stale — a tracked file's mtime changing is enough — and that write runs
+ * `post-index-change`, from an inherited command-scope `core.hooksPath=.githooks` too: a hook the
+ * checkout tracks itself, run by a diagnostic. Measured on git 2.43, 2.54 and 2.55. */
 const checkoutStatusFor = async (
-  ctx: CliContext,
+  runner: Runner,
   item: ExistingCheckout,
 ): Promise<CheckoutStatus> => {
-  const result = await ctx.runner.run('git', ['status', '--porcelain'], { cwd: item.dest });
+  const result = await runner.run('git', ['status', '--porcelain'], { cwd: item.dest });
   if (result.exitCode !== SUCCESS_EXIT_CODE) {
     return { broken: true, detail: result.stderr.trim(), dirty: false, key: item.key };
   }
@@ -222,7 +233,8 @@ const checkDirtyCheckouts = async (
   config: Config,
 ): Promise<CheckResult> => {
   const checkouts = existingCheckouts(home, config);
-  const statuses = await Promise.all(checkouts.map((item) => checkoutStatusFor(ctx, item)));
+  const runner = pinHooksPath(ctx.runner, home.hooksDir);
+  const statuses = await Promise.all(checkouts.map((item) => checkoutStatusFor(runner, item)));
   return buildDirtyCheckoutsResult(statuses);
 };
 

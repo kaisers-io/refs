@@ -61,7 +61,11 @@ const expectCheckoutGit = (setup: DoctorTestHome, dest: string): void => {
     { stdout: setup.home.hooksDir },
     { cwd: dest },
   );
-  setup.runner.expect('git status --porcelain', { stdout: '' }, { cwd: dest });
+  setup.runner.expect(
+    `git -c core.hooksPath=${setup.home.hooksDir} status --porcelain`,
+    { stdout: '' },
+    { cwd: dest },
+  );
 };
 
 describe('refs doctor: config-drift', () => {

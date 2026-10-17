@@ -3,6 +3,7 @@ import { appendNote, createCollector, withTruncationNote } from './spawn-collect
 import type { ChildProcess } from 'node:child_process';
 import type { CollectedStream } from './spawn-collector.ts';
 import { armTimeout } from './spawn-timeout.ts';
+import { childEnv } from './child-env.ts';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
 
@@ -98,8 +99,13 @@ const startChild = (
   // It does NOT change what code scanning reports: `js/shell-command-constructed-from-input` and
   // its two siblings were raised again with the option spelled out. They are false positives on
   // this call and have to be handled as such, not argued with in code.
+  //
+  // `env` is the parent's minus the repository-locating `GIT_*` variables (`child-env.ts`): `cwd`
+  // is how refs names the repository, and an inherited `GIT_DIR` would silently override it. Done
+  // here, the one place a process starts, so no direct `runner.run('git', …)` can miss it.
   const child = spawn(cmd, args, {
     ...cwdOpt(opts?.cwd),
+    env: childEnv(process.env, process.platform),
     shell: false,
     stdio: ['ignore', 'pipe', 'pipe'],
   });

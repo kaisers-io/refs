@@ -143,10 +143,10 @@ const tagCandidateFrom = (tagged: { complete: boolean; tags: string[] }): TagFor
 
 const detectProposalFields = async (
   ctx: CliContext,
-  dest: string,
-  resolved: ResolvedSource,
+  opts: CloneAndDetectOpts,
 ): Promise<DetectedFields> => {
-  const defaultBranch = await detectDefaultBranch(ctx.runner, dest);
+  const { dest, resolved } = opts;
+  const defaultBranch = await detectDefaultBranch(ctx.runner, dest, opts.home.hooksDir);
   const tagged = await listTags(ctx.runner, dest);
   const countedTagFormat = tagCandidateFrom(tagged);
   progress(ctx, 'detecting workspace packages…');
@@ -184,7 +184,7 @@ const cloneAndDetect = (ctx: CliContext, opts: CloneAndDetectOpts): Promise<Clon
       hooksDir: opts.home.hooksDir,
       mode: opts.cloneMode,
     });
-    const fields = await detectProposalFields(ctx, opts.dest, opts.resolved);
+    const fields = await detectProposalFields(ctx, opts);
     const result: CloneAndDetectResult = { fields };
     if (cloneOutcome.effectiveMode !== undefined) {
       result.effectiveMode = cloneOutcome.effectiveMode;
