@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **refs' git commands no longer follow a `GIT_DIR` inherited from the caller.** refs names each
+  checkout by its working directory, but git lets `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and
+  their siblings override that, and git exports them to every hook. A `refs add` or `refs sync`
+  started from a hook, an alias or a wrapper therefore wrote refs' hooks path into the caller's
+  repository (blocking its commits) and could `reset --hard` and `clean -fd` the caller's working
+  tree, discarding uncommitted work. refs now removes git's repository-locating variables from
+  every process it starts, the same set git itself removes before running a command in another
+  repository. Command-scope configuration (`GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT` and its
+  pairs) and settings such as `GIT_SSH_COMMAND`, `GIT_ASKPASS` and proxies still pass through.
+
 ## [0.18.2] - 2026-10-13
 
 ### Security
