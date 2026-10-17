@@ -5,6 +5,7 @@ import { initHome, parseLastEnvelope } from './add-support.ts';
 import type { CliContext } from '../../src/context.ts';
 import { expect } from 'vitest';
 import { run } from '../../src/main.ts';
+import { scriptGitThroughPin } from './pinned-git.ts';
 import { testContext } from './context.ts';
 
 // Shared scaffolding for the `refs doctor` test suite (`doctor.test.ts`, `doctor-checkouts.test.ts`,
@@ -32,7 +33,9 @@ const setupInitializedHome = async (homeDir: string): Promise<DoctorTestHome> =>
   const { ctx, runner, stdout } = testContext();
   ctx.env['REFS_HOME'] = homeDir;
   await initHome(ctx);
-  return { ctx, home: resolveHome(ctx.env), runner, stdout };
+  const home = resolveHome(ctx.env);
+  scriptGitThroughPin(runner, home);
+  return { ctx, home, runner, stdout };
 };
 
 const GIT_VERSION_STDOUT = 'git version 2.50.1';

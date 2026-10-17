@@ -5,6 +5,7 @@ import { emitError } from './output.ts';
 // eslint-disable-next-line import/no-relative-parent-imports -- package.json lives at the package root, one level above src/
 import pkg from '../package.json' with { type: 'json' };
 import { registerCommands } from './commands/registry.ts';
+import { withHooksPin } from './pinned-runner.ts';
 
 const HELP_TEXT_AFTER = [
   '',
@@ -100,7 +101,9 @@ const buildProgram = (ctx: CliContext): Command => {
       },
     });
   program.addHelpText('after', HELP_TEXT_AFTER);
-  registerCommands(program, ctx);
+  // Commands get the runner that pins refs' hooks directory on every git call
+  // (`pinned-runner.ts`), never the bare one.
+  registerCommands(program, withHooksPin(ctx));
   return program;
 };
 

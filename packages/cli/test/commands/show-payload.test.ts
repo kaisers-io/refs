@@ -9,6 +9,7 @@ import {
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
 // eslint-disable-next-line no-duplicate-imports -- consistent-type-specifier-style requires a separate top-level `import type`
 import type { RefsHome } from '@kaisers-io/refs-core';
+import { pinnedGit } from '../helpers/pinned-git.ts';
 import { run } from '../../src/main.ts';
 import { testContext } from '../helpers/context.ts';
 
@@ -132,7 +133,7 @@ describe('refs show: human mode always probes for tags', () => {
         ctx.env['REFS_HOME'] = homeDir;
         const home = resolveHome(ctx.env);
         await seedMonoWithCheckout(home);
-        runner.expect('git tag', { stdout: `${HUMAN_TAGS.join('\n')}\n` });
+        runner.expect(`${pinnedGit(home)} tag`, { stdout: `${HUMAN_TAGS.join('\n')}\n` });
 
         await run(ctx, ['node', 'refs', 'show', 'mono']);
 
@@ -152,7 +153,7 @@ describe('refs show: --tags', () => {
         ctx.env['REFS_HOME'] = homeDir;
         const home = resolveHome(ctx.env);
         await seedMonoWithCheckout(home);
-        runner.expect('git tag', { stdout: 'v2.0.0\nv1.0.0\n' });
+        runner.expect(`${pinnedGit(home)} tag`, { stdout: 'v2.0.0\nv1.0.0\n' });
 
         await run(ctx, ['node', 'refs', 'show', 'mono', '--json', '--tags']);
 

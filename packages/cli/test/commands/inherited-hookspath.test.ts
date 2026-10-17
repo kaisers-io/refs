@@ -1,4 +1,10 @@
-import { addRefViaDescription, gitFor } from '../helpers/sync-support.ts';
+import {
+  addRefViaDescription,
+  commitNewFileTo,
+  gitFor,
+  headShaOf,
+  runSyncJson,
+} from '../helpers/sync-support.ts';
 import { chmod, mkdir, readFile, utimes, writeFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { expectCheck, runDoctorJson } from '../helpers/doctor-support.ts';
@@ -15,13 +21,13 @@ import { createFixtureRepo } from '../helpers/fixture-repo.ts';
 import { join } from 'node:path';
 import { resolveHome } from '@kaisers-io/refs-core';
 
-// #249 pinned `core.hooksPath` at command scope for clone and sync, because refs passes an
-// inherited `GIT_CONFIG_PARAMETERS` / `GIT_CONFIG_COUNT` through and command-scope configuration
-// outranks the checkout's local marker. Two git calls outside clone and sync still ran without the
-// pin, each from a hook the checkout ITSELF tracks under an inherited `core.hooksPath=.githooks`:
-// doctor's `git status` (an index refresh runs `post-index-change`) and the `remote set-head`
-// fallback when `origin/HEAD` is missing (from git 2.54 the ref update runs
-// `reference-transaction`). Driven through the CLI against real git.
+// refs passes an inherited `GIT_CONFIG_PARAMETERS` / `GIT_CONFIG_COUNT` through to git, and that
+// command-scope configuration outranks the checkout's local `core.hooksPath` marker. Under an
+// inherited `core.hooksPath=.githooks`, each of these ran a hook the checkout ITSELF tracks until
+// the CLI pinned the hooks path on every git call (`src/pinned-runner.ts`): the clone's checkout
+// and a sync's `checkout -B` (`post-checkout`), doctor's `git status` (an index refresh runs
+// `post-index-change`), and the `remote set-head` fallback when `origin/HEAD` is missing (from git
+// 2.54 the ref update runs `reference-transaction`). Driven through the CLI against real git.
 
 const SUITE_OPTS = { timeout: SLOW_IO_TIMEOUT_MS };
 const HOOK_MODE = 0o755;
@@ -50,7 +56,7 @@ const readMarker = async (marker: string): Promise<string> => {
 
 /** An upstream whose tracked `.githooks/` holds every hook the two calls could reach; each one
  * appends its own name to `marker`, a sibling of the fixture and so outside every checkout. */
-const upstreamTrackingHooks = async (): Promise<{ marker: string; url: string }> => {
+const upstreamTrackingHooks = async (): Promise<{ dir: string; marker: string; url: string }> => {
   const { dir, url } = await createFixtureRepo();
   const marker = `${dir}.hook-ran`;
   await mkdir(join(dir, '.githooks'));
@@ -63,7 +69,7 @@ const upstreamTrackingHooks = async (): Promise<{ marker: string; url: string }>
   }
   await gitFor(dir, ['add', '-A']);
   await gitFor(dir, ['commit', '-q', '-m', 'track relative hooks']);
-  return { marker, url };
+  return { dir, marker, url };
 };
 
 const withEnv = async <Result>(vars: Vars, exercise: () => Promise<Result>): Promise<Result> => {
@@ -136,7 +142,43 @@ const dryRunWithoutOriginHead = async (homeDir: string, vars: Vars): Promise<voi
   );
 };
 
+const addWithoutHooks = async (homeDir: string, vars: Vars): Promise<void> => {
+  const { ctx, stdout } = realContextFor(homeDir);
+  await initHome(ctx);
+  const upstream = await upstreamTrackingHooks();
+
+  const added = await withEnv(vars, () => addRefViaDescription(ctx, stdout, upstream.url));
+
+  await expect(readMarker(upstream.marker)).resolves.toBe('');
+  await expect(gitFor(added.dest, ['config', '--local', 'core.hooksPath'])).resolves.toBe(
+    resolveHome(ctx.env).hooksDir,
+  );
+};
+
+const syncWithoutHooks = async (homeDir: string, vars: Vars): Promise<void> => {
+  const { ctx, stdout } = realContextFor(homeDir);
+  await initHome(ctx);
+  const upstream = await upstreamTrackingHooks();
+  const added = await addRefViaDescription(ctx, stdout, upstream.url);
+  await commitNewFileTo(upstream.dir, 'next.txt', 'next\n');
+
+  await withEnv(vars, () => runSyncJson(ctx, stdout, { refKeys: [added.key] }));
+
+  await expect(readMarker(upstream.marker)).resolves.toBe('');
+  await expect(headShaOf(added.dest)).resolves.toBe(await headShaOf(upstream.dir));
+};
+
 describe.each(Object.entries(INHERITED))('under an inherited %s core.hooksPath', (_name, vars) => {
+  it('refs add clones without running its hooks', SUITE_OPTS, async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() => withTempHome((homeDir) => addWithoutHooks(homeDir, vars)));
+  });
+
+  it('refs sync updates a checkout without running its hooks', SUITE_OPTS, async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() => withTempHome((homeDir) => syncWithoutHooks(homeDir, vars)));
+  });
+
   it('refs doctor inspects a checkout without running its hooks', SUITE_OPTS, async () => {
     expect.hasAssertions();
     await withResetExitCode(() => withTempHome((homeDir) => doctorAfterStaleStat(homeDir, vars)));
