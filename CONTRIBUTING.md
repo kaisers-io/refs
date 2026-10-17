@@ -231,3 +231,11 @@ on an empty run pins nothing.
 Put those wrong answers in a test: `scripts/skill-evals/repair-graders.test.mjs` and
 `core-workflow-graders.test.mjs` read each grader from its `case.yaml` and check it against right
 and wrong samples, without an install and without a model run, in CI.
+
+A grader for a command the agent hands over reads a file the prompt asks it to write, never the
+reply: prose cannot tell a command from one inside a comment or a warning. Its pattern is not
+written by hand. `scripts/skill-evals/command-grammar.mjs` builds it from the exact argv (the
+positionals in order, the options in any position and each at most once, every value one literal
+shell word, nothing after the command). Change the argv there, run
+`node scripts/skill-evals/command-grammar.mjs --write`, and add the wrong commands it must reject
+to `scripts/skill-evals/repair-graders.test.mjs`, which CI runs without a model.
