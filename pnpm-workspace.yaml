@@ -1,2 +1,7 @@
 packages:
   - packages/*
+
+# Reject releases that lose publishing trust evidence; also checked on frozen installs.
+# Keep trustLockfile at its default false. Review publisher changes before adding an
+# exact-version trustPolicyExclude; do not use age alone (trustPolicyIgnoreAfter) as evidence.
+trustPolicy: no-downgrade
