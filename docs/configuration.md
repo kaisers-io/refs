@@ -183,6 +183,19 @@ Change a global setting with `refs edit settings <key> <value>`; change a per-re
 with `refs edit <ref> <field> <value>` (same field names — see
 [`docs/commands.md`](commands.md)).
 
+### Preparing for offline history reads
+
+A blobless checkout has the current worktree locally, but historical-content commands such as
+`git log -p`, `git diff` and `git blame` may fetch missing blobs. They work offline when all
+required objects are already present; otherwise those reads can fail without a network.
+
+Before adding a ref you intend to investigate offline, run
+`refs edit settings clone_mode full --json`, then add and sync it while online. A full clone
+uses more download bandwidth and disk space up front. Changing the setting does not convert
+existing blobless checkouts; it applies when a checkout is next cloned. For an existing checkout,
+read the exact revisions and paths you will need while online and verify those reads after
+disconnecting. That prepares only those objects, not all history. Fresh syncs still need the remote.
+
 ### `[updates]`
 
 ```toml

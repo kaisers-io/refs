@@ -2,6 +2,7 @@ import type { RefSyncContext, RefSyncOutcome, SyncStatus } from './sync-checkout
 import { applySyncSuccess, recordFailure } from './sync-state.ts';
 import { createSemaphore, runGated } from './sync-semaphore.ts';
 import type { CliContext } from '../context.ts';
+import { InvalidArgumentError } from '@commander-js/extra-typings';
 import type { Spinner } from '../spinner.ts';
 import type { StructureReport } from './drift-report.ts';
 import { errorMessageOf } from '../output.ts';
@@ -23,6 +24,21 @@ type SyncResultItem = {
   // that. It never contributes to `failedCount`, which derives solely from `status`.
   structure?: StructureReport;
   warning?: string;
+};
+
+const DEFAULT_SYNC_CONCURRENCY = 4;
+// A conservative resource ceiling, not a measured throughput optimum: at most four times the
+// existing default, so tuning one batch cannot accidentally start hundreds of Git processes.
+const MAX_SYNC_CONCURRENCY = 16;
+const NON_DECIMAL_DIGIT = /\D/u;
+
+const parseSyncConcurrency = (value: string): number => {
+  if (value.length === 0 || NON_DECIMAL_DIGIT.test(value) || Number(value) === 0) {
+    throw new InvalidArgumentError('concurrency must be a positive decimal integer');
+  }
+  // Clamp before passing the value to the semaphore. Even integers too large for Number (which
+  // become Infinity) safely reduce to the ceiling; fractions/exponents/signs never get here.
+  return Math.min(Number(value), MAX_SYNC_CONCURRENCY);
 };
 
 const RENAME_WARNING_SEP = ' | ';
@@ -86,10 +102,6 @@ const syncOneKey = async (ctx: CliContext, rsc: RefSyncContext): Promise<SyncRes
   }
 };
 
-// Cap on how many refs `syncAll` syncs at once — a named constant per the repo's no-magic-numbers
-// style, not tuned against any particular measurement.
-const SYNC_CONCURRENCY_CAP = 4;
-
 /** Reshapes one `Promise.allSettled` slot back into a `SyncResultItem` — the `'rejected'` branch
  * is pure defense-in-depth (`syncOneKey` above already catches everything it can), so the batch
  * still degrades to a `'failed'` entry instead of crashing outright if something truly unexpected
@@ -106,7 +118,7 @@ const toResultItem = (
   return settled.value;
 };
 
-/** Syncs every target in `targets`, at most `SYNC_CONCURRENCY_CAP` at a time, via
+/** Syncs every target in `targets` within the validated concurrency limit, via
  * `Promise.allSettled` over a tiny inline semaphore (`sync-semaphore.ts`) — the batch never
  * aborts: each target's own failure (or, in the defensive fallback above, a rejection `syncOneKey`
  * somehow didn't catch) becomes its own `'failed'` result item alongside every other target's real
@@ -114,9 +126,10 @@ const toResultItem = (
 const syncAll = async (
   ctx: CliContext,
   targets: readonly RefSyncContext[],
-  spinner?: Spinner,
+  options: { concurrency: number; spinner?: Spinner },
 ): Promise<SyncResultItem[]> => {
-  const sem = createSemaphore(SYNC_CONCURRENCY_CAP);
+  const { concurrency, spinner } = options;
+  const sem = createSemaphore(concurrency);
   const tracker = spinner === undefined ? undefined : syncTracker(spinner, targets.length);
   const settled = await Promise.allSettled(
     targets.map((rsc) =>
@@ -143,5 +156,5 @@ const syncAll = async (
   });
 };
 
-export { syncAll, syncOneOrThrow };
+export { DEFAULT_SYNC_CONCURRENCY, parseSyncConcurrency, syncAll, syncOneOrThrow };
 export type { SyncItemStatus, SyncResultItem };

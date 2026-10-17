@@ -1,6 +1,7 @@
 import type { Config, RefKey, RefsHome } from '@kaisers-io/refs-core';
 import { access, constants, readdir } from 'node:fs/promises';
 import { checkoutPath, isEnoent, isGitCheckout, zRefKey } from '@kaisers-io/refs-core';
+import { createSemaphore, runGated } from './sync-semaphore.ts';
 import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
 import { join } from 'node:path';
@@ -12,6 +13,8 @@ import { rmCommand } from '../shell-quote.ts';
 // never work from two independently-derived (and potentially diverging) lists.
 
 const SUCCESS_EXIT_CODE = 0;
+// Match sync’s conservative cap while keeping the top-level doctor checks sequential.
+const CHECKOUT_CONCURRENCY = 4;
 
 type ExistingCheckout = {
   dest: string;
@@ -157,10 +160,13 @@ const checkHooksGuard = async (
   config: Config,
 ): Promise<CheckResult> => {
   const checkouts = existingCheckouts(home, config);
+  const gate = createSemaphore(CHECKOUT_CONCURRENCY);
   const [missingHooks, unexpected, hooksPathFlags] = await Promise.all([
     missingGuardHooks(home),
     unexpectedHookEntries(home),
-    Promise.all(checkouts.map((item) => checkoutHooksPathOk(ctx, home, item.dest))),
+    Promise.all(
+      checkouts.map((item) => runGated(gate, () => checkoutHooksPathOk(ctx, home, item.dest))),
+    ),
   ]);
   const badKeys = checkouts
     .filter((_item, index) => !hooksPathFlags[index])
@@ -222,7 +228,10 @@ const checkDirtyCheckouts = async (
   config: Config,
 ): Promise<CheckResult> => {
   const checkouts = existingCheckouts(home, config);
-  const statuses = await Promise.all(checkouts.map((item) => checkoutStatusFor(ctx, item)));
+  const gate = createSemaphore(CHECKOUT_CONCURRENCY);
+  const statuses = await Promise.all(
+    checkouts.map((item) => runGated(gate, () => checkoutStatusFor(ctx, item))),
+  );
   return buildDirtyCheckoutsResult(statuses);
 };
 
