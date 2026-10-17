@@ -153,6 +153,25 @@ describe('git children and repository-locating variables', SUITE_OPTS, () => {
     await expect(readFile(join(scene.dest, 'NEW.md'), 'utf8')).resolves.toBe('upstream moved\n');
     await expectSentinelUntouched(scene.sentinel, indexBefore);
   });
+
+  // Without `GIT_DIR`, git still finds the checkout from `cwd` but writes its index to the file
+  // `GIT_INDEX_FILE` names: the clone's checkout and every later reset would replace the caller's.
+  it('keeps an inherited GIT_INDEX_FILE alone from replacing the caller index', async () => {
+    expect.hasAssertions();
+    const scene = await sceneWithDirtySentinel();
+    const index = join(scene.sentinel, '.git', 'index');
+    const indexBefore = await readFile(index);
+
+    const result = await withEnv({ GIT_INDEX_FILE: index }, async () => {
+      await cloneScene(scene);
+      await addCommit(scene.fixture.dir, 'NEW.md', 'upstream moved\n');
+      return syncRef(runner, { defaultBranch: 'main', dir: scene.dest, hooksDir: scene.hooksDir });
+    });
+
+    expect(result.status).toBe('updated');
+    await expect(git(scene.dest, ['status', '--porcelain'])).resolves.toBe('');
+    await expectSentinelUntouched(scene.sentinel, indexBefore);
+  });
 });
 
 // `GIT_CONFIG_PARAMETERS` in its `'key=value'` form, which is what `git -c` exports and what every
