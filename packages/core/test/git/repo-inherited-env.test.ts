@@ -153,7 +153,9 @@ describe('git children and repository-locating variables', SUITE_OPTS, () => {
     await expect(readFile(join(scene.dest, 'NEW.md'), 'utf8')).resolves.toBe('upstream moved\n');
     await expectSentinelUntouched(scene.sentinel, indexBefore);
   });
+});
 
+describe('an inherited GIT_INDEX_FILE on its own', SUITE_OPTS, () => {
   // Without `GIT_DIR`, git still finds the checkout from `cwd` but writes its index to the file
   // `GIT_INDEX_FILE` names: the clone's checkout and every later reset would replace the caller's.
   it('keeps an inherited GIT_INDEX_FILE alone from replacing the caller index', async () => {
