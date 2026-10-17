@@ -48,10 +48,10 @@ const offeredCommands = (issue: StructureIssue, key: string): string | undefined
   if (register === undefined) {
     return (
       `Its name is one the packages table cannot hold, so it cannot be registered — ` +
-      `if that is the answer, record it: ${decline}`
+      `if that is the answer, record it (POSIX sh / Git Bash): ${decline}`
     );
   }
-  return `To register it (replace the description first): ${register}. If it should not be: ${decline}`;
+  return `To register it (POSIX sh / Git Bash; replace the description first): ${register}. If it should not be (POSIX sh / Git Bash): ${decline}`;
 };
 
 const unregisteredLine = (issue: StructureIssue, key: string): string => {
@@ -80,7 +80,7 @@ const unregisteredLine = (issue: StructureIssue, key: string): string => {
 const relocatedLine = (issue: StructureIssue, key: string, at: string): string => {
   const head = `${issue.name}: moved to ${issue.path ?? UNKNOWN_PATH} — update the entry's path (${at})`;
   const { repoint } = repairCommandsFor(issue, key);
-  return repoint === undefined ? head : `${head}. To fix it: ${repoint}`;
+  return repoint === undefined ? head : `${head}. To fix it (POSIX sh / Git Bash): ${repoint}`;
 };
 
 /** The four findings about an entry that IS configured — each naming the repair it needs, and the
@@ -97,7 +97,7 @@ const missingLine = (issue: StructureIssue, key: string, at: string): string => 
   const { unregister } = repairCommandsFor(issue, key);
   return unregister === undefined
     ? `${head}; ${NO_COMMAND}, so unregister it by hand`
-    : `${head}, or unregister it: ${unregister}`;
+    : `${head}, or unregister it (POSIX sh / Git Bash): ${unregister}`;
 };
 
 const configuredIssueLine = (issue: StructureIssue, key: string): string => {

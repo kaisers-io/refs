@@ -109,7 +109,7 @@ The skill does not activate by itself. You reach for it, which is why the questi
 
 ### 1. The CLI
 
-You need Node.js 24.2 or newer, and git. On Windows use [Git for Windows](https://gitforwindows.org/), because the read-only guards are `sh` scripts and need the shell it ships with. The CLI behaves the same on all three platforms, and its full test suite runs on each of them.
+You need Node.js 24.2 or newer, and git. On Windows use [Git for Windows](https://gitforwindows.org/), because the read-only guards are `sh` scripts and need the shell it ships with. The test suite runs on macOS, Linux and Windows with platform-specific exclusions. Printed repair commands use POSIX shell quoting; run them in `sh` or Git Bash, rather than pasting them into PowerShell or cmd.exe.
 
 ```bash
 npm i -g @kaisers-io/refs
