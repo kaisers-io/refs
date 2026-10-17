@@ -1,23 +1,27 @@
-import { readFile, realpath } from 'node:fs/promises';
+import { buildSkillVersionCheck, skillCliVersionOf } from './doctor-skill-version.ts';
+import { readFile, readdir, realpath } from 'node:fs/promises';
 import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
-import { comparePlainVersions } from '@kaisers-io/refs-core';
+import { activeCodexPluginVersionOf } from './doctor-skill-plugin-version.ts';
 import { join } from 'node:path';
 
 // `refs doctor`'s `skill` check: reads the installed skill's YAML frontmatter out of every install
 // location it knows about and compares the `metadata.cli_version` it pins against the running CLI
 // version. Split out of doctor-checks-basic.ts (which keeps `git`/`node`/`config` — the checks that
 // are environment probes rather than filesystem lookups) when the location table below grew past
-// what the two could share under the repo's 300-line cap.
+// what the two could share under the repo's 300-line cap. The version comparison itself lives in
+// doctor-skill-version.ts.
 
 const AGENTS_SKILL_SEGMENTS = ['.agents', 'skills', 'refs', 'SKILL.md'] as const;
 const AGENT_HOME_SKILL_SEGMENTS = ['skills', 'refs', 'SKILL.md'] as const;
 const PROJECT_CLAUDE_SKILL_SEGMENTS = ['.claude', 'skills', 'refs', 'SKILL.md'] as const;
 const SKILL_INSTALL_HINT = 'npx skills add kaisers-io/refs';
-const CLI_UPDATE_HINT = 'npm i -g @kaisers-io/refs@latest';
+const PLUGIN_UPDATE_HINT = 'codex plugin marketplace upgrade';
 
 type SkillCandidate = {
   display: string;
+  /** The command that updates this copy, quoted by a stale verdict. */
+  hint: string;
   label: string;
   path: string;
 };
@@ -94,11 +98,17 @@ const agentHomeOf = (args: AgentHomeArgs): SkillRoot | undefined => {
  * then the two per-agent globals; then project scope last — the narrowest reach, and the only pair
  * whose meaning depends on where `refs doctor` happened to be run, canonical before per-agent there
  * too, for the same reason. */
+// An empty `homedir` is treated as no home at all: `os.homedir()` returns a string on every platform,
+// but a blank one would turn `join(home, '.agents')` into a path relative to the process's cwd — a
+// lookup somewhere nobody installs to, reported as if it were `~`.
+const homeOf = (ctx: CliContext): string | undefined =>
+  ctx.homedir.length > 0 ? ctx.homedir : undefined;
+
+const codexRootOf = (ctx: CliContext): SkillRoot | undefined =>
+  agentHomeOf({ dirName: '.codex', env: ctx.env, home: homeOf(ctx), overrideName: 'CODEX_HOME' });
+
 const skillCandidatesOf = (ctx: CliContext): SkillCandidate[] => {
-  // An empty `homedir` is treated as no home at all: `os.homedir()` returns a string on every
-  // platform, but a blank one would turn `join(home, '.agents')` into a path relative to the
-  // process's cwd — a lookup somewhere nobody installs to, reported as if it were `~`.
-  const home = ctx.homedir.length > 0 ? ctx.homedir : undefined;
+  const home = homeOf(ctx);
   const locations = [
     { label: 'shared ~/.agents', root: rootOf(home, '~/.agents'), segments: AGENTS_SKILL_SEGMENTS },
     {
@@ -113,7 +123,7 @@ const skillCandidatesOf = (ctx: CliContext): SkillCandidate[] => {
     },
     {
       label: 'Codex',
-      root: agentHomeOf({ dirName: '.codex', env: ctx.env, home, overrideName: 'CODEX_HOME' }),
+      root: codexRootOf(ctx),
       segments: AGENT_HOME_SKILL_SEGMENTS,
     },
     {
@@ -130,11 +140,73 @@ const skillCandidatesOf = (ctx: CliContext): SkillCandidate[] => {
   return locations.flatMap(({ label, root, segments }) =>
     root === undefined
       ? []
-      : [{ display: root.display, label, path: join(root.path, ...segments) }],
+      : [
+          {
+            display: root.display,
+            hint: SKILL_INSTALL_HINT,
+            label,
+            path: join(root.path, ...segments),
+          },
+        ],
   );
 };
 
+// Where `codex plugin add refs@kaisers-io` puts the skill. Codex installs a plugin into
+// `<codex home>/plugins/cache/<marketplace>/<plugin>/<version>/` and loads it from there, and this
+// repository's plugin root is `skills/`, whose manifest names `./refs` as its skill root — so the
+// file is `<version>/refs/SKILL.md`.
+//
+// Only the plugin this repository publishes is looked at: `refs@kaisers-io`, the marketplace name
+// coming from `.agents/plugins/marketplace.json`. Codex refuses to install a plugin whose manifest
+// name differs from its directory, so the `refs` directory already says the manifest is named
+// `refs`; the marketplace directory is the rest of the identity. Another marketplace can publish a
+// plugin called `refs` too, and Codex then loads its skill under the same `refs:refs` name, but
+// what it ships is not this skill and `codex plugin marketplace upgrade` is not what fixes it.
+//
+// Only the version directory Codex loads is checked (see doctor-skill-plugin-version.ts), not every
+// one left in the cache.
+//
+// Whether Codex has the plugin ENABLED is not checked, and the label says so. Codex resolves that
+// from layered configuration — the user's `config.toml`, a trusted project's `.codex/config.toml`
+// that overrides it, managed and cloud settings — and the only supported reader of the result is
+// `codex plugin list`: a run of a binary that may not be on PATH, measured at 5.7 s cold. A
+// disabled plugin keeps its cache, and `codex plugin marketplace upgrade` refreshes a disabled
+// plugin's files as well, so the hint below still fixes the copy it names.
+const PLUGIN_CACHE_SEGMENTS = ['plugins', 'cache'] as const;
+const PLUGIN_MARKETPLACE = 'kaisers-io';
+const PLUGIN_NAME = 'refs';
+const PLUGIN_LABEL = `Codex plugin ${PLUGIN_NAME}@${PLUGIN_MARKETPLACE} (enabled state not checked)`;
+const PLUGIN_SKILL_SEGMENTS = ['refs', 'SKILL.md'] as const;
+
+/** Directory names under `path`, or none: an absent or unreadable directory means nothing is
+ * installed there that this check can see, never a problem of its own. */
+const subdirectoriesOf = async (path: string): Promise<string[]> => {
+  try {
+    const entries = await readdir(path, { withFileTypes: true });
+    return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+  } catch {
+    return [];
+  }
+};
+
+const PLUGIN_SEGMENTS = [...PLUGIN_CACHE_SEGMENTS, PLUGIN_MARKETPLACE, PLUGIN_NAME] as const;
+
+const pluginCacheDisplayOf = (codexRoot: SkillRoot): string =>
+  [codexRoot.display, ...PLUGIN_SEGMENTS].join('/');
+
+const codexPluginCandidatesOf = async (codexRoot: SkillRoot): Promise<SkillCandidate[]> => {
+  const pluginDir = join(codexRoot.path, ...PLUGIN_SEGMENTS);
+  const version = activeCodexPluginVersionOf(await subdirectoriesOf(pluginDir));
+  if (version === undefined) {
+    return [];
+  }
+  const path = join(pluginDir, version, ...PLUGIN_SKILL_SEGMENTS);
+  const display = pluginCacheDisplayOf(codexRoot);
+  return [{ display, hint: PLUGIN_UPDATE_HINT, label: PLUGIN_LABEL, path }];
+};
+
 type FoundSkill = {
+  hint: string;
   label: string;
   realPath: string;
   source: string;
@@ -145,10 +217,11 @@ type FoundSkill = {
  * five) and an unreadable one both mean "nothing to compare here", and an install that exists
  * nowhere falls through to `notFoundOf` below. Read-only throughout: `refs` writes nothing outside
  * `REFS_HOME`, and this check touches no path with anything but `realpath`/`readFile`. */
-const readSkillAt = async (path: string, label: string): Promise<FoundSkill | undefined> => {
+const readSkillAt = async (candidate: SkillCandidate): Promise<FoundSkill | undefined> => {
+  const { hint, label, path } = candidate;
   try {
     const resolved = await realpath(path);
-    return { label, realPath: resolved, source: await readFile(resolved, 'utf8') };
+    return { hint, label, realPath: resolved, source: await readFile(resolved, 'utf8') };
   } catch {
     return undefined;
   }
@@ -168,94 +241,6 @@ const uniqueByRealPath = (entries: readonly FoundSkill[]): FoundSkill[] => {
   return [...byRealPath.values()];
 };
 
-// Pulls `metadata.cli_version` out of the skill's YAML frontmatter without a YAML dependency —
-// same trade-off as `parseNodeVersion` in doctor-checks-basic.ts: one well-known key in a file this
-// repo owns, so a line scan beats pulling in a parser. Accepts the value quoted or bare, at any
-// indentation.
-const FRONTMATTER_PATTERN = /^---\r?\n(?<body>[\s\S]*?)\r?\n---/u;
-const CLI_VERSION_PATTERN = /^\s*cli_version:\s*["']?(?<version>[^"'\s]+)["']?\s*$/mu;
-
-const skillCliVersionOf = (source: string): string | undefined => {
-  const body = FRONTMATTER_PATTERN.exec(source)?.groups?.['body'];
-  if (body === undefined) {
-    return undefined;
-  }
-  return CLI_VERSION_PATTERN.exec(body)?.groups?.['version'];
-};
-
-type SkillVerdict = 'cli-older' | 'match' | 'skill-older' | 'unknown';
-
-// Anything that is not three plain decimal components — a prerelease on either side — is left to
-// the `unknown` verdict, which tells the user to reinstall both sides rather than guessing an
-// ordering. `comparePlainVersions` is the single implementation of that rule; this file used to
-// carry a second one that compared through `Number`, which agrees with it everywhere except past
-// 2^53, where it silently reported a match.
-// Longer than any version this CLI could have published, by a wide margin. `comparePlainVersions`
-// deliberately supports components of arbitrary length, so `'9'.repeat(4000) + '.0.0'` compares
-// fine and is a perfectly ordinary `skill-older`/`cli-older` verdict — which then quotes those
-// 4000 digits into the detail. A bound here keeps the line a line, and it belongs on the verdict
-// rather than on the rendering: a value this long is not a version, whatever it compares as.
-const MAX_SKILL_VERSION_LENGTH = 32;
-
-const compareSkillVersion = (skillVersion: string, cliVersion: string): SkillVerdict => {
-  if (skillVersion.length > MAX_SKILL_VERSION_LENGTH) {
-    return 'unknown';
-  }
-  if (skillVersion === cliVersion) {
-    return 'match';
-  }
-  const compared = comparePlainVersions(skillVersion, cliVersion);
-  if (compared === undefined) {
-    return 'unknown';
-  }
-  if (compared === 0) {
-    return 'match';
-  }
-  return compared > 0 ? 'cli-older' : 'skill-older';
-};
-
-const DETAIL_BY_VERDICT: Record<SkillVerdict, (skill: string, cli: string) => string> = {
-  'cli-older': (skill, cli) =>
-    `the refs skill targets CLI ${skill} but this CLI is ${cli} — update the CLI: ${CLI_UPDATE_HINT}`,
-  match: (_skill, cli) => `the refs skill is installed and matches this CLI (${cli})`,
-  'skill-older': (skill, cli) =>
-    `the refs skill targets CLI ${skill} but this CLI is ${cli} — update the skill: ${SKILL_INSTALL_HINT}`,
-  // The one verdict where the declared value is NOT quoted back. Two of the five places a
-  // `SKILL.md` is looked for are rooted at the working directory — for an agent session, whatever
-  // repository it happens to be in — and the frontmatter scan accepts any quote-free,
-  // whitespace-free token of any length. Quoting it put attacker-chosen prose, unbounded, into an
-  // agent-facing `--json` detail that MAINTAIN.md tells the agent to relay verbatim to a human.
-  //
-  // The two ordering verdicts are the only others that interpolate the declared value, and they
-  // are reached only once `comparePlainVersions` has accepted it, so what they quote is three
-  // decimal components bounded by `MAX_SKILL_VERSION_LENGTH`. `match` does not quote it at all.
-  unknown: (_skill, cli) =>
-    `the refs skill does not declare a version this CLI (${cli}) can compare — reinstall both: ${CLI_UPDATE_HINT} and ${SKILL_INSTALL_HINT}`,
-};
-
-type SkillVersionArgs = {
-  cliVersion: string;
-  label: string;
-  skillVersion: string | undefined;
-};
-
-const buildSkillVersionCheck = (args: SkillVersionArgs): CheckResult => {
-  const { cliVersion, label, skillVersion } = args;
-  if (skillVersion === undefined) {
-    return {
-      detail: `the refs skill (${label}) predates the version gate — update it: ${SKILL_INSTALL_HINT}`,
-      name: 'skill',
-      status: 'warn',
-    };
-  }
-  const verdict = compareSkillVersion(skillVersion, cliVersion);
-  return {
-    detail: `${label}: ${DETAIL_BY_VERDICT[verdict](skillVersion, cliVersion)}`,
-    name: 'skill',
-    status: verdict === 'match' ? 'ok' : 'warn',
-  };
-};
-
 /** Deliberately not "refs skill not found": with env-overridable per-agent directories, project
  * scope as the installer's default, and 70-odd agent directories this deliberately does not look
  * at, "it is not installed" is not a claim this check can make. So it says what it actually knows —
@@ -266,8 +251,8 @@ const buildSkillVersionCheck = (args: SkillVersionArgs): CheckResult => {
  * A hardcoded `~/.claude` would be a lie under `$CLAUDE_CONFIG_DIR`, which MOVES the search rather
  * than widening it: the message would send its reader — quite possibly an agent acting on it — to
  * inspect the one directory this check has just finished arguing nothing reads. */
-const notFoundOf = (candidates: readonly SkillCandidate[]): CheckResult => ({
-  detail: `refs skill not found in the locations this check knows about (${candidates.map((candidate) => candidate.display).join(', ')}) — an install anywhere else is invisible here and still works; if it really is missing: ${SKILL_INSTALL_HINT}`,
+const notFoundOf = (displays: readonly string[]): CheckResult => ({
+  detail: `refs skill not found in the locations this check knows about (${displays.join(', ')}) — an install anywhere else is invisible here and still works; if it really is missing: ${SKILL_INSTALL_HINT}`,
   name: 'skill',
   status: 'warn',
 });
@@ -282,18 +267,21 @@ const notFoundOf = (candidates: readonly SkillCandidate[]): CheckResult => ({
  * not be hidden by a current shared one. The `detail` names the location so the fix is
  * unambiguous. */
 const checkSkill = async (ctx: CliContext): Promise<CheckResult> => {
-  const candidates = skillCandidatesOf(ctx);
-  const found = await Promise.all(
-    candidates.map((candidate) => readSkillAt(candidate.path, candidate.label)),
-  );
+  const codexRoot = codexRootOf(ctx);
+  const plugins = codexRoot === undefined ? [] : await codexPluginCandidatesOf(codexRoot);
+  const candidates = [...skillCandidatesOf(ctx), ...plugins];
+  const found = await Promise.all(candidates.map((candidate) => readSkillAt(candidate)));
   const checks = uniqueByRealPath(found.filter((entry) => entry !== undefined)).map((entry) =>
     buildSkillVersionCheck({
       cliVersion: ctx.cliVersion,
+      hint: entry.hint,
       label: entry.label,
       skillVersion: skillCliVersionOf(entry.source),
     }),
   );
-  return checks.find((check) => check.status !== 'ok') ?? checks[0] ?? notFoundOf(candidates);
+  const pluginCache = codexRoot === undefined ? [] : [pluginCacheDisplayOf(codexRoot)];
+  const searched = new Set([...candidates.map((candidate) => candidate.display), ...pluginCache]);
+  return checks.find((check) => check.status !== 'ok') ?? checks[0] ?? notFoundOf([...searched]);
 };
 
 export { checkSkill };

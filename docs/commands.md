@@ -507,7 +507,7 @@ only thing that compares the two. Six outcomes:
 | No `SKILL.md` in any location it knows about               | `warn` | names the locations searched; install: `npx skills add kaisers-io/refs` |
 | The pinned version equals the running CLI                  | `ok`   | the skill matches this CLI                         |
 | The skill targets a **newer** CLI                          | `warn` | update the CLI: `npm i -g @kaisers-io/refs@latest` |
-| The skill targets an **older** CLI                         | `warn` | update the skill: `npx skills add kaisers-io/refs` |
+| The skill targets an **older** CLI                         | `warn` | update the skill: `npx skills add kaisers-io/refs`, or `codex plugin marketplace upgrade` for the Codex plugin |
 | The skill has no `cli_version` (installed before the gate) | `warn` | it predates the version gate — update the skill    |
 | Either version is not a plain `x.y.z` (a prerelease, say)  | `warn` | direction unknown — reinstall both                 |
 
@@ -516,7 +516,7 @@ a prerelease, a build-metadata suffix — lands in the last row, where the check
 neither side and asks you to reinstall both rather than guess an ordering. Exact string
 equality is checked first, though, so two identical non-plain versions still report `ok`.
 
-Five installation locations are checked, in this order:
+Six installation locations are checked, in this order:
 
 | Location                                                   | `detail` label      | What puts it there                                  |
 | ---------------------------------------------------------- | ------------------- | --------------------------------------------------- |
@@ -525,6 +525,7 @@ Five installation locations are checked, in this order:
 | `~/.codex/skills/refs/SKILL.md` (or `$CODEX_HOME`)         | `Codex`             | same; also where older `skills` versions installed  |
 | `<cwd>/.agents/skills/refs/SKILL.md`                       | `project ./.agents` | `skills add` without `-g` — the installer's default |
 | `<cwd>/.claude/skills/refs/SKILL.md`                       | `project ./.claude` | `skills add -a claude-code` without `-g` — a single-agent project install |
+| `~/.codex/plugins/cache/kaisers-io/refs/<version>/refs/SKILL.md` (or `$CODEX_HOME`) | `Codex plugin refs@kaisers-io (enabled state not checked)` | `codex plugin add refs@kaisers-io` — see [install](install.md#the-codex-plugin) |
 
 The `detail` names the one it is reporting on. A location that does not exist is skipped
 silently, and the locations are deduplicated by resolved real path — `skills add -g` keeps
@@ -540,9 +541,22 @@ global directory, the installer's project path is a literal relative `.claude/sk
 `$CLAUDE_CONFIG_DIR` does not move it. Codex needs no counterpart row — it is a universal
 agent, so its project install lands in `./.agents/skills` in every mode.
 
+The plugin row reads one copy: the version directory Codex loads, which is `local` when there is
+one and otherwise the greatest version. Leftover directories beside it are ignored, as Codex
+ignores them. Only the plugin this repository publishes, `refs@kaisers-io`, counts. Another
+marketplace can publish a plugin called `refs` too, and Codex shows its skill as `refs:refs` as
+well, but it is not this skill and the upgrade command would not fix it.
+
+The plugin row does not say whether Codex has the plugin enabled, and its label says so. Codex
+works that out from several configuration files, and a disabled plugin keeps its cache, so a
+disabled plugin's copy is still compared. A stale one still gets the upgrade command, because
+`codex plugin marketplace upgrade` refreshes a disabled plugin's files too. `codex plugin list`
+shows whether it is enabled.
+
 A problem in any of the surviving copies wins over an `ok` in the others: `doctor` cannot
 know which agent is about to read the skill, so a stale copy in `~/.claude` is never hidden
-by a current shared one.
+by a current shared one. With both the plugin and a standalone copy installed, both are
+checked, and the stale one is named with the command that updates it.
 
 **This list is best-effort, not exhaustive.** None of those paths is a documented, stable
 contract — they are the `skills` installer's implementation detail, the canonical directory
