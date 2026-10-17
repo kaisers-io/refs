@@ -63,6 +63,25 @@ exit code (rather than inspecting `data`) still sees the failure. **Always check
 the envelope's `ok`/`data` for what happened, and the exit code for whether to treat the
 whole invocation as failed.
 
+## Commands refs prints
+
+Some output contains a command for you to run: the repairs `refs doctor` and `refs sync` suggest
+(`refs edit …`, `rm -rf -- …`, `rmdir -- …`), and the next step a few errors name. Under `--json`
+they appear in the same text, and a `config-drift` finding also carries its `refs edit` repairs as
+fields of their own. Every one of them is written for a **POSIX shell** (`sh`, `bash`, `zsh`, or
+Git Bash on Windows). Each value in it is single-quoted, so a space, `$(…)` or a backtick in it
+stays literal, and a single quote inside a value is written as `'\''`. A repair whose value holds
+a control character or malformed Unicode is not printed at all, because the printed line would not
+be the value. The finding is still reported, and a `config-drift` finding under `--json` still
+carries the raw `name` and `path`.
+
+PowerShell and cmd.exe are not covered. PowerShell writes a single quote inside a single-quoted
+string as `''` and also treats typographic quotes such as `’` as quote characters, and cmd.exe
+does not treat `'` as a quote at all. `rm -rf` and `rmdir --` are POSIX spellings too. A
+`refs edit` line whose values contain none of those characters may still work in PowerShell, but
+refs does not promise it, and its tests that run printed commands through a shell are skipped on
+Windows.
+
 ---
 
 ## `refs init`
