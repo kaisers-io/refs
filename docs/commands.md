@@ -525,7 +525,7 @@ Six installation locations are checked, in this order:
 | `~/.codex/skills/refs/SKILL.md` (or `$CODEX_HOME`)         | `Codex`             | same; also where older `skills` versions installed  |
 | `<cwd>/.agents/skills/refs/SKILL.md`                       | `project ./.agents` | `skills add` without `-g` — the installer's default |
 | `<cwd>/.claude/skills/refs/SKILL.md`                       | `project ./.claude` | `skills add -a claude-code` without `-g` — a single-agent project install |
-| `~/.codex/plugins/cache/*/refs/*/refs/SKILL.md` (or `$CODEX_HOME`) | `Codex plugin` | `codex plugin add refs@kaisers-io` — see [install](install.md#the-codex-plugin) |
+| `~/.codex/plugins/cache/kaisers-io/refs/<version>/refs/SKILL.md` (or `$CODEX_HOME`) | `Codex plugin refs@kaisers-io (enabled state not checked)` | `codex plugin add refs@kaisers-io` — see [install](install.md#the-codex-plugin) |
 
 The `detail` names the one it is reporting on. A location that does not exist is skipped
 silently, and the locations are deduplicated by resolved real path — `skills add -g` keeps
@@ -541,9 +541,17 @@ global directory, the installer's project path is a literal relative `.claude/sk
 `$CLAUDE_CONFIG_DIR` does not move it. Codex needs no counterpart row — it is a universal
 agent, so its project install lands in `./.agents/skills` in every mode.
 
-The plugin row matches any marketplace name, because a fork publishes under its own, and every
-version directory it finds. Codex replaces the version directory on upgrade, so there is
-normally one. A disabled plugin keeps its cache, so it is still checked.
+The plugin row reads one copy: the version directory Codex loads, which is `local` when there is
+one and otherwise the greatest version. Leftover directories beside it are ignored, as Codex
+ignores them. Only the plugin this repository publishes, `refs@kaisers-io`, counts. Another
+marketplace can publish a plugin called `refs` too, and Codex shows its skill as `refs:refs` as
+well, but it is not this skill and the upgrade command would not fix it.
+
+The plugin row does not say whether Codex has the plugin enabled, and its label says so. Codex
+works that out from several configuration files, and a disabled plugin keeps its cache, so a
+disabled plugin's copy is still compared. A stale one still gets the upgrade command, because
+`codex plugin marketplace upgrade` refreshes a disabled plugin's files too. `codex plugin list`
+shows whether it is enabled.
 
 A problem in any of the surviving copies wins over an `ok` in the others: `doctor` cannot
 know which agent is about to read the skill, so a stale copy in `~/.claude` is never hidden

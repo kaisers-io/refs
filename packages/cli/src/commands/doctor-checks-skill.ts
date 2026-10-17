@@ -2,6 +2,7 @@ import { buildSkillVersionCheck, skillCliVersionOf } from './doctor-skill-versio
 import { readFile, readdir, realpath } from 'node:fs/promises';
 import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
+import { activeCodexPluginVersionOf } from './doctor-skill-plugin-version.ts';
 import { join } from 'node:path';
 
 // `refs doctor`'s `skill` check: reads the installed skill's YAML frontmatter out of every install
@@ -150,18 +151,31 @@ const skillCandidatesOf = (ctx: CliContext): SkillCandidate[] => {
   );
 };
 
-// Where `codex plugin add refs@<marketplace>` puts the skill. Codex installs a plugin into
+// Where `codex plugin add refs@kaisers-io` puts the skill. Codex installs a plugin into
 // `<codex home>/plugins/cache/<marketplace>/<plugin>/<version>/` and loads it from there, and this
 // repository's plugin root is `skills/`, whose manifest names `./refs` as its skill root — so the
-// file is `<version>/refs/SKILL.md`. The marketplace segment is enumerated rather than fixed: the
-// name is the marketplace manifest's, and a fork or a mirror publishes under its own.
-// `codex plugin marketplace upgrade` replaces the version directory rather than adding one, so
-// normally there is exactly one; if several survive, each is checked like any other copy.
+// file is `<version>/refs/SKILL.md`.
 //
-// The marketplace and version names never reach a label or a command: they are directory names in
-// the user's Codex home, but whoever published the marketplace chose them.
+// Only the plugin this repository publishes is looked at: `refs@kaisers-io`, the marketplace name
+// coming from `.agents/plugins/marketplace.json`. Codex refuses to install a plugin whose manifest
+// name differs from its directory, so the `refs` directory already says the manifest is named
+// `refs`; the marketplace directory is the rest of the identity. Another marketplace can publish a
+// plugin called `refs` too, and Codex then loads its skill under the same `refs:refs` name, but
+// what it ships is not this skill and `codex plugin marketplace upgrade` is not what fixes it.
+//
+// Only the version directory Codex loads is checked (see doctor-skill-plugin-version.ts), not every
+// one left in the cache.
+//
+// Whether Codex has the plugin ENABLED is not checked, and the label says so. Codex resolves that
+// from layered configuration — the user's `config.toml`, a trusted project's `.codex/config.toml`
+// that overrides it, managed and cloud settings — and the only supported reader of the result is
+// `codex plugin list`: a run of a binary that may not be on PATH, measured at 5.7 s cold. A
+// disabled plugin keeps its cache, and `codex plugin marketplace upgrade` refreshes a disabled
+// plugin's files as well, so the hint below still fixes the copy it names.
 const PLUGIN_CACHE_SEGMENTS = ['plugins', 'cache'] as const;
+const PLUGIN_MARKETPLACE = 'kaisers-io';
 const PLUGIN_NAME = 'refs';
+const PLUGIN_LABEL = `Codex plugin ${PLUGIN_NAME}@${PLUGIN_MARKETPLACE} (enabled state not checked)`;
 const PLUGIN_SKILL_SEGMENTS = ['refs', 'SKILL.md'] as const;
 
 /** Directory names under `path`, or none: an absent or unreadable directory means nothing is
@@ -175,28 +189,20 @@ const subdirectoriesOf = async (path: string): Promise<string[]> => {
   }
 };
 
-const pluginCacheDisplayOf = (codexRoot: SkillRoot): string =>
-  [codexRoot.display, ...PLUGIN_CACHE_SEGMENTS].join('/');
+const PLUGIN_SEGMENTS = [...PLUGIN_CACHE_SEGMENTS, PLUGIN_MARKETPLACE, PLUGIN_NAME] as const;
 
-const versionDirectoriesOf = async (pluginDir: string): Promise<string[]> => {
-  const versions = await subdirectoriesOf(pluginDir);
-  return versions.toSorted().map((version) => join(pluginDir, version));
-};
+const pluginCacheDisplayOf = (codexRoot: SkillRoot): string =>
+  [codexRoot.display, ...PLUGIN_SEGMENTS].join('/');
 
 const codexPluginCandidatesOf = async (codexRoot: SkillRoot): Promise<SkillCandidate[]> => {
-  const cache = join(codexRoot.path, ...PLUGIN_CACHE_SEGMENTS);
-  const marketplaces = await subdirectoriesOf(cache);
-  const versionDirs = await Promise.all(
-    marketplaces
-      .toSorted()
-      .map((marketplace) => versionDirectoriesOf(join(cache, marketplace, PLUGIN_NAME))),
-  );
-  return versionDirs.flat().map((dir) => ({
-    display: pluginCacheDisplayOf(codexRoot),
-    hint: PLUGIN_UPDATE_HINT,
-    label: 'Codex plugin',
-    path: join(dir, ...PLUGIN_SKILL_SEGMENTS),
-  }));
+  const pluginDir = join(codexRoot.path, ...PLUGIN_SEGMENTS);
+  const version = activeCodexPluginVersionOf(await subdirectoriesOf(pluginDir));
+  if (version === undefined) {
+    return [];
+  }
+  const path = join(pluginDir, version, ...PLUGIN_SKILL_SEGMENTS);
+  const display = pluginCacheDisplayOf(codexRoot);
+  return [{ display, hint: PLUGIN_UPDATE_HINT, label: PLUGIN_LABEL, path }];
 };
 
 type FoundSkill = {

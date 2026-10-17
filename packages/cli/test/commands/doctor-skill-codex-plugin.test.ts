@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { skillCheckOf, skillSource, writeSkillAt } from '../helpers/doctor-skill-support.ts';
+import {
+  skillCheckOf,
+  skillSource,
+  writePluginInstall,
+  writeSkillAt,
+} from '../helpers/doctor-skill-support.ts';
 import { join } from 'node:path';
 import { withTempHome } from '../helpers/add-support.ts';
 
@@ -14,23 +18,7 @@ const CURRENT = '0.5.1';
 const STALE = '0.4.0';
 const PLUGIN_HINT = 'codex plugin marketplace upgrade';
 const INSTALLER_HINT = 'npx skills add kaisers-io/refs';
-
-type PluginInstall = {
-  codexHome: string;
-  marketplace?: string;
-  plugin?: string;
-  version: string;
-};
-
-/** Writes the tree Codex 0.163 leaves after `codex plugin add` — observed, not assumed. */
-const writePluginInstall = async (install: PluginInstall, source: string): Promise<void> => {
-  const { codexHome, marketplace = 'kaisers-io', plugin = 'refs', version } = install;
-  const root = join(codexHome, 'plugins', 'cache', marketplace, plugin, version);
-  await mkdir(join(root, '.codex-plugin'), { recursive: true });
-  await writeFile(join(root, '.codex-plugin', 'plugin.json'), '{"name":"refs"}\n', 'utf8');
-  await mkdir(join(root, 'refs'), { recursive: true });
-  await writeFile(join(root, 'refs', 'SKILL.md'), source, 'utf8');
-};
+const PLUGIN_LABEL = 'Codex plugin refs@kaisers-io (enabled state not checked)';
 
 describe('doctor: skill check finds a Codex plugin install', () => {
   it('reports ok for a plugin-only install under ~/.codex', async () => {
@@ -41,7 +29,7 @@ describe('doctor: skill check finds a Codex plugin install', () => {
       const result = await skillCheckOf(homeDir, CURRENT);
       expect(result.status).toBe('ok');
       expect(result.detail).toBe(
-        `Codex plugin: the refs skill is installed and matches this CLI (${CURRENT})`,
+        `${PLUGIN_LABEL}: the refs skill is installed and matches this CLI (${CURRENT})`,
       );
     });
   });
@@ -54,17 +42,6 @@ describe('doctor: skill check finds a Codex plugin install', () => {
       const result = await skillCheckOf(homeDir, CURRENT, { env: { CODEX_HOME: codexHome } });
       expect(result.status).toBe('ok');
       expect(result.detail).toContain('Codex plugin');
-    });
-  });
-
-  it('finds the plugin whatever the marketplace is called', async () => {
-    expect.hasAssertions();
-    await withTempHome(async (homeDir) => {
-      const codexHome = join(homeDir, '.codex');
-      const install = { codexHome, marketplace: 'a-fork', version: CURRENT };
-      await writePluginInstall(install, skillSource(CURRENT));
-      const result = await skillCheckOf(homeDir, CURRENT);
-      expect(result.status).toBe('ok');
     });
   });
 
@@ -91,7 +68,7 @@ describe('doctor: a stale Codex plugin is updated through Codex', () => {
       const result = await skillCheckOf(homeDir, CURRENT);
       expect(result.status).toBe('warn');
       expect(result.detail).toBe(
-        `Codex plugin: the refs skill targets CLI ${STALE} but this CLI is ${CURRENT} — update the skill: ${PLUGIN_HINT}`,
+        `${PLUGIN_LABEL}: the refs skill targets CLI ${STALE} but this CLI is ${CURRENT} — update the skill: ${PLUGIN_HINT}`,
       );
     });
   });
@@ -146,7 +123,7 @@ describe('doctor: the not-found message names the plugin cache', () => {
       const codexHome = join(homeDir, 'elsewhere');
       const result = await skillCheckOf(homeDir, CURRENT, { env: { CODEX_HOME: codexHome } });
       expect(result.status).toBe('warn');
-      expect(result.detail).toContain(`${codexHome}/plugins/cache`);
+      expect(result.detail).toContain(`${codexHome}/plugins/cache/kaisers-io/refs`);
     });
   });
 
@@ -164,7 +141,7 @@ describe('doctor: the not-found message names the plugin cache', () => {
     expect.hasAssertions();
     await withTempHome(async (homeDir) => {
       const result = await skillCheckOf(homeDir, CURRENT);
-      expect(result.detail).toContain('~/.codex/plugins/cache');
+      expect(result.detail).toContain('~/.codex/plugins/cache/kaisers-io/refs');
     });
   });
 });

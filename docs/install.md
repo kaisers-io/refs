@@ -51,7 +51,7 @@ To update, refresh the marketplace. Codex installs the new version and removes t
 codex plugin marketplace upgrade kaisers-io
 ```
 
-The plugin's version is the CLI's version, so a new copy arrives with each release, not with each commit to the repository. `refs doctor` reports a plugin that has fallen behind the CLI and names the upgrade command.
+The plugin's version is the CLI's version, so a new copy arrives with each release, not with each commit to the repository. `refs doctor` reports a plugin that has fallen behind the CLI and names the upgrade command. It reads the plugin's cached copy and does not check whether the plugin is enabled; `codex plugin list` shows that.
 
 To remove it:
 

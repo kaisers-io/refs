@@ -16,7 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`refs doctor` recognises a Codex plugin install.** The `skill` check looks in Codex's plugin
   cache, so a plugin-only install no longer reads as missing, and a stale plugin is told to run
   `codex plugin marketplace upgrade` rather than `npx skills add`, which would add a second copy.
-  The skill's own version gate gives the plugin copy the same advice.
+  The skill's own version gate gives the plugin copy the same advice. Doctor reads the copy
+  Codex loads, from `refs@kaisers-io` only, and says that it does not check whether the plugin
+  is enabled.
 
 ### Changed
 
