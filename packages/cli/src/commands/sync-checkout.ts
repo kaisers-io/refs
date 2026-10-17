@@ -18,6 +18,7 @@ import {
   ensureManagedCheckout,
   resolveCheckoutHead,
 } from './add-checkout-guards.ts';
+import { networkTimeoutFrom, networkTimeoutOpt } from '../network-timeout.ts';
 import type { CliContext } from '../context.ts';
 import type { MemberDiscovery } from './drift-discovery.ts';
 import type { StructureReport } from './drift-report.ts';
@@ -107,8 +108,9 @@ const syncMissingCheckout = async (
     dest,
     hooksDir: rsc.home.hooksDir,
     mode: cloneMode,
+    ...networkTimeoutOpt(ctx.env),
   });
-  const actualBranch = await detectDefaultBranch(ctx.runner, dest);
+  const actualBranch = await detectDefaultBranch(ctx.runner, dest, networkTimeoutFrom(ctx.env));
   const headSha = await resolveCheckoutHead(ctx.runner, {
     allowFileUrls: allowFileUrlsFrom(ctx.env),
     dest,
@@ -142,6 +144,7 @@ const syncExistingCheckout = async (
     defaultBranch: rsc.ref.default_branch,
     dir: dest,
     hooksDir: rsc.home.hooksDir,
+    ...networkTimeoutOpt(ctx.env),
   });
   const headSha = validateHeadSha(rsc.key, dest, result.newSha);
   const outcome: RefSyncOutcome = { headSha, previousSha: result.oldSha, status: result.status };

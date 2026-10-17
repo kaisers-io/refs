@@ -1,9 +1,9 @@
 import { REFUSED_EXIT_CODE, gitVersionRefusal, isVersionProbe } from './git-version-gate.ts';
 import { activeChildren, installCleanupOnce } from './spawn-cleanup.ts';
 import { appendNote, createCollector, withTruncationNote } from './spawn-collector.ts';
+import { armTimeout, deadlineSpawnOpts } from './spawn-timeout.ts';
 import type { ChildProcess } from 'node:child_process';
 import type { CollectedStream } from './spawn-collector.ts';
-import { armTimeout } from './spawn-timeout.ts';
 import { once } from 'node:events';
 import { resolveExecutable } from './executable-path.ts';
 import { sanitizedChildEnv } from './child-env.ts';
@@ -101,6 +101,7 @@ const startChild = (cmd: string, args: readonly string[], opts: StartOpts): Runn
   // options in front (git-policy.ts), so no call site can forget them.
   const child = spawn(opts.file, withGitPolicy(cmd, args, opts.hooksDir), {
     ...cwdOpt(opts.cwd),
+    ...deadlineSpawnOpts(opts.timeoutMs),
     env: sanitizedChildEnv(process.env),
     shell: false,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -114,7 +115,7 @@ const startChild = (cmd: string, args: readonly string[], opts: StartOpts): Runn
   child.stderr.on('data', (chunk: Buffer) => {
     stderrCollector.push(chunk);
   });
-  const timeout = armTimeout(child, opts.timeoutMs);
+  const timeout = armTimeout(child, opts.timeoutMs, spawn);
   return { child, stderrCollector, stdoutCollector, timeout };
 };
 

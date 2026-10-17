@@ -1,30 +1,17 @@
-import type { RunResult, Runner } from '../proc/runner.ts';
 import { buildSyncResult, excerpt, toBuildSyncResultOpts } from './sync-result.ts';
+import { gitSpec, runOpts, runOrThrow } from './run-step.ts';
 import type { BuiltSyncResult } from './sync-result.ts';
-import type { CloneMode } from '../schemas/primitives.ts';
+import type { CommandSpec } from './run-step.ts';
 import type { RefsHome } from '../home.ts';
-import { failureDetail } from './failure-detail.ts';
+import type { Runner } from '../proc/runner.ts';
 import { join } from 'node:path';
 import { prepareManagedCheckout } from './managed-checkout.ts';
 import { validationError } from '../errors.ts';
-import { withCloneArgs } from './clone-args.ts';
 import { writeFileAtomic } from '../fs-atomic.ts';
 
 // Git operations for a "managed checkout": every function takes `runner: Runner` first (real git
 // via SpawnRunner in production, scripted via FakeRunner in unit tests). Implements the clone
 // modes, sync semantics, and read-only hook guards for those checkouts.
-
-type CloneOpts = {
-  cloneUrl: string;
-  dest: string;
-  mode: CloneMode;
-  hooksDir: string;
-};
-
-type CloneResult = {
-  effectiveMode: CloneMode;
-  warning?: string;
-};
 
 type SyncOpts = {
   dir: string;
@@ -32,6 +19,8 @@ type SyncOpts = {
   /** This home's hooks directory: what `core.hooksPath` must equal for the checkout to be one
    * refs produced. See `assertManagedCheckout`. */
   hooksDir: string;
+  /** Deadline for each command that talks to the remote; absent means none. */
+  networkTimeoutMs?: number;
 };
 
 // Canonical definitions live in sync-result.ts — re-exported here under this module's
@@ -40,69 +29,8 @@ type SyncResult = BuiltSyncResult;
 
 const SUCCESS_EXIT_CODE = 0;
 const HOOK_MODE = 0o755;
-
-// Git's wording (git 2.50.1 / Apple Git-155, verified against a plain `file://` remote —
-// see repo.test.ts) when the server ignores `--filter=...` and performs a full clone instead.
-const FILTER_NOT_HONOURED_PATTERN = /filtering not recognized/iu;
-
-type CommandSpec = {
-  action: string;
-  cmd: string;
-  args: readonly string[];
-  cwd?: string;
-};
-
-const cwdOpt = (cwd: string | undefined): { cwd?: string } => (cwd === undefined ? {} : { cwd });
-
-// Shorthand for the `{ action, args, cmd: 'git', cwd }` shape passed to `runOrThrow` below.
-const gitSpec = (action: string, args: readonly string[], cwd?: string): CommandSpec => ({
-  action,
-  args,
-  cmd: 'git',
-  ...cwdOpt(cwd),
-});
-
-// Runs one command and throws `validationError` on a non-zero exit — opts IN to "failure is an
-// exception" on top of `Runner.run`'s "failure is data" contract, for steps with no sane way to
-// continue past a failure (a failed clone/checkout/reset leaves nothing useful to return).
-// Returns the whole `RunResult`, not just its two streams. The narrower shape was why `listTags`
-// had to detect a capped stream by matching the note in `stderr`: `stdoutTruncated` is the fact
-// the runner publishes, and it was not reachable through here.
-const runOrThrow = async (runner: Runner, spec: CommandSpec): Promise<RunResult> => {
-  const result = await runner.run(spec.cmd, spec.args, cwdOpt(spec.cwd));
-  if (result.exitCode === SUCCESS_EXIT_CODE) {
-    return result;
-  }
-  const raw = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
-  throw validationError(`${spec.action} failed: ${failureDetail(raw)}`);
-};
-
-// `git clone` into `opts.dest` (`--filter=blob:none` when blobless). Some servers (verified: a
-// plain `file://` remote without `uploadpack.allowFilter=true`) ignore the filter and warn — that
-// downgrades to `effectiveMode: 'full'` + warning.
-const cloneRepo = async (runner: Runner, opts: CloneOpts): Promise<CloneResult> => {
-  const cloneResult = await withCloneArgs(opts, (args) =>
-    runOrThrow(runner, gitSpec('git clone', args)),
-  );
-  // Kept deliberately, though the clone's own `-c` already wrote it: an older git that does not
-  // apply a clone `-c` before checkout would still leave the marker every later guard compares
-  // against. Re-writing the same value is idempotent.
-  await runOrThrow(
-    runner,
-    gitSpec('git config core.hooksPath', ['config', 'core.hooksPath', opts.hooksDir], opts.dest),
-  );
-
-  const filterIgnored =
-    opts.mode === 'blobless' && FILTER_NOT_HONOURED_PATTERN.test(cloneResult.stderr);
-  if (!filterIgnored) {
-    return { effectiveMode: opts.mode };
-  }
-  return {
-    effectiveMode: 'full',
-    warning:
-      'server did not honour the partial-clone filter (blob:none); fell back to a full clone',
-  };
-};
+// Contacts the remote, so it runs under the same network deadline as clone and fetch.
+const SET_HEAD_ARGS = ['remote', 'set-head', 'origin', '--auto'] as const;
 
 // One attempt at resolving `origin/HEAD`; `undefined` if the ref doesn't exist (yet) — the caller
 // decides whether to refresh and retry.
@@ -123,12 +51,16 @@ const tryReadOriginHead = async (runner: Runner, dir: string): Promise<string | 
 
 // Resolves the remote's default branch via `refs/remotes/origin/HEAD`; if stale/absent, refreshes
 // with `git remote set-head origin --auto` and retries once. Throws if still undetectable.
-const detectDefaultBranch = async (runner: Runner, dir: string): Promise<string> => {
+const detectDefaultBranch = async (
+  runner: Runner,
+  dir: string,
+  networkTimeoutMs?: number,
+): Promise<string> => {
   const direct = await tryReadOriginHead(runner, dir);
   if (direct !== undefined) {
     return direct;
   }
-  await runner.run('git', ['remote', 'set-head', 'origin', '--auto'], { cwd: dir });
+  await runner.run('git', SET_HEAD_ARGS, runOpts(dir, networkTimeoutMs));
   const retried = await tryReadOriginHead(runner, dir);
   if (retried !== undefined) {
     return retried;
@@ -162,14 +94,14 @@ const resolveSyncBranch = async (
   runner: Runner,
   opts: SyncOpts,
 ): Promise<{ branch: string; branchRenamedTo?: string; warning?: string }> => {
-  await runOrThrow(
-    runner,
-    gitSpec('git fetch', ['fetch', '--prune', '--tags', 'origin'], opts.dir),
+  const fetch = gitSpec('git fetch', ['fetch', '--prune', '--tags', 'origin'], opts.dir);
+  await runOrThrow(runner, { ...fetch, ...runOpts(undefined, opts.networkTimeoutMs) });
+  const setHeadResult = await runner.run(
+    'git',
+    SET_HEAD_ARGS,
+    runOpts(opts.dir, opts.networkTimeoutMs),
   );
-  const setHeadResult = await runner.run('git', ['remote', 'set-head', 'origin', '--auto'], {
-    cwd: opts.dir,
-  });
-  const branch = await detectDefaultBranch(runner, opts.dir);
+  const branch = await detectDefaultBranch(runner, opts.dir, opts.networkTimeoutMs);
   const result: { branch: string; branchRenamedTo?: string; warning?: string } = { branch };
   if (branch !== opts.defaultBranch) {
     result.branchRenamedTo = branch;
@@ -266,15 +198,10 @@ const installHooksGuard = async (home: RefsHome): Promise<void> => {
   );
 };
 
+export { cloneRepo } from './clone.ts';
+export { gitSpec, runOrThrow } from './run-step.ts';
+export type { CloneResult } from './clone.ts';
 export { isGitCheckout } from './managed-checkout.ts';
 export type { SyncStatus } from './sync-result.ts';
-export {
-  cloneRepo,
-  detectDefaultBranch,
-  gitSpec,
-  installHooksGuard,
-  runOrThrow,
-  syncRef,
-  tagExists,
-};
-export type { CloneResult, SyncResult };
+export { detectDefaultBranch, installHooksGuard, syncRef, tagExists };
+export type { SyncResult };

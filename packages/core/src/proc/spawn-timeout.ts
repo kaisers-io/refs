@@ -1,13 +1,31 @@
-import type { ChildProcess } from 'node:child_process';
+import type { ChildProcess, spawn } from 'node:child_process';
+import { win32 } from 'node:path';
 
-// `timeoutMs` enforcement for `SpawnRunner` (runner.ts): SIGTERM when the deadline expires,
-// escalating to SIGKILL if the child ignores it.
+// `timeoutMs` enforcement for `SpawnRunner` (runner.ts): stop the child AND the helpers it started
+// when the deadline expires, escalating to SIGKILL if they ignore SIGTERM.
+//
+// Why the helpers too: git starts `git-remote-http`, `index-pack` or ssh on its own output pipes,
+// and `run()` resolves on `close`, once every holder of those pipes is gone. A helper blocked on a
+// server that never answers outlives a stopped git (measured: `git clone` from a loopback server
+// that never replies leaves `git-remote-http` running, re-parented, holding stderr), so stopping
+// git alone left `run()` — and the per-ref lock — waiting forever, deadline or not.
+//
+// - POSIX: a child with a deadline is spawned `detached`, leading its own process group, and the
+//   signals go to that group. Only the group refs created is signalled, never anything else.
+//   `detached` also starts a new session, so these git commands have no controlling terminal and
+//   cannot prompt on it; refs already turns git's terminal prompt off (child-env.ts), and ssh then
+//   uses its agent or SSH_ASKPASS. A child without a deadline is spawned exactly as before.
+// - Windows: `taskkill /T /F` on the child's tree, while the child is still alive (taskkill finds
+//   descendants through their live root). taskkill is started from `%SystemRoot%\System32` by
+//   absolute path, never looked up on PATH or in the working directory, which is a checkout. It is
+//   started with the `spawn` runner.ts hands in: runner.ts stays the one module that imports a
+//   process starter (spawn-surface.test.ts).
 
-// Grace period between the `SIGTERM` a `timeoutMs` expiry sends and the forced `SIGKILL`
-// escalation if the child ignores it — the same SIGTERM-then-SIGKILL-after-a-delay shape common
-// process-execution libraries use (shorter here: every `refs` command is a short git/ssh
-// invocation, never a long-running daemon that might need time to flush state on `SIGTERM`).
+// Grace between the SIGTERM a deadline sends and the forced SIGKILL — short: every refs command
+// is a short git/ssh invocation, never a daemon that needs time to flush state.
 const KILL_GRACE_MS = 2000;
+const IS_WINDOWS = process.platform === 'win32';
+const ABSOLUTE_WINDOWS_DIR = /^[a-z]:[\\/]/iu;
 
 type TimeoutHandle = {
   markedTimedOut: () => boolean;
@@ -16,35 +34,101 @@ type TimeoutHandle = {
 
 const noopTimeout: TimeoutHandle = { clear: () => {}, markedTimedOut: () => false };
 
-// Arms a `SIGTERM` at `timeoutMs`, escalating to `SIGKILL` after `KILL_GRACE_MS` if the child is
-// still alive — both timers are cleared as soon as the child's `close` event fires, whichever
-// comes first (see `runner.ts#SpawnRunner.run`). `timeoutMs === undefined` arms nothing. Both
-// signals target only the DIRECT child, never its whole process tree: a descendant it forked that
-// inherited the stdio pipes can keep them open (delaying `close`) after the child itself is dead
-// while the descendant is still alive — that is deliberate: `close` then waits for the pipes to
-// drain rather than the runner force-killing processes it did not start.
-const armTimeout = (child: ChildProcess, timeoutMs: number | undefined): TimeoutHandle => {
+// Children spawned as the leader of their own process group (POSIX, with a deadline).
+const groupLeaders = new WeakSet<ChildProcess>();
+
+/** Extra spawn options: a child with a deadline leads its own process group on POSIX. */
+const deadlineSpawnOpts = (timeoutMs: number | undefined): { detached?: true } =>
+  timeoutMs === undefined || IS_WINDOWS ? {} : { detached: true };
+
+/** Records `child` as a group leader when it was spawned with `deadlineSpawnOpts`. */
+const trackGroup = (child: ChildProcess, timeoutMs: number | undefined): void => {
+  if (deadlineSpawnOpts(timeoutMs).detached === true) {
+    groupLeaders.add(child);
+  }
+};
+
+const killChild = (child: ChildProcess, signal: NodeJS.Signals): void => {
+  try {
+    child.kill(signal);
+  } catch {
+    // Already gone.
+  }
+};
+
+/** Signals `child` and, when it leads its own group, every process in that group. */
+const signalTree = (child: ChildProcess, signal: NodeJS.Signals): void => {
+  if (child.pid === undefined || !groupLeaders.has(child)) {
+    killChild(child, signal);
+    return;
+  }
+  try {
+    process.kill(-child.pid, signal);
+  } catch {
+    killChild(child, signal);
+  }
+};
+
+const taskkillPath = (env: NodeJS.ProcessEnv): string | undefined => {
+  const root = env['SystemRoot'] ?? env['SYSTEMROOT'] ?? '';
+  return ABSOLUTE_WINDOWS_DIR.test(root) ? win32.join(root, 'System32', 'taskkill.exe') : undefined;
+};
+
+/** Windows: `taskkill /T /F` on the child's tree; the plain kill when taskkill cannot run. */
+type Start = typeof spawn;
+
+const killWindowsTree = (child: ChildProcess, start: Start): void => {
+  const taskkill = taskkillPath(process.env);
+  if (child.pid === undefined || taskkill === undefined) {
+    killChild(child, 'SIGTERM');
+    return;
+  }
+  const killer = start(taskkill, ['/pid', String(child.pid), '/T', '/F'], {
+    shell: false,
+    stdio: 'ignore',
+    windowsHide: true,
+  });
+  killer.on('error', () => {
+    killChild(child, 'SIGTERM');
+  });
+};
+
+const stopTree = (child: ChildProcess, start: Start): void => {
+  if (IS_WINDOWS) {
+    killWindowsTree(child, start);
+    return;
+  }
+  signalTree(child, 'SIGTERM');
+};
+
+// Arms the stop at `timeoutMs`, escalating to SIGKILL after `KILL_GRACE_MS` — both timers are
+// cleared as soon as the child's `close` event fires (see `runner.ts#SpawnRunner.run`).
+// `timeoutMs === undefined` arms nothing. `start` is runner.ts's `spawn`, for taskkill.
+const armTimeout = (
+  child: ChildProcess,
+  timeoutMs: number | undefined,
+  start: Start,
+): TimeoutHandle => {
   if (timeoutMs === undefined) {
     return noopTimeout;
   }
+  trackGroup(child, timeoutMs);
   let timedOut = false;
   let killTimer: NodeJS.Timeout | undefined = undefined;
   const termTimer = setTimeout(() => {
     timedOut = true;
-    child.kill('SIGTERM');
+    stopTree(child, start);
     killTimer = setTimeout(() => {
-      child.kill('SIGKILL');
+      signalTree(child, 'SIGKILL');
     }, KILL_GRACE_MS);
   }, timeoutMs);
   return {
     clear: () => {
       clearTimeout(termTimer);
-      if (killTimer !== undefined) {
-        clearTimeout(killTimer);
-      }
+      clearTimeout(killTimer);
     },
     markedTimedOut: () => timedOut,
   };
 };
 
-export { armTimeout };
+export { armTimeout, deadlineSpawnOpts, signalTree, taskkillPath };

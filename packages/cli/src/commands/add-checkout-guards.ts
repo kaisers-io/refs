@@ -13,6 +13,7 @@ import { rmCommand, shellQuote } from '../shell-quote.ts';
 import type { CliContext } from '../context.ts';
 import { dirname } from 'node:path';
 import { mkdir } from 'node:fs/promises';
+import { networkTimeoutOpt } from '../network-timeout.ts';
 import { progress } from '../output.ts';
 
 // Checkout-identity + head-sha guards shared by `refs add`'s idempotent clone/finalize flow and
@@ -122,7 +123,7 @@ const cloneFresh = async (
 ): Promise<{ effectiveMode?: CloneMode; warning?: string }> => {
   await mkdir(dirname(opts.dest), { recursive: true });
   progress(ctx, `cloning ${redactUrl(opts.cloneUrl)} into ${opts.dest}…`);
-  const result = await cloneRepo(ctx.runner, opts);
+  const result = await cloneRepo(ctx.runner, { ...opts, ...networkTimeoutOpt(ctx.env) });
   if (result.warning === undefined) {
     return { effectiveMode: result.effectiveMode };
   }

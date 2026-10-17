@@ -45,7 +45,7 @@ stuck with it.
 
 ## Other environment variables
 
-`REFS_HOME` is the only one meant for everyday use. Five others are read:
+`REFS_HOME` is the only one meant for everyday use. Six others are read:
 
 | Variable                | Read by                | Effect                                                                                                                                       |
 | ----------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -53,7 +53,14 @@ stuck with it.
 | `CODEX_HOME`            | `refs doctor` only     | The same, for Codex, replacing `~/.codex`.                                                                                                     |
 | `REFS_PROGRESS`         | `refs sync`, `refs doctor` | `0` turns off the progress spinner these commands draw on stderr while they work. It is already off with `--json`, when stderr is not a terminal, with `TERM=dumb`, and in CI. |
 | `REFS_UPDATE_CHECK`     | `refs sync`, `refs doctor` | `0` never contacts the npm registry, `1` always does. Overrides `[updates].check`; any other value is ignored. See [`[updates]`](#updates). |
+| `REFS_NETWORK_TIMEOUT`  | `refs add`, `refs sync` | A deadline in whole seconds for each git command that contacts the remote: clone, fetch, and `git remote set-head --auto`. Unset or `0` means none, the default, because a fixed limit would stop a large clone on a slow link. At the deadline refs stops git together with the helpers it started (the https remote helper, `index-pack`, ssh), removes a checkout the clone had only started, and fails with a message naming this variable. With a deadline set, those commands run in their own process group and session (on Windows, their process tree is ended with `taskkill /T`), so they cannot prompt on the terminal: use a credential helper, `GIT_ASKPASS` or an ssh agent. Any other value is refused. |
 | `REFS_ALLOW_FILE_URLS`  | `refs add`, `refs sync` | Set to `1` to accept `file://` sources. **A test-only escape hatch** — real remotes are `https`/`ssh`, and this exists so the suite and the packaged-CLI smoke tests can work against a local fixture repository without a network. Do not set it in normal use. |
+
+refs also sets one variable for the git it runs: `GIT_TERMINAL_PROMPT=0`, unless you have set
+`GIT_TERMINAL_PROMPT` yourself. git asks for https credentials on the terminal, not on its
+input, so without this a remote that wants a password would leave `refs add` or `refs sync`
+waiting at a prompt an agent never sees. Credential helpers and `GIT_ASKPASS` keep working. Set
+`GIT_TERMINAL_PROMPT=1` if you want to type credentials at the prompt.
 
 ## Home directory layout
 

@@ -1,4 +1,5 @@
 import type { ChildProcess } from 'node:child_process';
+import { signalTree } from './spawn-timeout.ts';
 
 // Parent-death cleanup for `SpawnRunner`'s children (runner.ts): ensures no spawned git/ssh
 // process outlives the CLI itself.
@@ -42,12 +43,10 @@ const activeChildren = new Set<ChildProcess>();
 let cleanupInstalled = false;
 
 const killActiveChildren = (): void => {
+  // A child with a deadline leads its own process group (spawn-timeout.ts), which a terminal's
+  // Ctrl-C no longer reaches: kill the group, not only the child.
   for (const child of activeChildren) {
-    try {
-      child.kill('SIGKILL');
-    } catch {
-      // Already dead (or never really started) — nothing left to clean up.
-    }
+    signalTree(child, 'SIGKILL');
   }
 };
 
