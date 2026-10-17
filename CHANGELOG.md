@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **The skill's quoting example for `refs edit` names the ref first.** `COMMANDS.md` showed
+  `refs edit --package='<name>' path '<new-path>' '<ref>'`. Options may move but positional
+  arguments keep their order, so with real values substituted `path` became the ref query and the
+  command exited `4` with `no ref matches 'path'`. It now reads
+  `refs edit '<ref>' --package='<name>' path '<new-path>' --json`, the form `INVESTIGATE.md`
+  already used.
+- **The skill no longer says `refs add` cannot register a repository root.** A root is not one of
+  its own glob targets, but `refs add` probes a named root separately and proposes it at `.`. An
+  unregistered root now reads as what it is: a ref added before that probe, a root named upstream
+  later, or one left out or removed since — and not every root is registered, since a nameless root
+  has nothing to register and a member declaring the same name wins.
+
 ## [0.18.2] - 2026-10-13
 
 ### Security

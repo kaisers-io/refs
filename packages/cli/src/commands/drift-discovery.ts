@@ -19,9 +19,10 @@ import { discoveryObstacle } from './workspace-diagnostics.ts';
 // still right?" but "is anything missing from the list?".
 //
 // Both answers here are about names the CHECKOUT declares and the configuration does not have —
-// the repository root (which is never one of its own glob targets, so `refs add` could not have
-// registered it) and workspace members. Neither is a repair order: a package absent from the
-// configuration may be absent on purpose.
+// the repository root (never one of its own glob targets; `refs add` reaches a named root by a
+// separate probe, so an unregistered one predates that probe, was named upstream later, or was
+// left out or removed since) and workspace members. Neither is a repair order: a package absent
+// from the configuration may be absent on purpose.
 
 /** At most ONE workspace scan per probe, shared by everything here that needs one.
  *
