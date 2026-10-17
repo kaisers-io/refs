@@ -17,6 +17,8 @@ const ONE_CALL = 1;
 // What the scripted `core.hooksPath` answers with, and therefore what `syncRef` must be told
 // this home's hooks directory is — the guard compares the two for equality.
 const MANAGED_HOOKS_MARKER = '/managed/hooks';
+// Every git call after the guard carries the hooks directory at command scope (`pinned-hooks.ts`).
+const PINNED = `git -c core.hooksPath=${MANAGED_HOOKS_MARKER}`;
 
 const makeManagedCheckoutDir = async (): Promise<string> => {
   const dir = await mkdtemp(join(tmpdir(), 'refs-unit-checkout-'));
@@ -28,17 +30,17 @@ const makeManagedCheckoutDir = async (): Promise<string> => {
 // `git remote set-head origin --auto` fails — the branch under test in the first case below.
 const scriptCleanSyncWithFailedSetHead = (runner: FakeRunner): void => {
   runner.expect('git config --local --get core.hooksPath', { stdout: '/managed/hooks\n' });
-  runner.expect('git rev-parse HEAD', { stdout: `${CLEAN_SHA}\n` });
-  runner.expect('git fetch', {});
-  runner.expect('git remote set-head origin --auto', {
+  runner.expect(`${PINNED} rev-parse HEAD`, { stdout: `${CLEAN_SHA}\n` });
+  runner.expect(`${PINNED} fetch`, {});
+  runner.expect(`${PINNED} remote set-head origin --auto`, {
     exitCode: 1,
     stderr: 'fatal: could not refresh origin/HEAD\n',
   });
-  runner.expect('git symbolic-ref --short refs/remotes/origin/HEAD', { stdout: 'main\n' });
-  runner.expect('git status --porcelain', { stdout: '' });
-  runner.expect('git checkout -B main origin/main', {});
-  runner.expect('git reset --hard origin/main', {});
-  runner.expect('git rev-parse HEAD', { stdout: `${CLEAN_SHA}\n` });
+  runner.expect(`${PINNED} symbolic-ref --short refs/remotes/origin/HEAD`, { stdout: 'main\n' });
+  runner.expect(`${PINNED} status --porcelain`, { stdout: '' });
+  runner.expect(`${PINNED} checkout -B main origin/main`, {});
+  runner.expect(`${PINNED} reset --hard origin/main`, {});
+  runner.expect(`${PINNED} rev-parse HEAD`, { stdout: `${CLEAN_SHA}\n` });
 };
 
 describe('syncRef() set-head refresh failure', () => {
@@ -80,14 +82,16 @@ describe('syncRef() set-head refresh failure', () => {
 // checkout configured for `master` whose remote's default branch has since moved to `main`.
 const scriptRenamedDefaultBranch = (runner: FakeRunner): void => {
   runner.expect('git config --local --get core.hooksPath', { stdout: '/managed/hooks\n' });
-  runner.expect('git rev-parse HEAD', { stdout: `${CLEAN_SHA}\n` });
-  runner.expect('git fetch', {});
-  runner.expect('git remote set-head origin --auto', {});
-  runner.expect('git symbolic-ref --short refs/remotes/origin/HEAD', { stdout: 'origin/main\n' });
-  runner.expect('git status --porcelain', { stdout: '' });
-  runner.expect('git checkout -B main origin/main', {});
-  runner.expect('git reset --hard origin/main', {});
-  runner.expect('git rev-parse HEAD', { stdout: `${NEW_SHA}\n` });
+  runner.expect(`${PINNED} rev-parse HEAD`, { stdout: `${CLEAN_SHA}\n` });
+  runner.expect(`${PINNED} fetch`, {});
+  runner.expect(`${PINNED} remote set-head origin --auto`, {});
+  runner.expect(`${PINNED} symbolic-ref --short refs/remotes/origin/HEAD`, {
+    stdout: 'origin/main\n',
+  });
+  runner.expect(`${PINNED} status --porcelain`, { stdout: '' });
+  runner.expect(`${PINNED} checkout -B main origin/main`, {});
+  runner.expect(`${PINNED} reset --hard origin/main`, {});
+  runner.expect(`${PINNED} rev-parse HEAD`, { stdout: `${NEW_SHA}\n` });
 };
 
 describe('syncRef() default-branch rename detection', () => {
@@ -113,8 +117,8 @@ describe('syncRef() default-branch rename detection', () => {
 // `git/repo.ts`) — factored out purely to keep `scriptDirtySyncWithFailedSetHead` below under the
 // repo's max-statements cap.
 const scriptDirtyCleanup = (runner: FakeRunner): void => {
-  runner.expect('git reset --hard HEAD', {});
-  runner.expect('git clean -fd', {});
+  runner.expect(`${PINNED} reset --hard HEAD`, {});
+  runner.expect(`${PINNED} clean -fd`, {});
 };
 
 // Coverage gap: `buildSyncResult` merges a restore warning (dirty checkout) with a set-head-refresh
@@ -123,18 +127,18 @@ const scriptDirtyCleanup = (runner: FakeRunner): void => {
 // branch where both fire in the SAME sync.
 const scriptDirtySyncWithFailedSetHead = (runner: FakeRunner): void => {
   runner.expect('git config --local --get core.hooksPath', { stdout: '/managed/hooks\n' });
-  runner.expect('git rev-parse HEAD', { stdout: `${CLEAN_SHA}\n` });
-  runner.expect('git fetch', {});
-  runner.expect('git remote set-head origin --auto', {
+  runner.expect(`${PINNED} rev-parse HEAD`, { stdout: `${CLEAN_SHA}\n` });
+  runner.expect(`${PINNED} fetch`, {});
+  runner.expect(`${PINNED} remote set-head origin --auto`, {
     exitCode: 1,
     stderr: 'fatal: could not refresh origin/HEAD\n',
   });
-  runner.expect('git symbolic-ref --short refs/remotes/origin/HEAD', { stdout: 'main\n' });
-  runner.expect('git status --porcelain', { stdout: ' M dirty-file.txt\n' });
+  runner.expect(`${PINNED} symbolic-ref --short refs/remotes/origin/HEAD`, { stdout: 'main\n' });
+  runner.expect(`${PINNED} status --porcelain`, { stdout: ' M dirty-file.txt\n' });
   scriptDirtyCleanup(runner);
-  runner.expect('git checkout -B main origin/main', {});
-  runner.expect('git reset --hard origin/main', {});
-  runner.expect('git rev-parse HEAD', { stdout: `${NEW_SHA}\n` });
+  runner.expect(`${PINNED} checkout -B main origin/main`, {});
+  runner.expect(`${PINNED} reset --hard origin/main`, {});
+  runner.expect(`${PINNED} rev-parse HEAD`, { stdout: `${NEW_SHA}\n` });
 };
 
 describe('syncRef() combined dirty-checkout + set-head-refresh-failure warning', () => {
@@ -198,7 +202,7 @@ describe('cloneRepo argument hygiene', () => {
 
   const cloneWith = async (mode: 'blobless' | 'full'): Promise<readonly string[]> => {
     const runner = new FakeRunner();
-    runner.expect('git clone', {});
+    runner.expect('git -c core.hooksPath=/tmp/refs-unit-hooks clone', {});
     runner.expect('git config core.hooksPath', {});
     await cloneRepo(runner, {
       cloneUrl: HOSTILE_URL,
@@ -212,6 +216,8 @@ describe('cloneRepo argument hygiene', () => {
   it('puts `--` before the url so a flag-shaped url cannot be read as an option', async () => {
     expect.hasAssertions();
     await expect(cloneWith('full')).resolves.toStrictEqual([
+      '-c',
+      'core.hooksPath=/tmp/refs-unit-hooks',
       'clone',
       '-q',
       '-c',
@@ -225,6 +231,8 @@ describe('cloneRepo argument hygiene', () => {
   it('keeps the filter ahead of `--`, where git still reads it as an option', async () => {
     expect.hasAssertions();
     await expect(cloneWith('blobless')).resolves.toStrictEqual([
+      '-c',
+      'core.hooksPath=/tmp/refs-unit-hooks',
       'clone',
       '-q',
       '-c',
