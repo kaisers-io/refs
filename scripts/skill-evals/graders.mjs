@@ -10,6 +10,12 @@ const SHELL_WRAPPER = /^\/bin\/(?:ba|z)?sh -lc (?<script>[\s\S]+)$/u;
 const QUOTED_PART = /'(?<single>[^']*)'|"(?<double>(?:[^"\\]|\\.)*)"|(?<bare>[^'"]+)/gu;
 const COUNT_MATCH = /^count:(?<count>\d+)$/u;
 const MATCH_MODES = new Set([undefined, 'contains', 'not_contains']);
+const GLOB_PARTS = new Map([
+  ['*', '[^/]*'],
+  ['**', '.*'],
+  ['**/', '(?:.*/)?'],
+  ['?', '.'],
+]);
 
 /** Throws when a grader uses a type or option this adapter does not implement. */
 const assertSupported = (caseName, grader) => {
@@ -20,7 +26,8 @@ const assertSupported = (caseName, grader) => {
     type === 'regex' &&
     matchOk &&
     (target === undefined || REGEX_TARGETS.has(target) || fileTarget);
-  if (!regexOk && !(type === 'tool_used' && tool === 'Bash')) {
+  const fileExistsOk = type === 'file_exists' && typeof grader.path === 'string';
+  if (!regexOk && !fileExistsOk && !(type === 'tool_used' && tool === 'Bash')) {
     throw new Error(`${caseName}: grader "${grader.name}" is not supported by the Codex runner`);
   }
 };
@@ -81,11 +88,34 @@ const gradeToolUsed = (grader, run) => {
   };
 };
 
+// A glob over the run's created files, translated the way `claude plugin eval` does: `**/` is any
+// number of directories, `**` anything, `*` anything but `/`, `?` one character.
+const globToRegExp = (glob) => {
+  const source = glob
+    .split(/(?<wildcard>\*\*\/|\*\*|\*|\?)/u)
+    .map((part) => GLOB_PARTS.get(part) ?? part.replaceAll(/[.+^${}()|[\]\\]/gu, String.raw`\$&`))
+    .join('');
+  return new RegExp(`^${source}$`, 'u');
+};
+
+// `files` are the paths created during the run, relative to its directory: what was not there when
+// the scaffold finished. A file that existed and was changed is not among them, as under Claude.
+const gradeFileExists = (grader, run) => {
+  const pattern = globToRegExp(grader.path);
+  const found = run.created.some((path) => pattern.test(path));
+  const exists = grader.exists ?? true;
+  return {
+    explanation: `${grader.path} ${found ? 'created' : 'not created'} (expected ${exists ? 'created' : 'absent'})`,
+    passed: found === exists,
+  };
+};
+
+const GRADE = { file_exists: gradeFileExists, regex: gradeRegex, tool_used: gradeToolUsed };
+
 /** A grader that cannot read its target fails, whatever its `match`: a missing file is no evidence. */
 const grade = async (grader, run) => {
   try {
-    const result =
-      grader.type === 'tool_used' ? gradeToolUsed(grader, run) : await gradeRegex(grader, run);
+    const result = await GRADE[grader.type](grader, run);
     return { name: grader.name, ...result };
   } catch (error) {
     return {
