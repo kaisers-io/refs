@@ -45,6 +45,9 @@ const verdicts = async (graderName, cases) => {
 
 const expecting = (cases, passed) => cases.map(([label]) => [label, passed]);
 
+const PATH_EDIT = "refs edit --package='@toolkit/retry' toolkit path 'packages/retry-policy'";
+const REMOVAL = "refs edit --package='@toolkit/slugify' --remove 'local/fixtures/toolkit'";
+
 const PATH_EDIT_RIGHT = [
   [
     "refs' own doctor line",
@@ -76,6 +79,10 @@ const PATH_EDIT_RIGHT = [
     'a list item',
     '- refs edit --package=@toolkit/retry local/fixtures/toolkit path packages/retry-policy\n- next',
   ],
+  ['a Markdown heading', `## 2. Repoint it: \`${PATH_EDIT}\``],
+  ['a table cell', `| \`@toolkit/retry\` | moved | \`${PATH_EDIT}\` |`],
+  // The case is about NOT removing a moved package, so a right answer says so next to the command.
+  ['a warning before it', `Do not remove it; it only moved. Run \`${PATH_EDIT}\`.`],
 ];
 
 const PATH_EDIT_WRONG = [
@@ -119,6 +126,11 @@ const PATH_EDIT_WRONG = [
     'prose',
     'You could run refs edit --package @toolkit/retry toolkit path packages/retry-policy later.',
   ],
+  // A code span is no way out of a comment: the review's exact artifact, and the same in a block.
+  ['a code span in a comment', `# \`${PATH_EDIT}\``],
+  ['a code span in an indented comment', fence(`  # do not run: \`${PATH_EDIT}\``)],
+  // A backtick ending a bare line opens a command substitution; it does not close a code span.
+  ['a backtick substitution', fence(`${PATH_EDIT}\`touch x\``)],
 ];
 
 test('the path edit is accepted in every valid spelling and order of options', async () => {
@@ -154,6 +166,8 @@ const REMOVAL_WRONG = [
     fence("# refs edit --package='@toolkit/slugify' --remove 'local/fixtures/toolkit'"),
   ],
   ['prose', 'Or run refs edit --package @toolkit/slugify --remove toolkit if it is really gone.'],
+  ['a code span in a comment', fence(`# \`${REMOVAL}\``)],
+  ['a backtick substitution', fence(`${REMOVAL}\`touch x\``)],
 ];
 
 test('the removal must be the whole command, for the missing package', async () => {
