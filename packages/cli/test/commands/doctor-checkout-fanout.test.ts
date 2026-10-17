@@ -118,3 +118,22 @@ describe('refs doctor: bounded dirty-checkouts fan-out', () => {
     });
   });
 });
+
+describe('refs doctor: dirty-checkouts order under the cap', () => {
+  it('lists every checkout git could not inspect in config order, not finishing order', async () => {
+    expect.hasAssertions();
+    await withTempHome(async (homeDir) => {
+      const fixture = await seedManyCheckouts(homeDir);
+      const broken = { exitCode: GIT_FATAL_EXIT, stderr: 'fatal: not a git repository' };
+      const runner = installRunner(fixture, { odd: broken, rest: broken });
+
+      const result = await checkDirtyCheckouts(fixture.ctx, fixture.home, fixture.config);
+
+      expect(runner.calls()).toBe(CHECKOUT_COUNT);
+      expect(result.status).toBe('fail');
+      expect(result.detail.split('; ').map((part) => part.split(':')[0])).toStrictEqual(
+        Array.from({ length: CHECKOUT_COUNT }, (_unused, index) => keyAt(index)),
+      );
+    });
+  });
+});

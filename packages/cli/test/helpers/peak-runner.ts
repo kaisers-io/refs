@@ -20,12 +20,15 @@ type Responder = (args: readonly string[], cwd: string | undefined) => Partial<R
 
 type Counters = { calls: number; inFlight: number; peak: number };
 
-/** Holds callers until the runner has been quiet for `QUIET_MS`, then releases all of them. */
+/** Holds callers until the runner has been quiet for `QUIET_MS`, then releases all of them, the
+ * most recent first. */
 const createQuietGate = (): (() => Promise<void>) => {
   let held: (() => void)[] = [];
   let timer: NodeJS.Timeout | undefined = undefined;
   const releaseAll = (): void => {
-    const waking = held;
+    // Last in, first out: completion order is then the reverse of start order, so a caller that
+    // collected results as they finished, instead of by input position, would misattribute them.
+    const waking = held.toReversed();
     held = [];
     for (const wake of waking) {
       wake();
