@@ -38,21 +38,17 @@ const scriptIdentityGuards = (runner: FakeRunner, hooksDir: string): void => {
 };
 
 // `syncRef`'s full command sequence for a clean, rename-free sync whose final
-// `git rev-parse HEAD` lands on `finalSha`. Every call after the guard carries the hooks directory
-// at command scope.
+// `git rev-parse HEAD` lands on `finalSha`.
 const scriptSyncRefUntilHead = (runner: FakeRunner, hooksDir: string, finalSha: string): void => {
   runner.expect('git config --local --get core.hooksPath', { stdout: `${hooksDir}\n` });
-  const git = `git -c core.hooksPath=${hooksDir}`;
-  runner.expect(`${git} rev-parse HEAD`, { stdout: `${OLD_SHA}\n` });
-  runner.expect(`${git} fetch --prune --tags origin`, {});
-  runner.expect(`${git} remote set-head origin --auto`, {});
-  runner.expect(`${git} symbolic-ref --short refs/remotes/origin/HEAD`, {
-    stdout: 'origin/main\n',
-  });
-  runner.expect(`${git} status --porcelain`, { stdout: '' });
-  runner.expect(`${git} checkout -B main origin/main`, {});
-  runner.expect(`${git} reset --hard origin/main`, {});
-  runner.expect(`${git} rev-parse HEAD`, { stdout: `${finalSha}\n` });
+  runner.expect('git rev-parse HEAD', { stdout: `${OLD_SHA}\n` });
+  runner.expect('git fetch --prune --tags origin', {});
+  runner.expect('git remote set-head origin --auto', {});
+  runner.expect('git symbolic-ref --short refs/remotes/origin/HEAD', { stdout: 'origin/main\n' });
+  runner.expect('git status --porcelain', { stdout: '' });
+  runner.expect('git checkout -B main origin/main', {});
+  runner.expect('git reset --hard origin/main', {});
+  runner.expect('git rev-parse HEAD', { stdout: `${finalSha}\n` });
 };
 
 type SyncFixture = {

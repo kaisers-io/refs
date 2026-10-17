@@ -146,7 +146,7 @@ const detectProposalFields = async (
   opts: CloneAndDetectOpts,
 ): Promise<DetectedFields> => {
   const { dest, resolved } = opts;
-  const defaultBranch = await detectDefaultBranch(ctx.runner, dest, opts.home.hooksDir);
+  const defaultBranch = await detectDefaultBranch(ctx.runner, dest);
   const tagged = await listTags(ctx.runner, dest);
   const countedTagFormat = tagCandidateFrom(tagged);
   progress(ctx, 'detecting workspace packages…');
