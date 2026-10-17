@@ -51,7 +51,7 @@ first; it needs [uv](https://docs.astral.sh/uv/getting-started/installation/), a
 is the one pinned in `ci.yml`:
 
 ```bash
-uvx zizmor@1.31.1 .        # with GH_TOKEN set, it also runs the online audits CI runs
+uvx zizmor@1.31.1 --strict-collection .   # with GH_TOKEN set, it also runs the online audits
 ```
 
 If you touched anything under `skills/`, CI also runs the skill audit (`.github/workflows/skill-audit.yml`),

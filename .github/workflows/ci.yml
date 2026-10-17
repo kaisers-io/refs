@@ -133,6 +133,11 @@ jobs:
   # GH_TOKEN enables the online audits (impostor commits behind a pinned SHA, known-vulnerable
   # actions, ref confusion). They only read public repository data, which the read-only token a
   # fork pull request gets is enough for.
+  #
+  # `--strict-collection`: without it, a file zizmor cannot load as a workflow is skipped with a
+  # log warning and the run still reports "No findings" and exits 0, so that file goes unaudited
+  # with a green check. The cost is a red job when GitHub adds syntax this zizmor version does not
+  # know yet; the fix then is a version bump, not an exception.
   zizmor:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -140,7 +145,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
       - run: pipx install uv
-      - run: uvx zizmor@1.31.1 --format github .
+      - run: uvx zizmor@1.31.1 --strict-collection --format github .
         env:
           GH_TOKEN: ${{ github.token }}
   bundle-determinism:
