@@ -38,7 +38,7 @@ there are no long-term support branches.
   2.54 against a real clone with `core.hooksPath` correctly pinned: a configured hook
   (`[hook "x"] event = post-checkout; command = ./script.sh`) ran the **checkout's** copy of that
   script during `refs add` and `refs sync`, and an attribute-selected filter
-  (`[filter "y"] smudge = ./script.sh`) ran it during the checkout `refs sync` performs.
+  (`[filter "y"] smudge = ./script.sh`) ran it during `refs add`'s clone and `refs sync`'s checkout.
   `core.fsmonitor`'s command form is a third: git runs it with the worktree as its working
   directory.
 
@@ -73,6 +73,9 @@ Similarly out of scope:
 - Findings from automated scanners without a demonstrated impact on `refs`.
 
 ## The git processes `refs` starts
+
+This section describes the controls added by #249, #251 and #252. It holds for a release that
+contains all three, and not for an earlier one.
 
 Every process `refs` starts goes through one spawner. The environment, the configuration overrides
 and the time limit below are applied there, so no command and no call site opts out of them. The
@@ -124,18 +127,36 @@ Two more defaults bound how long git can hold `refs`, which matters because `ref
 lock meanwhile. `GIT_TERMINAL_PROMPT` is `0` unless the user has set it, so git fails instead of
 waiting at an HTTPS credential prompt nobody can answer; credential helpers and `GIT_ASKPASS` keep
 working. And each command ends after `REFS_GIT_TIMEOUT` seconds (900 by default, `0` for no limit;
-a value that is not a whole number is ignored; `refs doctor`'s ssh probe keeps its own limit),
-together with the processes it started. On POSIX, `refs` lists the descendants with `ps` before it
-signals anything, then sends `SIGTERM` and, two seconds later, `SIGKILL`. git stays in the
-terminal's session, so ssh can still ask for a passphrase. On Windows, `refs` runs
-`taskkill /T /F` from `%SystemRoot%\System32` by absolute path, never by bare name, and ends only
-the direct child when `SystemRoot` is not an absolute path. Once the command itself has exited, its
-process id is not signalled any more, since it may have been reused. That is a bound on time, not
-on anything a server sends.
+a value that is not a whole number is ignored; `refs doctor`'s ssh probe keeps its own limit).
+
+On POSIX, `refs` lists the command's descendants with `ps` before it signals anything, sends
+`SIGTERM` to the command and to every descendant listed, and waits until all of them are gone. If
+any is still running two seconds later, they get `SIGKILL`, and `refs` checks for up to one more
+second that they ended. The command returns only then, not when its own process closes: a
+descendant that ignores `SIGTERM` and no longer holds git's output would otherwise keep running
+after `refs` had moved on. git stays in the terminal's session, so ssh can still ask for a
+passphrase. Once the command itself has exited, its process id is not signalled any more, since it
+may have been reused. On Windows, `refs` runs `taskkill /T /F` from `%SystemRoot%\System32` by
+absolute path, never by bare name, and ends only the direct child when `SystemRoot` is not an
+absolute path.
+
+What `refs` can confirm has limits. The processes it waits for are the command itself and the
+descendants `ps` listed while the command was alive. A process that left the tree before it was
+listed, or that a surviving process starts later, is not known to `refs`, and nothing here says it
+ended. On Windows only the direct child is confirmed, because `taskkill /T` walks the tree itself.
+When a known process is still running at the end, or a `ps` listing failed, the error says so:
+`refs: processes the command started may still be running`. All of this bounds time, not anything
+a server sends.
 
 A clone that fails, by timeout or otherwise, is removed only when nothing was at the destination
-before it (checked with `lstat`, so a dangling symlink counts as something) and the destination
-holds a `.git` afterwards. Anything else at that path is left alone.
+before it (checked with `lstat`, so a dangling symlink counts as something), the destination holds
+a `.git` afterwards, and the clone did not report that its processes may still be running. When it
+did, `refs` does not delete the half-made clone, which a surviving process may still be writing
+into. It leaves it in place and unsets its `core.hooksPath` marker, so the next `refs add` or
+`refs sync` refuses it instead of adopting it, and the error names the path and tells the user to
+remove it once those processes have exited. A fetch that times out in an existing checkout only
+reports the uncertainty; nothing is removed or set aside. Anything else at the destination is left
+alone.
 
 **Configuration overrides.** The `core.fsmonitor=` and `hook.<event>.enabled=false` options the
 code-execution note above describes are top-level `-c` options. That makes them cover the checkout
@@ -160,11 +181,26 @@ the `clone`.
 
 None of these options affects hooks in the hooks directory, so `refs`' commit and push guard still
 runs. One cost is fsmonitor's acceleration for `refs`' own `status`, `checkout` and `reset`, which
-refresh the index by a full scan instead. The other, on git 2.54 and later, is the label inventory
-before every git command: `git --version` once per run, then a configuration listing plus two
-reads per configuration file for each command. A no-op `refs sync` of one ref, with one global
-configuration file, started 12 git processes on git 2.43.0 and 67 on 2.54.0 and 2.55.0, and took
-about 310 ms against 530 ms in one run each.
+refresh the index by a full scan instead. The other, on git 2.54 and later, is the label
+inventory: `git --version` once, then a configuration listing plus two reads per configuration
+file. `refs` takes it once per process and reuses it for later git commands in the same working
+directory and environment, as long as every configuration file and include it read still has the
+same content (compared byte for byte, not by timestamp). A changed file, or another working
+directory such as a new clone's, means a new inventory. Reuse can miss one case: a global or system configuration
+file that did not exist, or held no entry, when the inventory was taken and gains one while `refs`
+is still running. Measured on `sindresorhus/slugify` with one global configuration file, counting
+git processes through a logging `git` shim:
+
+| command                | `refs` 0.18.2, any git | git 2.43.0 | git 2.54.0 and 2.55.0 |
+| ---------------------- | ---------------------- | ---------- | --------------------- |
+| `refs add`             | 7                      | 10         | 26                    |
+| `refs sync`, 5 commits | 20                     | 21         | 26                    |
+| no-op `refs sync`      | 11                     | 12         | 17                    |
+
+On 2.54.0 and 2.55.0, `refs add` took about 110 to 140 ms longer than 0.18.2 (median of five
+runs). For `refs sync` the difference was within the run-to-run variation.
+
+What each git version gets:
 
 | git        | fsmonitor command | configured hooks, for `refs`' own commands                    |
 | ---------- | ----------------- | ------------------------------------------------------------- |
@@ -175,10 +211,13 @@ about 310 ms against 530 ms in one run each.
 **What still runs.**
 
 - **Content filters**, deliberately (#187). Turning one off changes what the checkout contains, and
-  a required filter such as git-lfs's fails the checkout outright. Reading a checkout through
-  `refs` can therefore still run a filter command the user's configuration defines, and nothing
-  here claims otherwise. `refs doctor`'s `git-exec-surfaces` check and the warning `refs add` gives
-  before it clones list them. A warning is not neutralisation.
+  a required filter such as git-lfs's fails the checkout outright. A filter the user's
+  configuration defines and the checkout's `.gitattributes` selects therefore runs during the
+  checkout `refs add`'s clone performs and during `refs sync`'s checkout. With a relative command
+  (`filter.doc.smudge = ./.tools/smudge.sh`) that is the checkout's own tracked script, measured on
+  git 2.43.0, 2.54.0 and 2.55.0. `refs add` warns before it clones (`git-exec-surfaces: …`) and
+  `refs doctor`'s `git-exec-surfaces` check reports the definition. Neither stops it: a warning is
+  not neutralisation, and nothing here claims otherwise.
 - **Hooks from an inherited `core.hooksPath` in a command that is not pinned.** None of today's
   unpinned commands ran one (above). The pin is added per call site, so a git command `refs` adds
   later, or an existing one that starts writing refs or the index, is covered only if its call

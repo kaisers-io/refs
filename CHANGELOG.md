@@ -12,10 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`SECURITY.md` now describes the git processes refs starts.** A new section states which
   inherited git variables refs removes and which it keeps (command-scope configuration, and
   settings such as `GIT_SSH_COMMAND`), which commands pin refs' hooks directory above an inherited
-  `core.hooksPath` and which do not, how the time limit ends git and its helpers and when a failed
-  clone is removed, how refs' `core.fsmonitor` and configured-hook overrides work on git 2.54 and
-  later and what they cost, what still runs (content filters), and which git versions the controls
-  were measured on. refs enforces no minimum git version, and the section says so (#217).
+  `core.hooksPath` and which do not, how the time limit ends git and the processes it started and
+  where that cannot be confirmed, when a failed clone is removed and when it is kept but unmarked,
+  how refs' `core.fsmonitor` and configured-hook overrides work on git 2.54 and later and what they
+  cost, what still runs (content filters, during `refs add`'s clone too), and which git versions
+  the controls were measured on. refs enforces no minimum git version, and the section says so. The
+  section describes the controls of #249, #251 and #252 and holds only for a release that contains
+  them (#217).
 
 ## [0.18.2] - 2026-10-13
 
