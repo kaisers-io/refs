@@ -25,18 +25,36 @@ const withEchoGit = async (body: () => Promise<void>): Promise<void> => {
   }
 };
 
-describe('the git execution policy SpawnRunner applies', () => {
-  it('puts the policy before the subcommand of every git it starts', async () => {
+describe('the git execution policy on every platform', () => {
+  // git lists the entries a top-level `-c` set under the `command` scope.
+  it('reaches git as command-scope configuration', async () => {
     expect.hasAssertions();
-    await withEchoGit(async () => {
-      const result = await new SpawnRunner().run('git', ['status', '--porcelain']);
-      expect(result.stdout.split('\n').filter(Boolean)).toStrictEqual([
-        ...GIT_EXEC_POLICY_ARGS,
-        'status',
-        '--porcelain',
-      ]);
-    });
+    const result = await new SpawnRunner().run('git', ['config', '--list', '--show-scope']);
+    const commandScope = result.stdout
+      .split('\n')
+      .filter((line) => line.startsWith('command\t'))
+      .map((line) => line.slice('command\t'.length));
+    const settings = GIT_EXEC_POLICY_ARGS.filter((arg) => arg !== '-c');
+    expect(commandScope).toStrictEqual(expect.arrayContaining(settings));
   });
+});
+
+describe('the git execution policy SpawnRunner applies', () => {
+  // The stand-in is a shell script, which Windows cannot start as `git`; the test above covers it.
+  it.skipIf(process.platform === 'win32')(
+    'puts the policy before the subcommand of every git it starts',
+    async () => {
+      expect.hasAssertions();
+      await withEchoGit(async () => {
+        const result = await new SpawnRunner().run('git', ['status', '--porcelain']);
+        expect(result.stdout.split('\n').filter(Boolean)).toStrictEqual([
+          ...GIT_EXEC_POLICY_ARGS,
+          'status',
+          '--porcelain',
+        ]);
+      });
+    },
+  );
 
   it('empties fsmonitor, never sets it to false', () => {
     expect.hasAssertions();
