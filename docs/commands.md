@@ -495,6 +495,19 @@ affected ref and package with the same wording `refs sync` uses (see
 upstream from one that merely moved. `refs list` deliberately has no equivalent: without
 persisted state it would turn a cheap inventory command into a locking filesystem sweep.
 
+### Printed repair commands and shells
+
+Repair suggestions from `refs doctor` and `refs sync` use POSIX shell quoting. Run them in
+`sh`, `bash`, `zsh`, or Git Bash on Windows. Do not paste them unchanged into PowerShell or
+`cmd.exe`, whose quoting rules differ. This applies to both human-readable suggestions and
+command strings in JSON findings, including `register`, `decline`, `repoint`, and `unregister`.
+
+Dynamic paths and package names are single-quoted; embedded single quotes are escaped by closing
+and reopening the quoted string. Spaces, shell substitutions, and backticks therefore remain
+literal argument contents. Values with control characters or malformed Unicode get no suggested
+command, because displaying them could change their meaning. The finding still appears, and JSON
+retains its original value. An absent command is not permission to construct an unquoted substitute.
+
 ### The `skill` check
 
 The agent skill and the CLI ship through different channels (`npx skills add` from git,
