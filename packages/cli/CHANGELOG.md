@@ -11,10 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Development installs refuse dependency versions published with weaker trust evidence.**
   `pnpm-workspace.yaml` sets pnpm's `trustPolicy: no-downgrade`: a version published without the
-  trusted-publisher or provenance evidence an earlier release of the same package had, the usual
-  sign of a stolen publish token, now fails `pnpm install`, including when it is already in the
-  lockfile. The release build installs through the same policy, so this also covers the
-  libraries bundled into the published CLI; the CLI's runtime behaviour is unchanged.
+  trusted-publisher or provenance evidence an earlier release of the same package had now fails
+  `pnpm install`, including when it is already in the lockfile. Such a downgrade does not prove a
+  compromise, but it is what a publish with a leaked token would look like, so the version is held
+  back until someone reviews it. A test fails if the setting is removed or weakened, while a
+  reviewed exception pinned to an exact version stays possible. The release build installs through
+  the same policy, so this also covers the libraries bundled into the published CLI; the CLI's
+  runtime behaviour is unchanged.
 
 ## [0.18.2] - 2026-10-13
 
