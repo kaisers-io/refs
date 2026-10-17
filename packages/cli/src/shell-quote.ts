@@ -32,6 +32,10 @@ const CONTROL_CHARACTER = /\p{Cc}/u;
 const isPasteable = (value: string): boolean =>
   !CONTROL_CHARACTER.test(value) && value.isWellFormed();
 
+/** Printed next to every command that carries a quoted value, because `'\''` is POSIX quoting:
+ * PowerShell writes an embedded quote as `''` and cmd.exe has no single quotes at all. */
+const POSIX_SHELL = 'POSIX sh / Git Bash';
+
 /** Single-quotes `value` for a shell, closing and reopening the quote around any embedded `'`. */
 const shellQuote = (value: string): string => `'${value.replaceAll("'", String.raw`'\''`)}'`;
 
@@ -98,5 +102,5 @@ const rmCommand = (paths: string | readonly string[]): string | undefined => {
 const rmdirCommand = (path: string): string | undefined =>
   isPasteable(path) ? `rmdir -- ${shellQuote(path)}` : undefined;
 
-export { editCommand, isPasteable, rmCommand, rmdirCommand, shellQuote };
+export { POSIX_SHELL, editCommand, isPasteable, rmCommand, rmdirCommand, shellQuote };
 export type { CommandOption };

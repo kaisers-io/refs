@@ -18,8 +18,11 @@ const argvThroughShell = async (name: string, path: string): Promise<string[]> =
     { packages: [{ name, path, status: 'unregistered' }], status: 'drift' },
     "github.com/acme/o'brien",
   );
-  const marker = 'To register it (replace the description first): ';
-  const command = (line ?? '').slice((line ?? '').indexOf(marker) + marker.length);
+  const marker = 'To register it (POSIX sh / Git Bash; replace the description first): ';
+  // Up to the sentence that introduces the second (decline) command, which is not this one.
+  const [command = ''] = (line ?? '')
+    .slice((line ?? '').indexOf(marker) + marker.length)
+    .split('. If it should not be (POSIX sh / Git Bash): ');
   // `printf` in place of `refs`, so the assertion is about what the shell PARSED into arguments.
   const result = await runner.run('sh', [
     '-c',

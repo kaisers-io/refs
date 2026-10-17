@@ -221,7 +221,7 @@ describe('refs doctor: steal claims', () => {
         // same, and clearing its claim by hand is what recreates the bug this all exists to stop.
         expect(detail).not.toMatch(/crashed|abandoned|dead/u);
         expect(detail).toContain('stop every refs process');
-        expect(detail).toContain('rmdir');
+        expect(detail).toContain('and then run, in POSIX sh / Git Bash: rmdir -- ');
       }),
     );
   });
@@ -248,7 +248,7 @@ describe('refs doctor: locks refs will not reclaim', () => {
           status: 'warn',
         });
         const detail = locksDetailOf(envelope);
-        expect(detail).toContain('rm -rf');
+        expect(detail).toContain('and then run, in POSIX sh / Git Bash: rm -rf -- ');
         expect(detail).toContain('stop every refs process');
       }),
     );
