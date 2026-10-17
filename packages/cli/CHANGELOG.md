@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **refs' own git no longer runs a configured fsmonitor command or configured hooks.** Every git
+  process refs starts now carries `-c core.fsmonitor=` and `-c hook.<event>.enabled=false` for
+  each event refs causes (`post-checkout`, `post-index-change`, `pre-auto-gc`,
+  `reference-transaction`). Both mechanisms come from the user's own git configuration and both
+  could run a script the checkout tracks, which `core.hooksPath` does not prevent. The fsmonitor
+  override uses the empty value because git 2.35.1 and older would run `false` as a program. The
+  hook switch works by event on git 2.55 and later. git 2.54 can disable a configured hook only by
+  its label, so there refs reads every label from the configuration and all of its includes,
+  conditional ones included whether or not they apply yet, and disables each one. When it cannot
+  read the whole include graph, it refuses to start git instead. Content filters stay enabled,
+  because turning one off changes what a checkout contains (#194).
+
+### Changed
+
+- **`refs add --dry-run` warns about what git will run before it clones.** A `warnings` entry
+  beginning `git-exec-surfaces:` repeats `refs doctor`'s check of that name: content filters, and
+  any configured hook refs did not disable. `refs doctor` no longer reports an fsmonitor command
+  or the configured hooks refs disables, because refs' own git no longer runs them.
+  refs' own `status`, `checkout` and `reset` also refresh the index without fsmonitor's help,
+  which is measurable on a very large tree (#194).
+
 ## [0.18.2] - 2026-10-13
 
 ### Security

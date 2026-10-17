@@ -41,9 +41,20 @@ there are no long-term support branches.
 
   Each needs a definition already present in the invoking user's own git configuration. A tracked
   repository cannot create one, and its `.gitattributes` can only choose when an existing filter
-  applies. `refs doctor`'s `git-exec-surfaces` check reports such a definition rather than `refs`
-  sanitising the ambient configuration, because that same configuration carries the credential
-  helpers, proxies and `insteadOf` rules a private clone needs.
+  applies. `refs` does not discard that configuration, because it also carries the credential
+  helpers, proxies and `insteadOf` rules a private clone needs. Instead every git process `refs`
+  starts overrides two of the three with top-level `-c` options: `core.fsmonitor=` (the empty
+  value, which every git version measured, 2.25 to 2.55, reads as "off" — `false` would be run as a program by git 2.35.1
+  and older) and `hook.<event>.enabled=false` for each event `refs` causes, which disables
+  configured hooks by event on git 2.55 and later whatever their label. git 2.54 has no
+  event-level switch, so there `refs` reads every hook label from the configuration and every
+  include it names — conditional includes too, whether or not their condition holds yet, because
+  `hasconfig:remote.*.url` is decided by the repository being cloned — and passes
+  `hook.<label>.enabled=false` for each. If it cannot read the whole include graph, or an include
+  lies inside the checkout the command writes, it refuses to start git. Filters stay enabled:
+  turning one off changes what a checkout contains. The residue — filters — is what
+  `refs doctor`'s `git-exec-surfaces` check reports, and what `refs add` repeats as a warning
+  before it clones.
 
   That check reports **presence, not safety**. Whether a given command reaches a checkout's content
   depends on the command, and deciding that would mean proving an arbitrary interpreter never loads
@@ -83,8 +94,8 @@ dependency is a real residual risk and prose in a skill does not remove it. What
 is narrower, and worth stating exactly:
 
 - `refs` never runs a checkout's own code through a hook *inside* the checkout (the
-  `core.hooksPath` note above), and `refs doctor` reports the configured mechanisms that note
-  describes as outside it.
+  `core.hooksPath` note above), switches off the configured mechanisms it can for its own git
+  invocations, and `refs doctor` reports the ones it cannot.
 - **`refs` never imports a description out of a checkout's manifests.** A package `description` is
   the one field in `config.toml` that exists to hold prose, and workspace detection does not read it
   — it carries a package's name and path and nothing else. Every description is written by whoever
