@@ -4,7 +4,8 @@ on:
   pull_request:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Do not cancel running main jobs; only superseded PR runs are cancelled.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 # PR-controlled code runs in every job (install/build/test) — keep the ambient token read-only.
 permissions:
   contents: read
@@ -22,7 +23,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
       - name: Audit every workflow with zizmor
-        run: pipx run --spec zizmor==1.31.1 zizmor --offline --strict-collection --format=github .github/workflows
+        run: pipx run --spec zizmor==1.31.1 zizmor --strict-collection --format=github .github/workflows
+        # Ephemeral read-only job token enables upstream action history/advisory checks.
+        env:
+          GH_TOKEN: ${{ github.token }}
   check:
     strategy:
       matrix: { os: [ubuntu-latest, macos-latest, windows-latest] }

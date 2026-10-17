@@ -2,10 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { readFile, readdir } from 'node:fs/promises';
 import { parse } from 'yaml';
 
-type Step = { uses?: string; run?: string; with?: Record<string, unknown> };
+type Step = {
+  uses?: string;
+  run?: string;
+  env?: Record<string, string>;
+  with?: Record<string, unknown>;
+};
 type Job = { 'timeout-minutes'?: number; steps?: Step[] };
 type Workflow = {
-  concurrency?: { group?: string; 'cancel-in-progress'?: boolean };
+  concurrency?: { group?: string; 'cancel-in-progress'?: boolean | string };
   jobs: Record<string, Job>;
 };
 
@@ -25,6 +30,7 @@ const steps = jobs.flatMap(({ name, job }) => (job.steps ?? []).map((step) => ({
 const checkouts = steps.filter(({ step }) => step.uses?.startsWith('actions/checkout@'));
 const ci = await load('ci.yml');
 const release = await load('release.yml');
+const skillAudit = await load('skill-audit.yml');
 const releaseSetup = Object.values(release.jobs)
   .flatMap((job) => job.steps ?? [])
   .filter((step) => step.uses?.startsWith('actions/setup-node@'));
@@ -40,15 +46,19 @@ describe('workflow hardening', () => {
     expect(step.with?.['persist-credentials']).toBe(false);
   });
 
-  it('cancels superseded CI only within the same workflow and ref', () => {
-    expect.hasAssertions();
-    expect(ci.concurrency).toStrictEqual({
-      'cancel-in-progress': true,
-      // GitHub expressions, intentionally literal rather than JavaScript interpolation.
-      // eslint-disable-next-line no-template-curly-in-string
-      group: '${{ github.workflow }}-${{ github.ref }}',
-    });
-  });
+  it.each([ci, skillAudit])(
+    'cancels only superseded PR runs within the workflow and ref',
+    (workflow) => {
+      expect.hasAssertions();
+      expect(workflow.concurrency).toStrictEqual({
+        // eslint-disable-next-line no-template-curly-in-string
+        'cancel-in-progress': "${{ github.event_name == 'pull_request' }}",
+        // GitHub expressions, intentionally literal rather than JavaScript interpolation.
+        // eslint-disable-next-line no-template-curly-in-string
+        group: '${{ github.workflow }}-${{ github.ref }}',
+      });
+    },
+  );
 
   it('does not cancel release runs', () => {
     expect.hasAssertions();
@@ -66,5 +76,8 @@ describe('workflow hardening', () => {
     const audit = ci.jobs['workflows']?.steps?.find((step) => step.run?.includes('zizmor'));
     expect(audit?.run).toMatch(/pipx run --spec zizmor==\d+\.\d+\.\d+ zizmor/u);
     expect(audit?.run).toContain('--strict-collection --format=github .github/workflows');
+    expect(audit?.run).not.toMatch(/--(?:offline|no-online-audits)/u);
+    // eslint-disable-next-line no-template-curly-in-string
+    expect(audit?.env).toStrictEqual({ GH_TOKEN: '${{ github.token }}' });
   });
 });
