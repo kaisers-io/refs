@@ -43,15 +43,19 @@ const setEnvironment = (config: string): void => {
   vi.stubEnv('GIT_TERMINAL_PROMPT', undefined);
 };
 
+const writeHelper = async (dir: string, config: string): Promise<void> => {
+  const helper = join(dir, 'credential-helper.sh');
+  await writeFile(helper, '#!/bin/sh\nprintf "username=fixture\\npassword=fixture\\n\\n"\n');
+  await chmod(helper, EXECUTABLE);
+  await writeFile(config, `[credential]\n helper = "${helper.replaceAll('\\', '/')}"\n`);
+};
+
 const prepareAuth = async (mode: string, dir: string): Promise<void> => {
   const config = join(dir, 'gitconfig');
   await writeFile(config, '');
   setEnvironment(config);
   if (mode === 'helper') {
-    await writeFile(
-      config,
-      '[credential]\n helper = "!f() { echo username=fixture; echo password=fixture; }; f"\n',
-    );
+    await writeHelper(dir, config);
   } else {
     const askpass = join(dir, 'askpass.sh');
     await writeFile(askpass, '#!/bin/sh\nprintf "%s\\n" fixture\n');

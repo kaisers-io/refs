@@ -9,8 +9,6 @@ import { join } from 'node:path';
 import { run } from '../../src/main.ts';
 import { setupSourceFixture } from '../helpers/add-guards-support.ts';
 
-const COMMAND_AFTER_CONFIG = 2;
-
 const configureFailure = (): void => {
   vi.stubEnv('GIT_CONFIG_COUNT', '2');
   vi.stubEnv('GIT_CONFIG_KEY_0', 'filter.refs-fail.required');
@@ -27,7 +25,7 @@ const observePartial = (dest: string): { runner: Runner; observed: () => boolean
     runner: {
       run: async (cmd, args, opts) => {
         const result = await real.run(cmd, args, opts);
-        if (args[0] === 'clone' || (args[0] === '-c' && args[COMMAND_AFTER_CONFIG] === 'clone')) {
+        if (args[0] === 'clone') {
           const config = await readFile(join(dest, '.git', 'config'), 'utf8');
           partial = result.exitCode !== 0 && config.toLowerCase().includes('hookspath');
         }

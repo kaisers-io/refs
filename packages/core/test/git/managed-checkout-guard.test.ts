@@ -4,6 +4,7 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { SpawnRunner } from '../../src/proc/runner.ts';
 import { join } from 'node:path';
+import { managedHooksFixture } from '../helpers/managed-hooks-fixture.ts';
 import { syncRef } from '../../src/git/repo.ts';
 import { tmpdir } from 'node:os';
 
@@ -22,7 +23,7 @@ const SUCCESS_EXIT_CODE = 0;
 const runner = new SpawnRunner();
 
 /** What `cloneRepo` would have stamped, and what `syncRef` is told to require. */
-const MANAGED_HOOKS_MARKER = '/managed-checkout-marker';
+const managedHooks = managedHooksFixture();
 
 const makeDest = (): Promise<string> => mkdtemp(join(tmpdir(), 'refs-guard-dest-'));
 
@@ -73,7 +74,7 @@ const expectLocalWorkIntact = async (dest: string): Promise<void> => {
 
 /** `syncRef` against a checkout, with the hooks directory the marker must match. */
 const syncManaged = (dir: string) =>
-  syncRef(runner, { defaultBranch: 'main', dir, hooksDir: MANAGED_HOOKS_MARKER });
+  syncRef(runner, { defaultBranch: 'main', dir, hooksDir: managedHooks.hooksDir });
 
 describe('syncRef() managed-checkout guard', SUITE_OPTS, () => {
   it('rejects an unmanaged (plain) git checkout without touching it', async () => {
@@ -123,7 +124,7 @@ describe('syncRef() guard: a matching marker', SUITE_OPTS, () => {
     const fixture = await createFixtureRepo();
     const dest = await makeDest();
     await plainClone(fixture.url, dest);
-    await setMarker(dest, MANAGED_HOOKS_MARKER);
+    await setMarker(dest, managedHooks.hooksDir);
     const shaBefore = await headSha(dest);
     await addCommit(fixture.dir, 'more.txt', 'more content\n');
 

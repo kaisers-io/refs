@@ -7,11 +7,10 @@ import { assertManagedCheckout } from './managed-checkout.ts';
 import { failureDetail } from './failure-detail.ts';
 import { join } from 'node:path';
 import { validationError } from '../errors.ts';
+import { withHooksPath } from '../proc/git-policy.ts';
 import { writeFileAtomic } from '../fs-atomic.ts';
 
-// Git operations for a "managed checkout": every function takes `runner: Runner` first (real git
-// via SpawnRunner in production, scripted via FakeRunner in unit tests). Implements the clone
-// modes, sync semantics, and read-only hook guards for those checkouts.
+// Managed checkout clone/sync operations, with a Runner seam for real and scripted Git.
 
 type CloneOpts = {
   cloneUrl: string;
@@ -80,14 +79,14 @@ const runOrThrow = async (runner: Runner, spec: CommandSpec): Promise<RunResult>
 // plain `file://` remote without `uploadpack.allowFilter=true`) ignore the filter and warn — that
 // downgrades to `effectiveMode: 'full'` + warning.
 const cloneRepo = async (runner: Runner, opts: CloneOpts): Promise<CloneResult> => {
-  // Command-scope injection is intentionally retained for credentials and URL rewrites.
-  // Pin hooksPath at command scope too: clone's own -c is only repository-local and loses
-  // to inherited GIT_CONFIG_PARAMETERS/COUNT. Keep both so the managed marker persists.
+  // Empty templates prevent unseen template config from introducing new execution surfaces.
+  // The clone-local hooksPath persists the ownership marker; the runner additionally enforces
+  // it in command scope, above injected config, before initialization or materialization.
   const args = [
-    '-c',
-    `core.hooksPath=${opts.hooksDir}`,
     'clone',
     '-q',
+    '--template=',
+    '--no-recurse-submodules',
     '-c',
     `core.hooksPath=${opts.hooksDir}`,
   ];
@@ -100,7 +99,10 @@ const cloneRepo = async (runner: Runner, opts: CloneOpts): Promise<CloneResult> 
   // config, which validates it as a non-empty string and nothing more. This makes the property
   // hold at the call itself rather than resting on something having been checked earlier.
   args.push('--', opts.cloneUrl, opts.dest);
-  const cloneResult = await runOrThrow(runner, gitSpec('git clone', args));
+  const cloneResult = await runOrThrow(
+    withHooksPath(runner, opts.hooksDir),
+    gitSpec('git clone', args),
+  );
   // Kept deliberately, though the clone's own `-c` already wrote it: an older git that does not
   // apply a clone `-c` before checkout would still leave the marker every later guard compares
   // against. Re-writing the same value is idempotent.
@@ -164,7 +166,7 @@ const currentSha = async (runner: Runner, dir: string): Promise<string> => {
 const isDirty = async (runner: Runner, dir: string): Promise<boolean> => {
   const result = await runOrThrow(
     runner,
-    gitSpec('git status --porcelain', ['status', '--porcelain'], dir),
+    gitSpec('git status --porcelain', ['status', '--porcelain', '--ignore-submodules=all'], dir),
   );
   return result.stdout.trim() !== '';
 };
@@ -239,12 +241,13 @@ const hardResetToBranch = async (
  * `buildSyncResult` (sync-result.ts) for the status/warning semantics.
  */
 const syncRef = async (runner: Runner, opts: SyncOpts): Promise<SyncResult> => {
-  await assertManagedCheckout(runner, opts.dir, opts.hooksDir);
-  const oldSha = await currentSha(runner, opts.dir);
-  const syncBranch = await resolveSyncBranch(runner, opts);
-  const dirty = await isDirty(runner, opts.dir);
-  await hardResetToBranch(runner, { branch: syncBranch.branch, dir: opts.dir, dirty });
-  const newSha = await currentSha(runner, opts.dir);
+  const guarded = withHooksPath(runner, opts.hooksDir);
+  await assertManagedCheckout(guarded, opts.dir, opts.hooksDir);
+  const oldSha = await currentSha(guarded, opts.dir);
+  const syncBranch = await resolveSyncBranch(guarded, opts);
+  const dirty = await isDirty(guarded, opts.dir);
+  await hardResetToBranch(guarded, { branch: syncBranch.branch, dir: opts.dir, dirty });
+  const newSha = await currentSha(guarded, opts.dir);
   return buildSyncResult(toBuildSyncResultOpts(syncBranch, dirty, { newSha, oldSha }));
 };
 

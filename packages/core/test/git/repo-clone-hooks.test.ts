@@ -1,5 +1,5 @@
 import { chmod, mkdir, mkdtemp, stat, writeFile } from 'node:fs/promises';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { SpawnRunner } from '../../src/proc/runner.ts';
 import { cloneRepo } from '../../src/git/repo.ts';
@@ -68,8 +68,7 @@ describe('cloneRepo under an ambient relative core.hooksPath', SUITE_OPTS, () =>
     const scratch = await mkdtemp(join(tmpdir(), 'refs-hookmarker-'));
     const marker = join(scratch, 'upstream-hook-ran');
     const upstream = await upstreamTrackingHook(marker);
-    const previous = process.env['GIT_CONFIG_GLOBAL'];
-    process.env['GIT_CONFIG_GLOBAL'] = await relativeHooksPathConfig();
+    vi.stubEnv('GIT_CONFIG_GLOBAL', await relativeHooksPathConfig());
     try {
       await cloneRepo(runner, {
         cloneUrl: pathToFileURL(upstream).href,
@@ -79,7 +78,7 @@ describe('cloneRepo under an ambient relative core.hooksPath', SUITE_OPTS, () =>
       });
       await expect(exists(marker)).resolves.toBe(false);
     } finally {
-      process.env['GIT_CONFIG_GLOBAL'] = previous;
+      vi.unstubAllEnvs();
     }
   });
 
