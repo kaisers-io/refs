@@ -1,0 +1,42 @@
+schema_version: '1.1'
+name: version-compare
+description: >-
+  A monorepo package with its own tag convention, and a repository-wide tag of the same version
+  that predates the change. The answer must come from the package's tags, as VERSIONS.md resolves
+  them with --package: the concrete code change between the two releases and the commit that made
+  it. Repeating the two version numbers, or diffing the repository-wide tags and finding nothing,
+  does not pass.
+plugins: ['../../skills/refs']
+runs: 3
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 30
+  timeout_seconds: 600
+  append_system_prompt: >-
+    Only your last message is read. Finish any background work before you write it, and make it
+    the complete answer.
+  allowed_tools: [Bash, Read, Glob, Grep, Agent]
+  prompt: >-
+    /refs What changed in @toolkit/retry from local/fixtures/toolkit between versions 1.0.0 and
+    1.1.0? Name the commit responsible.
+graders:
+  # Compact JSON in the transcript is refs' own output, not a mention in the docs. Only the package
+  # form of `refs tag` resolves 1.1.0 to this tag; without --package it answers v1.1.0.
+  - name: resolved-the-package-tag
+    type: regex
+    pattern: '\\"tag\\":\\"@toolkit/retry@1\.1\.0\\"'
+    target: trace
+  # The two code changes in the release, by the identifiers and values only the diff carries.
+  - name: names-the-new-cap
+    type: regex
+    pattern: 'maxDelayMs'
+  - name: names-the-new-default
+    type: regex
+    pattern: 'attempts\s*=\s*5|3\s*(?:→|->|to)\s*5|attempts[^\n]{0,60}\b5\b|\b5\b[^\n]{0,30}attempts'
+    flags: i
+  # The commit, by its sha or its subject. The scaffold pins dates and identities, so the sha is the
+  # same on every run; editing the scaffold's history changes it, and this pattern with it.
+  - name: names-the-commit
+    type: regex
+    pattern: '\b9f89fed|tune the backoff for flaky upstreams'

@@ -1,0 +1,50 @@
+schema_version: '1.1'
+name: source-provenance
+description: >-
+  Two tracked repositories ship the same relative file, src/size.js, and differ on one line: which
+  unit a bare number means. Asked about beta, the answer must give beta's behaviour and cite it as
+  INVESTIGATE.md §3 requires: the root-relative path and line, linked under beta's checkout root.
+  A citation of alpha's identical-looking file, of a file that does not exist, or of a line that
+  does not decide the question does not count. The checkouts must be left as they were.
+plugins: ['../../skills/refs']
+runs: 3
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 30
+  timeout_seconds: 600
+  append_system_prompt: >-
+    Only your last message is read. Finish any background work before you write it, and make it
+    the complete answer.
+  allowed_tools: [Bash, Read, Glob, Grep, Agent]
+  prompt: >-
+    /refs In local/fixtures/beta, what unit does parseSize assume when its input has no unit, as in
+    parseSize("4")? Cite the line that decides it.
+graders:
+  # Compact JSON in the transcript is refs' own output, not a mention in the docs.
+  - name: resolved-a-managed-checkout
+    type: regex
+    pattern: '\\"checkout\\":\{\\"status\\":\\"managed\\"'
+    target: trace
+  # beta's line 7 falls back to 'mb'; alpha's falls back to 'b'.
+  - name: answers-megabytes
+    type: regex
+    pattern: 'mega|mebi|\bmi?b\b|1048576|4194304|1024\s*\*\*\s*2'
+    flags: i
+  # The deciding line, linked the way INVESTIGATE.md §3 builds every link: the root-relative path
+  # and line as the text, the absolute path under beta's checkout as the target, the same line in
+  # both. refs keeps checkouts under <home>/refs/sources/<key>, so the target names the root it came
+  # from. alpha's src/size.js:7, the fixture's own upstream copy under fixtures/beta, a missing file
+  # and any other line all fail.
+  - name: cites-beta-line-7
+    type: regex
+    pattern: '\[`?src/size\.js:7`?\]\(<?/[^()<>\s]*/refs/sources/local/fixtures/beta/src/size\.js:7>?\)'
+  # Hard rule 1: read-only. The deciding lines are still what the scaffold wrote.
+  - name: boundary-beta-checkout-unchanged
+    type: regex
+    pattern: '\n  const unit = match\[2\]\.toLowerCase\(\) \|\| ''mb'';\n  if \(!\(unit in UNITS\)\)'
+    target: { source: file, path: .refs-home/refs/sources/local/fixtures/beta/src/size.js }
+  - name: boundary-alpha-checkout-unchanged
+    type: regex
+    pattern: '\n  const unit = match\[2\]\.toLowerCase\(\) \|\| ''b'';\n  if \(!\(unit in UNITS\)\)'
+    target: { source: file, path: .refs-home/refs/sources/local/fixtures/alpha/src/size.js }
