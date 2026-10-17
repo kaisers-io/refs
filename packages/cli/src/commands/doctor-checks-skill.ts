@@ -1,25 +1,28 @@
+import { buildSkillVersionCheck, skillCliVersionOf } from './doctor-skill-version.ts';
 import { readFile, realpath } from 'node:fs/promises';
 import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
-import { comparePlainVersions } from '@kaisers-io/refs-core';
+import { codexPluginCandidates } from './doctor-skill-plugin.ts';
 import { join } from 'node:path';
 
 // `refs doctor`'s `skill` check: reads the installed skill's YAML frontmatter out of every install
 // location it knows about and compares the `metadata.cli_version` it pins against the running CLI
 // version. Split out of doctor-checks-basic.ts (which keeps `git`/`node`/`config` — the checks that
 // are environment probes rather than filesystem lookups) when the location table below grew past
-// what the two could share under the repo's 300-line cap.
+// what the two could share under the repo's 300-line cap. The version verdict itself lives in
+// doctor-skill-version.ts, and the Codex plugin install in doctor-skill-plugin.ts.
 
 const AGENTS_SKILL_SEGMENTS = ['.agents', 'skills', 'refs', 'SKILL.md'] as const;
 const AGENT_HOME_SKILL_SEGMENTS = ['skills', 'refs', 'SKILL.md'] as const;
 const PROJECT_CLAUDE_SKILL_SEGMENTS = ['.claude', 'skills', 'refs', 'SKILL.md'] as const;
 const SKILL_INSTALL_HINT = 'npx skills add kaisers-io/refs';
-const CLI_UPDATE_HINT = 'npm i -g @kaisers-io/refs@latest';
 
 type SkillCandidate = {
   display: string;
   label: string;
   path: string;
+  /** How this copy is updated; the skills installer unless it says otherwise. */
+  skillUpdate?: string;
 };
 
 /** A location's base directory paired with the short form the "not found" message names it by. The
@@ -137,6 +140,7 @@ const skillCandidatesOf = (ctx: CliContext): SkillCandidate[] => {
 type FoundSkill = {
   label: string;
   realPath: string;
+  skillUpdate: string;
   source: string;
 };
 
@@ -145,10 +149,11 @@ type FoundSkill = {
  * five) and an unreadable one both mean "nothing to compare here", and an install that exists
  * nowhere falls through to `notFoundOf` below. Read-only throughout: `refs` writes nothing outside
  * `REFS_HOME`, and this check touches no path with anything but `realpath`/`readFile`. */
-const readSkillAt = async (path: string, label: string): Promise<FoundSkill | undefined> => {
+const readSkillAt = async (candidate: SkillCandidate): Promise<FoundSkill | undefined> => {
+  const { label, path, skillUpdate = SKILL_INSTALL_HINT } = candidate;
   try {
     const resolved = await realpath(path);
-    return { label, realPath: resolved, source: await readFile(resolved, 'utf8') };
+    return { label, realPath: resolved, skillUpdate, source: await readFile(resolved, 'utf8') };
   } catch {
     return undefined;
   }
@@ -166,94 +171,6 @@ const uniqueByRealPath = (entries: readonly FoundSkill[]): FoundSkill[] => {
     }
   }
   return [...byRealPath.values()];
-};
-
-// Pulls `metadata.cli_version` out of the skill's YAML frontmatter without a YAML dependency —
-// same trade-off as `parseNodeVersion` in doctor-checks-basic.ts: one well-known key in a file this
-// repo owns, so a line scan beats pulling in a parser. Accepts the value quoted or bare, at any
-// indentation.
-const FRONTMATTER_PATTERN = /^---\r?\n(?<body>[\s\S]*?)\r?\n---/u;
-const CLI_VERSION_PATTERN = /^\s*cli_version:\s*["']?(?<version>[^"'\s]+)["']?\s*$/mu;
-
-const skillCliVersionOf = (source: string): string | undefined => {
-  const body = FRONTMATTER_PATTERN.exec(source)?.groups?.['body'];
-  if (body === undefined) {
-    return undefined;
-  }
-  return CLI_VERSION_PATTERN.exec(body)?.groups?.['version'];
-};
-
-type SkillVerdict = 'cli-older' | 'match' | 'skill-older' | 'unknown';
-
-// Anything that is not three plain decimal components — a prerelease on either side — is left to
-// the `unknown` verdict, which tells the user to reinstall both sides rather than guessing an
-// ordering. `comparePlainVersions` is the single implementation of that rule; this file used to
-// carry a second one that compared through `Number`, which agrees with it everywhere except past
-// 2^53, where it silently reported a match.
-// Longer than any version this CLI could have published, by a wide margin. `comparePlainVersions`
-// deliberately supports components of arbitrary length, so `'9'.repeat(4000) + '.0.0'` compares
-// fine and is a perfectly ordinary `skill-older`/`cli-older` verdict — which then quotes those
-// 4000 digits into the detail. A bound here keeps the line a line, and it belongs on the verdict
-// rather than on the rendering: a value this long is not a version, whatever it compares as.
-const MAX_SKILL_VERSION_LENGTH = 32;
-
-const compareSkillVersion = (skillVersion: string, cliVersion: string): SkillVerdict => {
-  if (skillVersion.length > MAX_SKILL_VERSION_LENGTH) {
-    return 'unknown';
-  }
-  if (skillVersion === cliVersion) {
-    return 'match';
-  }
-  const compared = comparePlainVersions(skillVersion, cliVersion);
-  if (compared === undefined) {
-    return 'unknown';
-  }
-  if (compared === 0) {
-    return 'match';
-  }
-  return compared > 0 ? 'cli-older' : 'skill-older';
-};
-
-const DETAIL_BY_VERDICT: Record<SkillVerdict, (skill: string, cli: string) => string> = {
-  'cli-older': (skill, cli) =>
-    `the refs skill targets CLI ${skill} but this CLI is ${cli} — update the CLI: ${CLI_UPDATE_HINT}`,
-  match: (_skill, cli) => `the refs skill is installed and matches this CLI (${cli})`,
-  'skill-older': (skill, cli) =>
-    `the refs skill targets CLI ${skill} but this CLI is ${cli} — update the skill: ${SKILL_INSTALL_HINT}`,
-  // The one verdict where the declared value is NOT quoted back. Two of the five places a
-  // `SKILL.md` is looked for are rooted at the working directory — for an agent session, whatever
-  // repository it happens to be in — and the frontmatter scan accepts any quote-free,
-  // whitespace-free token of any length. Quoting it put attacker-chosen prose, unbounded, into an
-  // agent-facing `--json` detail that MAINTAIN.md tells the agent to relay verbatim to a human.
-  //
-  // The two ordering verdicts are the only others that interpolate the declared value, and they
-  // are reached only once `comparePlainVersions` has accepted it, so what they quote is three
-  // decimal components bounded by `MAX_SKILL_VERSION_LENGTH`. `match` does not quote it at all.
-  unknown: (_skill, cli) =>
-    `the refs skill does not declare a version this CLI (${cli}) can compare — reinstall both: ${CLI_UPDATE_HINT} and ${SKILL_INSTALL_HINT}`,
-};
-
-type SkillVersionArgs = {
-  cliVersion: string;
-  label: string;
-  skillVersion: string | undefined;
-};
-
-const buildSkillVersionCheck = (args: SkillVersionArgs): CheckResult => {
-  const { cliVersion, label, skillVersion } = args;
-  if (skillVersion === undefined) {
-    return {
-      detail: `the refs skill (${label}) predates the version gate — update it: ${SKILL_INSTALL_HINT}`,
-      name: 'skill',
-      status: 'warn',
-    };
-  }
-  const verdict = compareSkillVersion(skillVersion, cliVersion);
-  return {
-    detail: `${label}: ${DETAIL_BY_VERDICT[verdict](skillVersion, cliVersion)}`,
-    name: 'skill',
-    status: verdict === 'match' ? 'ok' : 'warn',
-  };
 };
 
 /** Deliberately not "refs skill not found": with env-overridable per-agent directories, project
@@ -282,14 +199,13 @@ const notFoundOf = (candidates: readonly SkillCandidate[]): CheckResult => ({
  * not be hidden by a current shared one. The `detail` names the location so the fix is
  * unambiguous. */
 const checkSkill = async (ctx: CliContext): Promise<CheckResult> => {
-  const candidates = skillCandidatesOf(ctx);
-  const found = await Promise.all(
-    candidates.map((candidate) => readSkillAt(candidate.path, candidate.label)),
-  );
+  const candidates = [...skillCandidatesOf(ctx), ...(await codexPluginCandidates(ctx))];
+  const found = await Promise.all(candidates.map((candidate) => readSkillAt(candidate)));
   const checks = uniqueByRealPath(found.filter((entry) => entry !== undefined)).map((entry) =>
     buildSkillVersionCheck({
       cliVersion: ctx.cliVersion,
       label: entry.label,
+      skillUpdate: entry.skillUpdate,
       skillVersion: skillCliVersionOf(entry.source),
     }),
   );
@@ -297,3 +213,4 @@ const checkSkill = async (ctx: CliContext): Promise<CheckResult> => {
 };
 
 export { checkSkill };
+export type { SkillCandidate };

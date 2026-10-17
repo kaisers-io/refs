@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Preview: a Codex plugin. `codex plugin marketplace add kaisers-io/refs` and then `codex plugin add refs@kaisers-io` install the refs skill as `refs:refs`. The plugin contains the skill only, with no hooks, MCP server or scripts, and does not install the CLI. See `docs/install.md`. `refs doctor`'s `skill` check recognises the enabled plugin, reads the version Codex loads, and names `codex plugin marketplace upgrade kaisers-io` as the update for a stale plugin copy.
+
 ## [0.18.2] - 2026-10-13
 
 ### Security

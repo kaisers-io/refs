@@ -516,7 +516,7 @@ a prerelease, a build-metadata suffix — lands in the last row, where the check
 neither side and asks you to reinstall both rather than guess an ordering. Exact string
 equality is checked first, though, so two identical non-plain versions still report `ok`.
 
-Five installation locations are checked, in this order:
+Five installation locations are checked, in this order, plus the Codex plugin described below:
 
 | Location                                                   | `detail` label      | What puts it there                                  |
 | ---------------------------------------------------------- | ------------------- | --------------------------------------------------- |
@@ -539,6 +539,15 @@ what the last row above covers. Note that the last row takes no env override: un
 global directory, the installer's project path is a literal relative `.claude/skills`, so
 `$CLAUDE_CONFIG_DIR` does not move it. Codex needs no counterpart row — it is a universal
 agent, so its project install lands in `./.agents/skills` in every mode.
+
+**The Codex plugin.** `codex plugin add refs@kaisers-io` (see [install](install.md)) does not use
+any of those paths: Codex records `[plugins."refs@kaisers-io"] enabled = true` in
+`$CODEX_HOME/config.toml` (default `~/.codex`) and copies the plugin to
+`plugins/cache/kaisers-io/refs/<version>/`. When — and only when — that config entry is enabled,
+the check also reads `skills/refs/SKILL.md` from the version Codex loads: `local` if present,
+otherwise the highest version. A leftover cache for a disabled or removed plugin is not counted.
+This copy is labelled `Codex plugin refs@kaisers-io`, and when it is stale the hint is the
+plugin's own update, `codex plugin marketplace upgrade kaisers-io`, not `npx skills add`.
 
 A problem in any of the surviving copies wins over an `ok` in the others: `doctor` cannot
 know which agent is about to read the skill, so a stale copy in `~/.claude` is never hidden

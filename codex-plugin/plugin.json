@@ -1,0 +1,27 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "refs",
+  "version": "0.18.2",
+  "description": "Local, read-only reference checkouts of dependency sources, so agents answer from real source code.",
+  "author": {
+    "name": "Kaisers IO",
+    "url": "https://github.com/kaisers-io"
+  },
+  "homepage": "https://github.com/kaisers-io/refs",
+  "repository": "https://github.com/kaisers-io/refs",
+  "license": "MIT",
+  "keywords": ["refs", "dependencies", "source-code", "git", "agent-skills", "codex"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Refs",
+        "shortDescription": "Answer from real dependency source",
+        "longDescription": "Bundles the refs skill. The skill drives the refs CLI, installed separately from npm, which keeps local, read-only git checkouts of your dependencies so answers come from their real source.",
+        "developerName": "Kaisers IO",
+        "category": "Developer Tools",
+        "capabilities": ["Interactive", "Read"],
+        "websiteURL": "https://github.com/kaisers-io/refs"
+      }
+    }
+  }
+}

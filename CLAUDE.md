@@ -133,6 +133,8 @@ copy it to `packages/cli/`, run `pnpm fmt`, copy it back.
 
 - **`npx skills add` run from the repository root** replaces the tracked `.agents/skills/refs`
   symlink with a real directory and writes `skills-lock.json`. Run it from a neutral directory.
+- **`codex-plugin/skills/refs/` is a generated copy** of `skills/refs/`, because Codex drops symbolic
+  links when it installs a plugin. Edit `skills/refs/`, then run `pnpm codex-plugin --write`.
 - **A glob inside a `/** */` doc comment ends the comment early**, because `*/` closes it. Use line
   comments, or describe the pattern without spelling it out.
 - **A rebase can silently drop changelog entries** added on both sides. Check the `Unreleased`

@@ -1,0 +1,168 @@
+# Maintain — sync, doctor, remove
+
+Use this flow for housekeeping requests: refreshing refs, checking their health, or
+removing one. None of this needs subagents — it's direct CLI calls plus a human-readable
+summary.
+
+## Sync ("sync my refs", "update refs")
+
+```bash
+refs sync --json
+```
+
+Fetches (or re-clones, if a checkout went missing) every configured ref in parallel.
+Pass specific ref keys/suffixes as arguments to sync only those, or add `--stale-only`
+to skip anything still within its `sync_ttl`.
+
+The response is `{results: [{key, status, warning?, error?}]}` where `status` is one of
+`updated`, `fresh`, `cloned`, `restored`, or `failed`. Summarize by group rather than
+dumping the raw array:
+
+- **Updated (N)** — fetched new commits.
+- **Fresh (N)** — already up to date, nothing to do.
+- **Cloned (N)** — checkout was missing and got re-cloned.
+- **Restored (N)** — the checkout had local changes (it shouldn't have — these are
+  managed, read-only checkouts); they were discarded and the checkout reset to the
+  remote state. Worth flagging to the user as unexpected, even though `refs` self-healed
+  it.
+- **Failed (N)** — report each failed key with its `error` message.
+
+**Important:** a partial batch failure still comes back as `ok: true` in the envelope
+(a per-item failure isn't itself a command failure) — check each item's `status`, and
+note that the process exit code is non-zero whenever any item failed, so don't rely on
+the envelope's `ok` alone to detect trouble.
+
+## Doctor ("run doctor", "check refs health")
+
+```bash
+refs doctor --json
+```
+
+Runs environment/integrity checks and returns `{checks: [{name, status, detail}]}` with
+`status` one of `ok`, `warn`, `fail`: `git`, `node`, `config`, `hooks-guard`,
+`dirty-checkouts`, `config-drift`, `orphans`, `locks`, `skill`, `cli-update`, and (when any ref uses ssh)
+`ssh-auth`. Report
+every non-`ok` check with its `detail` message, and explain what it means in plain terms.
+A `warn` on `cli-update` means either that a newer refs is published on npm — the `detail`
+carries the version and the command to install it, which you print for the user rather than
+running — or that npm could not be reached, which is not a fault of their setup and needs no
+action. It is `ok` and says so when the check is switched off (`[updates].check = false` or
+`REFS_UPDATE_CHECK=0`).
+
+A `warn` on `skill` means one of three things: the skill wasn't found where the check
+looked, the installed copy predates the version gate, or the CLI version it pins in its
+frontmatter doesn't match the running CLI. The locations it looks in are `~/.agents/skills`,
+`$CLAUDE_CONFIG_DIR` (else `~/.claude`) `/skills`, `$CODEX_HOME` (else `~/.codex`)
+`/skills`, `<cwd>/.agents/skills`, and `<cwd>/.claude/skills` — symlinks between them are
+followed and counted once, and the "not found" `detail` names the paths actually searched,
+so it names an override rather than the default it replaced.
+**That list is best-effort, not exhaustive**: the installer defaults to project scope
+and dozens of other agents have directories of their own, so a "not found" only means this
+check couldn't see it — never tell the user their skill isn't installed on that basis, and
+never treat it as blocking. You are reading this file, so the skill is installed; your own
+capability gate (`SKILL.md` §1) compares `refs --version` against the pin above and is the
+only thing that matters. Every `detail` carries the command that fixes it, but only a
+version mismatch it can order names which side is behind — an unorderable pair (a
+prerelease on either side) says to reinstall both. Relay it verbatim rather than guessing —
+print it for the user to run, per `SKILL.md` §1: this skill installs nothing itself.
+
+A `warn` on `locks` means an entry in the locks directory will not resolve on its own: the recorded
+process is gone, the lock is past its window and still there, its metadata is unreadable, or
+something that is not a lock at all is occupying a lock name. A held lock by itself is **not** a
+warning — that is what a concurrent `refs sync` looks like, and it reports `ok` with the holder
+listed. Nothing releases a lock in the background: `reclaimable now` means the next acquisition
+attempt is entitled to take it, so re-running the command that wants it is usually the fix.
+
+Two `detail` phrasings need different handling, and confusing them is how a live process loses its
+lock:
+
+- **`past its window but not automatically reclaimable`** — refs will not take this one. Only a
+  recorded process the OS reports as gone is reclaimed automatically; a process that still answers
+  may be mid-operation, and a suspended machine looks exactly like a hung one. Report it and let
+  the user decide.
+- **`steal claim on <name>`** — a marker left where a reclaim was starting. It blocks reclaiming
+  that one lock and nothing else, and it does not expire. A reclaim in progress clears it within a
+  moment. If it persists, the `detail` carries the exact `rmdir` to run — but only after every
+  refs process using that home has stopped, **including suspended ones**. Clearing it while a
+  process is merely paused is precisely what it exists to prevent.
+
+Never delete a lock directory by hand on the strength of this check alone — the recorded pid is not
+proof of identity, only of absence when it says "not running".
+
+A `warn` on `config-drift` means a CONFIGURED entry and the checkout disagree. A package the
+checkout declares and the configuration has never registered is reported beside the health line,
+not as part of it: it is information about the repository, not a defect in the configuration. The `detail` names
+each affected ref and package, says which repair it needs — unregister the entry (the package is
+gone from the repo's workspaces), change its path (it moved within them), or register a package
+the checkout declares and the config never had (`unregistered`) — and prints the `refs edit`
+command for it. None is urgent, and none should be run without showing the user first.
+
+An `unregistered` package the user does not want is answered with the finding's own `decline`
+command — under `--json` every finding carries its repair commands already quoted for a shell
+(`register`, `decline`, `repoint`, `unregister`), which is the one to run. Never build one out of
+the raw `name` and `path`: those come from the tracked repository, refs checks that they are true
+rather than that they are safe to paste, and they may contain a space, a single quote or `$(…)`.
+Written out, the shape is `refs edit --package='<name>' --decline --path='<path>' '<ref>'`. That stops it being reported on every future run, where it would
+bury the next real finding. `doctor` says how many decisions a run left unreported. `refs sync`
+mentions only the unregistered members a fetch just brought in, and `doctor` lists the rest.
+Neither says anything about a package under a negated workspace pattern, or about any package at
+all when detection could have missed one.
+
+**"Does this repo declare packages I have not registered?"** is a `doctor` question. `refs show`,
+`refs list --packages` and `packages_count` describe what the configuration registers, not what the
+repository declares, and counting the directories under a workspace pattern is no substitute. Run
+`refs doctor --json` and read the `config-drift` check **whatever its `status`**, because an
+unregistered package never turns it into `warn`. The answer is the entries under
+`findings[].packages[]` for that ref with `status: "unregistered"`. No `findings` key means none,
+but only when neither of the first two points below applies. Silence is not evidence that refs
+looked:
+
+- **Something about that ref could not be checked.** A `config-drift` `status` of `fail`
+  (`check crashed: …`), or any `could not check` or `could not be checked` in the `detail` for that
+  ref, means refs did not finish looking. Two you will meet:
+  `could not check for unregistered packages — <path>: <reason>` means discovery stopped at
+  `<path>`. Say so and name `<path>`, because fixing it is what lets refs answer.
+  `could not be checked — another refs process is holding this ref` means the ref was busy, so run
+  doctor again. If you read the workspace declaration yourself and find an unregistered member,
+  report it as your own reading, and say the list may still be incomplete.
+- **doctor did not search that ref.** It looks for unregistered packages only in a ref that has a
+  checkout and registers at least one package. `refs show <ref> --json` says which: `missing: true`,
+  or `packages_count` 0. For such a ref an `ok` says nothing about undeclared packages. Say that,
+  and read the declaration yourself if the user wants an answer.
+- **Otherwise** the findings list every member nobody has decided about. Packages the user
+  already declined are left out of them, and `doctor` counts them in its `detail`. Declined is not
+  registered, so mention them too when the question is about everything unregistered.
+  `refs show <ref> --json` names them under `declined_packages`, but that is every decline ever
+  recorded, including ones for packages since removed upstream. Check a name against the current
+  declaration before you call it declared.
+
+Offer to register what you found only the way COMMANDS.md describes: show it, then wait for a yes.
+
+Registering is the one repair that adds something rather than correcting it, so it is also the
+one that needs the user's agreement first — see COMMANDS.md on `unregistered`. A `detail` saying another refs
+process holds the ref is not a finding at all: that ref's lock was busy, so it was not
+inspected. The same probe runs on every `refs sync`, so drift usually surfaces there first.
+
+On `dirty-checkouts` the two statuses mean different things: a **`warn`** is a
+managed checkout carrying local changes, which the next `refs sync` will discard — say so
+before syncing, because the changes are gone afterwards. A **`fail`** is `git status`
+itself failing on that checkout, which points at a broken or unreadable `.git` rather than
+at edited files. Like `sync` above, the exit code goes non-zero on any `fail` even though
+the envelope is `ok: true`; a `warn` alone leaves it at zero.
+
+## Remove ("remove ref X", "stop tracking X")
+
+`refs remove` is **destructive**: it deletes both the config/state entry _and_ the
+checkout directory on disk. **Always confirm with the user before running it** — state
+what will be deleted (the ref key and, if you have it, the local path from `refs show`)
+and wait for an explicit yes.
+
+```bash
+refs remove <ref> --json
+```
+
+`<ref>` accepts the full key or a unique suffix. After confirmation and removal, report
+that both the config entry and the on-disk checkout are gone — there's no undo short of
+re-adding (`ADD.md`). Since checkouts are read-only, there shouldn't be any local-only
+history to lose; if doctor's `dirty-checkouts`/`restored` history suggests otherwise,
+say so.
