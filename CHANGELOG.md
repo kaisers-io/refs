@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     means pointer files; `git lfs pull` in the checkout fetches the content. The first sync of an
     existing checkout that used a filter reports local changes once and rewrites those files to
     their committed form.
+  - **git itself is never looked up in the checkout.** refs starts git with the checkout as its
+    working directory. On Windows, starting a program by bare name searches that directory before
+    PATH (libuv, like cmd.exe), so a `git.exe` or `git.com` committed to a repository's root ran in
+    git's place at the next `refs sync`. On every platform an empty or relative PATH entry
+    (`PATH=:/usr/bin`) meant the same. refs now resolves `git` (and `ssh`) through absolute PATH
+    directories only and starts the absolute path it found.
   - **git 2.54.x is refused.** It has configured hooks but not the per-event switch (git 2.55+),
     and its hooks can only be disabled by name, which refs cannot know before a clone. refs' git
     commands fail there with a message naming the versions to install, and `refs doctor`'s `git`
