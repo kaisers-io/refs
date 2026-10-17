@@ -1,5 +1,6 @@
 // Tiny inline concurrency semaphore for `sync-core.ts#syncAll` — caps how many refs sync at once
-// without pulling in a dependency. `acquire` resolves immediately while under `limit`, otherwise
+// without pulling in a dependency — and, through `mapGated`, for `doctor`'s per-checkout git
+// probes. `acquire` resolves immediately while under `limit`, otherwise
 // queues the waiter (FIFO, via `Promise.withResolvers` rather than a `new Promise` executor);
 // `release` frees the slot and wakes the next waiter, if any.
 
@@ -43,4 +44,16 @@ const runGated = async <TResult>(sem: Semaphore, fn: () => Promise<TResult>): Pr
   }
 };
 
-export { createSemaphore, runGated };
+/** `Promise.all(items.map(fn))` with at most `limit` calls of `fn` in flight. Results keep the
+ * order of `items`, and a rejection rejects the batch exactly as `Promise.all` would — the only
+ * thing that changes is how many calls run at once. */
+const mapGated = <TItem, TResult>(
+  items: readonly TItem[],
+  limit: number,
+  fn: (item: TItem) => Promise<TResult>,
+): Promise<TResult[]> => {
+  const sem = createSemaphore(limit);
+  return Promise.all(items.map((item) => runGated(sem, () => fn(item))));
+};
+
+export { createSemaphore, mapGated, runGated };
