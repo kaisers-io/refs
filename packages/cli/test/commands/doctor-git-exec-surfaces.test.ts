@@ -29,8 +29,7 @@ const SURFACE = 'git-exec-surfaces';
 const listing = (entries: readonly (readonly [string, string])[], scope = 'global'): string =>
   entries.map(([key, value]) => `${scope}${NUL}${key}\n${value}${NUL}`).join('');
 
-// The one git with configured hooks that refs' event-level switch does not reach, so the version
-// on which a configured hook is still reported.
+// A git with configured hooks, on which one that no label switch reached is reported.
 const LABEL_ONLY_GIT = 'git version 2.54.0';
 
 const scriptConfig = (setup: DoctorTestHome, stdout: string, version = LABEL_ONLY_GIT): void => {

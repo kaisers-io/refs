@@ -200,3 +200,27 @@ describe.skipIf((await gitMinor()) < CONFIGURED_HOOKS_MINOR)(
     });
   },
 );
+
+// On 2.55 a label named after an event makes `hook.<event>.enabled` that label's switch, so the
+// event switch alone left `x` running — reproduced on 2.55.0 before labels were disabled there.
+const COLLIDING = `[hook "post-checkout"]\n\tcommand = true\n${hookSection('x', 'post-checkout')}`;
+
+describe.skipIf((await gitMinor()) < CONFIGURED_HOOKS_MINOR)(
+  'a configured hook label named after an event',
+  SUITE_OPTS,
+  () => {
+    it('leaves no other label on that event running during refs clone and sync', async () => {
+      expect.hasAssertions();
+      const scene = await scenario();
+      const ran: boolean[] = [];
+      await withGlobalConfig(COLLIDING, async () => {
+        await cloneThenUpdate(scene);
+        ran.push(await exists(scene.marker));
+        // The same configuration under plain git, outside refs' policy: the fixture is live.
+        await runner.run('sh', ['-c', 'git checkout -q -B main HEAD'], { cwd: scene.dest });
+        ran.push(await exists(scene.marker));
+      });
+      expect(ran).toStrictEqual([false, true]);
+    });
+  },
+);

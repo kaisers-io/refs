@@ -8,12 +8,12 @@
 // - `core.fsmonitor`: refs empties it on every invocation, and the last value wins, so it is
 //   reported only when nothing overrode it.
 // - Configured hooks: refs disables every event it causes with `hook.<event>.enabled=false`, an
-//   event-level switch git honours from 2.55. git 2.54 reads that key as a hook LABEL, so there
-//   refs adds `hook.<label>.enabled=false` for each label in the configuration graph
-//   (`git-hook-labels.ts`); those arrive in this listing as command-scope entries, and the label
-//   check below honours them. So on 2.54 a hook is reported only if no such entry disabled it.
-//   Before 2.54 git has no configured hooks and ignores the keys. A version that cannot be read
-//   counts as 2.54: a failure to look is not evidence that nothing runs.
+//   event-level switch git honours from 2.55 unless a hook label shares the event's name, and
+//   from 2.54 also adds `hook.<label>.enabled=false` for each label in the configuration graph
+//   (`git-hook-labels.ts`). Those arrive in this listing as command-scope entries, and the label
+//   check below honours them, so a hook is reported only if no such entry disabled it. Before
+//   2.54 git has no configured hooks and ignores the keys. A version that cannot be read counts
+//   as one with configured hooks: a failure to look is not evidence that nothing runs.
 // - Filters: never overridden, because turning one off changes what a checkout contains (#187).
 //
 // Presence, not safety: an earlier version reported only commands that looked
@@ -34,8 +34,8 @@ const FSMONITOR = 'core.fsmonitor';
 const FSMONITOR_KEY = /^core\.fsmonitor$/u;
 const GIT_VERSION = /^git version (?<major>\d+)\.(?<minor>\d+)/u;
 
-// The one git release that has configured hooks but no event-level switch for them.
-const LABEL_ONLY_HOOKS = { major: 2, minor: 54 } as const;
+// The first git release with configured hooks.
+const FIRST_WITH_HOOKS = { major: 2, minor: 54 } as const;
 
 // `core.fsmonitor` takes a boolean OR a command, and git runs the command form with its working
 // directory set to the worktree. Only the command form is an execution surface.
@@ -86,9 +86,10 @@ const configuredHooksCanRun = (versionLine: string | undefined): boolean => {
   if (groups === undefined) {
     return true;
   }
+  const major = Number(groups['major']);
   return (
-    Number(groups['major']) === LABEL_ONLY_HOOKS.major &&
-    Number(groups['minor']) === LABEL_ONLY_HOOKS.minor
+    major > FIRST_WITH_HOOKS.major ||
+    (major === FIRST_WITH_HOOKS.major && Number(groups['minor']) >= FIRST_WITH_HOOKS.minor)
   );
 };
 
@@ -136,8 +137,7 @@ const REASONS: readonly (readonly [RegExp, string])[] = [
   [
     HOOK_COMMAND,
     'a configured hook fires on the events refs causes and nothing disabled it: refs switches ' +
-      'those events off, which git 2.55 and later honour, and on git 2.54 disables each label ' +
-      'it finds',
+      'those events off and disables each label it finds',
   ],
   [FSMONITOR_KEY, 'fsmonitor runs a command in the worktree'],
 ];

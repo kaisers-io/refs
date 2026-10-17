@@ -266,7 +266,8 @@ const readGitVersion = async (): Promise<string> => {
 };
 
 class SpawnRunner implements Runner {
-  // `git --version`, read once per runner: only git 2.54 needs the configured-hook inventory.
+  // `git --version`, read once per runner: only git 2.54 and later need the configured-hook
+  // inventory.
   #gitVersion: Promise<string> | undefined;
 
   async run(cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> {

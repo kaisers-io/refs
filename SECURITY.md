@@ -45,11 +45,13 @@ there are no long-term support branches.
   helpers, proxies and `insteadOf` rules a private clone needs. Instead every git process `refs`
   starts overrides two of the three with top-level `-c` options: `core.fsmonitor=` (the empty
   value, which every git version measured, 2.25 to 2.55, reads as "off" — `false` would be run as a program by git 2.35.1
-  and older) and `hook.<event>.enabled=false` for each event `refs` causes, which disables
-  configured hooks by event on git 2.55 and later whatever their label. git 2.54 has no
-  event-level switch, so there `refs` reads every hook label from the configuration and every
-  include it names — conditional includes too, whether or not their condition holds yet, because
-  `hasconfig:remote.*.url` is decided by the repository being cloned — and passes
+  and older) and `hook.<event>.enabled=false` for each event `refs` causes, an event-level switch
+  from git 2.55. That switch alone is not enough: git 2.55 reads `hook.<name>.enabled` as a
+  LABEL's switch once the configuration gives a hook label that name, so a label named after an
+  event leaves every other label on that event running. git 2.54 has no event-level switch at
+  all. So on git 2.54 and later `refs` also reads every hook label from the configuration and
+  every include it names — conditional includes too, whether or not their condition holds yet,
+  because `hasconfig:remote.*.url` is decided by the repository being cloned — and passes
   `hook.<label>.enabled=false` for each. If it cannot read the whole include graph, or an include
   lies inside the checkout the command writes, it refuses to start git. Filters stay enabled:
   turning one off changes what a checkout contains. The residue — filters — is what

@@ -87,6 +87,35 @@ describe('the configured-hook label inventory', () => {
   });
 });
 
+// A runner wrapper may prepend `-c core.hooksPath=…`, or `-C`, before the subcommand. Each case
+// builds the argv in front of `clone` and the destination from the scene's directory.
+type Prefixed = (dir: string) => { dest: string; globals: string[] };
+const PREFIXED_CLONES: readonly (readonly [string, Prefixed])[] = [
+  [
+    '-c core.hooksPath',
+    (dir) => ({ dest: join(dir, 'dest'), globals: ['-c', 'core.hooksPath=/x'] }),
+  ],
+  [
+    'several globals',
+    (dir) => ({ dest: join(dir, 'dest'), globals: ['-c', 'a=b', '-p', '-c', 'c=d'] }),
+  ],
+  [
+    '-C and a relative destination',
+    (dir) => ({ dest: '../dest', globals: ['-C', join(dir, 'sub')] }),
+  ],
+];
+
+describe('the label inventory refusing a clone behind global options', () => {
+  it.each(PREFIXED_CLONES)('with %s', async (_label, build) => {
+    expect.hasAssertions();
+    const scene = await sceneWith({ gitconfig: '[include]\n\tpath = dest/planted\n' });
+    const { dest, globals } = build(scene.dir);
+    const ctx = { args: [...globals, 'clone', '-q', '--', 'file:///x', dest] };
+    const result = await hookLabelArgs(reader(scene), ctx);
+    expect(refusalOf(result)).toMatch(/inside the checkout/u);
+  });
+});
+
 describe('the label inventory refusing', () => {
   it('a missing include inside the destination of a clone', async () => {
     expect.hasAssertions();
@@ -133,18 +162,42 @@ describe('the label inventory refusing', () => {
 });
 
 describe('the label policy by git version', () => {
-  it('reads nothing outside git 2.54', async () => {
-    expect.hasAssertions();
-    const reads: string[] = [];
-    const result = await hookLabelPolicy(
-      (args) => {
-        reads.push(args.join(' '));
-        return Promise.resolve({ exitCode: 0, stderr: '', stdout: '' });
-      },
-      { args: ['status'], version: 'git version 2.55.0\n' },
-    );
-    expect({ reads, result }).toStrictEqual({ reads: [], result: { args: [] } });
-  });
+  it.each(['git version 2.53.0\n', 'git version 1.99.0\n', ''])(
+    'reads nothing before git 2.54 or without a version: %j',
+    async (version) => {
+      expect.hasAssertions();
+      const reads: string[] = [];
+      const result = await hookLabelPolicy(
+        (args) => {
+          reads.push(args.join(' '));
+          return Promise.resolve({ exitCode: 0, stderr: '', stdout: '' });
+        },
+        { args: ['status'], version },
+      );
+      expect({ reads, result }).toStrictEqual({ reads: [], result: { args: [] } });
+    },
+  );
+});
+
+describe('the label policy on gits after 2.54', () => {
+  // 2.55 has an event-level switch, but a label named after the event takes it over (`hook.c`).
+  it.each(['git version 2.55.0\n', 'git version 2.60.1.windows.1\n', 'git version 3.0.0\n'])(
+    'inventories on later gits too: %j',
+    async (version) => {
+      expect.hasAssertions();
+      const scene = await sceneWith({
+        gitconfig: `[hook "post-checkout"]\n\tcommand = ./x\n${hook('other')}`,
+      });
+      const result = await hookLabelPolicy((args, env) => reader(scene)(args, env), {
+        args: ['status'],
+        version,
+      });
+      expect(labelsOf(result)).toStrictEqual([
+        'hook.other.enabled=false',
+        'hook.post-checkout.enabled=false',
+      ]);
+    },
+  );
 
   it('inventories on git 2.54, without GIT_CONFIG', async () => {
     expect.hasAssertions();

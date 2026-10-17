@@ -10,11 +10,10 @@ import type { DoctorTestHome } from '../helpers/doctor-support.ts';
 
 // `git-exec-surfaces` under refs' own execution policy (#194). The listing `doctor` reads comes
 // from a git process refs started, so it carries what refs switches off — fsmonitor on every git,
-// configured hooks by event on git 2.55 and later — and the check reports only what is left.
+// configured hooks by event and by label from git 2.54 — and the check reports only what is left.
 
 const NUL = '\0';
 const SURFACE = 'git-exec-surfaces';
-const LABEL_ONLY_GIT = 'git version 2.54.0';
 
 /** `git config --list -z --show-scope` output: `<scope>\0<key>\n<value>\0` per entry. */
 const listing = (entries: readonly (readonly [string, string])[], scope = 'global'): string =>
@@ -34,6 +33,9 @@ const POLICY: readonly (readonly [string, string])[] = [
   ['hook.pre-auto-gc.enabled', 'false'],
   ['hook.reference-transaction.enabled', 'false'],
 ];
+
+// The per-label switch `SpawnRunner` adds on git 2.54 and later (core's `git-hook-labels.ts`).
+const LABEL_SWITCH: readonly (readonly [string, string])[] = [['hook.evil.enabled', 'false']];
 
 describe('refs doctor: what refs switches off for its own git invocations', () => {
   it('stays ok for an fsmonitor command refs overrides, because the last value wins', async () => {
@@ -57,17 +59,19 @@ describe('refs doctor: what refs switches off for its own git invocations', () =
 
 describe('refs doctor: configured hooks under refs policy', () => {
   it.each([
-    ['git 2.55, which honours the event-level switch', 'git version 2.55.0'],
-    ['a later git', 'git version 3.1.0'],
-    ['a git with no configured hooks at all', 'git version 2.53.0'],
-  ])('stays ok for a configured hook on %s', async (_label, version) => {
+    ['git 2.54', 'git version 2.54.0', LABEL_SWITCH],
+    ['git 2.55', 'git version 2.55.0', LABEL_SWITCH],
+    ['a later git', 'git version 3.1.0', LABEL_SWITCH],
+    ['a git with no configured hooks at all', 'git version 2.53.0', []],
+  ])('stays ok for a configured hook refs disabled on %s', async (_label, version, labels) => {
     expect.hasAssertions();
     await withResetExitCode(() =>
       withTempHome(async (homeDir) => {
         const setup = await setupInitializedHome(homeDir);
         scriptConfig(
           setup,
-          listing([['hook.evil.command', './evil.sh']]) + listing(POLICY, 'command'),
+          listing([['hook.evil.command', './evil.sh']]) +
+            listing([...POLICY, ...labels], 'command'),
           version,
         );
 
@@ -78,8 +82,10 @@ describe('refs doctor: configured hooks under refs policy', () => {
     );
   });
 
+  // On 2.55 too: a label named after an event turns refs' event switch into that label's switch.
   it.each([
-    ['git 2.54 when no label switch reached it', LABEL_ONLY_GIT],
+    ['git 2.54 when no label switch reached it', 'git version 2.54.0'],
+    ['git 2.55 when no label switch reached it', 'git version 2.55.0'],
     ['a git whose version could not be read', 'not a version line'],
   ])('warns for a configured hook on %s, saying why', async (_label, version) => {
     expect.hasAssertions();

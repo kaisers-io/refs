@@ -81,10 +81,43 @@ describe.skipIf(process.platform === 'win32')('the runner on git 2.54', () => {
     await expect(stat(target)).rejects.toThrow(/ENOENT/u);
   });
 
-  it('adds no label on git 2.55, whose event switch needs none', async () => {
+  // A runner wrapper may pin `core.hooksPath` with a `-c` before the subcommand.
+  it('refuses a clone behind a prepended -c whose destination holds an include', async () => {
+    expect.hasAssertions();
+    const scene = await sceneWith({ gitconfig: '[include]\n\tpath = dest/planted\n' });
+    const dest = join(scene.dir, 'dest');
+    const prefix = ['-c', `core.hooksPath=${join(scene.dir, 'hooks')}`];
+    const args = [...prefix, 'clone', '-q', '--', 'file:///nowhere', dest];
+    const result = await runAs('2.54.0', scene, args);
+    expect(result).toMatchObject({ exitCode: REFUSED_EXIT_CODE, stderr: /inside the checkout/u });
+  });
+
+  it('adds no label before git 2.54, which has no configured hooks', async () => {
     expect.hasAssertions();
     const scene = await sceneWith(HIDDEN);
-    const result = await runAs('2.55.0', scene, ['config', '--get', LABEL_KEY]);
+    const result = await runAs('2.53.0', scene, ['config', '--get', LABEL_KEY]);
     expect(result.stdout).toBe('');
   });
+});
+
+// git 2.55 has an event-level switch, but reads `hook.<event>.enabled` as a LABEL's switch once a
+// label carries the event's name (`hook.c`), so the other labels on that event still need theirs.
+const COLLIDING = {
+  gitconfig:
+    '[hook "post-checkout"]\n\tcommand = ./label.sh\n' +
+    '[hook "x"]\n\tevent = post-checkout\n\tcommand = ./run.sh\n',
+};
+
+describe.skipIf(process.platform === 'win32')('the runner on git 2.55 and later', () => {
+  it.each(['2.55.0', '2.56.2'])(
+    'disables every label on %s when one is named after an event',
+    async (version) => {
+      expect.hasAssertions();
+      const scene = await sceneWith(COLLIDING);
+      const listing = ['config', '--get-regexp', String.raw`^hook\..*\.enabled$`];
+      const result = await runAs(version, scene, listing);
+      expect(result.stdout).toMatch(/^hook\.x\.enabled false$/mu);
+      expect(result.stdout).toMatch(/^hook\.post-checkout\.enabled false$/mu);
+    },
+  );
 });

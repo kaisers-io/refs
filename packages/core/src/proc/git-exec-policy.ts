@@ -39,15 +39,15 @@ const FSMONITOR_OFF = 'core.fsmonitor=';
 // `checkout -B`) and `post-checkout` (clone, `checkout -B`); `pre-auto-gc` fires when an
 // operation runs `gc --auto`, as a fetch may. refs never commits, merges, rebases or pushes.
 //
-// `hook.<event>.enabled=false` is an EVENT-level switch from git 2.55: it disables every configured
-// hook for that event, whatever its label, so no label has to be discovered — which matters
-// because a label can come from an `includeIf` section that applies only inside the checkout. It
-// leaves hooks-DIRECTORY hooks alone, so the refs commit/push guard is unaffected (measured on
-// 2.55.0). git 2.54 only understands `hook.<label>.enabled`, so there these settings are inert
-// (measured) and `SpawnRunner` adds one `hook.<label>.enabled=false` per label instead, from an
-// inventory of the whole configuration graph (`git-hook-labels.ts`); like these, those leave the
-// hooks directory alone (measured on 2.54.0: the guard still blocks a commit). Before 2.54
-// configured hooks do not exist and git ignores the unknown keys.
+// `hook.<event>.enabled=false` is an EVENT-level switch from git 2.55 — but only while no
+// configuration gives a hook LABEL the same name as the event. git reads `hook.<name>.enabled` as
+// a label's switch once `<name>` has a `command`, `event` or `parallel` anywhere in the
+// configuration, and the event switch is then gone (measured on 2.55.0; git's `hook.c`). So it is
+// not sufficient alone, and `SpawnRunner` also adds one `hook.<label>.enabled=false` per label on
+// every git from 2.54, from an inventory of the whole configuration graph (`git-hook-labels.ts`).
+// On 2.54 that inventory is the whole protection: these event keys are inert there (measured).
+// Both leave hooks-DIRECTORY hooks alone, so the refs commit/push guard is unaffected (measured on
+// 2.54.0 and 2.55.0). Before 2.54 configured hooks do not exist and git ignores the unknown keys.
 const NEUTRALISED_HOOK_EVENTS = [
   'post-checkout',
   'post-index-change',

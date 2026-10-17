@@ -1,6 +1,12 @@
-// Configured-hook labels for git 2.54, the one release that has configured hooks but no
-// event-level switch for them (`git-exec-policy.ts`). There a hook can be disabled only by its
-// label, `hook.<label>.enabled=false`, so refs has to know every label before it starts git.
+// Configured-hook labels, disabled one by one on every git that has configured hooks (2.54 and
+// later). 2.54 has no event-level switch, so there a hook can be disabled only by its label,
+// `hook.<label>.enabled=false`. 2.55 has one (`git-exec-policy.ts`), but git decides what
+// `hook.<name>.enabled` means by the name: it is a LABEL's switch whenever the configuration gives
+// that name a `command`, `event` or `parallel` (`build_hook_config_map` in git's `hook.c`). So
+// `[hook "post-checkout"] command = …` turns refs' event switch for `post-checkout` into a switch
+// for that one label, and every other label on the event still runs — measured on 2.55.0 through
+// `refs add --dry-run`. Disabling each label holds whatever the names, so refs has to know every
+// label before it starts git.
 //
 // A listing of the configuration in effect is not enough, and was measured not to be: an
 // `includeIf "hasconfig:remote.*.url:…"` section is evaluated against the repository being
@@ -18,6 +24,7 @@
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { realpath, stat } from 'node:fs/promises';
 import type { RunResult } from './runner.ts';
+import { commandOf } from './git-command-of.ts';
 
 type ReadGit = (args: readonly string[]) => Promise<RunResult>;
 type LabelContext = { args: readonly string[]; cwd?: string };
@@ -45,7 +52,7 @@ type Visit = { depth: number; file: string; direct: boolean };
 
 const refuse = (why: string): never => {
   throw new InventoryRefusalError(
-    `refs did not start git: on git 2.54 refs disables configured hooks by label, and ${why}`,
+    `refs did not start git: refs disables configured hooks by label, and ${why}`,
   );
 };
 
@@ -192,9 +199,12 @@ const nonFileIncludes = (entries: readonly Origin[]): string[] =>
 // The working directory counts only when the caller set one — refs does, for every command on a
 // checkout. The process's own directory may be the user's home, where their includes live.
 const checkoutRoots = (ctx: LabelContext): string[] => {
-  const dest = ctx.args[0] === 'clone' ? ctx.args.at(LAST) : undefined;
-  const cwd = ctx.cwd === undefined ? [] : [resolve(ctx.cwd)];
-  return [...cwd, ...(dest === undefined ? [] : [resolve(ctx.cwd ?? '.', dest)])];
+  const { dir, rest } = commandOf(ctx.args, ctx.cwd);
+  const dest = rest[0] === 'clone' ? rest.at(LAST) : undefined;
+  return [
+    ...(dir === undefined ? [] : [dir]),
+    ...(dest === undefined ? [] : [resolve(dir ?? '.', dest)]),
+  ];
 };
 
 const inventoryLabels = async (read: ReadGit, ctx: LabelContext): Promise<Set<string>> => {
@@ -236,8 +246,20 @@ const hookLabelArgs = async (
   }
 };
 
-// The one release line with configured hooks and no event-level switch.
-const LABEL_ONLY_HOOKS = /^git version 2\.54(?:\.|\s|$)/u;
+// Configured hooks exist from git 2.54. An unreadable version gets no inventory: the probe fails
+// only when git cannot start, and then neither can the command it guards.
+const GIT_VERSION = /^git version (?<major>\d+)\.(?<minor>\d+)/u;
+const FIRST_WITH_HOOKS = { major: 2, minor: 54 } as const;
+
+const hasConfiguredHooks = (version: string): boolean => {
+  const groups = GIT_VERSION.exec(version.trim())?.groups;
+  const major = Number(groups?.['major'] ?? 0);
+  const minor = Number(groups?.['minor'] ?? 0);
+  return (
+    major > FIRST_WITH_HOOKS.major ||
+    (major === FIRST_WITH_HOOKS.major && minor >= FIRST_WITH_HOOKS.minor)
+  );
+};
 
 // Exit code of a git command refs refused to start; the reason is in `stderr`.
 const REFUSED_EXIT_CODE = 1;
@@ -249,7 +271,7 @@ type PolicyContext = LabelContext & { version: string };
 const isVersionProbe = (args: readonly string[]): boolean =>
   args.length === 1 && args[0] === '--version';
 
-/** The label arguments for one git command on the git that printed `version`: none outside 2.54.
+/** The label arguments for one git command on the git that printed `version`: none before 2.54.
  *
  * The inventory runs without `GIT_CONFIG`: that variable redirects the `config` subcommand alone,
  * so with it set the listing would describe a file the guarded command never reads. */
@@ -257,7 +279,7 @@ const hookLabelPolicy = (
   spawnGit: SpawnGit,
   ctx: PolicyContext,
 ): Promise<{ args: string[] } | { refusal: string }> => {
-  if (!LABEL_ONLY_HOOKS.test(ctx.version.trim())) {
+  if (!hasConfiguredHooks(ctx.version)) {
     return Promise.resolve({ args: [] });
   }
   const { GIT_CONFIG: _ignored, ...env } = process.env;
