@@ -1,4 +1,5 @@
 import type { Runner } from '../proc/runner.ts';
+import { ensureFilterGuard } from './filter-guard.ts';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { validationError } from '../errors.ts';
@@ -52,4 +53,15 @@ const assertManagedCheckout = async (
   }
 };
 
-export { assertManagedCheckout, isGitCheckout };
+/** `assertManagedCheckout`, then the content-filter guard (filter-guard.ts) for a checkout an
+ * older refs cloned without it — before any command that could refresh the index. */
+const prepareManagedCheckout = async (
+  runner: Runner,
+  dir: string,
+  hooksDir: string,
+): Promise<void> => {
+  await assertManagedCheckout(runner, dir, hooksDir);
+  await ensureFilterGuard(dir);
+};
+
+export { assertManagedCheckout, isGitCheckout, prepareManagedCheckout };

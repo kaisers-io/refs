@@ -1,6 +1,12 @@
 import type { Config, RefKey, RefsHome } from '@kaisers-io/refs-core';
 import { access, constants, readdir } from 'node:fs/promises';
-import { checkoutPath, isEnoent, isGitCheckout, zRefKey } from '@kaisers-io/refs-core';
+import {
+  checkoutPath,
+  hasFilterGuard,
+  isEnoent,
+  isGitCheckout,
+  zRefKey,
+} from '@kaisers-io/refs-core';
 import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
 import { join } from 'node:path';
@@ -179,6 +185,7 @@ type CheckoutStatus = {
   detail: string;
   dirty: boolean;
   key: string;
+  unguarded?: true;
 };
 
 /** A non-zero exit from `git status --porcelain` (e.g. a stripped/corrupt `.git`, permissions
@@ -190,11 +197,36 @@ const checkoutStatusFor = async (
   ctx: CliContext,
   item: ExistingCheckout,
 ): Promise<CheckoutStatus> => {
+  // `git status` refreshes the index, which can run a content filter; a checkout an older refs
+  // cloned has no filter guard until its next sync (core git/filter-guard.ts), so it is not asked.
+  if (!(await hasFilterGuard(item.dest))) {
+    return { broken: false, detail: '', dirty: false, key: item.key, unguarded: true };
+  }
   const result = await ctx.runner.run('git', ['status', '--porcelain'], { cwd: item.dest });
   if (result.exitCode !== SUCCESS_EXIT_CODE) {
     return { broken: true, detail: result.stderr.trim(), dirty: false, key: item.key };
   }
   return { broken: false, detail: '', dirty: result.stdout.trim() !== '', key: item.key };
+};
+
+const keysWhere = (
+  statuses: readonly CheckoutStatus[],
+  pick: (status: CheckoutStatus) => boolean,
+): string =>
+  statuses
+    .filter((status) => pick(status))
+    .map((status) => status.key)
+    .join(', ');
+
+const warningParts = (statuses: readonly CheckoutStatus[]): string[] => {
+  const dirty = keysWhere(statuses, (status) => status.dirty);
+  const unguarded = keysWhere(statuses, (status) => status.unguarded === true);
+  return [
+    ...(dirty === '' ? [] : [`local changes will be discarded on next sync: ${dirty}`]),
+    ...(unguarded === ''
+      ? []
+      : [`not inspected until \`refs sync\` switches content filters off there: ${unguarded}`]),
+  ];
 };
 
 const buildDirtyCheckoutsResult = (statuses: readonly CheckoutStatus[]): CheckResult => {
@@ -205,15 +237,11 @@ const buildDirtyCheckoutsResult = (statuses: readonly CheckoutStatus[]): CheckRe
       .join('; ');
     return { detail, name: 'dirty-checkouts', status: 'fail' };
   }
-  const dirtyKeys = statuses.filter((status) => status.dirty).map((status) => status.key);
-  if (dirtyKeys.length === 0) {
+  const parts = warningParts(statuses);
+  if (parts.length === 0) {
     return { detail: 'no local changes in any checkout', name: 'dirty-checkouts', status: 'ok' };
   }
-  return {
-    detail: `local changes will be discarded on next sync: ${dirtyKeys.join(', ')}`,
-    name: 'dirty-checkouts',
-    status: 'warn',
-  };
+  return { detail: parts.join('; '), name: 'dirty-checkouts', status: 'warn' };
 };
 
 const checkDirtyCheckouts = async (

@@ -16,9 +16,12 @@ import type { CliContext } from '../context.ts';
 //
 // Each needs a definition already in the invoking user's own git configuration. A tracked
 // repository cannot create one; its `.gitattributes` can only choose when an existing filter
-// applies. So this reports rather than refuses, and refs does not discard the ambient
-// configuration — the same configuration carries the credential helpers, proxies and `insteadOf`
-// rules a private clone needs.
+// applies. refs now runs neither for its own commands: content filters are off in every checkout
+// (core git/filter-guard.ts), configured hooks are switched off per event and git 2.54.x is
+// refused (core proc/git-policy.ts, proc/git-version-gate.ts). So a definition found here is
+// reported as information, `ok`: it still applies to whatever an agent itself runs in a checkout,
+// which refs does not govern. refs keeps the ambient configuration otherwise — it carries the
+// credential helpers, proxies and `insteadOf` rules a private clone needs.
 //
 // What this does NOT do is judge whether a particular command is dangerous. An earlier version
 // reported only commands that looked repository-relative, which is unsound in both directions and
@@ -40,11 +43,6 @@ const FIELDS_PER_ENTRY = 2;
 const HOOK_COMMAND = /^hook\.(?<label>.+)\.command$/u;
 const HOOK_ENABLED = /^hook\.(?<label>.+)\.enabled$/u;
 const FILTER_COMMAND = /^filter\..+\.(?:clean|smudge|process)$/u;
-const FSMONITOR = 'core.fsmonitor';
-
-// `core.fsmonitor` takes a boolean OR a command, and git runs the command form with its working
-// directory set to the worktree. Only the command form is an execution surface.
-const FSMONITOR_BOOLEAN = new Set(['', '0', '1', 'false', 'no', 'off', 'on', 'true', 'yes']);
 
 type ConfigEntry = { key: string; scope: string; value: string };
 
@@ -85,10 +83,10 @@ const disabledHooks = (entries: readonly ConfigEntry[]): Set<string> => {
   return new Set([...enabled].filter(([, isOn]) => !isOn).map(([label]) => label));
 };
 
+// `core.fsmonitor`'s command form is NOT reported: refs passes `-c core.fsmonitor=` to every git
+// command it runs (packages/core/src/proc/git-policy.ts), on every git version, so it reaches none
+// of refs' commands. Configured hooks and filters stay listed, for the agent's own commands.
 const isExecutionSurface = (entry: ConfigEntry, disabled: ReadonlySet<string>): boolean => {
-  if (entry.key === FSMONITOR) {
-    return !FSMONITOR_BOOLEAN.has(entry.value.trim().toLowerCase());
-  }
   const label = HOOK_COMMAND.exec(entry.key)?.groups?.['label'];
   if (label !== undefined) {
     return !disabled.has(label);
@@ -117,12 +115,11 @@ const unverifiable = (why: string): CheckResult => ({
 
 const foundSurfaces = (keys: readonly string[]): CheckResult => ({
   detail:
-    `${keys.join(', ')}: git runs these itself, and the managed hooks path does not cover them — ` +
-    `a configured hook fires on the events refs causes, a filter is selected by a checkout's own ` +
-    `.gitattributes, and fsmonitor runs in the worktree. Whether one of them reaches a checkout's ` +
-    `content depends on the command, which refs cannot decide for you`,
+    `${keys.join(', ')}: defined in your git configuration. refs' own git commands run none of ` +
+    `them — content filters are off in every checkout and configured hooks are switched off — ` +
+    `but an agent's own git commands in a checkout still can`,
   name: NAME,
-  status: 'warn',
+  status: 'ok',
 });
 
 /** Reads the configuration refs' own git invocations inherit and reports what in it git can be
@@ -140,7 +137,7 @@ const checkGitExecSurfaces = async (ctx: CliContext, cwd: string): Promise<Check
   const keys = surfaceKeys(result.stdout);
   return keys.length === 0
     ? {
-        detail: 'no configured hook, filter or fsmonitor command outside a checkout',
+        detail: 'no configured hook or filter command outside a checkout',
         name: NAME,
         status: 'ok',
       }

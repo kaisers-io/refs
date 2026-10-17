@@ -1,6 +1,7 @@
 import type { CheckDecision, Config, RefsHome } from '@kaisers-io/refs-core';
 import {
   SCHEMA_VERSION,
+  gitVersionRefusal,
   isBehind,
   loadLatestVersion,
   readConfig,
@@ -24,10 +25,19 @@ import { errorMessageOf } from '../output.ts';
 
 const SUCCESS_EXIT_CODE = 0;
 
+// git 2.54.x is refused by refs' runner before any other git command runs (core
+// proc/git-version-gate.ts), so the check fails with the same reason rather than reporting ok.
+const gitVersionResult = (version: string): CheckResult => {
+  const refusal = gitVersionRefusal(version);
+  return refusal === undefined
+    ? { detail: version, name: 'git', status: 'ok' }
+    : { detail: `${version} — ${refusal}`, name: 'git', status: 'fail' };
+};
+
 const checkGit = async (ctx: CliContext): Promise<CheckResult> => {
   const result = await ctx.runner.run('git', ['--version']);
   if (result.exitCode === SUCCESS_EXIT_CODE) {
-    return { detail: result.stdout.trim(), name: 'git', status: 'ok' };
+    return gitVersionResult(result.stdout.trim());
   }
   const detail = result.stderr.trim() || `git --version exited with code ${result.exitCode}`;
   return { detail, name: 'git', status: 'fail' };
