@@ -11,7 +11,7 @@ skill fetches, tracks, or suggests. Real ones come from the user's own config, v
 **The `refs <verb> …` lines under each heading are SYNOPSES — they show the grammar, not a line to
 paste.** `<ref>`, `<name>`, `<path>` and `<version>` stand for values that reach you from a
 tracked repository or from the user, and every one of them is single-quoted when you actually run
-something: `refs edit --package='<name>' path '<new-path>' '<ref>'`. Close and reopen the quote
+something: `refs edit '<ref>' --package='<name>' path '<new-path>' --json`. Close and reopen the quote
 around any single quote in a value (`'a'\''b'`), and attach an option's value with `=` so a value
 beginning with `-` is not read as the next option. The runnable lines elsewhere in this skill are
 written that way; see _Never build a shell command out of a value refs reported_ below.
@@ -495,9 +495,11 @@ single-quote every interpolated value and close-and-reopen the quote around any 
 
 Show the user the command
 and what was found — a removal in particular discards an entry they may have written by hand.
-`unregistered` is the one finding that is not about an entry the config already has. It comes from two places: the repository root (which is
-never one of its own glob targets, so `refs add` could not have registered it) and workspace
-members. `refs sync` reports only members whose _name the repository did not already have_ before
+`unregistered` is the one finding that is not about an entry the config already has. It comes from two places: the repository root and workspace members. A workspace root is never one of its own glob targets;
+current `refs add` explicitly probes a named workspace root and includes it alongside detected
+members in its proposal. A root can still be unregistered in an older configuration, when it was
+left out of the approved proposal, or when it acquired a name upstream after registration. Root
+detection does not mean every repository necessarily has a registrable root package. `refs sync` reports only members whose _name the repository did not already have_ before
 the range it just fetched, so it is genuinely new upstream rather than something the user chose to
 leave out — a package that merely moved to another directory is not new, and one renamed in place
 is. `refs doctor` lists every unregistered member, because it was asked to.
