@@ -67,6 +67,34 @@ const verifyDiff = async (root, { before, after, path }) => {
   strictEqual(diff.includes('+export const retryDelay = (attempt, delayMs = 250)'), true);
 };
 
+const verifyExtraReleases = async (root, fields, after) => {
+  const docs = await git(root, ['rev-parse', '--verify', `refs/tags/${fields.docs_tag}^{commit}`]);
+  strictEqual(docs !== after, true, 'documentation-only release must be a distinct commit');
+  const changedPaths = await git(root, ['diff', '--name-only', after, docs, '--']);
+  strictEqual(changedPaths, 'README.md', 'documentation-only release changed unexpected files');
+  strictEqual(
+    await git(root, ['diff', '--no-ext-diff', '--no-textconv', after, docs, '--', fields.path]),
+    '',
+    'documentation release changed the implementation',
+  );
+  const missing = await git(root, [
+    'for-each-ref',
+    '--format=%(refname)',
+    `refs/tags/${fields.missing_tag}`,
+  ]);
+  strictEqual(missing, '', 'claimed absent release tag exists');
+};
+
+const verifyScopedChange = async (root, { after, before }, fields) => {
+  const history = await git(root, ['log', '--format=%H', `${before}..${after}`, '--', fields.path]);
+  strictEqual(
+    history.split('\n').includes(fields.commit),
+    true,
+    'the cited commit is absent from scoped history',
+  );
+  await verifyDiff(root, { after, before, path: fields.path });
+};
+
 const verifyHistory = async (expected, answer, cwd) => {
   const { repo, before_revision: beforeRevision, ...fields } = expected;
   deepStrictEqual(answer.history, fields, 'history must identify the actual change and tags');
@@ -79,13 +107,8 @@ const verifyHistory = async (expected, answer, cwd) => {
   strictEqual(before, beforeRevision, 'starting release tag does not match its cited revision');
   strictEqual(after, fields.commit, 'release tag does not name the expected change');
   strictEqual(later, after, 'the misleading release tag must be verified as zero-diff');
-  const history = await git(root, ['log', '--format=%H', `${before}..${after}`, '--', fields.path]);
-  strictEqual(
-    history.split('\n').includes(fields.commit),
-    true,
-    'the cited commit is absent from scoped history',
-  );
-  await verifyDiff(root, { after, before, path: fields.path });
+  await verifyExtraReleases(root, fields, after);
+  await verifyScopedChange(root, { after, before }, fields);
 };
 
 export { verifyAnswer, verifyHistory };

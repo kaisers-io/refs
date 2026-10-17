@@ -3,7 +3,9 @@ import { join, resolve } from 'node:path';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { strictEqual } from 'node:assert/strict';
 import { tmpdir } from 'node:os';
+import { verifyBehavior } from './behavior.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const EXECUTABLE = 0o755;
@@ -61,6 +63,35 @@ const fixture = async (name, bin) => {
   return { answer, cwd, home, name, spec };
 };
 
-export { fixture, prepareBundle };
-
+const rejectInventedRelease = async (entry) => {
+  const checkout = await checkoutRoot(entry.cwd, 'retry');
+  const tag = entry.spec.history.missing_tag;
+  await git(checkout, ['tag', tag, entry.spec.history.commit]);
+  try {
+    const checks = await verifyBehavior(entry.name, entry.cwd);
+    strictEqual(
+      checks.find(({ name }) => name === 'release-tags-and-scoped-history').passed,
+      false,
+    );
+  } finally {
+    await git(checkout, ['tag', '-d', tag]);
+  }
+  await rejectDocsOnlyRetarget(entry);
+};
+const rejectDocsOnlyRetarget = async (entry) => {
+  const checkout = await checkoutRoot(entry.cwd, 'retry');
+  const tag = entry.spec.history.docs_tag;
+  const original = await git(checkout, ['rev-parse', `refs/tags/${tag}`]);
+  await git(checkout, ['tag', '-f', tag, entry.spec.history.commit]);
+  try {
+    const checks = await verifyBehavior(entry.name, entry.cwd);
+    strictEqual(
+      checks.find(({ name }) => name === 'release-tags-and-scoped-history').passed,
+      false,
+    );
+  } finally {
+    await git(checkout, ['tag', '-f', tag, original]);
+  }
+};
+export { fixture, prepareBundle, rejectInventedRelease };
 export { wrapperReport } from './claude-test-host.mjs';
