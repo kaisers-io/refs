@@ -85,8 +85,7 @@ describe('refs doctor: per-checkout git children are capped', () => {
 
       const result = await checkHooksGuard(ctx, home, config);
 
-      expect(runner.peak).toBeLessThanOrEqual(CAP);
-      expect(runner.peak).toBeGreaterThan(1);
+      expect(runner.peak).toBe(CAP);
       expect(runner.asked.toSorted()).toStrictEqual(dests.toSorted());
       expect(result.status).toBe('fail');
       expect(result.detail).toContain(`core.hooksPath not set for: ${keyAt(FAILING)} —`);
@@ -103,13 +102,35 @@ describe('refs doctor: per-checkout git children are capped', () => {
 
       const result = await checkDirtyCheckouts(ctx, home, config);
 
-      expect(runner.peak).toBeLessThanOrEqual(CAP);
+      expect(runner.peak).toBe(CAP);
       expect(runner.asked).toHaveLength(CHECKOUTS);
       expect(result).toStrictEqual({
         detail: `${keyAt(FAILING)}: git status failed — fatal: not a git repository`,
         name: 'dirty-checkouts',
         status: 'fail',
       });
+    });
+  });
+});
+
+describe('refs doctor: a failing child releases its slot', () => {
+  it('keeps asking when every child fails, and lists every checkout in config order', async () => {
+    expect.hasAssertions();
+    await withTempHome(async (homeDir) => {
+      const broken = { exitCode: 128, stderr: 'fatal: not a git repository' };
+      const { config, ctx, home, runner } = await sceneWith(homeDir, () => ({
+        failing: broken,
+        ok: broken,
+      }));
+
+      const result = await checkDirtyCheckouts(ctx, home, config);
+
+      expect(runner.peak).toBe(CAP);
+      expect(runner.asked).toHaveLength(CHECKOUTS);
+      const named = result.detail.split('; ').map((part) => part.split(':')[0]);
+      expect(named).toStrictEqual(
+        Array.from({ length: CHECKOUTS }, (_unused, index) => keyAt(index)),
+      );
     });
   });
 });
