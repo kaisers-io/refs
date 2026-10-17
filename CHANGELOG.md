@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`refs remove` no longer fails when something appears in a parent directory while it prunes.**
+  If another process created an entry in an emptied parent between refs listing it and removing
+  it, such as a concurrent `refs add` of another ref under the same owner, the removal reported
+  `ENOTEMPTY` and kept the ref registered although its checkout was already deleted. A directory
+  that is in use is where pruning stops anyway, so the removal now succeeds and leaves that entry
+  alone.
+
 ## [0.18.2] - 2026-10-13
 
 ### Security

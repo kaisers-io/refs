@@ -6,20 +6,30 @@ import {
   setupRemoval,
   targetTracked,
 } from '../helpers/remove-fixture.ts';
-import { describe, expect, it } from 'vitest';
-import { rm, writeFile } from 'node:fs/promises';
+import { describe, expect, it, vi } from 'vitest';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
 import type { RemoveFixture } from '../helpers/remove-fixture.ts';
+import { join } from 'node:path';
 import { refLockName } from '../../src/commands/add-source.ts';
-import { setTimeout as sleep } from 'node:timers/promises';
 
 // `refs remove` deletes the checkout under the ref's own lock and drops the entry under the
 // `'home'` lock (`remove.ts` header). These cases hold each lock from inside the test process
-// while a removal runs, and look at what the removal has done while it is shut out. A removal
-// that skipped the lock would finish inside the hold; the fixed wait below is far longer than an
-// unlocked removal takes, so a pass is not a timing accident in that direction.
+// while a removal runs, and look at what the removal has done while it is shut out. They look only
+// once the removal has actually tried that lock and been refused, so a removal that skipped the
+// lock, however slow under load, would already have done its work by the time anyone looks.
+//
+// `mkdir` is spied, not altered: every call still reaches the real filesystem. The spy only
+// counts the attempts on the held lock's directory — the holder's own, then the removal's.
 
-const HOLD_MS = 300;
+vi.mock(import('node:fs/promises'), async (importOriginal) => {
+  const actual = await importOriginal();
+  // Overloaded signature; cast back as `lock-inspect-unreadable.test.ts` does for `stat`.
+  const mkdirSpy = vi.fn<typeof actual.mkdir>(actual.mkdir as never);
+  return { ...actual, mkdir: mkdirSpy as unknown as typeof actual.mkdir };
+});
+
+const WAITER_TIMEOUT_MS = 5000;
 
 type Hold = {
   /** Which lock the test holds. */
@@ -30,6 +40,15 @@ type Hold = {
 
 const lockNameFor = (lock: Hold['lock']): string =>
   lock === 'home' ? 'home' : refLockName(zRefKey.parse(TARGET_KEY));
+
+/** How many times `mkdir` has been called on the lock directory: 1 is the holder's acquisition,
+ * anything more is the removal trying the same lock and being refused. */
+const attempts = (fixture: RemoveFixture, lock: Hold['lock']): number => {
+  const lockDir = join(fixture.home.locksDir, lockNameFor(lock));
+  return vi.mocked(mkdir).mock.calls.filter(([path]) => path === lockDir).length;
+};
+
+const pollOpts = { timeout: WAITER_TIMEOUT_MS };
 
 const observe = async (fixture: RemoveFixture): Promise<Hold['whileHeld']> => [
   await pathExists(fixture.dest),
@@ -53,7 +72,7 @@ describe('refs remove: waiting for a held lock', () => {
           // The removal starts inside the hold and is awaited only after it, so it has to wait.
           const held = await withLock(fixture.home, lockNameFor(lock), async () => {
             const removal = removeTarget(fixture);
-            await sleep(HOLD_MS);
+            await expect.poll(() => attempts(fixture, lock), pollOpts).toBeGreaterThan(1);
             return { removal, seen: await observe(fixture) };
           });
           expect(held.seen).toStrictEqual(whileHeld);

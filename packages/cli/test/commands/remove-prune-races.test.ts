@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { dirname, join } from 'node:path';
 import {
   expectUnrelatedUntouched,
   pathExists,
@@ -6,10 +7,9 @@ import {
   setupRemoval,
   targetTracked,
 } from '../helpers/remove-fixture.ts';
-import { lstat, readdir, rmdir } from 'node:fs/promises';
+import { lstat, mkdir, readdir, rmdir } from 'node:fs/promises';
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
 import type { RemoveFixture } from '../helpers/remove-fixture.ts';
-import { dirname } from 'node:path';
 
 // Pruning walks upward from the deleted checkout one directory at a time, and another process
 // pruning the same tree — a second `refs remove` of a sibling, say — can delete a directory
@@ -39,19 +39,25 @@ vi.mock(import('node:fs/promises'), async (importOriginal) => {
   };
 });
 
-/** The first time `step` is called on `target`, a "concurrent pruner" removes `target` for real
- * and then the real call runs — and meets the ENOENT that losing the race produces. */
-const loseRaceAt = (step: PruneStep, target: string): void => {
+/** The first time `step` is called on `target`, `interleave` runs for real — another process acting
+ * on the directory — and then the real call runs and meets what it left. Returns whether that has
+ * happened, so a case whose path never matched fails instead of passing without the race. */
+const interleaveAt = (
+  step: PruneStep,
+  target: string,
+  interleave: () => unknown,
+): (() => boolean) => {
   const spies = { lstat, readdir, rmdir };
   const passThrough = real[step];
   let fired = false;
   vi.mocked(spies[step]).mockImplementation((async (path: unknown, ...rest: unknown[]) => {
     if (!fired && path === target) {
       fired = true;
-      await real.rmdir?.(target);
+      await interleave();
     }
     return passThrough?.(path, ...rest);
   }) as never);
+  return () => fired;
 };
 
 const expectPrunedToSources = async (fixture: RemoveFixture): Promise<void> => {
@@ -68,7 +74,7 @@ describe('refs remove: a concurrent pruner removes the owner directory first', (
       await withResetExitCode(() =>
         withTempHome(async (homeDir) => {
           const fixture = await setupRemoval(homeDir);
-          loseRaceAt(step, fixture.ownerDir);
+          const raced = interleaveAt(step, fixture.ownerDir, () => real.rmdir?.(fixture.ownerDir));
 
           const envelope = await removeTarget(fixture);
 
@@ -78,10 +84,42 @@ describe('refs remove: a concurrent pruner removes the owner directory first', (
             warnings: [],
           });
           await expect(targetTracked(fixture.home)).resolves.toStrictEqual([false, false]);
+          expect(raced()).toBe(true);
           await expectPrunedToSources(fixture);
           await expectUnrelatedUntouched(fixture);
         }),
       );
     },
   );
+});
+
+// The other way the same window can close: between the `readdir` that found the owner directory
+// empty and the `rmdir`, another process puts something in it — a concurrent `refs add` of a
+// sibling ref under the same owner. `rmdir` then fails with ENOTEMPTY. The directory is in use,
+// which is exactly where pruning stops, and the checkout is already gone: the removal succeeded.
+// Failing here would keep the entry of a ref whose checkout no longer exists.
+describe('refs remove: a sibling arrives in the owner directory before rmdir', () => {
+  it('stops pruning there, keeps the sibling, and drops the entry', async () => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const fixture = await setupRemoval(homeDir);
+        const sibling = join(fixture.ownerDir, 'turbo');
+        const arrived = interleaveAt('rmdir', fixture.ownerDir, () => mkdir(sibling));
+
+        const envelope = await removeTarget(fixture);
+
+        expect(arrived()).toBe(true);
+        expect(envelope).toMatchObject({
+          data: { removed_checkout: true },
+          ok: true,
+          warnings: [],
+        });
+        await expect(targetTracked(fixture.home)).resolves.toStrictEqual([false, false]);
+        await expect(pathExists(fixture.dest)).resolves.toBe(false);
+        await expect(pathExists(sibling)).resolves.toBe(true);
+        await expectUnrelatedUntouched(fixture);
+      }),
+    );
+  });
 });
