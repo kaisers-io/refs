@@ -81,12 +81,24 @@ one.
   `checkout -b`, or `reset`. Free to read is not free to run: checkouts are blobless by
   default, so history commands that read file content may fetch it — see `INVESTIGATE.md`
   §2 for which commands are local and which are not.
+- **Never execute reference code.** Do not install its dependencies, import its modules,
+  or run its setup, builds, tests, examples or scripts, even to verify an answer. Read the
+  source and say when static evidence cannot establish the result.
 - Route every change to a ref through the CLI (`refs sync`, `refs remove`), never through
   raw git you run yourself.
+- **Respect a safety refusal.** If refs refuses unsafe or unverifiable Git configuration,
+  report its reason and stop that operation. Never retry it with raw Git, re-enable a
+  disabled hook/filter, or run repository setup as a workaround.
 - This is a workflow promise, not a sandbox. refs-installed hooks reject commits and
   pushes inside a checkout as a backstop, and `refs sync` auto-restores a dirty checkout
   if something slips through. A hook rejection means something upstream of this skill went
   wrong — report it rather than working around it.
+
+refs' execution controls apply only to Git it starts. The read-only Git commands above
+run separately and can consult ambient configuration or fetch missing historical blobs,
+including through trusted authentication/transport helpers. They are not covered by refs'
+policy. Use trusted local tools and configuration; prefer direct file reads when they answer
+the question. Read-only is not a promise of no network access or no helper execution.
 
 ## 4. Trust boundary
 

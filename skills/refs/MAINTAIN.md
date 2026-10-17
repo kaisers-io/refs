@@ -40,7 +40,7 @@ refs doctor --json
 
 Runs environment/integrity checks and returns `{checks: [{name, status, detail}]}` with
 `status` one of `ok`, `warn`, `fail`: `git`, `node`, `config`, `hooks-guard`,
-`dirty-checkouts`, `config-drift`, `orphans`, `locks`, `skill`, `cli-update`, and (when any ref uses ssh)
+`git-exec-surfaces`, `dirty-checkouts`, `config-drift`, `orphans`, `locks`, `skill`, `cli-update`, and (when any ref uses ssh)
 `ssh-auth`. Report
 every non-`ok` check with its `detail` message, and explain what it means in plain terms.
 A `warn` on `cli-update` means either that a newer refs is published on npm — the `detail`
@@ -48,6 +48,13 @@ carries the version and the command to install it, which you print for the user 
 running — or that npm could not be reached, which is not a fault of their setup and needs no
 action. It is `ok` and says so when the check is switched off (`[updates].check = false` or
 `REFS_UPDATE_CHECK=0`).
+
+`git-exec-surfaces` is a presence diagnostic, not permission to execute: it can warn about
+configured hooks, fsmonitor or filters even though refs' execution policy disables them for
+its own Git operations. Checkout-specific conditional includes may not appear in the baseline;
+the runner inventories them separately. An `ok` is not a sandbox or a verdict about trusted
+external authentication/transport helpers. If an operation refuses configuration or a selected
+content filter, report the exact reason. Never bypass it with raw Git or by enabling execution.
 
 A `warn` on `skill` means one of three things: the skill wasn't found where the check
 looked, the installed copy predates the version gate, or the CLI version it pins in its
