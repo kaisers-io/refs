@@ -86,9 +86,26 @@ const syncOneKey = async (ctx: CliContext, rsc: RefSyncContext): Promise<SyncRes
   }
 };
 
-// Cap on how many refs `syncAll` syncs at once — a named constant per the repo's no-magic-numbers
-// style, not tuned against any particular measurement.
-const SYNC_CONCURRENCY_CAP = 4;
+// Default cap on how many refs `syncAll` syncs at once — a named constant per the repo's
+// no-magic-numbers style, not tuned against any particular measurement.
+const SYNC_CONCURRENCY_DEFAULT = 4;
+// `REFS_SYNC_CONCURRENCY` is clamped into this range. Each slot is a fetch or clone against a
+// forge, so an unbounded value would let one typo open dozens of connections to the same host and
+// run into its rate limits; the floor keeps a `0` from stalling the batch with no slot at all.
+const SYNC_CONCURRENCY_MIN = 1;
+const SYNC_CONCURRENCY_MAX = 16;
+const DECIMAL_INTEGER = /^\d+$/u;
+
+/** How many refs to sync at once: `REFS_SYNC_CONCURRENCY` when it is a plain decimal integer,
+ * clamped into range; the default otherwise. A value that is not a number is ignored rather than
+ * refused, the same way `REFS_UPDATE_CHECK` treats a value it does not recognise. */
+const syncConcurrencyFrom = (env: NodeJS.ProcessEnv): number => {
+  const raw = env['REFS_SYNC_CONCURRENCY']?.trim() ?? '';
+  if (!DECIMAL_INTEGER.test(raw)) {
+    return SYNC_CONCURRENCY_DEFAULT;
+  }
+  return Math.min(SYNC_CONCURRENCY_MAX, Math.max(SYNC_CONCURRENCY_MIN, Number(raw)));
+};
 
 /** Reshapes one `Promise.allSettled` slot back into a `SyncResultItem` — the `'rejected'` branch
  * is pure defense-in-depth (`syncOneKey` above already catches everything it can), so the batch
@@ -106,7 +123,7 @@ const toResultItem = (
   return settled.value;
 };
 
-/** Syncs every target in `targets`, at most `SYNC_CONCURRENCY_CAP` at a time, via
+/** Syncs every target in `targets`, at most `syncConcurrencyFrom(ctx.env)` at a time, via
  * `Promise.allSettled` over a tiny inline semaphore (`sync-semaphore.ts`) — the batch never
  * aborts: each target's own failure (or, in the defensive fallback above, a rejection `syncOneKey`
  * somehow didn't catch) becomes its own `'failed'` result item alongside every other target's real
@@ -116,7 +133,7 @@ const syncAll = async (
   targets: readonly RefSyncContext[],
   spinner?: Spinner,
 ): Promise<SyncResultItem[]> => {
-  const sem = createSemaphore(SYNC_CONCURRENCY_CAP);
+  const sem = createSemaphore(syncConcurrencyFrom(ctx.env));
   const tracker = spinner === undefined ? undefined : syncTracker(spinner, targets.length);
   const settled = await Promise.allSettled(
     targets.map((rsc) =>
@@ -143,5 +160,5 @@ const syncAll = async (
   });
 };
 
-export { syncAll, syncOneOrThrow };
+export { syncAll, syncConcurrencyFrom, syncOneOrThrow };
 export type { SyncItemStatus, SyncResultItem };

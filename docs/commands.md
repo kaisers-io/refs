@@ -928,7 +928,9 @@ was reset back to clean), or `failed` (with an `error` message instead of a clea
 status). A ref skipped entirely by `--stale-only` (within its `sync_ttl` and with an
 existing checkout) produces no result item at all — it's filtered out before syncing, not
 reported as `fresh`. A branch-rename or partial-clone-fallback surfaces as a `warning`
-string on that item, not a failure. Up to 4 refs sync concurrently.
+string on that item, not a failure. Up to 4 refs sync concurrently; set
+`REFS_SYNC_CONCURRENCY` to change that (see
+[`docs/configuration.md`](configuration.md#other-environment-variables)).
 
 ### `structure` — config drift
 

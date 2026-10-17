@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`REFS_SYNC_CONCURRENCY` sets how many refs `refs sync` works on at once.** The default is
+  still four. A whole number is clamped to 1–16, since every slot is a connection to a forge; any
+  other value is ignored.
+
+### Changed
+
+- **`refs doctor` runs at most 8 per-checkout `git` probes at a time.** The `hooks-guard` and
+  `dirty-checkouts` checks used to start one `git` process for every checkout at once, so a home
+  with hundreds of refs spawned hundreds of processes in one burst. Results are unchanged.
+
+### Documentation
+
+- **Preparing blobless checkouts for offline use.** `docs/configuration.md` now says that
+  `clone_mode` only takes effect when a checkout is cloned, and how to get the history's file
+  contents onto disk for an existing ref.
+
 ## [0.18.2] - 2026-10-13
 
 ### Security
