@@ -35,6 +35,23 @@ pnpm -C packages/cli add -g .     # pnpm 11 removed `pnpm link --global`
 checkout by executing the TypeScript source through Node's own type stripping. Without
 `pnpm install` it prints what to run instead of failing cryptically.
 
+## Dependency publishing trust
+
+Dependency installation uses `trustPolicy: no-downgrade`, including frozen-lockfile installs.
+If a package loses publishing trust evidence, investigate its publisher and release history before
+adding an exact-version `trustPolicyExclude`. Leave `trustLockfile` false (the default) so CI also
+checks lockfile entries. Do not use `trustPolicyIgnoreAfter` to treat age as evidence of safety.
+This protects development and release dependency acquisition; users of the bundled CLI do not
+read this workspace setting. A legitimate publisher change can also trigger a rejection.
+
+To check rejection as well as acceptance, use an isolated scratch project with only
+`chokidar@4.0.3`, the [pnpm documentation's exclusion example](https://pnpm.io/settings/dependency-resolution#trustpolicyexclude).
+Run the repository-pinned pnpm with `install --lockfile-only --ignore-scripts`, first with
+`trustPolicy: off` and then with `trustPolicy: no-downgrade`, removing the scratch lockfile between
+runs. The former should resolve and the latter should reject the trust downgrade. This is a live
+registry diagnostic, not a deterministic CI test: metadata may change. Never relax this
+repository's policy for the comparison, and do not add the example as a workspace exception.
+
 ## Before you open a pull request
 
 Run the full check. It must pass:
