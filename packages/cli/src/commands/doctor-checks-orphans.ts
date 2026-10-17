@@ -1,9 +1,9 @@
 import type { Config, RefsHome, State } from '@kaisers-io/refs-core';
+import { POSIX_SHELL, rmCommand } from '../shell-quote.ts';
 import { isEnoent, isGitCheckout, readState, zState } from '@kaisers-io/refs-core';
 import type { CheckResult } from './doctor-types.ts';
 import { join } from 'node:path';
 import { readdir } from 'node:fs/promises';
-import { rmCommand } from '../shell-quote.ts';
 
 // The orphans check: a checkout directory under sources/ that is not (or no longer) a configured
 // ref. Deliberately read-only — it never deletes anything: a fresh pending_proposal_at (a
@@ -77,7 +77,7 @@ const classifyOrphan = (candidate: OrphanCandidate, state: State, now: number): 
   const removal = rmCommand(candidate.dest);
   return removal === undefined
     ? `${candidate.key}: orphan — its path cannot be put into a pasteable command; remove it by hand`
-    : `${candidate.key}: orphan — remove with: ${removal}`;
+    : `${candidate.key}: orphan — remove with (${POSIX_SHELL}): ${removal}`;
 };
 
 const toCandidate = (home: RefsHome, segments: readonly string[]): OrphanCandidate => ({

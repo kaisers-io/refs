@@ -1,4 +1,5 @@
 import type { CloneMode, RefKey, RefsHome, Runner } from '@kaisers-io/refs-core';
+import { POSIX_SHELL, rmCommand, shellQuote } from '../shell-quote.ts';
 import {
   assertInsideSources,
   canonicalizeGitUrl,
@@ -9,7 +10,6 @@ import {
   validationError,
   zRefState,
 } from '@kaisers-io/refs-core';
-import { rmCommand, shellQuote } from '../shell-quote.ts';
 import type { CliContext } from '../context.ts';
 import { dirname } from 'node:path';
 import { mkdir } from 'node:fs/promises';
@@ -80,7 +80,7 @@ const ensureCheckoutOrigin = async (
 
 const unmanagedCheckoutMessage = (dest: string): string => {
   const removal = rmCommand(dest);
-  const how = removal === undefined ? 'by hand' : `(${removal})`;
+  const how = removal === undefined ? 'by hand' : `(${POSIX_SHELL}: ${removal})`;
   return `checkout at ${dest} exists but is not refs-managed — remove it ${how} and retry`;
 };
 

@@ -5,7 +5,7 @@ import {
   isAutoReclaimable,
 } from '@kaisers-io/refs-core';
 import type { InspectedLock, LockDiagnosis, RefsHome } from '@kaisers-io/refs-core';
-import { rmCommand, rmdirCommand } from '../shell-quote.ts';
+import { POSIX_SHELL, rmCommand, rmdirCommand } from '../shell-quote.ts';
 import type { CheckResult } from './doctor-types.ts';
 import { join } from 'node:path';
 
@@ -102,8 +102,7 @@ const claimLine = (home: RefsHome, lock: InspectedLock): string => {
  * cannot tell a crashed process from a suspended one, so neither can a person acting on a single
  * observation. Removing a live holder's lock is the failure the whole protocol exists to avoid,
  * and doing it by hand is no safer than doing it automatically. */
-const STOP_FIRST =
-  'stop every refs process using this home — including suspended ones — and then run';
+const STOP_FIRST = `stop every refs process using this home — including suspended ones — and then run, in ${POSIX_SHELL}`;
 
 /** What the reader can act on, if anything. Three states, deliberately worded apart: refs will take
  * this one itself; refs will never take this one and here is the command; or nothing is wrong. */

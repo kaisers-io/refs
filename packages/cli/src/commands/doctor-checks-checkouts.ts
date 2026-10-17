@@ -1,10 +1,10 @@
 import type { Config, RefKey, RefsHome } from '@kaisers-io/refs-core';
+import { POSIX_SHELL, rmCommand } from '../shell-quote.ts';
 import { access, constants, readdir } from 'node:fs/promises';
 import { checkoutPath, isEnoent, isGitCheckout, zRefKey } from '@kaisers-io/refs-core';
 import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
 import { join } from 'node:path';
-import { rmCommand } from '../shell-quote.ts';
 
 // `hooks-guard` and `dirty-checkouts` — the two checks that iterate configured refs whose checkout
 // currently exists, each running one `git` command per checkout via the injected `Runner`.
@@ -105,7 +105,7 @@ const unexpectedHooksClause = (hooksDir: string, unexpected: readonly string[]):
   return (
     `${names}: not installed by refs — this is the directory git resolves hook names against ` +
     `for every managed checkout, so nothing whose provenance refs cannot account for belongs ` +
-    `in it; remove: ${removal}`
+    `in it; remove (${POSIX_SHELL}): ${removal}`
   );
 };
 

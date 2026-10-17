@@ -497,8 +497,9 @@ persisted state it would turn a cheap inventory command into a locking filesyste
 
 ### Printed commands are for a POSIX shell
 
-Where `refs doctor` or `refs sync` prints a command to run, it is quoted for a POSIX shell (`sh`,
-`bash`, `zsh`, and Git Bash on Windows). That covers a repair such as `refs edit --decline …` and
+Where `refs doctor`, `refs sync` or `refs add` prints a command to run, it is quoted for a POSIX
+shell (`sh`, `bash`, `zsh`, and Git Bash on Windows), and the text that introduces it says so:
+`(POSIX sh / Git Bash)`. That covers a repair such as `refs edit --decline …` and
 an `rm` for an orphaned checkout. Under `--json` the same strings are the finding's `register`,
 `decline`, `repoint` and `unregister` fields. Every value that came from a checkout is wrapped in
 single quotes, and a single quote inside one is written `'\''`. That is why a package name or path
