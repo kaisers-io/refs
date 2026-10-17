@@ -18,6 +18,7 @@ describe('complete lockfile audit workflow', () => {
   it('checks PRs, main pushes and a weekly advisory refresh', () => {
     expect.hasAssertions();
     expect(Object.keys(workflow.on)).toContain('pull_request');
+    expect(Object.keys(workflow.on)).toContain('workflow_dispatch');
     expect(workflow.on['push']).toStrictEqual({ branches: ['main'] });
     expect(workflow.on['schedule']).toStrictEqual([{ cron: '23 8 * * 1' }]);
   });

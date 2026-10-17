@@ -2,6 +2,7 @@ name: dependency-audit
 on:
   push: { branches: [main] }
   pull_request:
+  workflow_dispatch:
   schedule:
     - cron: '23 8 * * 1'
 # Advisory data changes even when the lockfile does not. Keep this separate from

@@ -20,7 +20,8 @@ there are no long-term support branches.
 
 ## Dependency advisory checks
 
-The `dependency-audit` workflow runs on pull requests, main pushes and weekly. It uses the
+The `dependency-audit` workflow runs on pull requests, main pushes and weekly. Maintainers can
+also run it manually from the Actions tab after the workflow reaches the default branch. It uses the
 `packageManager`-pinned pnpm to audit every document in `pnpm-lock.yaml`, including development,
 optional, package-manager and transitive dependencies. A production-only audit would omit packages
 that are bundled into the published CLI despite being declared as development dependencies.
