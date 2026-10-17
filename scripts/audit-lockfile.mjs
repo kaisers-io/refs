@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Audits every package in the pnpm lockfile for known advisories, and proves the audit saw them all.
+// Audits every package in the pnpm lockfile for known advisories, and checks that the audit's package
+// count is plausible for the whole lockfile.
 //
 //   node scripts/audit-lockfile.mjs     run from the workspace root, after `pnpm install`
 //
@@ -11,20 +12,26 @@
 // nothing transitive, so Dependabot alerts no longer cover the transitive packages bundled into the
 // CLI. pnpm's own documentation names `pnpm audit` as the scanner that reads both documents.
 //
-// "Reads both documents" is checked, not assumed. Every registry package in every document, counted
-// here independently with a real YAML parser, must be within the number the audit reports. Should a
-// future pnpm, or a lockfile split into a third document, leave a document unaudited, the audit
-// reports fewer and this fails instead of passing over a partial inventory. The check is a floor,
-// not an equality, on purpose: pnpm audit skips git and directory packages (no npm advisory can
-// name them) and counts some non-registry ones, such as a `node@runtime:` entry, so only the
-// registry packages are a number both sides agree must be covered.
+// "Reads both documents" is checked for plausibility, not assumed. The distinct registry packages in
+// every document, counted here independently with a real YAML parser, set a floor the audit's
+// reported package count must reach. Should a future pnpm, or a lockfile split into a third document,
+// leave a document unaudited, the audit reports fewer and this fails instead of passing over a
+// partial inventory. The check is a floor, not an equality, on purpose: pnpm audit skips git and
+// directory packages (no npm advisory can name them) and counts some non-registry ones, such as a
+// `node@runtime:` entry, so only the registry packages are a number both sides agree must be covered.
+//
+// What the floor does not prove: that each specific package identity was audited. It compares two
+// counts, and pnpm reports no list of what it sent. An audit that skipped some registry packages
+// while counting as many other entries would pass. It catches the failure #212 is about, a whole
+// document left out, and no finer one.
 //
 // Exit codes keep the three failures apart, because they call for different responses:
-//   0  every package audited, no advisory at severity low or above
+//   0  the audit's package count reached the floor, no advisory at severity low or above
 //      (advisories ignored through pnpm's `auditConfig.ignoreGhsas` do not count)
 //   1  advisories found
-//   2  the audit covered fewer packages than the lockfile's registry packages
-//   3  the audit did not complete (registry or network error): NOT a clean result
+//   2  the audit reported fewer packages than the lockfile's registry packages
+//   3  the audit did not complete (registry or network error, or a report this script cannot
+//      read, such as an unknown severity): NOT a clean result
 // Tests: scripts/audit-lockfile.test.mjs.
 
 import { once } from 'node:events';
@@ -38,6 +45,8 @@ const EXIT_COVERAGE = 2;
 const EXIT_INCOMPLETE = 3;
 // `info` is reported but never fails the run: it is not a vulnerability.
 const FAILING_SEVERITIES = new Set(['low', 'moderate', 'high', 'critical']);
+// Every severity pnpm reports. Anything else is a report this script cannot read, not a pass.
+const KNOWN_SEVERITIES = new Set(['info', ...FAILING_SEVERITIES]);
 // Lines of pnpm's own error output quoted when the audit did not complete.
 const DETAIL_LINES = 5;
 
@@ -80,9 +89,24 @@ const lockfileInventory = (text) => {
 // second (pnpm 12.11.2). Counting metadata would keep the run red over an advisory the maintainers
 // chose to ignore, with no advisory left to name.
 const failingAdvisories = (report) =>
-  Object.values(report.advisories).filter((advisory) =>
-    FAILING_SEVERITIES.has(advisory?.severity),
+  Object.values(report.advisories).filter((advisory) => FAILING_SEVERITIES.has(advisory.severity));
+
+const isRecord = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
+
+// The shape every later step relies on. A filter that skipped an advisory it could not classify
+// would turn an unreadable report into a clean one, so an unknown severity rejects the whole report.
+const isReadable = (report) => {
+  const total = report?.metadata?.totalDependencies;
+  return (
+    Number.isSafeInteger(total) &&
+    total >= 0 &&
+    isRecord(report.metadata.vulnerabilities) &&
+    isRecord(report.advisories) &&
+    Object.values(report.advisories).every(
+      (advisory) => isRecord(advisory) && KNOWN_SEVERITIES.has(advisory.severity),
+    )
   );
+};
 
 const parseJson = (text) => {
   try {
@@ -102,15 +126,11 @@ const firstLines = (text) =>
     .join(' | ');
 
 // The audit's JSON, or a failure that says the audit did not finish. A non-zero exit with a report
-// that shows no advisories is a transport error dressed as a result, so it counts as incomplete.
+// that shows no advisories is a transport error dressed as a result, so it counts as incomplete, and
+// so does a report whose shape isReadable rejects.
 const parseReport = ({ status, stdout, stderr }) => {
   const report = parseJson(stdout);
-  const metadata = report?.metadata;
-  const complete =
-    typeof metadata?.totalDependencies === 'number' &&
-    typeof metadata.vulnerabilities === 'object' &&
-    typeof report.advisories === 'object';
-  if (!complete || (status !== 0 && failingAdvisories(report).length === 0)) {
+  if (!isReadable(report) || (status !== 0 && failingAdvisories(report).length === 0)) {
     const detail = firstLines(stderr || stdout) || 'no output';
     throw new AuditFailureError(
       `pnpm audit did not complete (exit ${status}): ${detail}. This is not a clean result.`,
@@ -126,6 +146,7 @@ const perDocument = ({ perDocument: counts }) =>
     ? `${counts[0]} in 1 document`
     : `${counts.join(' + ')} across ${counts.length} documents`;
 
+// A count floor, not an identity check: see the header for what it can and cannot catch.
 const checkCoverage = (inventory, report) => {
   const audited = report.metadata.totalDependencies;
   if (audited < inventory.packages.size) {

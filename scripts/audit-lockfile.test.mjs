@@ -219,3 +219,42 @@ test('an unparseable lockfile is incomplete, never an empty inventory', async ()
   strictEqual(result.status, EXIT_INCOMPLETE);
   match(result.stderr, /pnpm-lock\.yaml is not valid YAML/u);
 });
+
+// A report this script cannot fully read is a failure to look. An advisory whose severity is not one
+// pnpm documents was once filtered out like an `info` one, and with exit 0 the run went green. The
+// lockfile is empty so that the coverage floor, which a bad count could also trip, cannot mask a
+// missing schema check.
+const FRACTIONAL = 4.5;
+const NEGATIVE = -1;
+// A JSON `null` in the report, spliced in as text: the lint rules keep `null` out of the source.
+const NULL_MARK = '<json-null>';
+const withNull = (report) => JSON.stringify(report).replace(`"${NULL_MARK}"`, 'null');
+const malformed = {
+  'a fractional package count': clean(FRACTIONAL),
+  'a negative package count': clean(NEGATIVE),
+  'a null advisory': withNull({ ...clean(PACKAGES), advisories: { 4: NULL_MARK } }),
+  'advisories as an array': { ...clean(PACKAGES), advisories: [] },
+  'an advisory with an unknown severity': {
+    ...clean(PACKAGES),
+    advisories: { 3: { ...advisory.advisories[1], severity: 'severe' } },
+  },
+  'null vulnerability counts': withNull({
+    ...clean(PACKAGES),
+    metadata: { totalDependencies: PACKAGES, vulnerabilities: NULL_MARK },
+  }),
+};
+
+for (const [shape, report] of Object.entries(malformed)) {
+  test(`a report with ${shape} is incomplete, never clean`, async () => {
+    const result = await run({ lockfile: "lockfileVersion: '9.0'\n", stdout: report });
+    strictEqual(result.status, EXIT_INCOMPLETE, result.stdout);
+    match(result.stderr, /did not complete \(exit 0\)/u);
+  });
+}
+
+// JSON.parse reads an out-of-range number as Infinity, which no package count can be.
+test('an infinite package count is incomplete, never clean', async () => {
+  const text = JSON.stringify(clean(PACKAGES)).replace(`:${PACKAGES},`, ':1e999,');
+  const result = await run({ stdout: text });
+  strictEqual(result.status, EXIT_INCOMPLETE, result.stdout);
+});
