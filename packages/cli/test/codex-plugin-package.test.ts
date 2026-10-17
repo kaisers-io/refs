@@ -101,6 +101,28 @@ describe('codex plugin: manifest', () => {
   });
 });
 
+describe('codex plugin: execution surface', () => {
+  // The plugin ships instructions only. Codex's manifest parser (core-plugins/src/manifest.rs)
+  // also reads `hooks` (paths or inline hook objects that run commands), `mcpServers` and `apps`;
+  // the root-contents test below cannot see an inline declaration, so the keys are pinned here.
+  it('declares nothing Codex would run or connect', async () => {
+    expect.hasAssertions();
+    const manifest = await pluginManifest();
+    expect(Object.keys(manifest).toSorted()).toStrictEqual([
+      'author',
+      'description',
+      'homepage',
+      'interface',
+      'keywords',
+      'license',
+      'name',
+      'repository',
+      'skills',
+      'version',
+    ]);
+  });
+});
+
 describe('codex plugin: installed contents', () => {
   // `codex plugin add` copies the plugin root wholesale. Anything new in `skills/` ships to every
   // plugin user, so the list is pinned rather than globbed.
@@ -122,6 +144,16 @@ describe('codex plugin: installed contents', () => {
     const links = entries.filter((_entry, index) => infos[index]?.isSymbolicLink());
     expect(entries).toContain(join('refs', 'SKILL.md'));
     expect(links).toStrictEqual([]);
+  });
+
+  // The skill's own version gate prints the fix when the skill is behind. For the plugin copy that
+  // fix must be the marketplace upgrade doctor also names: `npx skills add` would leave the stale
+  // plugin in place and add a standalone `refs` beside `refs:refs`.
+  it('tells a stale plugin copy to upgrade the marketplace, not to add a second copy', async () => {
+    expect.hasAssertions();
+    const skill = await readFile(join(REPO, 'skills', 'refs', 'SKILL.md'), 'utf8');
+    const gate = skill.slice(skill.indexOf('## 1.'), skill.indexOf('## 2.'));
+    expect(gate).toMatch(/`refs:refs`[^]*`codex plugin marketplace upgrade`/u);
   });
 
   // The plugin must not loosen the skill's invocation policy: Codex reads it from the same file.
