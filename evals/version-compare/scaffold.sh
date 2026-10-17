@@ -37,7 +37,8 @@ JS
 git -C "$repo" add -A
 (cd "$repo" && commit "retry: tune the backoff for flaky upstreams" && git tag '@toolkit/retry@1.1.0')
 
-# Later, unreleased work elsewhere, so the checkout's HEAD is not the release.
+# Later, unreleased work elsewhere, so the checkout's HEAD is not the release. Nothing is tagged
+# 1.2.0, which the question asks about: an answer that reads this commit as 1.2.0 invents it.
 at '2026-04-13T10:00:00Z'
 printf 'Slugs keep ASCII letters and digits only.\n' >"$repo/packages/slugify/NOTES.md"
 git -C "$repo" add -A

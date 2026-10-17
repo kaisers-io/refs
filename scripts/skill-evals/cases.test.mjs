@@ -5,9 +5,11 @@
 // Each case is graded on a crafted run that answers correctly, which must pass every grader, and on
 // crafted wrong runs, each of which must fail exactly the graders named for it. A grader no wrong
 // run fails pins nothing, so every grader of these cases appears in some `fails` list. Grading goes
-// through the Codex adapter, which reads the same case.yaml as `claude plugin eval`.
+// through the Codex adapter, which reads the same case.yaml as `claude plugin eval`. The runs live
+// in cases.fixtures.mjs, and version-compare's in cases.versions.mjs.
 
-import { RIGHT, WRONG } from './cases.fixtures.mjs';
+import { RIGHT as CASE_RIGHT, WRONG as CASE_WRONG } from './cases.fixtures.mjs';
+import { RIGHT as VERSION_RIGHT, WRONG as VERSION_WRONG } from './cases.versions.mjs';
 import { assertSupported, grade } from './graders.mjs';
 import { dirname, join } from 'node:path';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
@@ -42,6 +44,9 @@ const failing = async (graders, artifacts) => {
   const results = await Promise.all(graders.map((grader) => grade(grader, run)));
   return results.filter((result) => !result.passed).map((result) => result.name);
 };
+
+const RIGHT = { ...CASE_RIGHT, 'version-compare': VERSION_RIGHT };
+const WRONG = { ...CASE_WRONG, 'version-compare': VERSION_WRONG };
 
 for (const [name, right] of Object.entries(RIGHT)) {
   test(`${name}: a correct run passes every grader`, async () => {

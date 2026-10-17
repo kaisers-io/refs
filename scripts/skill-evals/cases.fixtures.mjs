@@ -81,15 +81,6 @@ const RIGHT = {
       '{"data":{"checkout":{"status":"managed"},"key":"local/fixtures/beta","package":null},"ok":true}',
     ),
   },
-  'version-compare': {
-    lastMessage: [
-      '1.1.0 raised the default attempts from 3 to 5 and added maxDelayMs (default 2000), which',
-      'caps every wait. Commit 9f89fed "retry: tune the backoff for flaky upstreams".',
-    ].join('\n'),
-    trace: traceOf(
-      '{"data":{"key":"local/fixtures/toolkit","ref_path":"refs/tags/@toolkit/retry@1.1.0","tag":"@toolkit/retry@1.1.0","version":"1.1.0"},"ok":true}',
-    ),
-  },
 };
 
 const citing = (text, target) => ({
@@ -211,31 +202,6 @@ const WRONG = {
       why: 'a deleted alpha file',
     },
   ],
-  'version-compare': [
-    {
-      fails: ['names-the-new-cap', 'names-the-new-default', 'names-the-commit'],
-      run: { lastMessage: '@toolkit/retry@1.0.0 to @toolkit/retry@1.1.0: a new minor release.' },
-      why: 'only the two version strings',
-    },
-    {
-      fails: [
-        'resolved-the-package-tag',
-        'names-the-new-cap',
-        'names-the-new-default',
-        'names-the-commit',
-      ],
-      run: {
-        lastMessage: 'Nothing changed in packages/retry from v1.0.0 to v1.1.0; bfa56d2 is docs only.',
-        trace: traceOf('{"data":{"ref_path":"refs/tags/v1.1.0","tag":"v1.1.0"},"ok":true}'),
-      },
-      why: 'the zero diff between the repository-wide tags',
-    },
-    {
-      fails: ['names-the-commit'],
-      run: { lastMessage: 'Default attempts went from 3 to 5, and maxDelayMs caps each wait.' },
-      why: 'the change without the commit',
-    },
-  ],
 };
 
-export { RIGHT, WRONG };
+export { CHECKOUT, RIGHT, WRONG, traceOf };
