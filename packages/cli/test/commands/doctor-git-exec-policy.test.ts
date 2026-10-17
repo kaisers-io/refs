@@ -79,7 +79,7 @@ describe('refs doctor: configured hooks under refs policy', () => {
   });
 
   it.each([
-    ['git 2.54, which reads the switch as a label', LABEL_ONLY_GIT],
+    ['git 2.54 when no label switch reached it', LABEL_ONLY_GIT],
     ['a git whose version could not be read', 'not a version line'],
   ])('warns for a configured hook on %s, saying why', async (_label, version) => {
     expect.hasAssertions();
@@ -94,7 +94,7 @@ describe('refs doctor: configured hooks under refs policy', () => {
 
         const envelope = await runDoctorJson(setup.ctx, setup.stdout);
 
-        expectCheck(envelope, SURFACE, { detailContains: 'git 2.54 does not', status: 'warn' });
+        expectCheck(envelope, SURFACE, { detailContains: 'nothing disabled it', status: 'warn' });
         expectCheck(envelope, SURFACE, { detailContains: 'hook.evil.command', status: 'warn' });
       }),
     );

@@ -46,10 +46,15 @@ there are no long-term support branches.
   starts overrides two of the three with top-level `-c` options: `core.fsmonitor=` (the empty
   value, which every git version measured, 2.25 to 2.55, reads as "off" — `false` would be run as a program by git 2.35.1
   and older) and `hook.<event>.enabled=false` for each event `refs` causes, which disables
-  configured hooks by event on git 2.55 and later whatever their label. Filters stay enabled:
-  turning one off changes what a checkout contains. The residue — filters, and configured hooks on
-  git 2.54, which has no event-level switch — is what `refs doctor`'s `git-exec-surfaces` check
-  reports, and what `refs add` repeats as a warning before it clones.
+  configured hooks by event on git 2.55 and later whatever their label. git 2.54 has no
+  event-level switch, so there `refs` reads every hook label from the configuration and every
+  include it names — conditional includes too, whether or not their condition holds yet, because
+  `hasconfig:remote.*.url` is decided by the repository being cloned — and passes
+  `hook.<label>.enabled=false` for each. If it cannot read the whole include graph, or an include
+  lies inside the checkout the command writes, it refuses to start git. Filters stay enabled:
+  turning one off changes what a checkout contains. The residue — filters — is what
+  `refs doctor`'s `git-exec-surfaces` check reports, and what `refs add` repeats as a warning
+  before it clones.
 
   That check reports **presence, not safety**. Whether a given command reaches a checkout's content
   depends on the command, and deciding that would mean proving an arbitrary interpreter never loads

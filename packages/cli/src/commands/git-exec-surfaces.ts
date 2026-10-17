@@ -8,10 +8,12 @@
 // - `core.fsmonitor`: refs empties it on every invocation, and the last value wins, so it is
 //   reported only when nothing overrode it.
 // - Configured hooks: refs disables every event it causes with `hook.<event>.enabled=false`, an
-//   event-level switch git honours from 2.55. git 2.54 reads that key as a hook LABEL, so there a
-//   configured hook still fires — the one version on which this reports them. Before 2.54 git has
-//   no configured hooks and ignores the keys. A version that cannot be read counts as 2.54: a
-//   failure to look is not evidence that nothing runs.
+//   event-level switch git honours from 2.55. git 2.54 reads that key as a hook LABEL, so there
+//   refs adds `hook.<label>.enabled=false` for each label in the configuration graph
+//   (`git-hook-labels.ts`); those arrive in this listing as command-scope entries, and the label
+//   check below honours them. So on 2.54 a hook is reported only if no such entry disabled it.
+//   Before 2.54 git has no configured hooks and ignores the keys. A version that cannot be read
+//   counts as 2.54: a failure to look is not evidence that nothing runs.
 // - Filters: never overridden, because turning one off changes what a checkout contains (#187).
 //
 // Presence, not safety: an earlier version reported only commands that looked
@@ -133,8 +135,9 @@ const REASONS: readonly (readonly [RegExp, string])[] = [
   ],
   [
     HOOK_COMMAND,
-    'a configured hook fires on the events refs causes: refs switches those events off, which ' +
-      'git 2.55 and later honour and git 2.54 does not',
+    'a configured hook fires on the events refs causes and nothing disabled it: refs switches ' +
+      'those events off, which git 2.55 and later honour, and on git 2.54 disables each label ' +
+      'it finds',
   ],
   [FSMONITOR_KEY, 'fsmonitor runs a command in the worktree'],
 ];

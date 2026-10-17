@@ -472,8 +472,11 @@ with `core.fsmonitor` emptied and configured hooks switched off for each event r
 - **Content filters** (`filter.<name>.clean`, `smudge`, `process`). They stay enabled: turning one
   off changes what the checkout contains, and a required filter such as git-lfs's fails the
   checkout outright.
-- **Configured hooks on git 2.54.** The event-level switch exists from git 2.55; 2.54 reads it as a
-  hook label, so there a configured hook still fires. Before 2.54 git has no configured hooks.
+- **Configured hooks refs did not disable.** The event-level switch exists from git 2.55. On git
+  2.54 refs instead disables every label it finds in the configuration and its includes,
+  conditional or not, and refuses to start git when it cannot read them all; a hook is listed
+  here only when neither applies, such as when `git --version` cannot be read. Before 2.54 git has
+  no configured hooks.
 
 It reports presence, not safety, and reads the configuration from the refs home, so an
 `includeIf "gitdir:…"` section that applies only inside a checkout is not in its listing. `refs add`

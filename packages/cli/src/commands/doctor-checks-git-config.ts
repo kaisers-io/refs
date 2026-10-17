@@ -16,8 +16,9 @@ import type { CliContext } from '../context.ts';
 //     -> ran during the checkout `refs sync` performs
 //
 // Since #194 refs switches two of these off for its own invocations — fsmonitor on every git, and
-// configured hooks on git 2.55 and later (core's `git-exec-policy.ts`) — so what is left to report
-// is filters, and configured hooks on git 2.54. `git-exec-surfaces.ts` holds that reading.
+// configured hooks by event on git 2.55 and later or by label on 2.54 (core's `git-exec-policy.ts`
+// and `git-hook-labels.ts`) — so what is left to report is filters, and a configured hook only
+// where neither switch reached. `git-exec-surfaces.ts` holds that reading.
 //
 // Each needs a definition already in the invoking user's own git configuration. A tracked
 // repository cannot create one; its `.gitattributes` can only choose when an existing filter

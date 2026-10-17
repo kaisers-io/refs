@@ -43,9 +43,11 @@ const FSMONITOR_OFF = 'core.fsmonitor=';
 // hook for that event, whatever its label, so no label has to be discovered — which matters
 // because a label can come from an `includeIf` section that applies only inside the checkout. It
 // leaves hooks-DIRECTORY hooks alone, so the refs commit/push guard is unaffected (measured on
-// 2.55.0). git 2.54 only understands `hook.<label>.enabled`, so there these settings are inert and
-// configured hooks still run (measured): a residual gap `doctor` and `add` report rather than claim
-// to close. Before 2.54 configured hooks do not exist and git ignores the unknown keys.
+// 2.55.0). git 2.54 only understands `hook.<label>.enabled`, so there these settings are inert
+// (measured) and `SpawnRunner` adds one `hook.<label>.enabled=false` per label instead, from an
+// inventory of the whole configuration graph (`git-hook-labels.ts`); like these, those leave the
+// hooks directory alone (measured on 2.54.0: the guard still blocks a commit). Before 2.54
+// configured hooks do not exist and git ignores the unknown keys.
 const NEUTRALISED_HOOK_EVENTS = [
   'post-checkout',
   'post-index-change',

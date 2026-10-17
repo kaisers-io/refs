@@ -16,8 +16,8 @@ const runner = new SpawnRunner();
 const SUITE_OPTS = { timeout: SLOW_IO_TIMEOUT_MS };
 const SCRIPT_MODE = 0o755;
 const SUCCESS_EXIT_CODE = 0;
-// The first git whose `hook.<event>.enabled` disables configured hooks by event.
-const EVENT_SWITCH_MINOR = 55;
+// The first git with configured hooks: 2.54 disables them by label, 2.55 and later by event.
+const CONFIGURED_HOOKS_MINOR = 54;
 
 const git = async (dir: string, args: readonly string[]): Promise<string> => {
   const result = await runner.run('git', args, { cwd: dir });
@@ -49,10 +49,23 @@ const upstreamTrackingScript = async (marker: string): Promise<string> => {
   return dir;
 };
 
-const withGlobalConfig = async (text: string, body: () => Promise<void>): Promise<void> => {
+/** Writes `files` into a fresh directory and returns the path of its `gitconfig`. */
+const configFiles = async (files: Readonly<Record<string, string>>): Promise<string> => {
   const dir = await mkdtemp(join(tmpdir(), 'refs-gitconfig-'));
-  const path = join(dir, 'gitconfig');
-  await writeFile(path, text);
+  for (const [name, content] of Object.entries(files)) {
+    // eslint-disable-next-line no-await-in-loop -- a handful of fixture files
+    await writeFile(join(dir, name), content);
+  }
+  return join(dir, 'gitconfig');
+};
+
+/** `text` as the global configuration; `beside` are further files next to it, for includes. */
+const withGlobalConfig = async (
+  text: string,
+  body: () => Promise<void>,
+  beside: Readonly<Record<string, string>> = {},
+): Promise<void> => {
+  const path = await configFiles({ ...beside, gitconfig: text });
   const previous = process.env['GIT_CONFIG_GLOBAL'];
   process.env['GIT_CONFIG_GLOBAL'] = path;
   try {
@@ -125,36 +138,64 @@ const gitMinor = async (): Promise<number> => {
   return Number(match?.groups?.['minor'] ?? 0);
 };
 
-// Configured hooks exist from git 2.54 and the event-level switch from 2.55, so this runs only on
-// such a git — put one first on PATH to run it. On 2.54 the hook still fires: that gap is reported
-// by `doctor` and `add`, not claimed closed.
-const HOOKS_CONFIG = ['post-checkout', 'post-index-change', 'reference-transaction']
-  .map(
-    (event) =>
-      `[hook "label-${event}"]\n\tevent = ${event}\n\tcommand = [ ! -x ./run.sh ] || ./run.sh\n`,
-  )
-  .join('');
+// Configured hooks exist from git 2.54, so this runs only on such a git — put one first on PATH to
+// run it. 2.55 disables them by event; 2.54 only by label, which is what the include below tests:
+// its condition is decided by the repository being cloned, so the hook it adds is invisible to
+// any listing taken before the clone, and it fired during refs' clone until the label inventory
+// read inactive includes too.
+const hookSection = (label: string, event: string): string =>
+  `[hook "${label}"]\n\tevent = ${event}\n\tcommand = [ ! -x ./run.sh ] || ./run.sh\n`;
+const HOOKS_CONFIG = [
+  ...['post-checkout', 'post-index-change', 'reference-transaction'].map((event) =>
+    hookSection(`label-${event}`, event),
+  ),
+  '[includeIf "hasconfig:remote.*.url:file://**"]\n\tpath = hidden.gitconfig\n',
+].join('');
+const HIDDEN_HOOK = { 'hidden.gitconfig': hookSection('only.for clones', 'post-checkout') };
 
-describe.skipIf((await gitMinor()) < EVENT_SWITCH_MINOR)(
+describe.skipIf((await gitMinor()) < CONFIGURED_HOOKS_MINOR)(
   'configured hooks in the ambient configuration',
   SUITE_OPTS,
   () => {
     it('never run during refs clone and sync', async () => {
       expect.hasAssertions();
       const scene = await scenario();
-      await withGlobalConfig(HOOKS_CONFIG, async () => {
-        await cloneThenUpdate(scene);
-      });
+      await withGlobalConfig(
+        HOOKS_CONFIG,
+        async () => {
+          await cloneThenUpdate(scene);
+        },
+        HIDDEN_HOOK,
+      );
       await expect(exists(scene.marker)).resolves.toBe(false);
     });
 
     it('do run for git outside refs policy, so the fixture is live', async () => {
       expect.hasAssertions();
       const scene = await scenario();
-      await withGlobalConfig(HOOKS_CONFIG, async () => {
-        await cloneThenUpdate(scene);
-        await runner.run('sh', ['-c', 'git reset -q --hard HEAD'], { cwd: scene.dest });
-      });
+      await withGlobalConfig(
+        HOOKS_CONFIG,
+        async () => {
+          await cloneThenUpdate(scene);
+          await runner.run('sh', ['-c', 'git reset -q --hard HEAD'], { cwd: scene.dest });
+        },
+        HIDDEN_HOOK,
+      );
+      await expect(exists(scene.marker)).resolves.toBe(true);
+    });
+
+    it('include the conditional one, which applies inside the checkout', async () => {
+      expect.hasAssertions();
+      const scene = await scenario();
+      const onlyHidden = HOOKS_CONFIG.slice(HOOKS_CONFIG.indexOf('[includeIf'));
+      await withGlobalConfig(
+        onlyHidden,
+        async () => {
+          await cloneThenUpdate(scene);
+          await runner.run('sh', ['-c', 'git checkout -q -B main HEAD'], { cwd: scene.dest });
+        },
+        HIDDEN_HOOK,
+      );
       await expect(exists(scene.marker)).resolves.toBe(true);
     });
   },
