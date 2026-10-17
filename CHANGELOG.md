@@ -20,8 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hook only by its label. So on git 2.54 and later refs also reads every label from the
   configuration and all of its includes, conditional ones included whether or not they apply yet,
   and disables each one. When it cannot read the whole include graph, it refuses to start git
-  instead. Content filters stay enabled, because turning one off changes what a checkout contains
-  (#194).
+  instead. It reads them once per refs process and again only when a file it read changes, so a
+  sync starts a handful of extra git processes rather than several per git command. Content
+  filters stay enabled, because turning one off changes what a checkout contains (#194).
 
 ### Changed
 

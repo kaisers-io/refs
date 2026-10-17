@@ -1,8 +1,9 @@
-import { REFUSED_EXIT_CODE, hookLabelPolicy, isVersionProbe } from './git-hook-labels.ts';
+import { REFUSED_EXIT_CODE, hookLabelPolicy, isVersionProbe } from './git-hook-label-policy.ts';
 import { activeChildren, installCleanupOnce } from './spawn-cleanup.ts';
 import { appendNote, createCollector, withTruncationNote } from './spawn-collector.ts';
 import type { ChildProcess } from 'node:child_process';
 import type { CollectedStream } from './spawn-collector.ts';
+import { HookLabelCache } from './git-hook-label-cache.ts';
 import { armTimeout } from './spawn-timeout.ts';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
@@ -267,8 +268,9 @@ const readGitVersion = async (): Promise<string> => {
 
 class SpawnRunner implements Runner {
   // `git --version`, read once per runner: only git 2.54 and later need the configured-hook
-  // inventory.
+  // inventory, which is then reused while nothing it read changes (`git-hook-label-cache.ts`).
   #gitVersion: Promise<string> | undefined;
+  readonly #hookLabels = new HookLabelCache();
 
   async run(cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> {
     installCleanupOnce();
@@ -278,7 +280,7 @@ class SpawnRunner implements Runner {
     this.#gitVersion ??= readGitVersion();
     const labels = await hookLabelPolicy(
       (inventoryArgs, env) => spawnAndCollect('git', inventoryArgs, { ...opts, env }),
-      { args, version: await this.#gitVersion, ...cwdOpt(opts?.cwd) },
+      { args, cache: this.#hookLabels, version: await this.#gitVersion, ...cwdOpt(opts?.cwd) },
     );
     if ('refusal' in labels) {
       return { exitCode: REFUSED_EXIT_CODE, stderr: labels.refusal, stdout: '' };

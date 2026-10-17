@@ -1,4 +1,13 @@
-import { chmod, mkdir, mkdtemp, stat, writeFile } from 'node:fs/promises';
+import {
+  appendFile,
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  stat,
+  utimes,
+  writeFile,
+} from 'node:fs/promises';
 import { delimiter, join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { RunResult } from '../../src/proc/runner.ts';
@@ -34,6 +43,7 @@ const asGit = async (version: string, scene: Scene): Promise<void> => {
   await mkdir(bin);
   const script = [
     '#!/bin/sh',
+    `printf '%s\\n' "$*" >> ${JSON.stringify(join(scene.dir, 'calls'))}`,
     'for last in "$@"; do :; done',
     `if [ "$last" = --version ]; then echo "git version ${version}"; exit 0; fi`,
     `exec ${JSON.stringify(located.stdout.trim())} "$@"`,
@@ -120,4 +130,64 @@ describe.skipIf(process.platform === 'win32')('the runner on git 2.55 and later'
       expect(result.stdout).toMatch(/^hook\.post-checkout\.enabled false$/mu);
     },
   );
+});
+
+const HOUR_MS = 3_600_000;
+const HOUR_AGO = new Date(Date.now() - HOUR_MS);
+
+/** How many times the stand-in git has been started so far. */
+const callsIn = async (scene: Scene): Promise<number> => {
+  const log = await readFile(join(scene.dir, 'calls'), 'utf8');
+  return log.split('\n').length;
+};
+
+type Second = { cwd: string; key: string };
+
+/** Two commands on ONE runner, the first in a directory outside any repository: how many git
+ * processes the second started, and what it printed. */
+const twoCommands = async (
+  scene: Scene,
+  second: Second,
+): Promise<{ calls: number; out: string }> => {
+  const cwd = join(scene.dir, 'work');
+  await mkdir(cwd);
+  try {
+    await asGit('2.55.0', scene);
+    const runner = new SpawnRunner();
+    await runner.run('git', ['config', '--get', LABEL_KEY], { cwd });
+    const before = await callsIn(scene);
+    const result = await runner.run('git', ['config', '--get', second.key], { cwd: second.cwd });
+    return { calls: (await callsIn(scene)) - before, out: result.stdout.trim() };
+  } finally {
+    vi.unstubAllEnvs();
+  }
+};
+
+const agedScene = async (): Promise<Scene> => {
+  const scene = await sceneWith(HIDDEN);
+  const aged = ['gitconfig', 'hidden'].map((name) => join(scene.dir, name));
+  await Promise.all(aged.map((path) => utimes(path, HOUR_AGO, HOUR_AGO)));
+  return scene;
+};
+
+// One runner serves a whole refs process: the inventory is taken for its first git command and
+// reused for the next while the configuration is unchanged (`git-hook-label-cache.ts`).
+describe.skipIf(process.platform === 'win32')('the runner across commands', () => {
+  it('takes the label inventory once, and still applies it to the next command', async () => {
+    expect.hasAssertions();
+    const scene = await agedScene();
+    const second = { cwd: join(scene.dir, 'work'), key: LABEL_KEY };
+    await expect(twoCommands(scene, second)).resolves.toStrictEqual({ calls: 1, out: 'false' });
+  });
+
+  // The working directory selects the repository whose own `.git/config` git reads.
+  it('takes it afresh in a repository whose own configuration adds a label', async () => {
+    expect.hasAssertions();
+    const scene = await agedScene();
+    const repo = join(scene.dir, 'repo');
+    await promisify(execFile)('git', ['init', '-q', repo]);
+    await appendFile(join(repo, '.git', 'config'), HIDDEN.hidden.replace('for.clones', 'local'));
+    const second = await twoCommands(scene, { cwd: repo, key: 'hook.local.enabled' });
+    expect(second.out).toBe('false');
+  });
 });

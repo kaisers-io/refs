@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { hookLabelArgs, hookLabelPolicy } from '../../src/proc/git-hook-labels.ts';
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import type { RunResult } from '../../src/proc/runner.ts';
 import { execFile } from 'node:child_process';
+import { hookLabelArgs } from '../../src/proc/git-hook-labels.ts';
+import { hookLabelPolicy } from '../../src/proc/git-hook-label-policy.ts';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';

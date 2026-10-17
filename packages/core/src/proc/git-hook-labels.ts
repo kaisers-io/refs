@@ -21,13 +21,19 @@
 // that file is content the command itself may write, so what it holds when read is not what git
 // reads later. A missing include anywhere else is skipped: nothing the command does creates it.
 
+import type { HookLabelCache, Snapshot } from './git-hook-label-cache.ts';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
-import { realpath, stat } from 'node:fs/promises';
 import type { RunResult } from './runner.ts';
 import { commandOf } from './git-command-of.ts';
+import { realpath } from 'node:fs/promises';
+import { snapshotOf } from './git-hook-label-cache.ts';
 
 type ReadGit = (args: readonly string[]) => Promise<RunResult>;
-type LabelContext = { args: readonly string[]; cwd?: string };
+type LabelContext = {
+  args: readonly string[];
+  cache?: { key: string; store: HookLabelCache };
+  cwd?: string;
+};
 
 // git itself stops at 10 levels of include; the file cap bounds a wide graph the same way.
 const MAX_DEPTH = 10;
@@ -47,7 +53,15 @@ class InventoryRefusalError extends Error {
   override name = 'InventoryRefusalError';
 }
 
-type Inventory = { files: Set<string>; labels: Set<string>; roots: readonly string[] };
+// `snapshots` holds what every path looked at contained, and `includes` the paths reached through
+// an include: what the cache compares, and what it checks against the next command's checkout.
+type Inventory = {
+  files: Set<string>;
+  includes: string[];
+  labels: Set<string>;
+  roots: readonly string[];
+  snapshots: Map<string, Snapshot>;
+};
 type Visit = { depth: number; file: string; direct: boolean };
 
 const refuse = (why: string): never => {
@@ -104,23 +118,26 @@ const canonical = async (path: string): Promise<string> => {
   }
 };
 
-const assertOutsideCheckout = async (path: string, inventory: Inventory): Promise<void> => {
+const assertOutsideCheckout = async (path: string, roots: readonly string[]): Promise<void> => {
   const real = await canonical(path);
-  if (inventory.roots.some((root) => isInside(path, root) || isInside(real, root))) {
+  if (roots.some((root) => isInside(path, root) || isInside(real, root))) {
     refuse(`the include ${path} lies inside the checkout this command writes`);
   }
 };
 
-const exists = async (path: string): Promise<boolean> => {
+/** Whether `path` exists, keeping what it holds for the cache: taken before git reads it, and only
+ * the first time, so a change after any read leaves a snapshot that no longer matches. */
+const exists = async (inventory: Inventory, path: string): Promise<boolean> => {
+  let snapshot: Snapshot = undefined;
   try {
-    await stat(path);
-    return true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return false;
-    }
-    return refuse(`the include ${path} cannot be inspected`);
+    snapshot = await snapshotOf(path);
+  } catch {
+    refuse(`the include ${path} cannot be inspected`);
   }
+  if (!inventory.snapshots.has(path)) {
+    inventory.snapshots.set(path, snapshot);
+  }
+  return snapshot !== undefined;
 };
 
 /** The include paths one file names, as git expands them (`~/`, `%(prefix)/`), made absolute. */
@@ -140,18 +157,24 @@ const includesOf = async (read: ReadGit, file: string): Promise<string[]> => {
     .map((path) => (isAbsolute(path) ? path : join(dirname(file), path)));
 };
 
-// The files git reads directly are exempt from the checkout test: the checkout's own `.git/config`
-// is one of them, written by refs and out of a tracked file's reach.
-/** Whether `at` is a file not yet read, after the bounds and the checkout test. */
+/** Keeps an include for the cache's own checkout test, and refuses one inside this checkout. */
+const noteInclude = async (inventory: Inventory, at: Visit): Promise<void> => {
+  if (!at.direct) {
+    inventory.includes.push(at.file);
+    await assertOutsideCheckout(at.file, inventory.roots);
+  }
+};
+
+/** Whether `at` is a file not yet read, after the bounds and the checkout test — which files git
+ * reads directly skip: the checkout's own `.git/config` is one, out of a tracked file's reach. */
 const admit = async (inventory: Inventory, at: Visit): Promise<boolean> => {
   if (at.depth > MAX_DEPTH || inventory.files.size >= MAX_FILES) {
     refuse('the include graph is deeper or wider than refs follows');
   }
-  if (!at.direct) {
-    await assertOutsideCheckout(at.file, inventory);
-  }
+  await noteInclude(inventory, at);
+  const present = await exists(inventory, at.file);
   const real = await canonical(at.file);
-  if (inventory.files.has(real) || !(await exists(at.file))) {
+  if (inventory.files.has(real) || !present) {
     return false;
   }
   inventory.files.add(real);
@@ -207,8 +230,18 @@ const checkoutRoots = (ctx: LabelContext): string[] => {
   ];
 };
 
-const inventoryLabels = async (read: ReadGit, ctx: LabelContext): Promise<Set<string>> => {
-  const inventory: Inventory = { files: new Set(), labels: new Set(), roots: checkoutRoots(ctx) };
+const inventoryLabels = async (
+  read: ReadGit,
+  ctx: LabelContext,
+  roots: readonly string[],
+): Promise<Inventory> => {
+  const inventory: Inventory = {
+    files: new Set(),
+    includes: [],
+    labels: new Set(),
+    roots,
+    snapshots: new Map(),
+  };
   const listing = ['config', '--list', '--no-includes', '--null', '--show-origin'];
   const entries = parseOrigins(await readOrRefuse(read, listing));
   for (const entry of entries) {
@@ -225,6 +258,23 @@ const inventoryLabels = async (read: ReadGit, ctx: LabelContext): Promise<Set<st
     // eslint-disable-next-line no-await-in-loop -- sequential keeps the file bound exact
     await visitFile(read, inventory, visit);
   }
+  return inventory;
+};
+
+/** The labels, from the cache when nothing the inventory read has changed. A cached inventory's
+ * includes are checked against THIS command's checkout, which no cache entry can answer for. */
+const labelsFor = async (read: ReadGit, ctx: LabelContext): Promise<ReadonlySet<string>> => {
+  const roots = checkoutRoots(ctx);
+  const cached = await ctx.cache?.store.lookup(ctx.cache.key);
+  if (cached !== undefined) {
+    for (const include of cached.includes) {
+      // eslint-disable-next-line no-await-in-loop -- refusal order follows the graph's
+      await assertOutsideCheckout(include, roots);
+    }
+    return cached.labels;
+  }
+  const inventory = await inventoryLabels(read, ctx, roots);
+  ctx.cache?.store.store(ctx.cache.key, inventory);
   return inventory.labels;
 };
 
@@ -236,7 +286,7 @@ const hookLabelArgs = async (
   ctx: LabelContext,
 ): Promise<{ args: string[] } | { refusal: string }> => {
   try {
-    const labels = await inventoryLabels(read, ctx);
+    const labels = await labelsFor(read, ctx);
     return { args: [...labels].flatMap((label) => ['-c', `hook.${label}.enabled=false`]) };
   } catch (error) {
     if (error instanceof InventoryRefusalError) {
@@ -246,44 +296,5 @@ const hookLabelArgs = async (
   }
 };
 
-// Configured hooks exist from git 2.54. An unreadable version gets no inventory: the probe fails
-// only when git cannot start, and then neither can the command it guards.
-const GIT_VERSION = /^git version (?<major>\d+)\.(?<minor>\d+)/u;
-const FIRST_WITH_HOOKS = { major: 2, minor: 54 } as const;
-
-const hasConfiguredHooks = (version: string): boolean => {
-  const groups = GIT_VERSION.exec(version.trim())?.groups;
-  const major = Number(groups?.['major'] ?? 0);
-  const minor = Number(groups?.['minor'] ?? 0);
-  return (
-    major > FIRST_WITH_HOOKS.major ||
-    (major === FIRST_WITH_HOOKS.major && minor >= FIRST_WITH_HOOKS.minor)
-  );
-};
-
-// Exit code of a git command refs refused to start; the reason is in `stderr`.
-const REFUSED_EXIT_CODE = 1;
-
-type SpawnGit = (args: readonly string[], env: NodeJS.ProcessEnv) => Promise<RunResult>;
-type PolicyContext = LabelContext & { version: string };
-
-/** Whether `args` is the version probe, which must not wait on the version. */
-const isVersionProbe = (args: readonly string[]): boolean =>
-  args.length === 1 && args[0] === '--version';
-
-/** The label arguments for one git command on the git that printed `version`: none before 2.54.
- *
- * The inventory runs without `GIT_CONFIG`: that variable redirects the `config` subcommand alone,
- * so with it set the listing would describe a file the guarded command never reads. */
-const hookLabelPolicy = (
-  spawnGit: SpawnGit,
-  ctx: PolicyContext,
-): Promise<{ args: string[] } | { refusal: string }> => {
-  if (!hasConfiguredHooks(ctx.version)) {
-    return Promise.resolve({ args: [] });
-  }
-  const { GIT_CONFIG: _ignored, ...env } = process.env;
-  return hookLabelArgs((args) => spawnGit(args, env), ctx);
-};
-
-export { REFUSED_EXIT_CODE, hookLabelArgs, hookLabelPolicy, isVersionProbe };
+export { hookLabelArgs };
+export type { LabelContext };
