@@ -173,6 +173,8 @@ const DECLINE_RIGHT = [
   DECLINE,
   `refs edit toolkit --decline --path "packages/a b" --package '@toolkit/c$(id)'\n`,
   String.raw`refs edit --package "@toolkit/c\$(id)" --path=packages/a\ b --decline local/fixtures/toolkit --json`,
+  // Every metacharacter escaped, unquoted: the shell hands refs the same literal name.
+  String.raw`refs edit --package=@toolkit/c\$\(id\) --decline --path=packages/a\ b toolkit`,
   `\n  ${DECLINE}  \n\n`,
 ];
 
@@ -190,6 +192,8 @@ const DECLINE_WRONG = [
   ],
   // Double quotes run the substitution: refs would decline a package named after `id`'s output.
   [`refs edit --package="@toolkit/c$(id)" --decline --path='packages/a b' toolkit\n`, QUOTED],
+  // Only the `$` escaped: the bare `(` is a shell syntax error, so refs never runs.
+  [`refs edit --package=@toolkit/c\\$(id) --decline --path='packages/a b' toolkit\n`, QUOTED],
   [
     "refs edit --package='@toolkit/c$(id)' --decline --path=packages/a b toolkit\n",
     ['decline-command-is-quoted', 'no-unquoted-space'],

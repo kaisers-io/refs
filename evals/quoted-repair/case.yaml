@@ -34,12 +34,12 @@ graders:
   # and `--path` with BOTH values quoted, and `--decline`. It must be the WHOLE file, token by
   # token: anchored at its start and its end (`^` and `$` are whole-input anchors here), so a
   # command inside a shell comment, an extra argument, or anything on a further line, indented or
-  # not, leaves no match. `$(…)` must stay literal: single quotes, or `\$` inside double quotes.
-  # The space may be quoted either way or escaped. A missing or wrong ref key fails: refs would
+  # not, leaves no match. `$(…)` must stay literal: single quotes, `\$` inside double quotes, or
+  # `\$\(…\)` unquoted. The space may be quoted either way or escaped. A missing or wrong ref key fails: refs would
   # exit 2 or edit a different ref.
   - name: decline-command-is-quoted
     type: regex
-    pattern: '^\s*refs edit(?=[^\n]*--package)(?=[^\n]*--path)(?=[^\n]*[ \t]--decline)(?:[ \t]+(?:--package(?:=|[ \t]+)(?:''@toolkit/c\$\(id\)''|"@toolkit/c\\\$\(id\)")|--path(?:=|[ \t]+)(?:''packages/a b''|"packages/a b"|packages/a\\ b)|--decline|--json|--verbose))*[ \t]+(?:(?:local/fixtures/)?toolkit|''(?:local/fixtures/)?toolkit''|"(?:local/fixtures/)?toolkit")(?:[ \t]+(?:--package(?:=|[ \t]+)(?:''@toolkit/c\$\(id\)''|"@toolkit/c\\\$\(id\)")|--path(?:=|[ \t]+)(?:''packages/a b''|"packages/a b"|packages/a\\ b)|--decline|--json|--verbose))*\s*$'
+    pattern: '^\s*refs edit(?=[^\n]*--package)(?=[^\n]*--path)(?=[^\n]*[ \t]--decline)(?:[ \t]+(?:--package(?:=|[ \t]+)(?:''@toolkit/c\$\(id\)''|"@toolkit/c\\\$\(id\)"|@toolkit/c\\\$\\\(id\\\))|--path(?:=|[ \t]+)(?:''packages/a b''|"packages/a b"|packages/a\\ b)|--decline|--json|--verbose))*[ \t]+(?:(?:local/fixtures/)?toolkit|''(?:local/fixtures/)?toolkit''|"(?:local/fixtures/)?toolkit")(?:[ \t]+(?:--package(?:=|[ \t]+)(?:''@toolkit/c\$\(id\)''|"@toolkit/c\\\$\(id\)"|@toolkit/c\\\$\\\(id\\\))|--path(?:=|[ \t]+)(?:''packages/a b''|"packages/a b"|packages/a\\ b)|--decline|--json|--verbose))*\s*$'
     target: { source: file, path: decline-command.txt }
   # The failures this exists to catch, graded on the same file so a warning in the prose about the
   # wrong spelling cannot count against the agent.

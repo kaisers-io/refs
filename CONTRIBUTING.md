@@ -228,3 +228,7 @@ To add a case, create `evals/<name>/case.yaml` and an executable `scaffold.sh` t
 `../lib.sh`.
 Before you trust a grader, feed it a wrong answer and check that it fails. A grader that passes
 on an empty run pins nothing.
+The repair-command graders of `drift-repairs` and `quoted-repair` keep their wrong and right
+commands in `scripts/skill-evals/repair-graders.test.mjs`, which CI runs without a model
+(`node --test scripts/skill-evals/repair-graders.test.mjs`). When you change one of those patterns,
+add the command it must now reject or accept there.
