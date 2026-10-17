@@ -11,10 +11,13 @@ skill fetches, tracks, or suggests. Real ones come from the user's own config, v
 **The `refs <verb> …` lines under each heading are SYNOPSES — they show the grammar, not a line to
 paste.** `<ref>`, `<name>`, `<path>` and `<version>` stand for values that reach you from a
 tracked repository or from the user, and every one of them is single-quoted when you actually run
-something: `refs edit --package='<name>' path '<new-path>' '<ref>'`. Close and reopen the quote
-around any single quote in a value (`'a'\''b'`), and attach an option's value with `=` so a value
-beginning with `-` is not read as the next option. The runnable lines elsewhere in this skill are
-written that way; see _Never build a shell command out of a value refs reported_ below.
+something: `refs edit '<ref>' --package='<name>' path '<new-path>' --json`. Options may move, but
+positional arguments keep their order — the ref first, then the field, then its value. Written
+last, the ref would be read as the value, the new path as the field, and `path` as the ref query.
+Close and reopen the quote around any single quote in a value (`'a'\''b'`), and attach an option's
+value with `=` so a value beginning with `-` is not read as the next option. The runnable lines
+elsewhere in this skill are written that way; see _Never build a shell command out of a value
+refs reported_ below.
 
 ## Envelope, streams, exit codes
 
@@ -495,12 +498,17 @@ single-quote every interpolated value and close-and-reopen the quote around any 
 
 Show the user the command
 and what was found — a removal in particular discards an entry they may have written by hand.
-`unregistered` is the one finding that is not about an entry the config already has. It comes from two places: the repository root (which is
-never one of its own glob targets, so `refs add` could not have registered it) and workspace
-members. `refs sync` reports only members whose _name the repository did not already have_ before
-the range it just fetched, so it is genuinely new upstream rather than something the user chose to
-leave out — a package that merely moved to another directory is not new, and one renamed in place
-is. `refs doctor` lists every unregistered member, because it was asked to.
+`unregistered` is the one finding that is not about an entry the config already has. It comes from
+two places: the repository root and workspace members. The root is never one of its own glob
+targets; `refs add` finds a root that declares a name by probing it separately, and proposes it at
+`.` beside the members. So an unregistered root is one `refs add` never saw — the ref was added
+before roots were probed, or the root took its name upstream later — or one left out of the
+proposal or removed since (a declined root is not reported). Not every root is registered even on
+a fresh add: a root with no name has nothing to register, and a workspace member declaring the
+same name wins over the root. `refs sync` reports only members whose _name the repository did not
+already have_ before the range it just fetched, so it is genuinely new upstream rather than
+something the user chose to leave out — a package that merely moved to another directory is not
+new, and one renamed in place is. `refs doctor` lists every unregistered member, because it was asked to.
 
 One shape `refs sync` misses: a member whose `package.json` is a **symlink** into the repository
 declares its name somewhere else, so renaming it changes a file no package directory contains and
