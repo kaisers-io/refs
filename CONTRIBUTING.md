@@ -72,7 +72,10 @@ that directory it is `node bin/refs.mjs <args>`; from the repository root,
   coverage thresholds are the contract. If a rule is genuinely wrong, say so and argue the case.
   Do not turn it off to get a green tick.
 - **Editing version numbers by hand.** Two files carry the released version and CI compares them.
-  Use `pnpm versions --set <version>`.
+  Use `pnpm versions --set <version>`, then `pnpm codex-plugin --write`, which copies the skill and
+  the version into the Codex plugin.
+- **Editing `codex-plugin/skills/refs/` instead of `skills/refs/`.** The plugin's copy is generated.
+  Edit the skill, then run `pnpm codex-plugin --write`. CI fails while the two differ.
 - **Changing only one changelog.** `CHANGELOG.md` and `packages/cli/CHANGELOG.md` must stay
   byte-identical, and the release workflow enforces it with `cmp`. The packaged copy is what npm
   users see, so both move together.

@@ -32,6 +32,34 @@ mkdir -p ~/.claude/skills                                     # or ~/.codex/skil
 cp -r <path-to-this-repo>/skills/refs ~/.claude/skills/refs
 ```
 
+### As a Codex plugin (preview)
+
+Codex can also install the skill as a plugin from this repository's marketplace:
+
+```bash
+codex plugin marketplace add kaisers-io/refs
+codex plugin add refs@kaisers-io
+```
+
+The plugin contains the skill and nothing else: no hooks, no MCP server and no scripts, so installing
+it runs nothing. It does not install the CLI. Install `@kaisers-io/refs` from npm as above, together
+with Node.js and git. The skill checks the CLI version itself and tells you what to update when the
+two disagree.
+
+Codex names a plugin's skill after the plugin, so this one is `refs:refs`. Like the standalone skill,
+it only runs when you invoke it explicitly. To update, run `codex plugin marketplace upgrade
+kaisers-io`. To remove it, run `codex plugin remove refs@kaisers-io`.
+
+Use either the plugin or the standalone skill, not both. With both installed, Codex lists `refs`
+and `refs:refs` as two separate skills. Remove one of them. `refs doctor` reads the plugin's copy
+when the plugin is enabled, and names `codex plugin marketplace upgrade kaisers-io` when it is
+behind the CLI (see [the `skill` check](commands.md#the-skill-check)).
+
+`codex plugin marketplace upgrade` also refreshes the installed copy when the marketplace has moved
+on. That is what Codex's source does (`openai/codex`, `core-plugins/src/manager.rs`: a changed
+snapshot force-reinstalls every configured plugin from it). If a copy stays behind anyway,
+`codex plugin remove refs@kaisers-io` followed by `codex plugin add refs@kaisers-io` reinstalls it.
+
 ## Checking it
 
 ```bash
