@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`refs remove` no longer fails when a sibling appears while it prunes empty parent directories.** If another process created something in a parent directory between refs finding it empty and removing it (a concurrent `refs add` of a sibling ref under the same owner, for example), the removal reported an error and left the ref registered although its checkout was already gone. A directory that is no longer empty is where pruning stops anyway; the removal now succeeds and the sibling is left alone.
+
 ## [0.18.2] - 2026-10-13
 
 ### Security

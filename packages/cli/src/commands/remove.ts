@@ -2,6 +2,7 @@ import type { Config, RefKey, RefsHome, State } from '@kaisers-io/refs-core';
 import {
   assertInsideSources,
   checkoutPath,
+  errnoCode,
   isEnoent,
   readConfig,
   readState,
@@ -88,8 +89,30 @@ const isRealDirectory = async (dir: string): Promise<boolean | undefined> => {
   }
 };
 
+// What `rmdir` reports for a directory that is not empty: POSIX allows either, Node on Windows
+// reports ENOTEMPTY.
+const NOT_EMPTY_CODES: ReadonlySet<string | undefined> = new Set(['ENOTEMPTY', 'EEXIST']);
+
+/** `rmdir(dir)`: `true` if `dir` is gone (removed here, or already), `false` if something arrived
+ * in it after the `readdir` that found it empty — another process (a concurrent `refs add` of a
+ * sibling) is using it, which is where pruning stops anyway. Anything else is thrown. */
+const rmdirIfStillEmpty = async (dir: string): Promise<boolean> => {
+  try {
+    await rmdir(dir);
+    return true;
+  } catch (error) {
+    if (isEnoent(error)) {
+      return true;
+    }
+    if (NOT_EMPTY_CODES.has(errnoCode(error))) {
+      return false;
+    }
+    throw error;
+  }
+};
+
 /** The actual `readdir`-then-`rmdir` removal, once `removeIfEmpty` has already confirmed `dir` is
- * a real directory. Same "gone either way" contract as `removeIfEmpty`. */
+ * a real directory. Same contract as `removeIfEmpty`. */
 const removeEmptyDirectory = async (dir: string): Promise<boolean> => {
   const entries = await readdirSafe(dir);
   if (entries === undefined) {
@@ -98,14 +121,7 @@ const removeEmptyDirectory = async (dir: string): Promise<boolean> => {
   if (entries.length > 0) {
     return false;
   }
-  try {
-    await rmdir(dir);
-  } catch (error) {
-    if (!isEnoent(error)) {
-      throw error;
-    }
-  }
-  return true;
+  return rmdirIfStillEmpty(dir);
 };
 
 /** Removes `dir` if it exists and is now empty, reporting back whether pruning should continue
