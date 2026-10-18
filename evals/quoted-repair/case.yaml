@@ -52,12 +52,12 @@ graders:
     match: not_contains
     target: { source: file, path: decline-command.txt }
   # One line, one command: a file carrying a second statement is not the command refs printed, and
-  # `;`, `&&`, `|` and a newline are how a second one gets in. Any non-blank line after the first
-  # counts, indented or not (a shell runs `  touch x` just the same) and a `#` note too; blank lines
-  # and surrounding whitespace do not.
+  # `;`, `&&`, `|`, a backtick substitution and a newline are how a second one gets in. Any
+  # non-blank line after the first counts, indented or not (a shell runs `  touch x` just the same)
+  # and a `#` note too; blank lines and surrounding whitespace do not.
   - name: one-command-only
     type: regex
-    pattern: '[;&|]|\S[^\n]*\n\s*\S'
+    pattern: '[;&|`]|\S[^\n]*\n\s*\S'
     match: not_contains
     target: { source: file, path: decline-command.txt }
   # Report-only: the decision is the user's.
