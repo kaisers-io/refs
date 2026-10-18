@@ -1,7 +1,8 @@
 import type { RunResult, Runner } from '../proc/runner.ts';
 import { gitSpec, runOrThrow } from './run-step.ts';
-import { rm, stat } from 'node:fs/promises';
+import { lstat, rm } from 'node:fs/promises';
 import type { CloneMode } from '../schemas/primitives.ts';
+import { join } from 'node:path';
 import { withCloneArgs } from './clone-args.ts';
 
 // `git clone` for a managed checkout, and what happens to `dest` when it fails. Split out of
@@ -25,9 +26,10 @@ type CloneResult = {
 // see repo.test.ts) when the server ignores `--filter=...` and performs a full clone instead.
 const FILTER_NOT_HONOURED_PATTERN = /filtering not recognized/iu;
 
+// `lstat`, not `stat`: a symlink at the path counts as present even when it dangles.
 const exists = async (path: string): Promise<boolean> => {
   try {
-    await stat(path);
+    await lstat(path);
     return true;
   } catch {
     return false;
@@ -38,8 +40,10 @@ const exists = async (path: string): Promise<boolean> => {
 // `.git` and the managed `core.hooksPath` already written by `clone -c`, which `refs add`'s reuse
 // path would then adopt as a finished checkout. So a `dest` this clone created is removed again.
 // Only after the runner has returned, which is after the child and every descendant holding its
-// output have exited, so nothing is still writing into it; and never a `dest` that existed before,
-// so a failure can never delete a checkout refs did not just start.
+// output have exited, so nothing is still writing into it. Never a `dest` that existed before
+// (anything at the path, a dangling symlink included), and only a `dest` that has `.git` now: git
+// creates that first, so a path without it is not this clone's work but whatever else put it
+// there while the clone ran.
 const cloneOrCleanUp = async (runner: Runner, opts: CloneOpts): Promise<RunResult> => {
   const existed = await exists(opts.dest);
   try {
@@ -50,7 +54,7 @@ const cloneOrCleanUp = async (runner: Runner, opts: CloneOpts): Promise<RunResul
       }),
     );
   } catch (error) {
-    if (!existed) {
+    if (!existed && (await exists(join(opts.dest, '.git')))) {
       await rm(opts.dest, { force: true, recursive: true });
     }
     throw error;

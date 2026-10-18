@@ -1,6 +1,15 @@
 import type { RunOpts, RunResult, Runner } from '../../src/proc/runner.ts';
 import { describe, expect, it } from 'vitest';
-import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises';
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readlink,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { FakeRunner } from '../../src/proc/fake-runner.ts';
 import { cloneRepo } from '../../src/git/repo.ts';
 import { join } from 'node:path';
@@ -26,6 +35,34 @@ class HalfCloneRunner implements Runner {
     return { exitCode: KILLED, stderr: 'Cloning into…', stdout: '', timedOut: true };
   }
 }
+
+/** A clone that fails before creating anything, as git does when `dest` is a dangling symlink. */
+const refusedClone: Runner = {
+  run: () =>
+    Promise.resolve({
+      exitCode: 128,
+      stderr: 'fatal: could not create work tree dir: File exists',
+      stdout: '',
+    }),
+};
+
+/** Something else creates `dest`, without `.git`, while the clone runs and fails. */
+const concurrentDir: Runner = {
+  run: async (_cmd, args) => {
+    const dest = args.findLast(() => true) ?? '';
+    await mkdir(dest, { recursive: true });
+    await writeFile(join(dest, 'theirs.txt'), 'not refs\n');
+    return { exitCode: 128, stderr: 'fatal: destination path already exists', stdout: '' };
+  },
+};
+
+/** The clone fails after `.git` appeared behind `dest`, through a symlink that dangled before. */
+const throughLink = (target: string): Runner => ({
+  run: async () => {
+    await mkdir(join(target, '.git'), { recursive: true });
+    return { exitCode: 128, stderr: 'fatal: early EOF', stdout: '' };
+  },
+});
 
 const exists = async (path: string): Promise<boolean> => {
   try {
@@ -79,6 +116,43 @@ describe('a clone refs stopped at its network deadline', () => {
     await cloneInto(runner, dest).catch((error: unknown) => error);
 
     expect(runner.seen).toStrictEqual([{ timeoutMs: TIMEOUT_MS }]);
+  });
+});
+
+describe('a failed clone and a dest it did not create', () => {
+  // Symlinks need privileges on Windows; the logic under test has no platform branch.
+  it.skipIf(process.platform === 'win32')(
+    'keeps a dangling symlink that was there before',
+    async () => {
+      expect.hasAssertions();
+      const dest = await freshDest();
+      await symlink(join(dest, '..', 'nowhere'), dest);
+
+      await expect(cloneInto(refusedClone, dest)).rejects.toThrow('File exists');
+      await expect(lstat(dest).then((entry) => entry.isSymbolicLink())).resolves.toBe(true);
+      await expect(readlink(dest)).resolves.toBe(join(dest, '..', 'nowhere'));
+    },
+  );
+
+  it.skipIf(process.platform === 'win32')(
+    'keeps a symlink that dangled before, even once .git shows through it',
+    async () => {
+      expect.hasAssertions();
+      const dest = await freshDest();
+      const target = join(dest, '..', 'elsewhere');
+      await symlink(target, dest);
+
+      await expect(cloneInto(throughLink(target), dest)).rejects.toThrow('early EOF');
+      await expect(lstat(dest).then((entry) => entry.isSymbolicLink())).resolves.toBe(true);
+    },
+  );
+
+  it('keeps a directory without .git that appeared while the clone ran', async () => {
+    expect.hasAssertions();
+    const dest = await freshDest();
+
+    await expect(cloneInto(concurrentDir, dest)).rejects.toThrow('already exists');
+    await expect(readFile(join(dest, 'theirs.txt'), 'utf8')).resolves.toBe('not refs\n');
   });
 });
 

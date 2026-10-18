@@ -16,7 +16,7 @@ import { win32 } from 'node:path';
 //   cannot prompt on it; refs already turns git's terminal prompt off (child-env.ts), and ssh then
 //   uses its agent or SSH_ASKPASS. A child without a deadline is spawned exactly as before.
 // - Windows: `taskkill /T /F` on the child's tree, while the child is still alive (taskkill finds
-//   descendants through their live root). taskkill is started from `%SystemRoot%\System32` by
+//   descendants through their live root); never on a root that already exited. taskkill is started from `%SystemRoot%\System32` by
 //   absolute path, never looked up on PATH or in the working directory, which is a checkout. It is
 //   started with the `spawn` runner.ts hands in: runner.ts stays the one module that imports a
 //   process starter (spawn-surface.test.ts).
@@ -77,8 +77,24 @@ const taskkillPath = (env: NodeJS.ProcessEnv): string | undefined => {
 /** Windows: `taskkill /T /F` on the child's tree; the plain kill when taskkill cannot run. */
 type Start = typeof spawn;
 
-const killWindowsTree = (child: ChildProcess, start: Start): void => {
-  const taskkill = taskkillPath(process.env);
+const hasExited = (child: ChildProcess): boolean =>
+  child.exitCode !== null || child.signalCode !== null;
+
+// A root that already exited while a helper still holds its pipes: taskkill names the tree by the
+// root's PID, which Windows may have handed to an unrelated process by now, and finds descendants
+// only through a live root, so it would reach nothing refs started. Closing refs' ends of the pipes
+// instead lets `run()` end at its deadline; the orphaned helper is left to its own timeout.
+const releaseExitedRoot = (child: ChildProcess): void => {
+  child.stdout?.destroy();
+  child.stderr?.destroy();
+};
+
+const killWindowsTree = (child: ChildProcess, start: Start, env = process.env): void => {
+  if (hasExited(child)) {
+    releaseExitedRoot(child);
+    return;
+  }
+  const taskkill = taskkillPath(env);
   if (child.pid === undefined || taskkill === undefined) {
     killChild(child, 'SIGTERM');
     return;
@@ -131,4 +147,4 @@ const armTimeout = (
   };
 };
 
-export { armTimeout, deadlineSpawnOpts, signalTree, taskkillPath };
+export { armTimeout, deadlineSpawnOpts, killWindowsTree, signalTree, taskkillPath };

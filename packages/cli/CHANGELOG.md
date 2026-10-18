@@ -79,7 +79,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   slow link. An unusable value is refused rather than read as "no deadline". At the deadline refs
   stops git together with the helpers it started (the https remote helper, `index-pack`, ssh),
   which would otherwise keep waiting on the server; with a deadline set those commands cannot
-  prompt on the terminal, so use a credential helper, `GIT_ASKPASS` or an ssh agent.
+  prompt on the terminal, so use a credential helper, `GIT_ASKPASS` or an ssh agent. On Windows,
+  when git itself has already exited and only a helper is left, refs does not run taskkill on git's
+  process ID, which may belong to another process by then; it closes its end of the output pipes
+  and returns at the deadline.
 
 ### Changed
 
@@ -95,8 +98,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A clone that fails part-way no longer leaves a checkout behind that a retry adopts.** A clone
   stopped before it finished could leave its directory with `.git` and the managed hooks path
   already in place, and the next `refs add` treated that as a finished checkout and failed on it.
-  refs now removes a checkout directory the failed clone created. It never removes one that existed
-  before the clone started.
+  refs now removes a checkout directory the failed clone created. It never removes anything that
+  was at that path before the clone started (a dangling symlink included), nor a directory without
+  `.git`, which is not the clone's work.
 
 ## [0.18.2] - 2026-10-13
 
