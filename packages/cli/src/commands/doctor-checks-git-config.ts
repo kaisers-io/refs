@@ -17,10 +17,10 @@ import type { CliContext } from '../context.ts';
 // Each needs a definition already in the invoking user's own git configuration. A tracked
 // repository cannot create one; its `.gitattributes` can only choose when an existing filter
 // applies. refs now runs neither for its own commands: content filters are off in every checkout
-// (core git/filter-guard.ts), configured hooks are switched off per event and git 2.54.x is
-// refused (core proc/git-policy.ts, proc/git-version-gate.ts). So a definition found here is
-// reported as information, `ok`: it still applies to whatever an agent itself runs in a checkout,
-// which refs does not govern. refs keeps the ambient configuration otherwise — it carries the
+// (core git/filter-guard.ts), configured hooks are switched off per event and per label and git
+// 2.54.x is refused (core proc/git-policy.ts, git-hook-labels.ts, git-version-gate.ts). So a
+// definition found here is reported as information, `ok`: it still applies to whatever an agent
+// itself runs in a checkout, which refs does not govern. refs keeps the ambient configuration otherwise — it carries the
 // credential helpers, proxies and `insteadOf` rules a private clone needs.
 //
 // What this does NOT do is judge whether a particular command is dangerous. An earlier version

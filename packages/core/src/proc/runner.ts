@@ -1,9 +1,11 @@
-import { REFUSED_EXIT_CODE, gitVersionRefusal, isVersionProbe } from './git-version-gate.ts';
+import { REFUSED_EXIT_CODE, isVersionProbe } from './git-version-gate.ts';
 import { activeChildren, installCleanupOnce } from './spawn-cleanup.ts';
 import { appendNote, createCollector, withTruncationNote } from './spawn-collector.ts';
 import { armTimeout, deadlineSpawnOpts } from './spawn-timeout.ts';
 import type { ChildProcess } from 'node:child_process';
 import type { CollectedStream } from './spawn-collector.ts';
+import { GitGates } from './git-gate.ts';
+import type { GitPolicyOpts } from './git-policy.ts';
 import { once } from 'node:events';
 import { resolveExecutable } from './executable-path.ts';
 import { sanitizedChildEnv } from './child-env.ts';
@@ -46,11 +48,9 @@ type Runner = {
 // `Runner.run`'s contract (`exitCode: number`, never throws) always holds.
 const SIGNAL_KILLED_EXIT_CODE = 1;
 
-// `timeout(1)`'s own well-known "command timed out" exit code convention, reused here (rather than
-// inventing a fresh number) purely so log/detail output reads familiarly. It is NOT a reliable
-// signal on its own — a child can genuinely exit 124 of its own accord — so callers that need to
-// distinguish "this `run()` was killed by its own `timeoutMs`" from a real exit 124 must branch on
-// `RunResult.timedOut` (below) instead of this code.
+// `timeout(1)`'s "command timed out" exit code, reused so log output reads familiarly. NOT a
+// reliable signal on its own (a child can exit 124 itself): to tell "killed by its own
+// `timeoutMs`" from a real exit 124, callers branch on `RunResult.timedOut` instead.
 const TIMEOUT_EXIT_CODE = 124;
 
 // A child that could not start (not on PATH, ENOENT, EACCES, ...): `127` is the shell convention
@@ -67,8 +67,8 @@ const withTimeoutNote = (stderr: string, timeoutMs: number | undefined): string 
 // and `FakeRunner` already understand: `TIMEOUT_EXIT_CODE` for readable logging, `timedOut: true`
 // as the actual, unambiguous signal a caller must branch on (a real child that exits 124 on its
 // own gets this same `exitCode` but never this flag), and the timeout note so `--verbose`/log
-// output still explains why the command has no real output. `stdout` is always discarded here —
-// a timed-out command's partial stdout is never useful to callers, so it is always discarded.
+// output still explains why the command has no real output. A timed-out command's partial
+// stdout is never useful to callers, so it is discarded.
 const normalizeTimedOutResult = (stderr: string, timeoutMs: number | undefined): RunResult => ({
   exitCode: TIMEOUT_EXIT_CODE,
   stderr: withTimeoutNote(stderr, timeoutMs),
@@ -83,8 +83,8 @@ type RunningChild = {
   timeout: ReturnType<typeof armTimeout>;
 };
 
-// `file`: the absolute path `cmd` resolved to (executable-path.ts); `cmd` still decides policy.
-type StartOpts = RunOpts & { file: string; hooksDir?: string | undefined };
+// `file`: the absolute path `cmd` resolved to; `cmd` still decides policy.
+type StartOpts = RunOpts & GitPolicyOpts & { file: string };
 
 const startChild = (cmd: string, args: readonly string[], opts: StartOpts): RunningChild => {
   // `shell: false` is Node's default, so this changes nothing at runtime — it states the property
@@ -92,14 +92,13 @@ const startChild = (cmd: string, args: readonly string[], opts: StartOpts): Runn
   // tracked repository or the user supplied (a url, a ref key, a package path), and none of them is
   // shell-quoted on the way in, because there is no shell to quote for: `spawn` with an argv array
   // performs an execve. Measured with a `-c core.hooksPath=/tmp/hooks; touch /tmp/PWNED` value —
-  // the file is not created.
-  //
-  // Code scanning's `js/shell-command-constructed-from-input` findings here are false positives.
+  // the file is not created. Code scanning's `js/shell-command-constructed-from-input` findings
+  // here are false positives.
   //
   // `env` is a sanitized COPY of the parent's (child-env.ts): `cwd` is how refs names a repository,
   // and an inherited `GIT_DIR` would silently override it. A git command also gets refs' policy
   // options in front (git-policy.ts), so no call site can forget them.
-  const child = spawn(opts.file, withGitPolicy(cmd, args, opts.hooksDir), {
+  const child = spawn(opts.file, withGitPolicy(cmd, args, opts), {
     ...cwdOpt(opts.cwd),
     ...deadlineSpawnOpts(opts.timeoutMs),
     env: sanitizedChildEnv(process.env),
@@ -240,36 +239,38 @@ const buildCloseResult = (ctx: CloseContext): RunResult => {
   );
 };
 
-// `hooksDir`: refs' hooks directory, pinned as `core.hooksPath` on every git command.
-type SpawnRunnerOpts = { hooksDir?: string | undefined };
+// `hooksDir`: pinned as `core.hooksPath` on every git command. `sourcesDir`: refs' checkouts, which
+// no git include may point into. The gate (git-gate.ts) runs once per configuration environment.
+type SpawnRunnerOpts = { hooksDir?: string | undefined; sourcesDir?: string | undefined };
 
 class SpawnRunner implements Runner {
   readonly #hooksDir: string | undefined;
-  #refusal: Promise<string | undefined> | undefined;
+  readonly #sourcesDir: string | undefined;
+  readonly #gates = new GitGates();
 
   constructor(opts: SpawnRunnerOpts = {}) {
     this.#hooksDir = opts.hooksDir;
+    this.#sourcesDir = opts.sourcesDir;
   }
 
   async run(cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> {
-    if (cmd === 'git' && !isVersionProbe(args)) {
-      this.#refusal ??= this.#probeRefusal();
-      const refusal = await this.#refusal;
-      if (refusal !== undefined) {
-        return { exitCode: REFUSED_EXIT_CODE, stderr: refusal, stdout: '' };
-      }
+    if (cmd !== 'git' || isVersionProbe(args)) {
+      return this.#spawn(cmd, args, opts);
     }
-    return this.#spawn(cmd, args, opts);
+    const probe = (probeArgs: readonly string[], probeOpts: RunOpts): Promise<RunResult> =>
+      this.#spawn('git', probeArgs, probeOpts);
+    const gate = await this.#gates.for(probe, this.#sourcesDir);
+    if (gate.refusal !== undefined) {
+      return { exitCode: REFUSED_EXIT_CODE, stderr: gate.refusal, stdout: '' };
+    }
+    return this.#spawn(cmd, args, { ...opts, labelArgs: gate.labelArgs });
   }
 
-  // Once per runner: a failed probe (no git at all) refuses nothing, and the real command then
-  // fails with its own, clearer error.
-  async #probeRefusal(): Promise<string | undefined> {
-    const probe = await this.#spawn('git', ['--version']);
-    return gitVersionRefusal(probe.stdout);
-  }
-
-  async #spawn(cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> {
+  async #spawn(
+    cmd: string,
+    args: readonly string[],
+    opts?: RunOpts & GitPolicyOpts,
+  ): Promise<RunResult> {
     installCleanupOnce();
     const running = await startResolved(cmd, args, { ...opts, hooksDir: this.#hooksDir });
     if (isRunResult(running)) {
