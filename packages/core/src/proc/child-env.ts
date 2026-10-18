@@ -37,14 +37,33 @@ const REPO_LOCAL_GIT_ENV: ReadonlySet<string> = new Set([
   'GIT_WORK_TREE',
 ]);
 
-const isRepoLocal = (name: string, platform: NodeJS.Platform): boolean =>
-  REPO_LOCAL_GIT_ENV.has(platform === 'win32' ? name.toUpperCase() : name);
+// `GIT_TERMINAL_PROMPT=0` unless the user set it. refs runs git with stdin ignored, but git asks
+// for https credentials on `/dev/tty`, not stdin: with no credential helper, `refs add` or
+// `refs sync` would wait at a prompt an agent never sees, holding the per-ref lock. With the
+// variable at `0` git fails at once with "terminal prompts disabled", which refs turns into a
+// message naming the fix. Credential helpers and `GIT_ASKPASS` are unaffected (git(1)), and a
+// user who wants to type a password sets `GIT_TERMINAL_PROMPT=1` — an explicit value always wins.
+const TERMINAL_PROMPT = 'GIT_TERMINAL_PROMPT';
 
-/** A copy of `env` without git's repository-locating variables. Never mutates `env`. */
+const normalized = (name: string, platform: NodeJS.Platform): string =>
+  platform === 'win32' ? name.toUpperCase() : name;
+
+const isRepoLocal = (name: string, platform: NodeJS.Platform): boolean =>
+  REPO_LOCAL_GIT_ENV.has(normalized(name, platform));
+
+const hasTerminalPromptSetting = (env: NodeJS.ProcessEnv, platform: NodeJS.Platform): boolean =>
+  Object.keys(env).some((name) => normalized(name, platform) === TERMINAL_PROMPT);
+
+/** A copy of `env` without git's repository-locating variables, and with git's terminal prompt off
+ * unless `env` already says otherwise. Never mutates `env`. */
 const sanitizedChildEnv = (
   env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform = process.platform,
-): NodeJS.ProcessEnv =>
-  Object.fromEntries(Object.entries(env).filter(([name]) => !isRepoLocal(name, platform)));
+): NodeJS.ProcessEnv => {
+  const kept = Object.fromEntries(
+    Object.entries(env).filter(([name]) => !isRepoLocal(name, platform)),
+  );
+  return hasTerminalPromptSetting(env, platform) ? kept : { ...kept, [TERMINAL_PROMPT]: '0' };
+};
 
 export { REPO_LOCAL_GIT_ENV, sanitizedChildEnv };

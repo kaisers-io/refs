@@ -39,6 +39,8 @@ const GIT_LOCAL_ENV_MINUS_CONFIG = [
   'GIT_WORK_TREE',
 ];
 
+const PROMPT_OFF = { GIT_TERMINAL_PROMPT: '0' };
+
 describe('the environment refs hands to a child process', () => {
   it('removes every repository-locating variable git itself clears', () => {
     expect.hasAssertions();
@@ -57,9 +59,9 @@ describe('the environment refs hands to a child process', () => {
     expect.hasAssertions();
     const env = { Git_Dir: 'C:\\other\\.git', PATH: 'C:\\', git_index_file: 'C:\\other\\index' };
 
-    expect(sanitizedChildEnv(env, 'win32')).toStrictEqual({ PATH: 'C:\\' });
+    expect(sanitizedChildEnv(env, 'win32')).toStrictEqual({ ...PROMPT_OFF, PATH: 'C:\\' });
     // POSIX names are case-sensitive: git reads `GIT_DIR`, never `Git_Dir`.
-    expect(sanitizedChildEnv(env, 'linux')).toStrictEqual(env);
+    expect(sanitizedChildEnv(env, 'linux')).toStrictEqual({ ...env, ...PROMPT_OFF });
   });
 
   it('returns a copy and leaves the environment it was given untouched', () => {
@@ -76,5 +78,32 @@ describe('the environment refs hands to a child process', () => {
     expect.hasAssertions();
 
     expect([...REPO_LOCAL_GIT_ENV].toSorted()).toStrictEqual(GIT_LOCAL_ENV_MINUS_CONFIG);
+  });
+});
+
+// git asks for https credentials on /dev/tty, which an ignored stdin does not prevent; an agent
+// never sees that prompt and refs holds the per-ref lock while it waits.
+describe('git terminal prompts in a child process', () => {
+  it('are switched off when the user has not said otherwise', () => {
+    expect.hasAssertions();
+
+    expect(sanitizedChildEnv({ PATH: '/usr/bin' }, 'linux')).toStrictEqual({
+      ...PROMPT_OFF,
+      PATH: '/usr/bin',
+    });
+  });
+
+  it.each(['1', '0', ''])('follow an explicit setting of %j', (value) => {
+    expect.hasAssertions();
+    const env = { GIT_TERMINAL_PROMPT: value, PATH: '/usr/bin' };
+
+    expect(sanitizedChildEnv(env, 'linux')).toStrictEqual(env);
+  });
+
+  it('recognise an explicit setting in any case on Windows', () => {
+    expect.hasAssertions();
+    const env = { Git_Terminal_Prompt: '1', PATH: 'C:\\' };
+
+    expect(sanitizedChildEnv(env, 'win32')).toStrictEqual(env);
   });
 });

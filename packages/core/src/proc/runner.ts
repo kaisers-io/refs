@@ -1,11 +1,11 @@
 import { REFUSED_EXIT_CODE, isVersionProbe } from './git-version-gate.ts';
 import { activeChildren, installCleanupOnce } from './spawn-cleanup.ts';
 import { appendNote, createCollector, withTruncationNote } from './spawn-collector.ts';
+import { armTimeout, deadlineSpawnOpts } from './spawn-timeout.ts';
 import type { ChildProcess } from 'node:child_process';
 import type { CollectedStream } from './spawn-collector.ts';
 import { GitGates } from './git-gate.ts';
 import type { GitPolicyOpts } from './git-policy.ts';
-import { armTimeout } from './spawn-timeout.ts';
 import { once } from 'node:events';
 import { resolveExecutable } from './executable-path.ts';
 import { sanitizedChildEnv } from './child-env.ts';
@@ -92,15 +92,15 @@ const startChild = (cmd: string, args: readonly string[], opts: StartOpts): Runn
   // tracked repository or the user supplied (a url, a ref key, a package path), and none of them is
   // shell-quoted on the way in, because there is no shell to quote for: `spawn` with an argv array
   // performs an execve. Measured with a `-c core.hooksPath=/tmp/hooks; touch /tmp/PWNED` value —
-  // the file is not created.
-  //
-  // Code scanning's `js/shell-command-constructed-from-input` findings here are false positives.
+  // the file is not created. Code scanning's `js/shell-command-constructed-from-input` findings
+  // here are false positives.
   //
   // `env` is a sanitized COPY of the parent's (child-env.ts): `cwd` is how refs names a repository,
   // and an inherited `GIT_DIR` would silently override it. A git command also gets refs' policy
   // options in front (git-policy.ts), so no call site can forget them.
   const child = spawn(opts.file, withGitPolicy(cmd, args, opts), {
     ...cwdOpt(opts.cwd),
+    ...deadlineSpawnOpts(opts.timeoutMs),
     env: sanitizedChildEnv(process.env),
     shell: false,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -114,7 +114,7 @@ const startChild = (cmd: string, args: readonly string[], opts: StartOpts): Runn
   child.stderr.on('data', (chunk: Buffer) => {
     stderrCollector.push(chunk);
   });
-  const timeout = armTimeout(child, opts.timeoutMs);
+  const timeout = armTimeout(child, opts.timeoutMs, spawn);
   return { child, stderrCollector, stdoutCollector, timeout };
 };
 
