@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `-c fetch.recurseSubmodules=false`, `-c core.hooksPath=<refs' hooks directory>` and
     `-c hook.<event>.enabled=false` for every event git documents. The empty fsmonitor value is
     used because git 2.35.1 and older run `false` as a program.
+  - **Configured hooks are also switched off by name.** Git 2.55 reads `hook.<event>.enabled` as
+    the switch for a label once a label has that name, so `[hook "post-checkout"] command = …` in
+    your configuration made every other `post-checkout` label run despite refs' event switch
+    (measured on git 2.55.0). On 2.55 and newer refs now adds `-c hook.<label>.enabled=false` for
+    every label in your configuration and in every file it includes, conditional includes
+    (`includeIf "hasconfig:…"`) included. It reads them once per run, not per git command. When it
+    cannot read them all (an unreadable include, an include under refs' `sources` directory, an
+    include chain deeper than git follows, a label containing `=`), refs does not start git and
+    says why.
   - Content filters are unset for every path in each checkout's `.git/info/attributes`. A new
     clone gets this from a private clone template before its first checkout; an existing checkout
     gets it at its next `refs sync`. Files therefore arrive exactly as committed. For git-lfs that

@@ -44,7 +44,7 @@ describe('the options refs puts in front of a git command', () => {
 
   it('pins the hooks path first when it knows refs hooks directory', () => {
     expect.hasAssertions();
-    expect(withGitPolicy('git', ['fetch'], '/refs/hooks')).toStrictEqual([
+    expect(withGitPolicy('git', ['fetch'], { hooksDir: '/refs/hooks' })).toStrictEqual([
       '-c',
       'core.hooksPath=/refs/hooks',
       ...GIT_POLICY_ARGS,
@@ -55,6 +55,18 @@ describe('the options refs puts in front of a git command', () => {
   it('leaves any other command alone', () => {
     expect.hasAssertions();
     const args = ['-o', 'BatchMode=yes', '-T', 'git@example.com'];
-    expect(withGitPolicy('ssh', args, '/refs/hooks')).toBe(args);
+    expect(withGitPolicy('ssh', args, { hooksDir: '/refs/hooks' })).toBe(args);
+  });
+});
+
+describe('the per-label hook switches', () => {
+  it('come after the event switches, before the subcommand', () => {
+    expect.hasAssertions();
+    const labelArgs = ['-c', 'hook.post-checkout.enabled=false', '-c', 'hook.x.enabled=false'];
+    expect(withGitPolicy('git', ['clone'], { labelArgs })).toStrictEqual([
+      ...GIT_POLICY_ARGS,
+      ...labelArgs,
+      'clone',
+    ]);
   });
 });

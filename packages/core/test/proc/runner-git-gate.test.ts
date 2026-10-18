@@ -25,6 +25,23 @@ const installFakeGit = async (version: string): Promise<{ dir: string; log: stri
   return { dir, log };
 };
 
+const restore = (name: string, value: string | undefined): void => {
+  if (value === undefined) {
+    Reflect.deleteProperty(process.env, name);
+  } else {
+    process.env[name] = value;
+  }
+};
+
+const kindOf = (call: string): string => {
+  if (call === 'probe') {
+    return call;
+  }
+  return call.endsWith(' config --list --show-origin -z')
+    ? 'inventory'
+    : (call.split(' ').pop() ?? '');
+};
+
 const linesOf = async (log: string): Promise<string[]> => {
   const text = await readFile(log, 'utf8');
   return text.split('\n').filter((line) => line !== '');
@@ -72,13 +89,45 @@ describe.skipIf(isWindows)('the spawn runner on other git versions', () => {
       await runner.run('git', ['fetch']);
     });
 
-    const [probe, first, second] = calls;
+    const [probe, inventory, first, second] = calls;
     expect(probe).toBe('probe');
+    expect(inventory).toMatch(/ config --list --show-origin -z$/u);
     expect(first).toMatch(/^-c core\.hooksPath=\/refs\/hooks -c core\.fsmonitor= .* status$/u);
     expect(first).toContain('-c hook.post-checkout.enabled=false');
     expect(second).toMatch(/ fetch$/u);
   });
+});
 
+describe.skipIf(isWindows)('the spawn runner’s hook label inventory', () => {
+  it('is taken again only when the git configuration environment changes', async () => {
+    expect.hasAssertions();
+    const previous = process.env['GIT_CONFIG_GLOBAL'];
+    const calls = await withFakeGit('2.56.0', async () => {
+      const runner = new SpawnRunner();
+      await runner.run('git', ['status']);
+      await runner.run('git', ['status']);
+      process.env['GIT_CONFIG_GLOBAL'] = '/elsewhere/gitconfig';
+      await runner.run('git', ['status']);
+      await runner.run('git', ['status']);
+    }).finally(() => {
+      restore('GIT_CONFIG_GLOBAL', previous);
+    });
+
+    const once = ['probe', 'inventory', 'status', 'status'];
+    expect(calls.map((call) => kindOf(call))).toStrictEqual([...once, ...once]);
+  });
+
+  it('is not taken on git without configured hook labels', async () => {
+    expect.hasAssertions();
+    const calls = await withFakeGit('2.53.0', async () => {
+      await new SpawnRunner().run('git', ['status']);
+    });
+
+    expect(calls.map((call) => kindOf(call))).toStrictEqual(['probe', 'status']);
+  });
+});
+
+describe.skipIf(isWindows)('the spawn runner and other commands', () => {
   it('leaves non-git commands ungated', async () => {
     expect.hasAssertions();
     let stdout = '';
