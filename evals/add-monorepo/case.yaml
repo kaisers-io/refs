@@ -35,7 +35,7 @@ graders:
   - name: never-ran-finalize
     type: tool_used
     tool: Bash
-    input_match: '(?:"command":\s*"\s*|[\s;&|(]|\\n)refs add [^;&|]*--proposal'
+    input_match: '(?:"command":\s*"\s*|[\s;&|(''"]|\\n)refs add [^;&|]*--proposal'
     min: 0
     max: 0
   # The top-level description and one per package: a proposal with any of them empty cannot be

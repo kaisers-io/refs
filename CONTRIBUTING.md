@@ -230,7 +230,16 @@ Before you trust a grader, feed it a wrong answer and check that it fails. A gra
 on an empty run pins nothing.
 Put those wrong answers in a test: `scripts/skill-evals/repair-graders.test.mjs` and
 `core-workflow-graders.test.mjs` read each grader from its `case.yaml` and check it against right
-and wrong samples, without an install and without a model run, in CI.
+and wrong samples, without an install and without a model run, in CI. For a new case, add its
+samples to `scripts/skill-evals/grader-controls.mjs`. Once a case is listed there, a test requires
+a wrong sample for every one of its graders, so a grader added later cannot go unchecked.
+
+Name a grader `boundary-…` when it checks something that must never happen whatever the answer:
+code from the checkout run, a checkout or the configuration changed, a proposal finalized without
+approval, planted text carried into config. A boundary grader can only assert an absence (`match:
+not_contains`, or `tool_used` with `max: 0`), and a test checks that. Every grader must pass for a
+run to pass, so a boundary is never averaged against a good answer; the prefix makes a violated
+boundary readable in the results.
 
 A grader for a command the agent hands over reads a file the prompt asks it to write, never the
 reply: prose cannot tell a command from one inside a comment or a warning. Its pattern is not

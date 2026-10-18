@@ -60,4 +60,11 @@ const graderFrom = async (caseName, name) => {
   return grader;
 };
 
-export { graderFrom };
+/** The names of every grader in evals/<caseName>/case.yaml, in file order. */
+const graderNames = async (caseName) => {
+  const url = new URL(`../../evals/${caseName}/case.yaml`, import.meta.url);
+  const text = await readFile(url, 'utf8');
+  return [...text.matchAll(/^ {2}- name: (?<name>\S+)$/gmu)].map((match) => match.groups.name);
+};
+
+export { graderFrom, graderNames };
