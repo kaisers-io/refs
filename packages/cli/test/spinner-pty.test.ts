@@ -25,16 +25,7 @@ const HANGING_SECONDS = 30;
 const INTERRUPT_AFTER_MS = 2500;
 
 const INHERITED_PATH = process.env['PATH'] ?? '';
-const built: { build?: Promise<unknown> } = {};
-
-// Every run of this file tests the code as it is now, never a bundle left over from an earlier
-// build: `pnpm check` does not build.
-const buildOnce = (): Promise<unknown> => {
-  built.build ??= exec('pnpm', ['--filter', '@kaisers-io/refs', 'build'], {
-    cwd: join(import.meta.dirname, '../../..'),
-  });
-  return built.build;
-};
+// The bundle `BIN` loads is built once per run by `vitest.global-setup.ts`, before any file starts.
 
 const gitWaiting = async (seconds: number): Promise<string> => {
   const { stdout } = await exec('sh', ['-c', 'command -v git']);
@@ -43,7 +34,6 @@ const gitWaiting = async (seconds: number): Promise<string> => {
 
 /** A fresh, initialized refs home on the built bundle, with a git that takes `gitDelaySeconds`. */
 const setup = async (gitDelaySeconds: number): Promise<NodeJS.ProcessEnv> => {
-  await buildOnce();
   const gitDir = await gitWaiting(gitDelaySeconds);
   const home = await mkdtemp(join(tmpdir(), 'refs-pty-home-'));
   const env = {
