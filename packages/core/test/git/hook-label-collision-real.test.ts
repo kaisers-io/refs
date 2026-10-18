@@ -42,9 +42,15 @@ const restore = (name: string, value: string | undefined): void => {
 // `reference-transaction` in a `hasconfig` include that only matches once the clone has a remote.
 // Each hook only logs its own name, by absolute path: any line in the log is a configured hook
 // that ran, whatever it would have run in a real configuration (a script the checkout tracks).
+//
+// The log path goes into a config VALUE, where a backslash starts an escape: `'C:\Users\…'` is a
+// bad config line (`\U`), which is how this first failed on Windows. Forward slashes are a valid
+// Windows path for the `sh` Git for Windows runs hooks with.
+const configPath = (path: string): string => path.replaceAll('\\', '/');
+
 const collidingHooks = (event: string, label: string, log: string): string =>
-  `[hook "${event}"]\n\tcommand = echo ${event} >> '${log}'\n` +
-  `[hook "${label}"]\n\tevent = ${event}\n\tcommand = echo ${label} >> '${log}'\n`;
+  `[hook "${event}"]\n\tcommand = echo ${event} >> '${configPath(log)}'\n` +
+  `[hook "${label}"]\n\tevent = ${event}\n\tcommand = echo ${label} >> '${configPath(log)}'\n`;
 
 type Scene = {
   dest: string;
@@ -116,5 +122,21 @@ describe.runIf(hasLabelSwitch)('a configured hook label named after an event', S
     const ran = await readFile(log, 'utf8');
     expect(ran).toMatch(/^x /mu);
     expect(ran).toMatch(/^y /mu);
+  });
+});
+
+// Runs on every git and platform: the fixture itself must be valid configuration for a Windows
+// path, or the cases above fail on Windows before they test anything.
+describe('the colliding-hooks fixture', () => {
+  it('stays valid configuration for a Windows path', async () => {
+    expect.hasAssertions();
+    const scratch = await mkdtemp(join(tmpdir(), 'refs-hook-fixture-'));
+    const file = join(scratch, 'gitconfig');
+    await writeFile(
+      file,
+      collidingHooks('post-checkout', 'x', String.raw`C:\Users\RUNNER~1\ran.log`),
+    );
+    const { stdout } = await plainGit('git', ['config', '--file', file, '--list']);
+    expect(stdout).toContain("hook.x.command=echo x >> 'C:/Users/RUNNER~1/ran.log'");
   });
 });
