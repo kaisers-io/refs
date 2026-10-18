@@ -899,7 +899,7 @@ Exit codes: `4` (no ref matches), `2` (ambiguous suffix).
 ## `refs sync`
 
 ```
-refs sync [refs...] [--stale-only]
+refs sync [refs...] [--stale-only] [--concurrency <n>]
 ```
 
 Fetches (or re-clones, if the checkout is missing) every requested ref — every configured
@@ -911,6 +911,7 @@ re-cloned regardless of TTL).
 refs sync --json
 refs sync zod left-pad --json
 refs sync --stale-only --json
+refs sync --concurrency 8 --json
 ```
 
 ```json
@@ -949,7 +950,12 @@ was reset back to clean), or `failed` (with an `error` message instead of a clea
 status). A ref skipped entirely by `--stale-only` (within its `sync_ttl` and with an
 existing checkout) produces no result item at all — it's filtered out before syncing, not
 reported as `fresh`. A branch-rename or partial-clone-fallback surfaces as a `warning`
-string on that item, not a failure. Up to 4 refs sync concurrently.
+string on that item, not a failure.
+
+Up to 4 refs sync at once. `--concurrency <n>` changes that for one invocation: a whole
+number from 1 (one ref at a time) to 16. Anything else is refused with a usage error before
+any ref is touched, rather than clamped, so a typo cannot quietly mean a different limit. A
+ref that fails gives its slot to the next one; the batch never stops early.
 
 ### `structure` — config drift
 
