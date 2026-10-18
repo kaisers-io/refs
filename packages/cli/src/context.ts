@@ -1,4 +1,4 @@
-import type { Fetcher, Runner } from '@kaisers-io/refs-core';
+import type { Fetcher, Runner, SpawnRunnerOpts } from '@kaisers-io/refs-core';
 import { SpawnRunner, resolveHome } from '@kaisers-io/refs-core';
 import type { Spinner } from './spinner.ts';
 import { createSpinner } from './spinner.ts';
@@ -79,13 +79,15 @@ const safeHomedir = (): string => {
   }
 };
 
-/** The hooks directory refs' runner pins on every git command (core proc/git-policy.ts); left out
- * when no home can be resolved, the same case `safeHomedir` describes. */
-const safeHooksDir = (): string | undefined => {
+/** The runner's view of refs' home: the hooks directory it pins on every git command (core
+ * proc/git-policy.ts) and the sources no git include may point into (core
+ * proc/git-hook-labels.ts). Empty when no home can be resolved, the case `safeHomedir` describes. */
+const runnerOpts = (): SpawnRunnerOpts => {
   try {
-    return resolveHome(process.env).hooksDir;
+    const { hooksDir, sourcesDir } = resolveHome(process.env);
+    return { hooksDir, sourcesDir };
   } catch {
-    return undefined;
+    return {};
   }
 };
 
@@ -103,7 +105,7 @@ const realContext = (): CliContext => ({
     process.stdout.write(`${line}\n`);
   },
   readStdin: readRealStdin,
-  runner: new SpawnRunner({ hooksDir: safeHooksDir() }),
+  runner: new SpawnRunner(runnerOpts()),
   spinner: () =>
     createSpinner({ env: process.env, platform: process.platform, stream: process.stderr }),
 });

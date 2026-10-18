@@ -28,7 +28,9 @@ there are no long-term support branches.
 - Anything that causes `refs` to execute code from a checked-out reference repository. `refs` runs
   git commands against checkouts; it must never run *their* code. Each checkout's `core.hooksPath`
   points at the refs-owned hooks directory, so hooks living inside a checkout never run. A way to
-  defeat that is in scope.
+  defeat that is in scope, and so is a configured hook (`[hook "<label>"]`) that runs during one
+  of refs' own git commands despite the per-event and per-label switches refs passes on git 2.55
+  and newer.
 
   `core.hooksPath` governs hooks-*directory* discovery, which is what stops a hook file living
   inside a checkout from running. Other git mechanisms do not route through it. Measured on git

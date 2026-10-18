@@ -20,9 +20,11 @@
 //   and run a program called `false`; the empty value disables the hook form on every version.
 // - `hook.<event>.enabled=false` for EVERY event git documents (githooks(5), 2.56), not just the
 //   ones refs is known to fire today: configured hooks (`[hook "<label>"]`, 2.54+) are not found
-//   through the hooks directory, and an event-level switch needs no label discovery, so an
-//   `includeIf` section cannot hide one. Git 2.55 introduced the switch; older git has no
-//   configured hooks (2.53 and before) or ignores it (2.54, hence the refusal).
+//   through the hooks directory. Git 2.55 introduced the switch; older git has no configured hooks
+//   (2.53 and before) or ignores it (2.54, hence the refusal). The switch is not enough on its own:
+//   git reads `hook.<name>.enabled` as a LABEL switch once a label of that name exists, and the
+//   event's other labels then run. So on 2.55+ refs also switches each configured label off by
+//   name (git-hook-labels.ts).
 // - `submodule.recurse=false` and `fetch.recurseSubmodules=false`, so a user default cannot make
 //   `checkout`/`reset`/`fetch` reach into submodules a tracked `.gitmodules` names.
 // - As TOP-LEVEL options. Command scope outranks every configuration file, and a top-level `-c`
@@ -81,16 +83,21 @@ const GIT_POLICY_ARGS: readonly string[] = [
 
 /** `args` with refs' git policy in front when `cmd` is git; any other command's args unchanged.
  * `hooksDir`, when known, pins `core.hooksPath` at command scope as well. */
+// `hooksDir`: refs' hooks directory, pinned as `core.hooksPath`. `labelArgs`: the per-label hook
+// switches for git 2.55+ (git-hook-labels.ts), after the event switches.
+type GitPolicyOpts = { hooksDir?: string | undefined; labelArgs?: readonly string[] | undefined };
+
 const withGitPolicy = (
   cmd: string,
   args: readonly string[],
-  hooksDir?: string,
+  opts: GitPolicyOpts = {},
 ): readonly string[] => {
   if (cmd !== 'git') {
     return args;
   }
-  const hooksPath = hooksDir === undefined ? [] : ['-c', `core.hooksPath=${hooksDir}`];
-  return [...hooksPath, ...GIT_POLICY_ARGS, ...args];
+  const hooksPath = opts.hooksDir === undefined ? [] : ['-c', `core.hooksPath=${opts.hooksDir}`];
+  return [...hooksPath, ...GIT_POLICY_ARGS, ...(opts.labelArgs ?? []), ...args];
 };
 
 export { GIT_POLICY_ARGS, HOOK_EVENTS, withGitPolicy };
+export type { GitPolicyOpts };

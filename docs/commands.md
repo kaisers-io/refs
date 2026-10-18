@@ -456,9 +456,16 @@ would make `refs doctor` exit non-zero over it.
 
 `git` reports `fail` on git 2.54.x, and refs refuses to run any other git command there. refs
 switches configured hooks (`[hook "<label>"]` sections in your git configuration) off for every
-event, using the per-event switch git reads from 2.55 on. 2.54 introduced configured hooks but
-only reads that switch per label, so refs could not keep a hook you configured from running. Install
-git 2.55 or newer, or stay on 2.53; releases before 2.54 have no configured hooks.
+event, using the per-event switch git reads from 2.55 on, and also by name for every label your
+configuration defines. The name is needed because git reads the per-event switch as a label switch
+as soon as a label carries the event's name (`[hook "post-checkout"] command = …`), and then runs
+the event's other labels. refs reads the labels once per run from your configuration and from
+every file it includes, whether or not the include's condition applies yet. It refuses to start
+git when it cannot read all of them: an include it cannot read, an include under refs' `sources`
+directory, an include chain deeper than git follows, or a label name containing `=`. 2.54
+introduced configured hooks but only reads that switch per label, so refs could not keep a hook
+you configured from running. Install git 2.55 or newer, or stay on 2.53; releases before 2.54
+have no configured hooks.
 
 `dirty-checkouts` does not run `git status` in a checkout that lacks refs' content-filter guard (a
 checkout cloned by an older refs), because `status` can run a filter. It names that checkout instead,
