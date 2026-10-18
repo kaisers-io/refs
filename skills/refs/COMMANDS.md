@@ -500,7 +500,10 @@ and what was found — a removal in particular discards an entry they may have w
 members. The root is never one of its own workspace glob targets, but `refs add` probes it
 separately and proposes it alongside the members, unless a member already claims its name. So a
 root reported here is one whose entry predates that probe, one that was given a name upstream after
-the ref was added, or one that was left out when the ref was added. `refs sync` reports only members whose _name the repository did not already have_ before
+the ref was added, or one whose entry was left out or removed since. A root without a `name` is
+never reported, and a root declined at path `.` stays quiet like any declined package. When a
+workspace member declares the same name as the root, the member wins, as it does in `refs add`:
+the finding's `path` is the member's directory, not `.`. `refs sync` reports only members whose _name the repository did not already have_ before
 the range it just fetched, so it is genuinely new upstream rather than something the user chose to
 leave out — a package that merely moved to another directory is not new, and one renamed in place
 is. `refs doctor` lists every unregistered member, because it was asked to.

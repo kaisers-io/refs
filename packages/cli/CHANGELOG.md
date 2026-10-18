@@ -16,7 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   form `INVESTIGATE.md` already used, and a test keeps every three-positional `refs edit` example in
   the skill ref-first. The same file no longer says `refs add` could not have registered a
   repository root: `add` probes the root and proposes it unless a member claims its name, so a root
-  reported as `unregistered` predates that probe, was named upstream later, or was left out.
+  reported as `unregistered` predates that probe, was named upstream later, or was left out or
+  removed since. It also says what is never reported: a root without a name, and a root declined at
+  `.`; and that a member declaring the root's name wins, as it does in `refs add`.
 
 ## [0.18.2] - 2026-10-13
 
