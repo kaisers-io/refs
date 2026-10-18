@@ -70,6 +70,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from `GIT_CONFIG_COUNT` or `GIT_CONFIG_PARAMETERS` outranks it, so a relative `.githooks` injected
   that way ran a hook the cloned repository ships. The clone now also passes it at command scope.
 
+### Changed
+
+- **The skill tells agents never to run a reference's code.** `SKILL.md`, `INVESTIGATE.md` and the worker brief in `ADD.md` now say it outright: no installing a reference's dependencies, importing its modules, or running its builds, tests, examples or scripts, even to check an answer. A refs safety refusal is reported, never worked around with raw git or by re-enabling a hook or filter. The README states the boundary as well.
+
 ## [0.18.2] - 2026-10-13
 
 ### Security

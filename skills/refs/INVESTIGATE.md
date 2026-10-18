@@ -7,9 +7,11 @@ Not for adding new refs (`ADD.md`) or housekeeping (`MAINTAIN.md`).
 These five rules are absolute; everything else in this document is a recommended
 default you may deviate from when the situation calls for it.
 
-1. **Never mutate a reference checkout.** Only read files and run read-only git
+1. **Never mutate or run a reference checkout.** Only read files and run read-only git
    commands (`git log`, `git diff`, `git show`, `git blame`, `git grep`). Never
-   edit, stage, commit, checkout, pull, reset, or clean inside a managed checkout.
+   edit, stage, commit, checkout, pull, reset, or clean inside a managed checkout, and
+   never install its dependencies or run its code, builds, tests or scripts. If the
+   source alone cannot answer the question, say so (`SKILL.md` §3).
 2. **Cite real sources.** Findings reference actual `path:line` locations and
    commit shas/tags from the checkout — never a summary, digest, or search result
    as if it were the source.

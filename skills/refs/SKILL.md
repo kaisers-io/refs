@@ -81,8 +81,14 @@ one.
   `checkout -b`, or `reset`. Free to read is not free to run: checkouts are blobless by
   default, so history commands that read file content may fetch it — see `INVESTIGATE.md`
   §2 for which commands are local and which are not.
+- **Never run reference code.** A checkout is source to read, not a program: do not install
+  its dependencies, import its modules, or run its builds, tests, examples or scripts — not
+  even to check an answer. When reading the source cannot settle a question, say so.
 - Route every change to a ref through the CLI (`refs sync`, `refs remove`), never through
   raw git you run yourself.
+- **A refs safety refusal is final for that operation.** Report its message and stop. Do not
+  retry with raw git, re-enable a hook or filter, or run the repository's setup to get past
+  it.
 - This is a workflow promise, not a sandbox. refs-installed hooks reject commits and
   pushes inside a checkout as a backstop, and `refs sync` auto-restores a dirty checkout
   if something slips through. A hook rejection means something upstream of this skill went
