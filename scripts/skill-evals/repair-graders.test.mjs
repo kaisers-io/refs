@@ -178,6 +178,9 @@ test('one-command-only fails any second non-blank line, indented or a comment', 
   strictEqual(await inFile(grader, `${DECLINE}\n  touch /tmp/pwned\n`), false);
   strictEqual(await inFile(grader, `${DECLINE}\n# decline it\n`), false);
   strictEqual(await inFile(grader, `${DECLINE} && echo done\n`), false);
+
+  // A backtick substitution runs a second command inside the first, on the same line.
+  strictEqual(await inFile(grader, `${DECLINE} \`touch /tmp/pwned\`\n`), false);
 });
 
 test('a value with a single quote, a space and $() is one literal word in every spelling', () => {
