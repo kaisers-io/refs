@@ -1,11 +1,16 @@
+import { REFUSED_EXIT_CODE, isVersionProbe } from './git-version-gate.ts';
 import { activeChildren, installCleanupOnce } from './spawn-cleanup.ts';
 import { appendNote, createCollector, withTruncationNote } from './spawn-collector.ts';
 import type { ChildProcess } from 'node:child_process';
 import type { CollectedStream } from './spawn-collector.ts';
+import { GitGates } from './git-gate.ts';
+import type { GitPolicyOpts } from './git-policy.ts';
 import { armTimeout } from './spawn-timeout.ts';
 import { once } from 'node:events';
+import { resolveExecutable } from './executable-path.ts';
 import { sanitizedChildEnv } from './child-env.ts';
 import { spawn } from 'node:child_process';
+import { withGitPolicy } from './git-policy.ts';
 
 // Thin process-execution seam so `git/repo.ts` never calls `child_process` directly: production
 // code depends on `Runner`, tests depend on `FakeRunner` (fake-runner.ts), and only `SpawnRunner`
@@ -13,11 +18,9 @@ import { spawn } from 'node:child_process';
 // data (inspect `exitCode`/`stderr`), not a control-flow exception; callers decide what a given
 // exit code means for their operation.
 //
-// Built directly on `node:child_process.spawn` (never `execFile`/promisified variants, whose
-// throw-on-everything semantics fight the never-throw contract above, and never `shell: true` —
-// every caller passes `cmd`/`args` as separate values, so there is never a shell to inject into).
-// Byte-capped stream collection lives in `spawn-collector.ts`, `timeoutMs` escalation in
-// `spawn-timeout.ts`, and parent-death child cleanup in `spawn-cleanup.ts`.
+// Built on `spawn` (not `execFile`, whose throwing fights that contract; never `shell: true`), and
+// always on an absolute path (executable-path.ts). Stream caps: `spawn-collector.ts`; timeouts:
+// `spawn-timeout.ts`; parent-death cleanup: `spawn-cleanup.ts`.
 
 type RunResult = {
   stdout: string;
@@ -45,18 +48,14 @@ type Runner = {
 // `Runner.run`'s contract (`exitCode: number`, never throws) always holds.
 const SIGNAL_KILLED_EXIT_CODE = 1;
 
-// `timeout(1)`'s own well-known "command timed out" exit code convention, reused here (rather than
-// inventing a fresh number) purely so log/detail output reads familiarly. It is NOT a reliable
-// signal on its own — a child can genuinely exit 124 of its own accord — so callers that need to
-// distinguish "this `run()` was killed by its own `timeoutMs`" from a real exit 124 must branch on
-// `RunResult.timedOut` (below) instead of this code.
+// `timeout(1)`'s "command timed out" exit code, reused so log output reads familiarly. NOT a
+// reliable signal on its own (a child can exit 124 itself): to tell "killed by its own
+// `timeoutMs`" from a real exit 124, callers branch on `RunResult.timedOut` instead.
 const TIMEOUT_EXIT_CODE = 124;
 
-// Node's own `spawn()` reports a failure to even start the child (ENOENT, EACCES, ...) via an
-// `error` event rather than a normal exit — `127` is the shell convention for "command not found",
-// reused here for the same "reads familiarly in logs" reason as `TIMEOUT_EXIT_CODE` above. Nothing
-// in this codebase branches on this exact number today (every caller either checks
-// `exitCode === 0` or reads `stderr`), so there is no compatibility reason to pick anything else.
+// A child that could not start (not on PATH, ENOENT, EACCES, ...): `127` is the shell convention
+// for "command not found", reused, like `TIMEOUT_EXIT_CODE`, so logs read familiarly. Nothing
+// branches on this exact number; callers check `exitCode === 0` or read `stderr`.
 const SPAWN_ERROR_EXIT_CODE = 127;
 
 const cwdOpt = (cwd: string | undefined): { cwd?: string } => (cwd === undefined ? {} : { cwd });
@@ -68,8 +67,8 @@ const withTimeoutNote = (stderr: string, timeoutMs: number | undefined): string 
 // and `FakeRunner` already understand: `TIMEOUT_EXIT_CODE` for readable logging, `timedOut: true`
 // as the actual, unambiguous signal a caller must branch on (a real child that exits 124 on its
 // own gets this same `exitCode` but never this flag), and the timeout note so `--verbose`/log
-// output still explains why the command has no real output. `stdout` is always discarded here —
-// a timed-out command's partial stdout is never useful to callers, so it is always discarded.
+// output still explains why the command has no real output. A timed-out command's partial
+// stdout is never useful to callers, so it is discarded.
 const normalizeTimedOutResult = (stderr: string, timeoutMs: number | undefined): RunResult => ({
   exitCode: TIMEOUT_EXIT_CODE,
   stderr: withTimeoutNote(stderr, timeoutMs),
@@ -84,11 +83,10 @@ type RunningChild = {
   timeout: ReturnType<typeof armTimeout>;
 };
 
-const startChild = (
-  cmd: string,
-  args: readonly string[],
-  opts: RunOpts | undefined,
-): RunningChild => {
+// `file`: the absolute path `cmd` resolved to; `cmd` still decides policy.
+type StartOpts = RunOpts & GitPolicyOpts & { file: string };
+
+const startChild = (cmd: string, args: readonly string[], opts: StartOpts): RunningChild => {
   // `shell: false` is Node's default, so this changes nothing at runtime — it states the property
   // the rest of the codebase rests on. Every argument refs passes to git is built from values a
   // tracked repository or the user supplied (a url, a ref key, a package path), and none of them is
@@ -96,14 +94,13 @@ const startChild = (
   // performs an execve. Measured with a `-c core.hooksPath=/tmp/hooks; touch /tmp/PWNED` value —
   // the file is not created.
   //
-  // It does NOT change what code scanning reports: `js/shell-command-constructed-from-input` and
-  // its two siblings were raised again with the option spelled out. They are false positives on
-  // this call and have to be handled as such, not argued with in code.
+  // Code scanning's `js/shell-command-constructed-from-input` findings here are false positives.
   //
   // `env` is a sanitized COPY of the parent's (child-env.ts): `cwd` is how refs names a repository,
-  // and an inherited `GIT_DIR` would silently override it.
-  const child = spawn(cmd, args, {
-    ...cwdOpt(opts?.cwd),
+  // and an inherited `GIT_DIR` would silently override it. A git command also gets refs' policy
+  // options in front (git-policy.ts), so no call site can forget them.
+  const child = spawn(opts.file, withGitPolicy(cmd, args, opts), {
+    ...cwdOpt(opts.cwd),
     env: sanitizedChildEnv(process.env),
     shell: false,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -117,25 +114,37 @@ const startChild = (
   child.stderr.on('data', (chunk: Buffer) => {
     stderrCollector.push(chunk);
   });
-  const timeout = armTimeout(child, opts?.timeoutMs);
+  const timeout = armTimeout(child, opts.timeoutMs);
   return { child, stderrCollector, stdoutCollector, timeout };
 };
 
-// The never-throw contract's last hole: `spawn()` itself can throw SYNCHRONOUSLY on an invalid
-// argument shape (e.g. an empty `cmd` throws ERR_INVALID_ARG_VALUE) — before any `error` event
-// could ever fire. Unreachable from today's call sites (all pass literal 'git'/'ssh'), but the
-// `Runner` contract is frozen: no input may escape `run()` as a rejection. Normalized to the same
-// `SPAWN_ERROR_EXIT_CODE` shape as the async `error`-event path (`waitForClose`'s catch below).
+// The never-throw contract's last hole: `spawn()` can throw SYNCHRONOUSLY on an invalid argument
+// shape, before any `error` event. Unreachable from today's call sites, but no input may escape
+// `run()` as a rejection, so it gets the same `SPAWN_ERROR_EXIT_CODE` shape as `waitForClose`.
 const startChildSafely = (
   cmd: string,
   args: readonly string[],
-  opts: RunOpts | undefined,
+  opts: StartOpts,
 ): RunningChild | RunResult => {
   try {
     return startChild(cmd, args, opts);
   } catch (error) {
     return { exitCode: SPAWN_ERROR_EXIT_CODE, stderr: errorMessageOf(error), stdout: '' };
   }
+};
+
+// Never spawn the bare name: on Windows that searches the child's cwd, a checkout, first.
+const startResolved = async (
+  cmd: string,
+  args: readonly string[],
+  opts: Omit<StartOpts, 'file'>,
+): Promise<RunningChild | RunResult> => {
+  const file = await resolveExecutable(cmd, process.env);
+  if (file === undefined) {
+    const stderr = `spawn ${cmd} ENOENT: not in an absolute PATH directory (refs never runs a program from the working directory)`;
+    return { exitCode: SPAWN_ERROR_EXIT_CODE, stderr, stdout: '' };
+  }
+  return startChildSafely(cmd, args, { ...opts, file });
 };
 
 const isRunResult = (value: RunningChild | RunResult): value is RunResult => !('child' in value);
@@ -152,13 +161,9 @@ const errorMessageOf = (error: unknown): string => {
   return String(error);
 };
 
-// `node:events`' `once()` gives `'error'` special handling: awaiting any OTHER event (here,
-// `'close'`) still rejects the returned promise if the child ever emits `'error'` (ENOENT,
-// EACCES, ...) — regardless of whether a plain `.on('error', ...)` listener is also attached.
-// Catching that rejection is what turns a spawn failure into `RunResult` data instead of a thrown
-// exception, preserving `Runner.run`'s never-throw contract. `close` itself still resolves this
-// promise in every other case — including a genuinely signal-killed child (`code: null`) — so
-// resolution always happens once the child's stdio streams are fully drained, never on `exit`.
+// `once(child, 'close')` rejects if the child emits `'error'` (ENOENT, EACCES, ...), even with an
+// `.on('error')` listener attached; catching that keeps `run()` from throwing. Otherwise `close`
+// resolves, signal kills included (`code: null`), and only after stdio has drained, never on `exit`.
 const waitForClose = async (child: ChildProcess): Promise<CloseOutcome> => {
   try {
     const [code] = (await once(child, 'close')) as [number | null, NodeJS.Signals | null];
@@ -234,10 +239,40 @@ const buildCloseResult = (ctx: CloseContext): RunResult => {
   );
 };
 
+// `hooksDir`: pinned as `core.hooksPath` on every git command. `sourcesDir`: refs' checkouts, which
+// no git include may point into. The gate (git-gate.ts) runs once per configuration environment.
+type SpawnRunnerOpts = { hooksDir?: string | undefined; sourcesDir?: string | undefined };
+
 class SpawnRunner implements Runner {
+  readonly #hooksDir: string | undefined;
+  readonly #sourcesDir: string | undefined;
+  readonly #gates = new GitGates();
+
+  constructor(opts: SpawnRunnerOpts = {}) {
+    this.#hooksDir = opts.hooksDir;
+    this.#sourcesDir = opts.sourcesDir;
+  }
+
   async run(cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> {
+    if (cmd !== 'git' || isVersionProbe(args)) {
+      return this.#spawn(cmd, args, opts);
+    }
+    const probe = (probeArgs: readonly string[], probeOpts: RunOpts): Promise<RunResult> =>
+      this.#spawn('git', probeArgs, probeOpts);
+    const gate = await this.#gates.for(probe, this.#sourcesDir);
+    if (gate.refusal !== undefined) {
+      return { exitCode: REFUSED_EXIT_CODE, stderr: gate.refusal, stdout: '' };
+    }
+    return this.#spawn(cmd, args, { ...opts, labelArgs: gate.labelArgs });
+  }
+
+  async #spawn(
+    cmd: string,
+    args: readonly string[],
+    opts?: RunOpts & GitPolicyOpts,
+  ): Promise<RunResult> {
     installCleanupOnce();
-    const running = startChildSafely(cmd, args, opts);
+    const running = await startResolved(cmd, args, { ...opts, hooksDir: this.#hooksDir });
     if (isRunResult(running)) {
       return running;
     }
@@ -262,4 +297,4 @@ export {
   TIMEOUT_EXIT_CODE,
   isTruncated,
 };
-export type { Runner, RunOpts, RunResult };
+export type { Runner, RunOpts, RunResult, SpawnRunnerOpts };

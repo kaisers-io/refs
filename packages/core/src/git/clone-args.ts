@@ -1,4 +1,5 @@
 import type { CloneMode } from '../schemas/primitives.ts';
+import { withCloneTemplate } from './filter-guard.ts';
 
 // The argv for refs' `git clone` of a managed checkout (`repo.ts#cloneRepo`).
 //
@@ -20,6 +21,9 @@ import type { CloneMode } from '../schemas/primitives.ts';
 // `-c` is appended after the inherited entries, so it is the one git applies; it is not
 // persisted, which is why the clone's own `-c` stays to write the marker.
 //
+// `--template` names the private template `withCloneTemplate` (filter-guard.ts) builds, so content
+// filters are already off for the initial checkout.
+//
 // `--` ends option parsing, so a url shaped like a flag can only be read as the repository to
 // clone. git would otherwise honour `--upload-pack=<cmd>` and run it. `canonicalizeGitUrl`
 // already refuses such urls, but only where a url is first accepted: `sync` re-reads it from
@@ -31,6 +35,7 @@ type CloneArgsOpts = {
   dest: string;
   hooksDir: string;
   mode: CloneMode;
+  templateDir: string;
 };
 
 const cloneArgs = (opts: CloneArgsOpts): string[] => {
@@ -41,6 +46,7 @@ const cloneArgs = (opts: CloneArgsOpts): string[] => {
     hooksPath,
     'clone',
     '-q',
+    `--template=${opts.templateDir}`,
     '-c',
     hooksPath,
     ...filter,
@@ -50,4 +56,10 @@ const cloneArgs = (opts: CloneArgsOpts): string[] => {
   ];
 };
 
-export { cloneArgs };
+/** Runs `run` with the clone argv for `opts` and a private template that lives as long as it. */
+const withCloneArgs = <Result>(
+  opts: Omit<CloneArgsOpts, 'templateDir'>,
+  run: (args: string[]) => Promise<Result>,
+): Promise<Result> => withCloneTemplate((templateDir) => run(cloneArgs({ ...opts, templateDir })));
+
+export { cloneArgs, withCloneArgs };
