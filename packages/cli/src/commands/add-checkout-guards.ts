@@ -163,7 +163,7 @@ const ensureClonedCheckout = async (
 
 const revParseFailedMessage = (key: RefKey, dest: string): string =>
   `checkout for '${key}' at ${dest} is missing or corrupt (git rev-parse HEAD failed) — ` +
-  `run: refs remove ${shellQuote(key)}, then refs add <source> --dry-run again`;
+  `run (${POSIX_SHELL}): refs remove ${shellQuote(key)}, then refs add <source> --dry-run again`;
 
 const HEAD_SHA_HEX_LENGTH = 40;
 

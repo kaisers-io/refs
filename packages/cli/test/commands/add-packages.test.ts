@@ -89,7 +89,7 @@ describe('the description guard', () => {
     const packages = buildProposalPackages(detected, NO_NPM_DIRECTORY, NO_NPM_PKG_NAME);
 
     expect(() => requireDescribablePackages(packages, 'file:///tmp/a repo')).toThrow(
-      /refs add 'file:\/\/\/tmp\/a repo' --dry-run --json > proposal\.json/u,
+      /\(POSIX sh \/ Git Bash\):\n {2}refs add 'file:\/\/\/tmp\/a repo' --dry-run --json > proposal\.json/u,
     );
   });
 

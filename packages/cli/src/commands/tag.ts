@@ -1,3 +1,4 @@
+import { POSIX_SHELL, editCommand } from '../shell-quote.ts';
 import type { RefEntry, RefKey } from '@kaisers-io/refs-core';
 import {
   checkoutPath,
@@ -11,7 +12,6 @@ import { requireCheckout, requireEntry, requirePackage } from './ref-context.ts'
 import type { CliContext } from '../context.ts';
 import type { CommandOption } from '../shell-quote.ts';
 import type { RefsCommand } from './registry.ts';
-import { editCommand } from '../shell-quote.ts';
 import { matchRefKey } from './list.ts';
 
 // `refs tag <ref> <version> [--package <name>]` — resolves a semver-ish `<version>` to the actual
@@ -78,7 +78,7 @@ const requireFormat = (
   const how =
     command === undefined
       ? 'set one on this entry — no single-line command can carry these values, so none is offered'
-      : `set one with: ${command}`;
+      : `set one with (${POSIX_SHELL}): ${command}`;
   throw validationError(
     `${subject} has no tag_format configured — inspect the repository's real tags and ${how}`,
   );

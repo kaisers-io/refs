@@ -10,7 +10,8 @@ import { routeQuery } from '../../src/commands/resolve-route.ts';
 // alphabet, not a shell one — so the value has to be quoted before it is printed. These tests take
 // the clause the CLI printed and hand it to a real `/bin/sh`, because that is the only thing that
 // answers whether the printed line survives word splitting. A hand-built argv would not: it passes
-// a metacharacter straight through as one element and hides exactly the bug.
+// a metacharacter straight through as one element and hides exactly the bug. Each marker includes
+// the `(POSIX sh / Git Bash)` label every printed command with a quoted value carries.
 
 const HOSTILE = String.raw`evil$(touch /dev/null);x'y`;
 const HOSTILE_KEY = `example.com/o/${HOSTILE}` as RefKey;
@@ -80,19 +81,17 @@ describe('recovery commands naming a ref key', () => {
     const message = messageOf(() => {
       requireCheckout('/nonexistent/checkout', HOSTILE_KEY);
     });
-    await expect(argvFromShell(clauseAfter(message, 'run: '))).resolves.toStrictEqual([
-      'sync',
-      HOSTILE_KEY,
-    ]);
+    await expect(
+      argvFromShell(clauseAfter(message, 'run (POSIX sh / Git Bash): ')),
+    ).resolves.toStrictEqual(['sync', HOSTILE_KEY]);
   });
 
   it('quotes the key in the corrupt-checkout remedy', async () => {
     expect.hasAssertions();
     const message = await corruptCheckoutMessage(HOSTILE_KEY);
-    await expect(argvFromShell(clauseAfter(message, 'run: '))).resolves.toStrictEqual([
-      'remove',
-      HOSTILE_KEY,
-    ]);
+    await expect(
+      argvFromShell(clauseAfter(message, 'run (POSIX sh / Git Bash): ')),
+    ).resolves.toStrictEqual(['remove', HOSTILE_KEY]);
   });
 
   it('quotes the key in the no-matching-package remedy', async () => {
@@ -101,12 +100,9 @@ describe('recovery commands naming a ref key', () => {
     const message = messageOf(() =>
       routeQuery(config, 'nope', { allowFileUrls: false, ref: HOSTILE_KEY }),
     );
-    await expect(argvFromShell(clauseAfter(message, 'inspect: '))).resolves.toStrictEqual([
-      'show',
-      HOSTILE_KEY,
-      '--packages',
-      '--json',
-    ]);
+    await expect(
+      argvFromShell(clauseAfter(message, 'inspect (POSIX sh / Git Bash): ')),
+    ).resolves.toStrictEqual(['show', HOSTILE_KEY, '--packages', '--json']);
   });
 });
 
@@ -118,11 +114,8 @@ describe('recovery command naming a package', () => {
       'example.com/o/two': entry({ [HOSTILE]: { description: 'd', path: '.' } }),
     });
     const message = messageOf(() => routeQuery(config, HOSTILE, { allowFileUrls: false }));
-    await expect(argvFromShell(clauseAfter(message, 'pick one with: '))).resolves.toStrictEqual([
-      'resolve',
-      HOSTILE,
-      '--ref',
-      'example.com/o/one',
-    ]);
+    await expect(
+      argvFromShell(clauseAfter(message, 'pick one with (POSIX sh / Git Bash): ')),
+    ).resolves.toStrictEqual(['resolve', HOSTILE, '--ref', 'example.com/o/one']);
   });
 });

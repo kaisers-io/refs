@@ -1,3 +1,4 @@
+import { POSIX_SHELL, shellQuote } from '../shell-quote.ts';
 import type {
   PackageEntry,
   Proposal,
@@ -7,7 +8,6 @@ import type {
   WorkspacePackage,
 } from '@kaisers-io/refs-core';
 import { displaySafe } from '../output.ts';
-import { shellQuote } from '../shell-quote.ts';
 import { validationError } from '@kaisers-io/refs-core';
 
 // `packages`/`tag_format` shaping between the proposal shape (partial, machine-detected) and the
@@ -212,7 +212,7 @@ const requireDescribablePackages = (
     .join(', ');
   throw validationError(
     'refs add --description cannot describe a package: it has one description, about the ' +
-      'repository. Run the two-phase flow instead:\n' +
+      `repository. Run the two-phase flow instead (${POSIX_SHELL}):\n` +
       `  refs add ${shellQuote(source)} --dry-run --json > proposal.json\n` +
       "Fill in the ref's own description, and one written from its own source for each package " +
       'below, then:\n' +
