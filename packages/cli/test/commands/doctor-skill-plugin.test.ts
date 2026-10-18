@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { skillCheckOf, skillSource, writeSkillIn } from '../helpers/doctor-skill-support.ts';
 import { join } from 'node:path';
 import { withTempHome } from '../helpers/add-support.ts';
@@ -86,4 +86,20 @@ describe('doctor: a Codex plugin cache that is not an install', () => {
       expect(result.detail).toMatch(/^refs skill not found/u);
     });
   });
+});
+
+// Doctor is not the only place that names the fix: the skill's own version check (SKILL.md §1)
+// prints one when it finds itself behind. Loaded as `refs:refs`, `npx skills add` would install a
+// second, standalone copy beside the plugin instead of updating it.
+describe('the skill naming its own update', () => {
+  it.each(['skills/refs/SKILL.md', 'codex-plugin/skills/refs/SKILL.md'])(
+    '%s names the plugin update doctor names',
+    async (file) => {
+      expect.hasAssertions();
+      const text = await readFile(new URL(`../../../../${file}`, import.meta.url), 'utf8');
+      expect(text.replaceAll(/\s+/gu, ' ')).toContain(
+        '`refs:refs`, the skill updates with `codex plugin marketplace upgrade kaisers-io`',
+      );
+    },
+  );
 });

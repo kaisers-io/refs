@@ -51,9 +51,14 @@ it only runs when you invoke it explicitly. To update, run `codex plugin marketp
 kaisers-io`. To remove it, run `codex plugin remove refs@kaisers-io`.
 
 Use either the plugin or the standalone skill, not both. With both installed, Codex lists `refs`
-and `refs:refs` as two separate skills. Remove one of them. `refs doctor` does not look inside
-Codex's plugin cache yet, so with only the plugin installed, its `skill` check reports the skill as
-not found in the locations it knows.
+and `refs:refs` as two separate skills. Remove one of them. `refs doctor` reads the plugin's copy
+when the plugin is enabled, and names `codex plugin marketplace upgrade kaisers-io` when it is
+behind the CLI (see [the `skill` check](commands.md#the-skill-check)).
+
+`codex plugin marketplace upgrade` also refreshes the installed copy when the marketplace has moved
+on. That is what Codex's source does (`openai/codex`, `core-plugins/src/manager.rs`: a changed
+snapshot force-reinstalls every configured plugin from it). If a copy stays behind anyway,
+`codex plugin remove refs@kaisers-io` followed by `codex plugin add refs@kaisers-io` reinstalls it.
 
 ## Checking it
 
