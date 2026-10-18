@@ -81,3 +81,34 @@ register_toolkit() {
   refs add --proposal proposal.tmp.json --json >/dev/null
   rm proposal.tmp.json
 }
+
+# Fixed author and committer dates, so a fixture's commit ids are the same on every run.
+fixed_dates() {
+  export GIT_AUTHOR_DATE='2026-01-01T00:00:00Z' GIT_COMMITTER_DATE='2026-01-01T00:00:00Z'
+}
+
+# Creates fixtures/<name> as a fresh repository on main and writes its file:// url next to it.
+new_fixture() {
+  local repo="fixtures/$1"
+  mkdir -p "$repo"
+  git -C "$repo" init -q -b main
+  printf 'file://%s/%s\n' "$PWD" "$repo" >"fixtures/$1.url"
+}
+
+# Registers fixtures/<name> the way an approved add would, with <description> for the ref and
+# every package it declares.
+register_fixture() {
+  refs add "$(cat "fixtures/$1.url")" --dry-run --json 2>/dev/null >proposal.tmp.json
+  node -e '
+    const fs = require("node:fs");
+    const [file, description] = process.argv.slice(1);
+    const proposal = JSON.parse(fs.readFileSync(file, "utf8")).data;
+    proposal.description = description;
+    for (const [name, entry] of Object.entries(proposal.packages)) {
+      entry.description = `The ${name} package.`;
+    }
+    fs.writeFileSync(file, JSON.stringify(proposal));
+  ' proposal.tmp.json "$2"
+  refs add --proposal proposal.tmp.json --json >/dev/null
+  rm proposal.tmp.json
+}
