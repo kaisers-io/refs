@@ -2,6 +2,7 @@ import type { Config, RefKey, RefsHome, State } from '@kaisers-io/refs-core';
 import {
   assertInsideSources,
   checkoutPath,
+  errnoCode,
   isEnoent,
   readConfig,
   readState,
@@ -90,7 +91,7 @@ const isRealDirectory = async (dir: string): Promise<boolean | undefined> => {
 
 // What `rmdir` reports for a directory that is not empty: POSIX allows either, Node on Windows
 // reports ENOTEMPTY.
-const NOT_EMPTY_CODES: ReadonlySet<unknown> = new Set(['ENOTEMPTY', 'EEXIST']);
+const NOT_EMPTY_CODES: ReadonlySet<string | undefined> = new Set(['ENOTEMPTY', 'EEXIST']);
 
 /** `rmdir(dir)`: `true` if `dir` is gone (removed here, or already), `false` if something arrived
  * in it after the `readdir` that found it empty — another process (a concurrent `refs add` of a
@@ -103,7 +104,7 @@ const rmdirIfStillEmpty = async (dir: string): Promise<boolean> => {
     if (isEnoent(error)) {
       return true;
     }
-    if (NOT_EMPTY_CODES.has((error as NodeJS.ErrnoException).code)) {
+    if (NOT_EMPTY_CODES.has(errnoCode(error))) {
       return false;
     }
     throw error;

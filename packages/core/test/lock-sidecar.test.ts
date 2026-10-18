@@ -27,20 +27,27 @@ const lockDir = async (): Promise<string> => {
 };
 
 describe('a token read off disk that is not a randomUUID', () => {
-  it.each(['../escape', 'lease/../../x', '', `${TOKEN}\n`, 'AAAAAAAA-2222-4333-8444-555555555555'])(
-    'names no sidecar for %j, even where a file would resolve',
-    async (token) => {
-      expect.hasAssertions();
-      const lockPath = await lockDir();
-      // What `join(lockPath, 'lease-' + token)` would reach for the traversal tokens.
-      await mkdir(join(lockPath, 'lease-..'), { recursive: true });
-      await mkdir(join(lockPath, 'lease-lease'), { recursive: true });
-      await writeFile(join(lockPath, 'escape'), '');
-      await writeFile(join(lockPath, '..', 'x'), '');
-      await expect(leaseMtimeMs(lockPath, token)).resolves.toStrictEqual({ state: 'absent' });
-      await expect(touchLeaseSidecar(lockPath, token)).resolves.toBe('gone');
-    },
-  );
+  it.each([
+    '../escape',
+    'lease/../../x',
+    '/../../decoy',
+    '',
+    `${TOKEN}\n`,
+    'AAAAAAAA-2222-4333-8444-555555555555',
+  ])('names no sidecar for %j, even where a file would resolve', async (token) => {
+    expect.hasAssertions();
+    const lockPath = await lockDir();
+    // What `join(lockPath, 'lease-' + token)` would reach for the traversal tokens.
+    await mkdir(join(lockPath, 'lease-..'), { recursive: true });
+    await mkdir(join(lockPath, 'lease-lease'), { recursive: true });
+    await writeFile(join(lockPath, 'escape'), '');
+    await writeFile(join(lockPath, '..', 'x'), '');
+    // `lease-/../../decoy` resolves to `<locks root>/decoy`, one level above the lock directory.
+    await mkdir(join(lockPath, 'lease-'), { recursive: true });
+    await writeFile(join(lockPath, '..', 'decoy'), '');
+    await expect(leaseMtimeMs(lockPath, token)).resolves.toStrictEqual({ state: 'absent' });
+    await expect(touchLeaseSidecar(lockPath, token)).resolves.toBe('gone');
+  });
 });
 
 describe('renewing a lease', () => {
@@ -77,6 +84,15 @@ describe('renewing a lease', () => {
     await expect(stat(join(lockPath, `lease-${TOKEN}`))).resolves.toBeDefined();
     // A transient failure is not sticky: the next heartbeat renews.
     await expect(touchLeaseSidecar(lockPath, TOKEN)).resolves.toBe('renewed');
+  });
+
+  it('lets a symlink loop through too, rather than reading it as a missing sidecar', async () => {
+    expect.hasAssertions();
+    const lockPath = await lockDir();
+    await createLeaseSidecar(lockPath, TOKEN);
+    const loop = Object.assign(new Error('ELOOP: injected'), { code: 'ELOOP' });
+    vi.mocked(utimes).mockRejectedValueOnce(loop);
+    await expect(touchLeaseSidecar(lockPath, TOKEN)).rejects.toBe(loop);
   });
 });
 

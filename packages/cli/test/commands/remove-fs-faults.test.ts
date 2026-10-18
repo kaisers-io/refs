@@ -120,9 +120,14 @@ const inScene = (exercise: (scene: Scene) => Promise<void>): Promise<void> =>
 describe('refs remove: a failing filesystem leaves the ref registered', () => {
   it.each([
     { call: 'lstat', code: 'EACCES', on: 'dest', what: 'the checkout' },
+    { call: 'lstat', code: 'EIO', on: 'dest', what: 'the checkout' },
+    { call: 'rm', code: 'EBUSY', on: 'dest', what: 'the checkout' },
     { call: 'lstat', code: 'EACCES', on: 'owner', what: 'an emptied parent' },
+    { call: 'lstat', code: 'EIO', on: 'owner', what: 'an emptied parent' },
+    { call: 'lstat', code: 'ENOTDIR', on: 'owner', what: 'an emptied parent' },
     { call: 'readdir', code: 'EIO', on: 'owner', what: 'an emptied parent' },
     { call: 'rmdir', code: 'EBUSY', on: 'owner', what: 'an emptied parent' },
+    { call: 'rmdir', code: 'EIO', on: 'owner', what: 'an emptied parent' },
   ] as const)('$call on $what failing is reported and keeps the entry', async (fault) => {
     expect.hasAssertions();
     const { call, code, on } = fault;
@@ -136,22 +141,25 @@ describe('refs remove: a failing filesystem leaves the ref registered', () => {
     });
   });
 
-  it('finishes on a re-run after the checkout was deleted but pruning failed', async () => {
-    expect.hasAssertions();
-    await inScene(async (scene) => {
-      faults.set(`readdir ${scene.owner}`, failWith('EIO'));
-      await scene.remove();
-      await expect(exists(scene.dest)).resolves.toBe(false);
-      const { envelope, exitCode } = await scene.remove();
-      expect(exitCode).toBeUndefined();
-      expect(envelope).toMatchObject({
-        data: { key: KEY, removed_checkout: false },
-        ok: true,
-        warnings: ['checkout was already missing'],
+  it.each(['lstat', 'readdir', 'rmdir'] as const)(
+    'finishes on a re-run after the checkout was deleted but %s on a parent failed',
+    async (call) => {
+      expect.hasAssertions();
+      await inScene(async (scene) => {
+        faults.set(`${call} ${scene.owner}`, failWith('EIO'));
+        await scene.remove();
+        await expect(exists(scene.dest)).resolves.toBe(false);
+        const { envelope, exitCode } = await scene.remove();
+        expect(exitCode).toBeUndefined();
+        expect(envelope).toMatchObject({
+          data: { key: KEY, removed_checkout: false },
+          ok: true,
+          warnings: ['checkout was already missing'],
+        });
+        await expect(isRegistered(scene)).resolves.toBe(false);
       });
-      await expect(isRegistered(scene)).resolves.toBe(false);
-    });
-  });
+    },
+  );
 });
 
 describe('refs remove: losing a pruning race to another process is not an error', () => {
@@ -221,24 +229,31 @@ describe('refs remove: a deletion that stops part-way', () => {
 // parent — a concurrent `refs add` of a sibling ref under the same owner. `rmdir` refuses a
 // non-empty directory, which is exactly where pruning stops anyway: the removal succeeded.
 describe('refs remove: a sibling arriving while parents are pruned', () => {
-  it('stops pruning there, keeps the sibling, and still unregisters the ref', async () => {
-    expect.hasAssertions();
-    await inScene(async (scene) => {
-      const sibling = join(scene.owner, 'arrived');
-      faults.set(`rmdir ${scene.owner}`, async () => {
-        await writeFile(sibling, 'a sibling checkout');
-        return rmdir(scene.owner) as Promise<never>;
-      });
+  // The real `rmdir` reports ENOTEMPTY here; POSIX also allows EEXIST, which some systems use.
+  it.each([
+    { refuse: (dir: string): Promise<void> => rmdir(dir), what: 'the real rmdir' },
+    { refuse: (): Promise<never> => failWith('EEXIST')(), what: 'EEXIST' },
+  ])(
+    'stops pruning there, keeps the sibling, and still unregisters the ref ($what)',
+    async ({ refuse }) => {
+      expect.hasAssertions();
+      await inScene(async (scene) => {
+        const sibling = join(scene.owner, 'arrived');
+        faults.set(`rmdir ${scene.owner}`, async () => {
+          await writeFile(sibling, 'a sibling checkout');
+          return refuse(scene.owner) as Promise<never>;
+        });
 
-      const { envelope, exitCode } = await scene.remove();
+        const { envelope, exitCode } = await scene.remove();
 
-      expect({ envelope, exitCode }).toMatchObject({
-        envelope: { data: { removed_checkout: true }, ok: true },
-        exitCode: undefined,
+        expect({ envelope, exitCode }).toMatchObject({
+          envelope: { data: { removed_checkout: true }, ok: true },
+          exitCode: undefined,
+        });
+        await expect(readFile(sibling, 'utf8')).resolves.toBe('a sibling checkout');
+        await expect(exists(scene.dest)).resolves.toBe(false);
+        await expect(isRegistered(scene)).resolves.toBe(false);
       });
-      await expect(readFile(sibling, 'utf8')).resolves.toBe('a sibling checkout');
-      await expect(exists(scene.dest)).resolves.toBe(false);
-      await expect(isRegistered(scene)).resolves.toBe(false);
-    });
-  });
+    },
+  );
 });
