@@ -41,32 +41,18 @@ const repairLineFor = (report: StructureReport | undefined, key: string, name: s
 
 const BUNDLE = fileURLToPath(new URL('../../dist/refs.mjs', import.meta.url));
 
-/** The built bundle, built on demand.
+/** The built bundle.
  *
  * A shell cannot run the TypeScript entry: it resolves `@kaisers-io/refs-core` through the
  * workspace symlink under `node_modules`, and Node does not strip types there — the process exits
  * with no output, which is how this first failed on the floor interpreter while passing locally.
  * The bundle has no such imports, and is what actually ships.
  *
- * Built UNCONDITIONALLY, once per run. `pnpm check` does not build, so reusing whatever bundle
- * happens to be on disk means testing whatever was last built — verified: breaking `--create` at
- * the source leaves this suite green against a stale bundle, which is the same vacuous test in a
- * new disguise. One build per run is the price of the assertions meaning anything. */
-// eslint-disable-next-line init-declarations -- the point is that it is unset until first use
-let building: Promise<string> | undefined;
-
-const buildBundle = async (): Promise<string> => {
-  const built = await new SpawnRunner().run('pnpm', ['--filter', '@kaisers-io/refs', 'build'], {
-    cwd: fileURLToPath(new URL('../../../..', import.meta.url)),
-  });
-  expect(built.exitCode, `pnpm build failed: ${built.stderr}`).toBe(SUCCESS);
-  return BUNDLE;
-};
-
-const cliBundle = (): Promise<string> => {
-  building ??= buildBundle();
-  return building;
-};
+ * `vitest.global-setup.ts` builds it once per run, before any test file starts, so this is never a
+ * stale bundle. Building it here instead, as this helper used to, raced the same build in another
+ * test file: tsdown rewrote `dist/refs.mjs` in place while the other file's `refs` read it, and an
+ * empty bundle loads as a module with no exports (`realContext is not a function`). */
+const cliBundle = (): Promise<string> => Promise.resolve(BUNDLE);
 
 /** The full `sh -c` line: the environment as a prefix (which is what a person pasting the command
  * would type, and what the runner cannot pass otherwise), `refs` pointed at the CLI entry, and the

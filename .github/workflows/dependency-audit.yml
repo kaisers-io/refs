@@ -1,0 +1,57 @@
+name: dependency-audit
+# Checks every package in pnpm-lock.yaml against known advisories. Since pnpm 12 the lockfile holds
+# two YAML documents, and GitHub's dependency graph and Dependabot (which documents pnpm support
+# only up to v10) no longer see the second one — the project's whole graph, including runtime code
+# bundled into dist/refs.mjs. `pnpm audit` reads both documents; scripts/audit-lockfile.mjs proves
+# it did by comparing the audited package count with the lockfile's own inventory.
+#
+# Full audit, never `--prod`: commander, smol-toml and zod ship inside the bundle but are declared
+# as devDependencies, so a production-only audit would skip shipped code.
+#
+# Non-blocking for now (`continue-on-error`): the audit depends on the npm registry, and a new
+# advisory in an unchanged lockfile would otherwise turn unrelated pull requests red. A failure
+# still shows on the run and in its summary, and the script's exit code names the cause: 1 for
+# advisories, 2 when the audit could not run (never read as clean), 3 for a coverage gap. Make it
+# blocking once a few weeks of runs show the noise level.
+on:
+  push:
+    branches: [main]
+    paths:
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - '**/package.json'
+      - scripts/audit-lockfile.mjs
+      - scripts/audit-lockfile.test.mjs
+      - .github/workflows/dependency-audit.yml
+  pull_request:
+    paths:
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - '**/package.json'
+      - scripts/audit-lockfile.mjs
+      - scripts/audit-lockfile.test.mjs
+      - .github/workflows/dependency-audit.yml
+  # Weekly, so an advisory published against an unchanged lockfile is still noticed.
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      # No install and no cache: `pnpm audit` reads the lockfile alone, so nothing from the
+      # registry is executed here and there is no cache to poison.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version-file: .node-version, package-manager-cache: false }
+      - run: node --test scripts/audit-lockfile.test.mjs
+      - run: node scripts/audit-lockfile.mjs
