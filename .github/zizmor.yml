@@ -1,0 +1,7 @@
+# zizmor configuration (https://docs.zizmor.sh/configuration/). Each exception says why; a finding
+# not listed here, or ignored inline with its reason, fails workflow-audit.yml.
+#
+# There are none at the moment. dependabot.yml sets the 7-day cooldown zizmor asks for, which holds
+# back version updates only: Dependabot's security updates ignore `cooldown` and arrive at once
+# (https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference#cooldown-).
+rules: {}

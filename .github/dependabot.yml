@@ -8,6 +8,11 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # A new release is proposed a week after it is published, not on day one: a compromised version
+    # is usually found and pulled within days. This delays version updates only; Dependabot's
+    # security updates ignore `cooldown` and are opened at once. Dependabot's default is 3 days.
+    cooldown:
+      default-days: 7
     ignore:
       # `@types/node` tracks the Node major it describes, so it is pinned to the runtime we
       # actually support (`engines.node: ">=24.2"`, set there because `import.meta.main` landed in
@@ -49,6 +54,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # As above: a week's delay for version updates, none for security updates.
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns:
