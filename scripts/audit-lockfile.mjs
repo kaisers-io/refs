@@ -15,13 +15,16 @@
 // Why the coverage check. Since pnpm 12 the lockfile holds two YAML documents: the first only
 // pins pnpm itself, the second holds the project's graph. pnpm's docs warn that a tool reading only
 // the first document "reports that the project has no dependencies, and no vulnerabilities, without
-// failing" (https://pnpm.io/supply-chain-security). Counting the package entries in every document
-// and requiring the report to cover at least that many turns that silent pass into exit 3.
+// failing" (https://pnpm.io/supply-chain-security). Counting the registry packages across every
+// document, each once, and requiring the report to cover at least that many turns that silent pass
+// into exit 3.
 //
 // Why the full audit, not `--prod`. The CLI bundles commander, smol-toml and zod into
 // dist/refs.mjs, yet declares them as devDependencies, so `--prod` would skip shipped code.
 //
-// Plain Node with zero dependencies, like scripts/versions.mjs, so it runs before `pnpm install`.
+// Plain Node with zero dependencies, like scripts/versions.mjs, so it runs before `pnpm install`;
+// dependency-audit.yml installs nothing at all. Hence the line-based reading of the one lockfile
+// shape pnpm writes rather than a YAML library; the tests check it against one where installed.
 // Tests: scripts/audit-lockfile.test.mjs.
 
 import { appendFile, readFile } from 'node:fs/promises';
@@ -43,9 +46,12 @@ const OPTION_STRIDE = 2;
 
 // A YAML document separator on its own line, and a package key: exactly two spaces of indentation
 // under a top-level `packages:` block, ending in a colon (quoted or bare, as pnpm writes both).
+// Its `resolution:` is the four-space-indented flow mapping pnpm writes on one line.
 const DOCUMENT_SEPARATOR = /^---[ \t]*$/mu;
 const TOP_LEVEL_KEY = /^(?<key>[^\s#][^:]*):/u;
 const PACKAGE_KEY = /^ {2}(?<key>[^\s#].*):[ \t]*$/u;
+const FLOW_RESOLUTION = /^ {4}resolution:[ \t]*\{(?<body>.*)\}[ \t]*$/u;
+const FLOW_KEY = /(?:^|,)[ \t]*(?<key>[\w-]+):/gu;
 
 class UnavailableError extends Error {
   name = 'UnavailableError';
@@ -56,27 +62,60 @@ const fail = (code, message) => {
   process.exitCode = code;
 };
 
-/** Package keys under the top-level `packages:` block of one YAML document. */
-const packagesIn = (document) => {
-  const keys = [];
-  let inPackages = false;
-  for (const line of document.split(/\r?\n/u)) {
-    const top = TOP_LEVEL_KEY.exec(line);
-    if (top) {
-      inPackages = top.groups.key === 'packages';
-    } else if (inPackages && PACKAGE_KEY.test(line)) {
-      keys.push(PACKAGE_KEY.exec(line).groups.key.replaceAll(/^['"]|['"]$/gu, ''));
-    }
+// Only a registry package has a resolution of `integrity` alone; one from git (`commit`, `repo`),
+// a directory (`directory`) or a tarball url (`tarball`) has no registry advisories to look up, and
+// `pnpm audit` does not count it. A resolution in any other shape is counted: over-counting can
+// only turn a pass into a visible coverage failure, never hide a gap.
+const isRegistryResolution = (line) => {
+  const body = FLOW_RESOLUTION.exec(line)?.groups.body;
+  if (body === undefined) {
+    return true;
   }
-  return keys;
+  const keys = [...body.matchAll(FLOW_KEY)].map((found) => found.groups.key);
+  return keys.length === 1 && keys[0] === 'integrity';
 };
 
-/** Package count per lockfile document that has any, in file order. */
-const lockfileInventory = (text) =>
-  text
+const isNonRegistryResolution = (state, line) =>
+  state.current !== '' && line.startsWith('    resolution:') && !isRegistryResolution(line);
+
+// One step of the line scan in `packagesIn`: `state.current` is the package whose lines follow.
+const scanLine = (state, line) => {
+  const top = TOP_LEVEL_KEY.exec(line);
+  if (top) {
+    state.inPackages = top.groups.key === 'packages';
+    state.current = '';
+    return;
+  }
+  const packageKey = state.inPackages ? PACKAGE_KEY.exec(line)?.groups.key : undefined;
+  if (packageKey !== undefined) {
+    state.current = packageKey.replaceAll(/^['"]|['"]$/gu, '');
+    state.keys.add(state.current);
+  } else if (isNonRegistryResolution(state, line)) {
+    state.keys.delete(state.current);
+  }
+};
+
+/** Registry package keys under the top-level `packages:` block of one YAML document. */
+const packagesIn = (document) => {
+  const state = { current: '', inPackages: false, keys: new Set() };
+  for (const line of document.split(/\r?\n/u)) {
+    scanLine(state, line);
+  }
+  return [...state.keys];
+};
+
+/** Registry packages per lockfile document that has any, in file order, and their union: a
+ * package both documents list is one package to audit. */
+const lockfileInventory = (text) => {
+  const perDocument = text
     .split(DOCUMENT_SEPARATOR)
-    .map((document) => packagesIn(document).length)
-    .filter((count) => count > 0);
+    .map((document) => packagesIn(document))
+    .filter((keys) => keys.length > 0);
+  return {
+    perDocument: perDocument.map((keys) => keys.length),
+    total: new Set(perDocument.flat()).size,
+  };
+};
 
 const parseJson = (text, source) => {
   try {
@@ -138,10 +177,9 @@ const summary = ({ inventory, report }) => {
   const counts = SEVERITIES.map(
     (severity) => `| ${severity} | ${report.metadata.vulnerabilities?.[severity] ?? 0} |`,
   );
-  const listed = inventory.reduce((sum, count) => sum + count, 0);
   return [
     `### Lockfile audit`,
-    `Lockfile packages: ${listed} (per document: ${inventory.join(' + ')}); audited: ${report.metadata.totalDependencies}`,
+    `Lockfile packages: ${inventory.total} (per document: ${inventory.perDocument.join(' + ')}); audited: ${report.metadata.totalDependencies}`,
     '',
     '| severity | advisories |',
     '|---|---|',
@@ -151,12 +189,12 @@ const summary = ({ inventory, report }) => {
 };
 
 const verdict = ({ inventory, report }) => {
-  const listed = inventory.reduce((sum, count) => sum + count, 0);
+  const listed = inventory.total;
   const audited = report.metadata.totalDependencies;
   if (audited < listed) {
     return fail(
       EXIT_COVERAGE,
-      `the audit covered ${audited} packages but the lockfile lists ${listed} across ${inventory.length} document(s) — part of the graph went unscanned`,
+      `the audit covered ${audited} packages but the lockfile lists ${listed} across ${inventory.perDocument.length} document(s) — part of the graph went unscanned`,
     );
   }
   const found = SEVERITIES.filter(
@@ -189,4 +227,8 @@ const main = async () => {
   }
 };
 
-await main();
+if (import.meta.main) {
+  await main();
+}
+
+export { lockfileInventory };

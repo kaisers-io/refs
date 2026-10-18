@@ -6,10 +6,11 @@
 // report (`--report`) and a fixture lockfile (`--lockfile`), so what is under test is the coverage
 // arithmetic and the exit-code contract, not the registry.
 
-import { match, strictEqual } from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { deepStrictEqual, match, strictEqual } from 'node:assert/strict';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
+import { lockfileInventory } from './audit-lockfile.mjs';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import { tmpdir } from 'node:os';
@@ -162,3 +163,96 @@ test('rejects an unknown option as usage error', async () => {
   strictEqual(status, EXIT_UNAVAILABLE, output);
   match(output, /usage:/u);
 });
+
+// The same package in both documents (pnpm itself, say) is one package to audit, not two.
+const DUPLICATED = LOCKFILE.replace(
+  '  balanced-match@4.0.4:\n    resolution: {integrity: sha512-c}\n',
+  '  balanced-match@4.0.4:\n    resolution: {integrity: sha512-c}\n\n  pnpm@12.11.2:\n    resolution: {integrity: sha512-b}\n',
+);
+
+// Packages the advisory audit cannot cover: from git, a directory, or a tarball url.
+const NON_REGISTRY = LOCKFILE.replace(
+  '\nsnapshots:\n\n  balanced-match',
+  `
+  local-lib@file:../local-lib:
+    resolution: {directory: ../local-lib, type: directory}
+
+  from-git@git+https://example.com/o/r.git#abc:
+    resolution: {commit: abc, repo: https://example.com/o/r.git, type: git}
+
+  from-tarball@https://example.com/t.tgz:
+    resolution: {integrity: sha512-f, tarball: https://example.com/t.tgz}
+
+snapshots:
+
+  balanced-match`,
+);
+
+// A resolution in a shape this parser does not know is counted, so a gap stays visible.
+const UNKNOWN_SHAPE = LOCKFILE.replace(
+  '\nsnapshots:\n\n  balanced-match',
+  `
+  odd@1.0.0:
+    resolution:
+      integrity: sha512-g
+
+snapshots:
+
+  balanced-match`,
+);
+
+test('counts a package listed in both documents once', async () => {
+  const { output, status } = await audit({
+    lockfile: DUPLICATED,
+    reportText: report(BOTH_DOCUMENTS),
+  });
+  strictEqual(status, EXIT_OK, output);
+  match(output, /Lockfile packages: 5 \(per document: 2 \+ 4\)/u);
+});
+
+test('does not count git, directory or tarball packages the audit cannot cover', async () => {
+  const { output, status } = await audit({
+    lockfile: NON_REGISTRY,
+    reportText: report(BOTH_DOCUMENTS),
+  });
+  strictEqual(status, EXIT_OK, output);
+  match(output, /audited all 5 packages/u);
+});
+
+test('counts a package whose resolution it cannot read', async () => {
+  const { output, status } = await audit({
+    lockfile: UNKNOWN_SHAPE,
+    reportText: report(BOTH_DOCUMENTS),
+  });
+  strictEqual(status, EXIT_COVERAGE, output);
+  match(output, /lockfile lists 6/u);
+});
+
+// The dependency-free parser against a real YAML parser, wherever one is installed (locally and in
+// ci.yml; dependency-audit.yml installs nothing, so there this test is skipped).
+const yaml = await import('yaml').catch(() => ({ unavailable: true }));
+
+const yamlInventory = (text) => {
+  const keys = new Set();
+  for (const document of yaml.parseAllDocuments(text)) {
+    for (const [key, entry] of Object.entries(document.toJS()?.packages ?? {})) {
+      const resolution = Object.keys(entry?.resolution ?? {});
+      if (resolution.length === 1 && resolution[0] === 'integrity') {
+        keys.add(key);
+      }
+    }
+  }
+  return keys.size;
+};
+
+test(
+  'agrees with a YAML parser on the repository lockfile and every fixture',
+  { skip: yaml.unavailable === true && 'yaml is not installed' },
+  async () => {
+    const texts = [await readFile(REPO_LOCKFILE, 'utf8'), LOCKFILE, DUPLICATED, NON_REGISTRY];
+    deepStrictEqual(
+      texts.map((text) => lockfileInventory(text).total),
+      texts.map((text) => yamlInventory(text)),
+    );
+  },
+);
