@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Printed repair commands say which shell they are for.** Every command refs prints with a quoted value is now introduced with `(POSIX sh / Git Bash)`: the `refs edit` repairs from `refs sync`, `refs doctor` and `refs tag`; the `rm`/`rmdir` commands for orphaned checkouts, unexpected hooks, stuck locks and an unmanaged checkout in the way of `refs add`; and the `refs sync`, `refs remove`, `refs show`, `refs resolve` and `refs add --dry-run` commands that error messages suggest. Their quoting (`'\''` for an embedded quote) is POSIX; PowerShell and cmd.exe parse it differently. The `--json` command fields are unchanged.
+
 ## [0.18.2] - 2026-10-13
 
 ### Security

@@ -118,6 +118,9 @@ describe('refs tag: ref without a tag_format', () => {
           expect(envelope.ok).toBe(false);
           expect(envelope.error?.code).toBe('validation');
           expect(envelope.error?.message).toMatch(/no tag_format configured/u);
+          expect(envelope.error?.message).toContain(
+            `set one with (POSIX sh / Git Bash): refs edit '${REF_KEY}' 'tag_format' '<format>'`,
+          );
         }),
       );
     },

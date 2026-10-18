@@ -83,7 +83,9 @@ describe('refs add: checkout reuse — managed-checkout marker guard', () => {
           const envelope = parseLastEnvelope(stdout) as ErrorEnvelope;
           expect(envelope.ok).toBe(false);
           expect(envelope.error?.code).toBe('conflict');
-          expect(envelope.error?.message).toMatch(/not refs-managed/u);
+          expect(envelope.error?.message).toMatch(
+            /not refs-managed — remove it \(POSIX sh \/ Git Bash: rm -rf -- '/u,
+          );
         }),
       );
     },

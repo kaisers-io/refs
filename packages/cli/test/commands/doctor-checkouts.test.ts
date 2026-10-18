@@ -143,7 +143,7 @@ const hooksGuardDetail = (envelope: DoctorEnvelope): string => {
   return detail;
 };
 
-const REMOVAL_MARKER = 'remove: ';
+const REMOVAL_MARKER = 'remove (POSIX sh / Git Bash): ';
 const SUCCESS_EXIT = 0;
 const NOT_FOUND = -1;
 
@@ -189,7 +189,7 @@ describe('refs doctor: a hooks directory holding something refs did not install'
           status: 'fail',
         });
         expect(hooksGuardDetail(envelope)).toContain(
-          `remove: rm -rf -- '${join(setup.home.hooksDir, 'post-checkout')}'`,
+          `remove (POSIX sh / Git Bash): rm -rf -- '${join(setup.home.hooksDir, 'post-checkout')}'`,
         );
       }),
     );

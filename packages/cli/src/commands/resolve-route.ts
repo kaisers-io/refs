@@ -1,4 +1,5 @@
 import type { Config, PackageEntry, RefKey } from '@kaisers-io/refs-core';
+import { POSIX_SHELL, shellQuote } from '../shell-quote.ts';
 import {
   RefsError,
   canonicalizeGitUrl,
@@ -9,7 +10,6 @@ import {
 } from '@kaisers-io/refs-core';
 import { packageWithin, segmentPrefixes } from './resolve-route-package.ts';
 import { matchRefKey } from './list.ts';
-import { shellQuote } from '../shell-quote.ts';
 
 // Turning one query string into the ref (and, where applicable, the package inside it) it denotes.
 // Split out of `resolve.ts`, which was carrying this four-step precedence alongside everything else
@@ -152,7 +152,7 @@ const packageMatchesFor = (config: Config, name: string): PackageEntryMatch[] =>
 // `pick` is passed rather than taken off `keys`, so the message cannot be built without one — the
 // caller already has it in hand, and a `?? ''` here would be a fallback no test could reach.
 const ambiguousPackageMessage = (name: string, keys: readonly RefKey[], pick: RefKey): string =>
-  `package '${name}' is registered by more than one ref: ${keys.join(', ')} — pick one with: ` +
+  `package '${name}' is registered by more than one ref: ${keys.join(', ')} — pick one with (${POSIX_SHELL}): ` +
   // A real key, not a `<ref>` placeholder: a shell reads `<ref>` as an input redirection, so the
   // line could not run as printed.
   `refs resolve ${shellQuote(name)} --ref ${shellQuote(pick)}`;
@@ -234,8 +234,8 @@ const routeWithinRef = (config: Config, query: string, ref: string): RouteMatch 
     // names, so a reader following this advice still cannot see what the ref does register.
     throw notFoundError(
       looksLikeGitUrl(query)
-        ? `ref '${key}' is tracked but registers no package matching that query — inspect: refs show ${shellQuote(key)} --packages --json`
-        : `ref '${key}' is tracked but registers no package matching '${query}' — inspect: refs show ${shellQuote(key)} --packages --json`,
+        ? `ref '${key}' is tracked but registers no package matching that query — inspect (${POSIX_SHELL}): refs show ${shellQuote(key)} --packages --json`
+        : `ref '${key}' is tracked but registers no package matching '${query}' — inspect (${POSIX_SHELL}): refs show ${shellQuote(key)} --packages --json`,
       'package_not_registered',
     );
   }

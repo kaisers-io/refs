@@ -6,7 +6,17 @@ The short path is in the [README](../README.md). This page covers the rest.
 
 Node.js 24.2 or newer, and git.
 
-On Windows use [Git for Windows](https://gitforwindows.org/). The read-only guards are `sh` scripts and need the shell it ships with. The CLI behaves the same on macOS, Linux and Windows, and its full test suite runs on each of them.
+On Windows use [Git for Windows](https://gitforwindows.org/). The read-only guards are `sh` scripts and need the shell it ships with. The CLI behaves the same on macOS, Linux and Windows, and CI runs the test suite on each of them. Some tests are skipped on Windows, each because what it needs does not exist there or, in the last case, costs too much:
+
+- tests that paste printed commands into `sh`, which Windows does not have;
+- POSIX file modes: what `refs init` leaves private or executable, `refs doctor`'s permission checks, a directory without search permission, and a home directory that is a symlink;
+- file names Windows refuses: a control character or a colon in a path component;
+- a `file://` url built from a temporary path, which carries backslashes on Windows;
+- a pseudo-terminal, for the progress spinner;
+- a pipe a grandchild keeps open after its parent exits, which Windows closes when the parent exits;
+- the branch-name rule compared against git itself, for cost: one git process per name takes too long there. It is compared on Linux and macOS.
+
+Commands refs prints for you to run are quoted for a POSIX shell (see [Printed commands](commands.md#printed-commands-are-for-a-posix-shell)); on Windows, run them from Git Bash.
 
 ## The CLI
 
