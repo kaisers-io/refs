@@ -15,6 +15,10 @@ type Workflow = {
 };
 
 const DIRECTORY = new URL('../../../.github/workflows/', import.meta.url);
+const GITHUB = new URL('../../../.github/', import.meta.url);
+// zizmor's minimum for `cooldown.default-days` (its `dependabot-cooldown` audit); Dependabot's own
+// default is 3 days.
+const MIN_COOLDOWN_DAYS = 7;
 // GitHub's default is 360 minutes; every job here finishes in a fraction of an hour.
 const MAX_TIMEOUT_MINUTES = 60;
 const PINNED = /^[\w.-]+\/[\w.-]+(?:\/[\w./-]+)?@[0-9a-f]{40}$/u;
@@ -96,5 +100,42 @@ describe('the release workflow', () => {
     expect.hasAssertions();
     expect(step.with?.['package-manager-cache']).toBe(false);
     expect(step.with?.['cache']).toBeUndefined();
+  });
+});
+
+type Dependabot = {
+  updates: { 'package-ecosystem': string; cooldown?: { 'default-days'?: number } }[];
+};
+type ZizmorConfig = { rules?: Record<string, { disable?: boolean }> };
+
+const dependabot = parse(await readFile(new URL('dependabot.yml', GITHUB), 'utf8')) as Dependabot;
+const zizmorConfig = parse(await readFile(new URL('zizmor.yml', GITHUB), 'utf8')) as ZizmorConfig;
+
+describe('the Dependabot version updates', () => {
+  const updates = dependabot.updates.map((update) => ({
+    days: update.cooldown?.['default-days'],
+    ecosystem: update['package-ecosystem'],
+  }));
+
+  it.each(updates)('for $ecosystem wait a week before proposing a new release', ({ days }) => {
+    expect.hasAssertions();
+    expect(days).toBeGreaterThanOrEqual(MIN_COOLDOWN_DAYS);
+  });
+
+  it('keeps zizmor’s cooldown audit on', () => {
+    expect.hasAssertions();
+    expect(zizmorConfig.rules?.['dependabot-cooldown']?.disable).toBeUndefined();
+  });
+});
+
+describe('the workflow audit', () => {
+  const runs = Object.values(byName.get('workflow-audit.yml')?.jobs ?? {})
+    .flatMap((job) => job.steps ?? [])
+    .flatMap((step) => (step.run?.includes('zizmor') === true ? [step.run] : []));
+
+  it('fails on a workflow or config file zizmor cannot parse, instead of skipping it', () => {
+    expect.hasAssertions();
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatch(/ --strict-collection /u);
   });
 });

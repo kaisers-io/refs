@@ -10,6 +10,8 @@ name: workflow-audit
 #
 # GH_TOKEN (read-only, contents: read) turns on the online audits, such as impostor commits and
 # known-vulnerable actions. `--format github` puts findings on the diff as annotations.
+# `--strict-collection` fails the job on a workflow or config file zizmor cannot parse; without it
+# zizmor warns and audits the rest, so a broken file would pass unaudited.
 on:
   push:
     branches: [main]
@@ -29,6 +31,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
       - run: pipx install uv
-      - run: uvx zizmor@1.31.1 --format github .github
+      - run: uvx zizmor@1.31.1 --strict-collection --format github .github
         env:
           GH_TOKEN: ${{ github.token }}
