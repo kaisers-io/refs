@@ -4,7 +4,8 @@
 //   node --test scripts/skill-evals/repair-graders.test.mjs
 //
 // A grader that accepts a wrong answer scores the skill on nothing. These pin the shapes that once
-// passed: positionals in the wrong order, and a second command on an indented line. Nothing here
+// passed: positionals in the wrong order, a second command on an indented line, and a reply that
+// told the user not to run the only matching command. Nothing here
 // executes a command; the answers are only graded as text. No install is needed (CI runs this
 // without one), so the case files are read with a reader for the few YAML shapes graders use.
 
@@ -34,12 +35,19 @@ const caseGrader = async (caseName, name) => {
   };
 };
 
-const fence = (command) => `The retry package moved.\n\n\`\`\`sh\n${command}\n\`\`\`\n`;
-
-/** `[label, passed]` for each `[label, lastMessage]`, graded by one grader of drift-repairs. */
-const verdicts = async (graderName, cases) => {
+/** `[label, passed]` for each `[label, content]`, with `content` as `file` in the run directory and
+ * `reply` as the last message, graded by one grader of drift-repairs. `undefined` writes no file. */
+const verdicts = async (graderName, file, cases) => {
   const grader = await caseGrader('drift-repairs', graderName);
-  const results = await Promise.all(cases.map(([, lastMessage]) => grade(grader, { lastMessage })));
+  const results = await Promise.all(
+    cases.map(async ([, content, reply = '']) => {
+      const cwd = await mkdtemp(join(tmpdir(), 'repair-graders-'));
+      if (content !== undefined) {
+        await writeFile(join(cwd, file), content);
+      }
+      return grade(grader, { cwd, lastMessage: reply });
+    }),
+  );
   return cases.map(([label], index) => [label, results[index].passed]);
 };
 
@@ -50,39 +58,15 @@ const REMOVAL = "refs edit --package='@toolkit/slugify' --remove 'local/fixtures
 
 const PATH_EDIT_RIGHT = [
   [
-    "refs' own doctor line",
-    fence(
-      "refs edit --package='@toolkit/retry' 'local/fixtures/toolkit' 'path' 'packages/retry-policy'",
-    ),
+    "refs' own doctor line, as the Write tool leaves it",
+    "refs edit --package='@toolkit/retry' 'local/fixtures/toolkit' 'path' 'packages/retry-policy'\n",
   ],
+  ['options last', 'refs edit toolkit path packages/retry-policy --package @toolkit/retry'],
   [
-    'inline code, options last',
-    'Run `refs edit toolkit path packages/retry-policy --package @toolkit/retry` to repoint it.',
+    'double quotes, --json',
+    'refs edit "local/fixtures/toolkit" --package="@toolkit/retry" path packages/retry-policy --json',
   ],
-  [
-    'a prompt, double quotes, --json',
-    fence(
-      '$ refs edit "local/fixtures/toolkit" --package="@toolkit/retry" path packages/retry-policy --json',
-    ),
-  ],
-  [
-    'a trailing comment',
-    fence("refs edit --package '@toolkit/retry' toolkit path 'packages/retry-policy'  # the move"),
-  ],
-  [
-    'a line continuation',
-    fence(
-      "refs edit --package='@toolkit/retry' \\\n  'local/fixtures/toolkit' path 'packages/retry-policy'",
-    ),
-  ],
-  [
-    'a list item',
-    '- refs edit --package=@toolkit/retry local/fixtures/toolkit path packages/retry-policy\n- next',
-  ],
-  ['a Markdown heading', `## 2. Repoint it: \`${PATH_EDIT}\``],
-  ['a table cell', `| \`@toolkit/retry\` | moved | \`${PATH_EDIT}\` |`],
-  // The case is about NOT removing a moved package, so a right answer says so next to the command.
-  ['a warning before it', `Do not remove it; it only moved. Run \`${PATH_EDIT}\`.`],
+  ['surrounding blank lines', `\n  ${PATH_EDIT}  \n\n`],
 ];
 
 const PATH_EDIT_WRONG = [
@@ -91,88 +75,59 @@ const PATH_EDIT_WRONG = [
     'reordered positionals',
     "refs edit --package='@toolkit/retry' path 'packages/retry-policy' 'local/fixtures/toolkit'",
   ],
-  [
-    'value before field',
-    fence("refs edit --package='@toolkit/retry' toolkit 'packages/retry-policy' path"),
-  ],
-  [
-    'an extra argument',
-    fence(
-      "refs edit --package='@toolkit/retry' 'local/fixtures/toolkit' path 'packages/retry-policy' x",
-    ),
-  ],
-  [
-    'the wrong package',
-    fence("refs edit --package='@toolkit/slugify' toolkit path 'packages/retry-policy'"),
-  ],
-  [
-    'the wrong ref',
-    fence("refs edit --package='@toolkit/retry' other path 'packages/retry-policy'"),
-  ],
-  ['no package', fence("refs edit 'local/fixtures/toolkit' path 'packages/retry-policy'")],
-  [
-    'a field option',
-    fence("refs edit --package='@toolkit/retry' --path='packages/retry-policy' toolkit"),
-  ],
-  [
-    'a removal as well',
-    fence("refs edit --package='@toolkit/retry' --remove toolkit path packages/retry-policy"),
-  ],
-  [
-    'a comment',
-    fence("# refs edit --package='@toolkit/retry' toolkit path 'packages/retry-policy'"),
-  ],
-  [
-    'prose',
-    'You could run refs edit --package @toolkit/retry toolkit path packages/retry-policy later.',
-  ],
-  // A code span is no way out of a comment: the review's exact artifact, and the same in a block.
-  ['a code span in a comment', `# \`${PATH_EDIT}\``],
-  ['a code span in an indented comment', fence(`  # do not run: \`${PATH_EDIT}\``)],
-  // A backtick ending a bare line opens a command substitution; it does not close a code span.
-  ['a backtick substitution', fence(`${PATH_EDIT}\`touch x\``)],
+  ['value before field', "refs edit --package='@toolkit/retry' toolkit 'packages/retry-policy' path"],
+  ['an extra argument', `${PATH_EDIT} x`],
+  ['the wrong package', "refs edit --package='@toolkit/slugify' toolkit path 'packages/retry-policy'"],
+  ['the wrong ref', "refs edit --package='@toolkit/retry' other path 'packages/retry-policy'"],
+  ['no package', "refs edit 'local/fixtures/toolkit' path 'packages/retry-policy'"],
+  ['a field option', "refs edit --package='@toolkit/retry' --path='packages/retry-policy' toolkit"],
+  ['a removal as well', `${PATH_EDIT} --remove`],
+  ['a comment', `# ${PATH_EDIT}`],
+  ['a second command', `${PATH_EDIT}\n  touch /tmp/this-command-was-not-run\n`],
+  ['a chained command', `${PATH_EDIT} && touch x`],
+  ['a backtick substitution', `${PATH_EDIT}\`touch x\``],
+  // The review's false passes: prose that tells the user NOT to run the only matching command.
+  ['prose saying never to run it', `Never execute \`${PATH_EDIT}\`.`],
+  ['no file, the command only in the reply', undefined, `Run \`${PATH_EDIT}\`.`],
 ];
 
 test('the path edit is accepted in every valid spelling and order of options', async () => {
-  const graded = await verdicts('path-edit-for-the-relocated-package', PATH_EDIT_RIGHT);
+  const graded = await verdicts(
+    'path-edit-for-the-relocated-package',
+    'relocate-command.txt',
+    PATH_EDIT_RIGHT,
+  );
   deepStrictEqual(graded, expecting(PATH_EDIT_RIGHT, true));
 });
 
-test('the path edit is rejected out of order, with extra arguments, or outside a command', async () => {
-  const graded = await verdicts('path-edit-for-the-relocated-package', PATH_EDIT_WRONG);
+test('the path edit is rejected out of order, with anything else in the file, or without one', async () => {
+  const graded = await verdicts(
+    'path-edit-for-the-relocated-package',
+    'relocate-command.txt',
+    PATH_EDIT_WRONG,
+  );
   deepStrictEqual(graded, expecting(PATH_EDIT_WRONG, false));
 });
 
 const REMOVAL_RIGHT = [
-  [
-    "refs' own doctor line",
-    fence("refs edit --package='@toolkit/slugify' --remove 'local/fixtures/toolkit'"),
-  ],
-  ['inline code', 'Then `refs edit toolkit --remove --package @toolkit/slugify --json`.'],
+  ["refs' own doctor line", `${REMOVAL}\n`],
+  ['options in another order, --json', 'refs edit toolkit --remove --package @toolkit/slugify --json'],
 ];
 
 const REMOVAL_WRONG = [
-  [
-    'an extra argument',
-    fence("refs edit --package='@toolkit/slugify' --remove 'local/fixtures/toolkit' path"),
-  ],
-  [
-    'the wrong package',
-    fence("refs edit --package='@toolkit/retry' --remove 'local/fixtures/toolkit'"),
-  ],
-  ['no --remove', fence("refs edit --package='@toolkit/slugify' 'local/fixtures/toolkit'")],
-  [
-    'a comment',
-    fence("# refs edit --package='@toolkit/slugify' --remove 'local/fixtures/toolkit'"),
-  ],
-  ['prose', 'Or run refs edit --package @toolkit/slugify --remove toolkit if it is really gone.'],
-  ['a code span in a comment', fence(`# \`${REMOVAL}\``)],
-  ['a backtick substitution', fence(`${REMOVAL}\`touch x\``)],
+  ['an extra argument', `${REMOVAL} path`],
+  ['the wrong package', "refs edit --package='@toolkit/retry' --remove 'local/fixtures/toolkit'"],
+  ['no --remove', "refs edit --package='@toolkit/slugify' 'local/fixtures/toolkit'"],
+  ['a comment', `# ${REMOVAL}`],
+  ['a second command', `${REMOVAL}\n\ttouch x\n`],
+  ['a backtick substitution', `${REMOVAL}\`touch x\``],
+  ['prose saying never to run it', `Never execute \`${REMOVAL}\`.`],
+  ['no file, the command only in the reply', undefined, `Run \`${REMOVAL}\`.`],
 ];
 
-test('the removal must be the whole command, for the missing package', async () => {
+test('the removal must be the whole file, for the missing package', async () => {
   const cases = [...REMOVAL_RIGHT, ...REMOVAL_WRONG];
-  const graded = await verdicts('removal-for-the-missing-package', cases);
+  const graded = await verdicts('removal-for-the-missing-package', 'remove-command.txt', cases);
   deepStrictEqual(graded, [...expecting(REMOVAL_RIGHT, true), ...expecting(REMOVAL_WRONG, false)]);
 });
 
