@@ -1,5 +1,4 @@
 import type { Runner } from '../proc/runner.ts';
-import { pinHooksPath } from './pinned-hooks.ts';
 import { validationError } from '../errors.ts';
 
 const SUCCESS_EXIT_CODE = 0;
@@ -19,8 +18,12 @@ const tryReadOriginHead = async (runner: Runner, dir: string): Promise<string | 
 };
 
 // Resolves the remote's default branch via `refs/remotes/origin/HEAD`; if stale/absent, refreshes
-// with `git remote set-head origin --auto` and retries once. Throws if still undetectable. The
-// caller's `runner` must already carry the hooks pin: `syncRef` passes its pinned one.
+// with `git remote set-head origin --auto` and retries once. Throws if still undetectable.
+//
+// The fallback `set-head` WRITES `refs/remotes/origin/HEAD`, and from git 2.54 that ref update runs
+// `reference-transaction`, from an inherited command-scope `core.hooksPath=.githooks` too. What
+// keeps that from running a hook the checkout tracks is the pin the CLI puts on every git call
+// (`pinned-hooks.ts`). Measured on git 2.54.0 and 2.55.0; git 2.43 runs no hook here.
 const readDefaultBranch = async (runner: Runner, dir: string): Promise<string> => {
   const direct = await tryReadOriginHead(runner, dir);
   if (direct !== undefined) {
@@ -34,12 +37,4 @@ const readDefaultBranch = async (runner: Runner, dir: string): Promise<string> =
   throw validationError(`could not detect the default branch for checkout: ${dir}`);
 };
 
-// `readDefaultBranch` under refs' hooks pin (`pinned-hooks.ts`). The fallback `set-head` WRITES
-// `refs/remotes/origin/HEAD`, and from git 2.54 that ref update runs `reference-transaction` —
-// from an inherited command-scope `core.hooksPath=.githooks` too, i.e. from a hook the checkout
-// tracks. Measured on git 2.54.0 and 2.55.0 (git 2.43 runs no hook there): `add --dry-run`
-// reusing a checkout whose `origin/HEAD` was missing ran it three times; pinned, never.
-const detectDefaultBranch = (runner: Runner, dir: string, hooksDir: string): Promise<string> =>
-  readDefaultBranch(pinHooksPath(runner, hooksDir), dir);
-
-export { detectDefaultBranch, readDefaultBranch };
+export { readDefaultBranch };

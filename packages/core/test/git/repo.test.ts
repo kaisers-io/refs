@@ -115,7 +115,7 @@ describe('detectDefaultBranch()', SUITE_OPTS, () => {
     const dest = await makeDest();
     await plainClone(fixture.url, dest);
 
-    await expect(detectDefaultBranch(runner, dest, MANAGED_HOOKS_MARKER)).resolves.toBe('main');
+    await expect(detectDefaultBranch(runner, dest)).resolves.toBe('main');
   });
 });
 
