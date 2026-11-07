@@ -22,9 +22,10 @@
 // reads later. A missing include anywhere else is skipped: nothing the command does creates it.
 
 import type { HookLabelCache, Snapshot } from './git-hook-label-cache.ts';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import type { RunResult } from './runner.ts';
 import { commandOf } from './git-command-of.ts';
+import { isInside } from '../fs-containment.ts';
 import { realpath } from 'node:fs/promises';
 import { snapshotOf } from './git-hook-label-cache.ts';
 
@@ -105,11 +106,6 @@ const addLabel = (inventory: Inventory, key: string): void => {
   inventory.labels.add(label);
 };
 
-const isInside = (path: string, root: string): boolean => {
-  const rel = relative(root, path);
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
-};
-
 const canonical = async (path: string): Promise<string> => {
   try {
     return await realpath(path);
@@ -120,7 +116,7 @@ const canonical = async (path: string): Promise<string> => {
 
 const assertOutsideCheckout = async (path: string, roots: readonly string[]): Promise<void> => {
   const real = await canonical(path);
-  if (roots.some((root) => isInside(path, root) || isInside(real, root))) {
+  if (roots.some((root) => isInside(root, path) || isInside(root, real))) {
     refuse(`the include ${path} lies inside the checkout this command writes`);
   }
 };
