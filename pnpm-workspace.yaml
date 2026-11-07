@@ -1,2 +1,12 @@
 packages:
   - packages/*
+
+# Refuse a dependency version published with weaker trust evidence (trusted publisher,
+# provenance) than an earlier release of the same package. That does not prove a compromise,
+# but it is what a publish with a leaked token would look like, so it waits for review.
+# The lockfile is re-checked on every install because trustLockfile stays at its default false.
+# Add a reviewed exception to trustPolicyExclude as `name@version` (a bare name waives every
+# version); avoid trustPolicyIgnoreAfter, which waives the check by age rather than by review.
+# packages/cli/test/trust-policy-config.test.ts fails if these settings are weakened.
+# https://pnpm.io/settings/dependency-resolution#trustpolicy
+trustPolicy: no-downgrade
