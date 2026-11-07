@@ -2,6 +2,7 @@ import type { Config, RefKey, RefsHome, State } from '@kaisers-io/refs-core';
 import {
   assertInsideSources,
   checkoutPath,
+  errnoCode,
   isEnoent,
   readConfig,
   readState,
@@ -88,8 +89,32 @@ const isRealDirectory = async (dir: string): Promise<boolean | undefined> => {
   }
 };
 
+// What `rmdir` reports for a directory that is not empty. POSIX permits either code (rmdir(2));
+// Linux, macOS and Windows (through libuv) report ENOTEMPTY.
+const NOT_EMPTY_CODES = new Set<string | undefined>(['EEXIST', 'ENOTEMPTY']);
+
+/** `rmdir(dir)` after a `readdir` found it empty: `true` if `dir` is gone (removed here, or by a
+ * concurrent pruner first), `false` if something arrived in it in between — a concurrent `refs add`
+ * of a sibling ref under the same owner. That is positive evidence the directory is in use, the
+ * same answer the `readdir` would have given a moment later, so pruning stops there rather than
+ * failing a removal whose checkout is already gone. Anything else is thrown. */
+const rmdirIfStillEmpty = async (dir: string): Promise<boolean> => {
+  try {
+    await rmdir(dir);
+    return true;
+  } catch (error) {
+    if (isEnoent(error)) {
+      return true;
+    }
+    if (NOT_EMPTY_CODES.has(errnoCode(error))) {
+      return false;
+    }
+    throw error;
+  }
+};
+
 /** The actual `readdir`-then-`rmdir` removal, once `removeIfEmpty` has already confirmed `dir` is
- * a real directory. Same "gone either way" contract as `removeIfEmpty`. */
+ * a real directory. Same contract as `removeIfEmpty`. */
 const removeEmptyDirectory = async (dir: string): Promise<boolean> => {
   const entries = await readdirSafe(dir);
   if (entries === undefined) {
@@ -98,14 +123,7 @@ const removeEmptyDirectory = async (dir: string): Promise<boolean> => {
   if (entries.length > 0) {
     return false;
   }
-  try {
-    await rmdir(dir);
-  } catch (error) {
-    if (!isEnoent(error)) {
-      throw error;
-    }
-  }
-  return true;
+  return rmdirIfStillEmpty(dir);
 };
 
 /** Removes `dir` if it exists and is now empty, reporting back whether pruning should continue

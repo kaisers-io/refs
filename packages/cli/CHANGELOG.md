@@ -25,6 +25,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `clone_mode` only takes effect when a checkout is cloned, and how to get the history's file
   contents onto disk for an existing ref.
 
+### Fixed
+
+- **`refs remove` no longer fails when something appears in a parent directory while it prunes.**
+  If another process created an entry in an emptied parent between refs listing it and removing
+  it, such as a concurrent `refs add` of another ref under the same owner, the removal reported
+  `ENOTEMPTY` and kept the ref registered although its checkout was already deleted. A directory
+  that is in use is where pruning stops anyway, so the removal now succeeds and leaves that entry
+  alone.
+
+### Added
+
+- **The skill installs as a Codex plugin.** `codex plugin marketplace add kaisers-io/refs` and
+  `codex plugin add refs@kaisers-io` install the same skill `npx skills add` does, from the same
+  directory, with nothing else from the repository. In Codex it is `$refs:refs`. The plugin does
+  not install the CLI. `npx skills add`, the manual copy and the npm CLI work as before.
+- **`refs doctor` recognises a Codex plugin install.** The `skill` check looks in Codex's plugin
+  cache, so a plugin-only install no longer reads as missing, and a stale plugin is told to run
+  `codex plugin marketplace upgrade` rather than `npx skills add`, which would add a second copy.
+  The skill's own version gate gives the plugin copy the same advice. Doctor reads the copy
+  Codex loads, from `refs@kaisers-io` only, and says that it does not check whether the plugin
+  is enabled.
+
+### Changed
+
+- **The plugin manifest's version is a third release version site.** `pnpm versions --set` and
+  `--check` cover `skills/.codex-plugin/plugin.json` alongside the CLI package and the skill pin,
+  because Codex installs updates by that version.
+
+### Security
+
+- **Development installs refuse dependency versions published with weaker trust evidence.**
+  `pnpm-workspace.yaml` sets pnpm's `trustPolicy: no-downgrade`: a version published without the
+  trusted-publisher or provenance evidence an earlier release of the same package had now fails
+  `pnpm install`, including when it is already in the lockfile. Such a downgrade does not prove a
+  compromise, but it is what a publish with a leaked token would look like, so the version is held
+  back until someone reviews it. A test fails if the setting is removed or weakened, while a
+  reviewed exception pinned to an exact version stays possible. The release build installs through
+  the same policy, so this also covers the libraries bundled into the published CLI; the CLI's
+  runtime behaviour is unchanged.
+
+- **Every package in the lockfile is audited for advisories again.** Since the move to pnpm 12 the
+  lockfile holds two YAML documents, and GitHub's dependency graph sees only part of it: the
+  transitive packages bundled into the CLI, such as `brace-expansion` via `minimatch`, dropped out of
+  Dependabot alerts. A new CI workflow runs `pnpm audit` over the whole lockfile on every pull
+  request and weekly. It fails when the audit reports fewer packages than the lockfile holds
+  registry packages, so a scanner that reads one document cannot pass as a clean result; this
+  compares counts, a plausibility floor, and does not prove that each individual package was
+  audited. A report it cannot fully read, such as an advisory with an unknown severity, fails as an
+  incomplete audit rather than passing. Advisories listed in pnpm's `auditConfig.ignoreGhsas` are
+  honoured.
+
+### Fixed
+
+- **The skill's quoting example for `refs edit` names the ref first.** `COMMANDS.md` showed
+  `refs edit --package='<name>' path '<new-path>' '<ref>'`. Options may move but positional
+  arguments keep their order, so with real values substituted `path` became the ref query and the
+  command exited `4` with `no ref matches 'path'`. It now reads
+  `refs edit '<ref>' --package='<name>' path '<new-path>' --json`, the form `INVESTIGATE.md`
+  already used.
+- **The skill no longer says `refs add` cannot register a repository root.** A root is not one of
+  its own glob targets, but `refs add` probes a named root separately and proposes it at `.`. An
+  unregistered root now reads as what it is: a ref added before that probe, a root named upstream
+  later, or one left out or removed since — and not every root is registered, since a nameless root
+  has nothing to register and a member declaring the same name wins.
+
+### Changed
+
+- **The docs say which shell a printed command is for.** The repairs `refs doctor` and `refs sync`
+  suggest, and the next steps some errors name, are POSIX shell syntax: values are single-quoted
+  and an embedded quote is written as `'\''`. PowerShell and cmd.exe read that differently, so on
+  Windows the commands belong in Git Bash. The README and install page also claimed the full test
+  suite runs on Windows. It runs there, but some tests are skipped, mostly ones that need POSIX
+  file modes, a pseudo-terminal, a POSIX shell to run a printed command through, or a file name
+  Windows does not allow, and the docs now say so.
+
 ## [0.18.2] - 2026-10-13
 
 ### Security

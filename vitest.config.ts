@@ -9,8 +9,9 @@ export default defineConfig({
       // Ratchet, not aspiration: set just under the measured floor (90.9/98.9/96.9/96.9) so CI
       // fails on any coverage regression. What remains uncovered is deliberate: race-window and
       // fs-error defensive arms not reachable deterministically through the public API (e.g.
-      // remove.ts prune races, lock.ts steal re-diagnosis arms) — raise further only with tests
-      // that pin real behavior, never with coverage-farming.
+      // lock.ts steal re-diagnosis arms) — raise further only with tests that pin real behavior,
+      // never with coverage-farming. Where such an arm guards destructive or locking code, pin it
+      // with a one-path fs failure injected under a mock, as the remove-fs-failures suite does.
       thresholds: { branches: 90, functions: 98, lines: 96, statements: 96 },
     },
     globalSetup: './vitest.global-setup.ts',
