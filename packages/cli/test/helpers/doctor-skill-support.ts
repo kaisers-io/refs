@@ -34,6 +34,25 @@ const linkAgentDirToShared = async (base: string, subDir: string): Promise<void>
   await symlink(join(base, '.agents', 'skills', 'refs'), join(base, subDir, 'skills', 'refs'));
 };
 
+type PluginInstall = {
+  codexHome: string;
+  marketplace?: string;
+  plugin?: string;
+  version: string;
+};
+
+/** Writes the tree Codex 0.163 leaves after `codex plugin add` — observed, not assumed:
+ * `<codex home>/plugins/cache/<marketplace>/<plugin>/<version>/`, holding the manifest and the
+ * skill directory `refs/`. */
+const writePluginInstall = async (install: PluginInstall, source: string): Promise<void> => {
+  const { codexHome, marketplace = 'kaisers-io', plugin = 'refs', version } = install;
+  const root = join(codexHome, 'plugins', 'cache', marketplace, plugin, version);
+  await mkdir(join(root, '.codex-plugin'), { recursive: true });
+  await writeFile(join(root, '.codex-plugin', 'plugin.json'), '{"name":"refs"}\n', 'utf8');
+  await mkdir(join(root, 'refs'), { recursive: true });
+  await writeFile(join(root, 'refs', 'SKILL.md'), source, 'utf8');
+};
+
 type SkillCheckOverrides = {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
@@ -62,5 +81,12 @@ const skillCheckOf = (
   return checkSkill(ctx);
 };
 
-export { linkAgentDirToShared, skillCheckOf, skillSource, writeSkillAt, writeSkillIn };
+export {
+  linkAgentDirToShared,
+  skillCheckOf,
+  skillSource,
+  writePluginInstall,
+  writeSkillAt,
+  writeSkillIn,
+};
 export type { SkillCheckOverrides };

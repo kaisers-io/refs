@@ -42,7 +42,7 @@ const TRUNCATION_SUFFIX = '…';
 const URL_USERINFO_IN_TEXT = /(?<scheme>[a-z][a-z0-9+.-]{0,31}:\/\/)[^/\s@]{1,256}@/giu;
 
 const redactUrlsInText = (text: string): string =>
-  text.replace(URL_USERINFO_IN_TEXT, '$<scheme><redacted>@');
+  text.replaceAll(URL_USERINFO_IN_TEXT, '$<scheme><redacted>@');
 
 // The conventional forge username for ssh access. It is a fixed, public convention rather than a
 // secret, so redacting it would mark every ordinary ssh ref as credential-bearing while telling the

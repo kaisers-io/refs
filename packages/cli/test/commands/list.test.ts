@@ -72,6 +72,7 @@ describe('refs list: sorted data with resolved clone_mode/staleness/missing/pack
         ctx.env['REFS_HOME'] = homeDir;
         const home = resolveHome(ctx.env);
         const alphaLastFetchedAt = minutesAgoIso(FRESH_MINUTES_AGO);
+        // eslint-disable-next-line sort-keys -- seeded out of order: the sorting is what is tested
         await seedConfig(home, { [BETA_KEY]: BETA_ENTRY, [ALPHA_KEY]: ALPHA_ENTRY });
         await seedState(home, { [ALPHA_KEY]: { last_fetched_at: alphaLastFetchedAt } });
         await markCheckoutPresent(checkoutPath(home, zRefKey.parse(ALPHA_KEY)));
