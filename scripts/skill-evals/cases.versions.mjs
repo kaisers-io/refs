@@ -26,10 +26,10 @@ const filesFor = ({
   release = '1.1.0',
   ...formats
 }) => ({
+  '.refs-home/refs/config.toml': config(formats),
+  [RETRY]: RETRY_JS[release],
   [`${TOOLKIT}/.git/HEAD`]: head,
   [`${TOOLKIT}/.git/refs/heads/main`]: `${branch}\n`,
-  [RETRY]: RETRY_JS[release],
-  '.refs-home/refs/config.toml': config(formats),
 });
 
 const CHANGE = [

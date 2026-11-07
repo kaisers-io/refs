@@ -41,8 +41,8 @@ describe('the environment refs hands its children', () => {
 
   it('matches names case-insensitively on Windows, where git_dir IS GIT_DIR', () => {
     expect.hasAssertions();
-    const env = { Git_Dir: '/x', Path: 'C:\\bin', git_index_file: '/y' };
-    expect(childEnv(env, 'win32')).toStrictEqual({ Path: 'C:\\bin' });
+    const env = { Git_Dir: '/x', Path: String.raw`C:\bin`, git_index_file: '/y' };
+    expect(childEnv(env, 'win32')).toStrictEqual({ Path: String.raw`C:\bin` });
   });
 
   it('leaves a lowercase name alone elsewhere, where git never reads it', () => {

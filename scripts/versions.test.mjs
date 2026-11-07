@@ -45,9 +45,9 @@ const skillDoc = (version) =>
   `---\nname: refs\nmetadata:\n  cli_version: '${version}'\n---\n\n# refs\n\nProse about version pins.\n`;
 
 const FILES = {
-  [SOURCE]: pkg,
-  [SKILL]: skillDoc,
   [PLUGIN]: pluginManifest,
+  [SKILL]: skillDoc,
+  [SOURCE]: pkg,
 };
 
 const trees = [];
@@ -130,7 +130,7 @@ test('--check fails when the source of truth has no usable version', async () =>
 // The source of truth and the skill fail independently here, proving a broken source doesn't
 // suppress the (unrelated) problem in the skill file.
 test('--check reports every problem in a single run', async () => {
-  const overrides = { [SOURCE]: 'not json at all', [SKILL]: 'no frontmatter here at all\n' };
+  const overrides = { [SKILL]: 'no frontmatter here at all\n', [SOURCE]: 'not json at all' };
   const { code, err, errors } = run(await makeTree(overrides), '--check');
   strictEqual(code, EXIT_PROBLEMS);
   strictEqual(errors.length, THREE, `expected three problems, got: ${err}`);

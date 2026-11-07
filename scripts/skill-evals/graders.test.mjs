@@ -112,7 +112,7 @@ test('count:N and flags follow the case', async () => {
     pattern: String.raw`"description"\s*:\s*"[^"\s]`,
     type: 'regex',
   };
-  const flagged = { flags: 'im', name: 'g', pattern: '^\\W*yes\\b', type: 'regex' };
+  const flagged = { flags: 'im', name: 'g', pattern: String.raw`^\W*yes\b`, type: 'regex' };
   strictEqual(await passes(count, runWith({ lastMessage: text })), true);
   strictEqual(await passes(flagged, runWith({ lastMessage: 'Checked.\n**YES**' })), true);
 });
