@@ -16,6 +16,11 @@ on:
     # Mondays, 06:17 UTC; off the hour, where scheduled runs queue.
     - cron: "17 6 * * 1"
   workflow_dispatch:
+# A superseded PR run is cancelled; a push to main or a scheduled run keys on its own run id, so
+# none of those is ever cancelled. The same rule as ci.yml.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
 # Runs `pnpm install` from PR-controlled code: the token stays read-only, as in ci.yml.
 permissions:
   contents: read
