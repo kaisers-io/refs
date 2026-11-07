@@ -52,9 +52,10 @@ const withAmbientConfig = async (
 };
 
 const dryRunUnder = async (config: string, homeDir: string): Promise<Envelope> => {
-  const { ctx, stdout } = realContextFor(homeDir);
   let envelope: Envelope = { ok: false, warnings: [] };
   await withAmbientConfig(config, homeDir, async () => {
+    // Built inside: the context's `SpawnRunner` reads the environment when it is created.
+    const { ctx, stdout } = realContextFor(homeDir);
     await initHome(ctx);
     const fixture = await createFixtureRepo();
     await run(ctx, ['node', 'refs', 'add', fixture.url, '--dry-run', '--json']);
