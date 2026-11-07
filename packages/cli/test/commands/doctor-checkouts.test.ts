@@ -42,7 +42,11 @@ describe('refs doctor: (d) dirty checkout', () => {
           { stdout: home.hooksDir },
           { cwd: dest },
         );
-        runner.expect('git status --porcelain', { stdout: ' M README.md\n' }, { cwd: dest });
+        runner.expect(
+          `git -c core.hooksPath=${home.hooksDir} status --porcelain`,
+          { stdout: ' M README.md\n' },
+          { cwd: dest },
+        );
 
         const envelope = await runDoctorJson(ctx, stdout);
 
@@ -68,7 +72,11 @@ describe('refs doctor: hooks-guard mismatch', () => {
           { stdout: '/some/other/hooks' },
           { cwd: dest },
         );
-        runner.expect('git status --porcelain', { stdout: '' }, { cwd: dest });
+        runner.expect(
+          `git -c core.hooksPath=${home.hooksDir} status --porcelain`,
+          { stdout: '' },
+          { cwd: dest },
+        );
 
         const envelope = await runDoctorJson(ctx, stdout);
 
@@ -112,7 +120,7 @@ describe('refs doctor: broken checkout (git status fails)', () => {
           { cwd: dest },
         );
         runner.expect(
-          'git status --porcelain',
+          `git -c core.hooksPath=${home.hooksDir} status --porcelain`,
           { exitCode: 128, stderr: 'fatal: not a git repository', stdout: '' },
           { cwd: dest },
         );
@@ -168,7 +176,11 @@ const homeWithCheckout = async (homeDir: string): Promise<DoctorTestHome> => {
     { stdout: setup.home.hooksDir },
     { cwd: dest },
   );
-  setup.runner.expect('git status --porcelain', { stdout: '' }, { cwd: dest });
+  setup.runner.expect(
+    `git -c core.hooksPath=${setup.home.hooksDir} status --porcelain`,
+    { stdout: '' },
+    { cwd: dest },
+  );
   return setup;
 };
 

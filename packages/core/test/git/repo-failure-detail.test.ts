@@ -21,7 +21,10 @@ const FAILURE = 1;
 
 const failingClone = async (stderr: string): Promise<string> => {
   const runner = new FakeRunner();
-  runner.expect('git clone', { exitCode: FAILURE, stderr });
+  runner.expect(`git -c core.hooksPath=${CLONE_OPTS.hooksDir} clone`, {
+    exitCode: FAILURE,
+    stderr,
+  });
   const failed: unknown = await cloneRepo(runner, CLONE_OPTS).catch((error: unknown) => error);
   expect(failed).toBeInstanceOf(Error);
   return (failed as Error).message;
