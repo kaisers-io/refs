@@ -1,0 +1,20 @@
+{
+  "name": "refs",
+  "version": "0.18.2",
+  "description": "Answer questions about a dependency's real source, history, and releases from the local checkouts managed by the refs CLI.",
+  "author": { "name": "kaisers.io", "url": "https://github.com/kaisers-io" },
+  "homepage": "https://github.com/kaisers-io/refs",
+  "repository": "https://github.com/kaisers-io/refs",
+  "license": "MIT",
+  "keywords": ["dependencies", "source", "git"],
+  "skills": "./refs",
+  "interface": {
+    "displayName": "Refs",
+    "shortDescription": "Answer from real dependency source",
+    "developerName": "kaisers.io",
+    "category": "Coding",
+    "websiteURL": "https://github.com/kaisers-io/refs",
+    "composerIcon": "./refs/assets/icon.png",
+    "logo": "./refs/assets/icon.png"
+  }
+}
