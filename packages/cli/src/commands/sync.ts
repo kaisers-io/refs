@@ -85,7 +85,7 @@ type SyncOutcome = {
 };
 
 /** One update check per `refs sync` invocation, deliberately outside the per-ref pipeline: that
- * pipeline fans out four refs at a time (`syncAll`) and turns any throw into a per-ref failure
+ * pipeline fans out several refs at a time (`syncAll`) and turns any throw into a per-ref failure
  * recorded in state (`syncOneKey`). A question about this CLI's own version belongs to neither.
  *
  * Only the invocation that actually refreshed the cache announces anything, which is what limits
