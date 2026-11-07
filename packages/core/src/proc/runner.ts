@@ -7,6 +7,7 @@ import type { CollectedStream } from './spawn-collector.ts';
 import type { Exec } from './spawn-tree.ts';
 import { GitDispatch } from './git-dispatch.ts';
 import { once } from 'node:events';
+import { resolveExecutable } from './executable-path.ts';
 import { spawn } from 'node:child_process';
 import { spawnEnv } from './spawn-env.ts';
 
@@ -32,7 +33,10 @@ type SpawnRunnerOpts = {
 
 /** One child to start, with the runner's defaults already applied. */
 type ChildSpec = {
+  /** The name refs asked for (`git`). */
   cmd: string;
+  /** The absolute path `cmd` resolved to (executable-path.ts), which is what is started. */
+  file?: string;
   args: readonly string[];
   cwd: string | undefined;
   env: NodeJS.ProcessEnv;
@@ -98,7 +102,7 @@ const startChild = (spec: ChildSpec, exec: Exec): RunningChild => {
   // It does NOT change what code scanning reports: `js/shell-command-constructed-from-input` and
   // its two siblings were raised again with the option spelled out. They are false positives on
   // this call and have to be handled as such, not argued with in code.
-  const child = spawn(spec.cmd, spec.args, {
+  const child = spawn(spec.file ?? spec.cmd, spec.args, {
     ...cwdOpt(spec.cwd),
     env: spec.env,
     shell: false,
@@ -128,6 +132,17 @@ const startChildSafely = (spec: ChildSpec, exec: Exec): RunningChild | RunResult
   } catch (error) {
     return { exitCode: SPAWN_ERROR_EXIT_CODE, stderr: errorMessageOf(error), stdout: '' };
   }
+};
+
+// Never spawn the bare name: on Windows that searches the child's cwd, a checkout, first
+// (executable-path.ts).
+const startResolved = async (spec: ChildSpec, exec: Exec): Promise<RunningChild | RunResult> => {
+  const file = await resolveExecutable(spec.cmd, spec.env);
+  if (file === undefined) {
+    const stderr = `spawn ${spec.cmd} ENOENT: not in an absolute PATH directory (refs never runs a program from the working directory)`;
+    return { exitCode: SPAWN_ERROR_EXIT_CODE, stderr, stdout: '' };
+  }
+  return startChildSafely({ ...spec, file }, exec);
 };
 
 const isRunResult = (value: RunningChild | RunResult): value is RunResult => !('child' in value);
@@ -248,7 +263,7 @@ class SpawnRunner implements Runner {
   async #spawn(cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> {
     const timeoutMs = opts?.timeoutMs ?? this.#defaultTimeoutMs;
     const spec = { args, cmd, cwd: opts?.cwd, env: this.#env, timeoutMs };
-    const running = startChildSafely(spec, (helper, helperArgs) =>
+    const running = await startResolved(spec, (helper, helperArgs) =>
       this.#spawn(helper, helperArgs, { timeoutMs: HELPER_TIMEOUT_MS }),
     );
     if (isRunResult(running)) {
