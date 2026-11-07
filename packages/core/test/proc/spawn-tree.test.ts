@@ -72,7 +72,11 @@ describe('signalling a tree', () => {
   it('hands the whole tree to the taskkill under SystemRoot on Windows', async () => {
     expect.hasAssertions();
     const { calls, exec } = recordingExec(OK);
-    const target = targetFor(exec, { pid: ROOT, platform: 'win32', systemRoot: 'C:\\Windows' });
+    const target = targetFor(exec, {
+      pid: ROOT,
+      platform: 'win32',
+      systemRoot: String.raw`C:\Windows`,
+    });
     await signalTree(target, 'SIGTERM');
     expect(calls).toStrictEqual([
       [String.raw`C:\Windows\System32\taskkill.exe`, '/PID', String(ROOT), '/T', '/F'],
@@ -97,7 +101,7 @@ describe('signalling a tree', () => {
       const target = targetFor(exec, {
         platform,
         rootAlive: () => false,
-        systemRoot: 'C:\\Windows',
+        systemRoot: String.raw`C:\Windows`,
       });
       await signalTree(target, 'SIGTERM');
       expect(calls).toStrictEqual([]);
