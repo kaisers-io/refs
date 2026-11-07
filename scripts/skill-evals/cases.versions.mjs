@@ -110,6 +110,19 @@ const WRONG = [
     why: 'reading the missing tag as a release with no changes',
   },
   {
+    fails: ['says-1.2.0-was-never-released'],
+    run: { lastMessage: `${CHANGE}\nThere was no change in 1.2.0 release notes for retry.` },
+    why: 'no change "in 1.2.0", which still treats it as a release',
+  },
+  // Codex's own reply (paid run): the package name between "no" and the version.
+  {
+    fails: [],
+    run: {
+      lastMessage: `${CHANGE}\nThere was no \`@toolkit/retry\` 1.2.0 release in this checkout: the only package tags are 1.0.0 and 1.1.0.`,
+    },
+    why: 'naming the package between "no" and the missing version',
+  },
+  {
     fails: ['checked-the-missing-version'],
     run: { trace: PACKAGE_TAG },
     why: 'calling 1.2.0 untagged without looking',
