@@ -157,5 +157,5 @@ const absenceIsInside = async (packageDir: string, path: string): Promise<boolea
   }
 };
 
-export { absenceIsInside, resolveInside, withoutTrailingSeparators };
+export { absenceIsInside, isInside, resolveInside, withoutTrailingSeparators };
 export type { ContainmentResult };
