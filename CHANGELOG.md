@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The skill installs as a Codex plugin.** `codex plugin marketplace add kaisers-io/refs` and
+  `codex plugin add refs@kaisers-io` install the same skill `npx skills add` does, from the same
+  directory, with nothing else from the repository. In Codex it is `$refs:refs`. The plugin does
+  not install the CLI. `npx skills add`, the manual copy and the npm CLI work as before.
+- **`refs doctor` recognises a Codex plugin install.** The `skill` check looks in Codex's plugin
+  cache, so a plugin-only install no longer reads as missing, and a stale plugin is told to run
+  `codex plugin marketplace upgrade` rather than `npx skills add`, which would add a second copy.
+  The skill's own version gate gives the plugin copy the same advice. Doctor reads the copy
+  Codex loads, from `refs@kaisers-io` only, and says that it does not check whether the plugin
+  is enabled.
+
+### Changed
+
+- **The plugin manifest's version is a third release version site.** `pnpm versions --set` and
+  `--check` cover `skills/.codex-plugin/plugin.json` alongside the CLI package and the skill pin,
+  because Codex installs updates by that version.
+
 ### Security
 
 - **Development installs refuse dependency versions published with weaker trust evidence.**
