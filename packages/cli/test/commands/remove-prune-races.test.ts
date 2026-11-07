@@ -98,28 +98,49 @@ describe('refs remove: a concurrent pruner removes the owner directory first', (
 // sibling ref under the same owner. `rmdir` then fails with ENOTEMPTY. The directory is in use,
 // which is exactly where pruning stops, and the checkout is already gone: the removal succeeded.
 // Failing here would keep the entry of a ref whose checkout no longer exists.
+// POSIX lets `rmdir` report a non-empty directory as EEXIST instead (AIX and Solaris do), which no
+// platform this suite runs on produces, so that row injects it after the sibling has arrived.
+const rmdirFailingWith = (code: string, target: string, sibling: string): (() => boolean) => {
+  let fired = false;
+  vi.mocked(rmdir).mockImplementation((async (path: unknown, ...rest: unknown[]) => {
+    if (fired || path !== target) {
+      return real.rmdir?.(path as string, ...(rest as []));
+    }
+    fired = true;
+    await mkdir(sibling);
+    throw Object.assign(new Error(`${code}: directory not empty, rmdir '${target}'`), { code });
+  }) as never);
+  return () => fired;
+};
+
 describe('refs remove: a sibling arrives in the owner directory before rmdir', () => {
-  it('stops pruning there, keeps the sibling, and drops the entry', async () => {
-    expect.hasAssertions();
-    await withResetExitCode(() =>
-      withTempHome(async (homeDir) => {
-        const fixture = await setupRemoval(homeDir);
-        const sibling = join(fixture.ownerDir, 'turbo');
-        const arrived = interleaveAt('rmdir', fixture.ownerDir, () => mkdir(sibling));
+  it.each(['ENOTEMPTY', 'EEXIST'])(
+    'stops pruning there on %s, keeps the sibling, and drops the entry',
+    async (code) => {
+      expect.hasAssertions();
+      await withResetExitCode(() =>
+        withTempHome(async (homeDir) => {
+          const fixture = await setupRemoval(homeDir);
+          const sibling = join(fixture.ownerDir, 'turbo');
+          const arrived =
+            code === 'ENOTEMPTY'
+              ? interleaveAt('rmdir', fixture.ownerDir, () => mkdir(sibling))
+              : rmdirFailingWith(code, fixture.ownerDir, sibling);
 
-        const envelope = await removeTarget(fixture);
+          const envelope = await removeTarget(fixture);
 
-        expect(arrived()).toBe(true);
-        expect(envelope).toMatchObject({
-          data: { removed_checkout: true },
-          ok: true,
-          warnings: [],
-        });
-        await expect(targetTracked(fixture.home)).resolves.toStrictEqual([false, false]);
-        await expect(pathExists(fixture.dest)).resolves.toBe(false);
-        await expect(pathExists(sibling)).resolves.toBe(true);
-        await expectUnrelatedUntouched(fixture);
-      }),
-    );
-  });
+          expect(arrived()).toBe(true);
+          expect(envelope).toMatchObject({
+            data: { removed_checkout: true },
+            ok: true,
+            warnings: [],
+          });
+          await expect(targetTracked(fixture.home)).resolves.toStrictEqual([false, false]);
+          await expect(pathExists(fixture.dest)).resolves.toBe(false);
+          await expect(pathExists(sibling)).resolves.toBe(true);
+          await expectUnrelatedUntouched(fixture);
+        }),
+      );
+    },
+  );
 });

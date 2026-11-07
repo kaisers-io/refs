@@ -106,3 +106,26 @@ describe('diagnoseLock on a token that is not a randomUUID', () => {
     expect(diagnosis).toMatchObject({ policy: 'legacy', stale: true });
   });
 });
+
+// The guard has to match the WHOLE token. Each of these ends in, or starts with, a valid uuid and
+// joins onto the lock path as a fresh file outside the lock directory, so a pattern that lost its
+// `$` (first) or its `^` (second) would read this old lock as a renewed lease.
+describe('diagnoseLock on a token that only contains a randomUUID', () => {
+  it.each([
+    [`${TOKEN_A}/../../decoy`, 'decoy'],
+    [`x/../../decoy-${TOKEN_A}`, `decoy-${TOKEN_A}`],
+  ])('judges %j by the legacy window', async (token, decoyName) => {
+    expect.hasAssertions();
+    const lockPath = writeLockDir(makeHome().locksDir, 'home', {
+      acquired_at: new Date(Date.now() - LEGACY_STALE_AGE_MS).toISOString(),
+      pid: process.pid,
+      token,
+    });
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    writeFileSync(join(dirname(lockPath), decoyName), '');
+
+    const diagnosis = await diagnoseLock(lockPath, Date.now());
+
+    expect(diagnosis).toMatchObject({ policy: 'legacy', stale: true });
+  });
+});
