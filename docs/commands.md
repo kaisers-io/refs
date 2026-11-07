@@ -63,6 +63,25 @@ exit code (rather than inspecting `data`) still sees the failure. **Always check
 the envelope's `ok`/`data` for what happened, and the exit code for whether to treat the
 whole invocation as failed.
 
+## Commands refs prints
+
+Some output contains a command for you to run: the repairs `refs doctor` and `refs sync` suggest
+(`refs edit …`, `rm -rf -- …`, `rmdir -- …`), and the next step a few errors name. Under `--json`
+they appear in the same text, and a `config-drift` finding also carries its `refs edit` repairs as
+fields of their own. Every one of them is written for a **POSIX shell** (`sh`, `bash`, `zsh`, or
+Git Bash on Windows). Each value in it is single-quoted, so a space, `$(…)` or a backtick in it
+stays literal, and a single quote inside a value is written as `'\''`. A repair whose value holds
+a control character or malformed Unicode is not printed at all, because the printed line would not
+be the value. The finding is still reported, and a `config-drift` finding under `--json` still
+carries the raw `name` and `path`.
+
+PowerShell and cmd.exe are not covered. PowerShell writes a single quote inside a single-quoted
+string as `''` and also treats typographic quotes such as `’` as quote characters, and cmd.exe
+does not treat `'` as a quote at all. `rm -rf` and `rmdir --` are POSIX spellings too. A
+`refs edit` line whose values contain none of those characters may still work in PowerShell, but
+refs does not promise it, and its tests that run printed commands through a shell are skipped on
+Windows.
+
 ---
 
 ## `refs init`
@@ -134,7 +153,10 @@ Adds a git reference in **two phases**: propose, then finalize. Exactly one of
    (idempotently — a healthy existing checkout is reused, not re-cloned), detects its
    default branch, tag-format candidate, and any workspace packages, and writes a
    reviewable `Proposal` — nothing is added to `config.toml` yet. The checkout itself,
-   however, does exist on disk after this step.
+   however, does exist on disk after this step. Before it clones, it also reports what the
+   git configuration will run during that clone and later syncs, as a `warnings` entry
+   beginning `git-exec-surfaces:` (see
+   [the `git-exec-surfaces` check](#the-git-exec-surfaces-check)).
 2. **Finalize** (`refs add --proposal <file|->`): reads a completed proposal (edited by a
    human/agent to fill in `description`), re-verifies the checkout's identity, and writes
    the ref into `config.toml`/`state.json`.
@@ -400,7 +422,7 @@ missing/unreadable config is a top-level error, not a per-ref one).
 refs doctor
 ```
 
-Runs the environment/integrity checks, always in this order: `git`, `node`, `config`,
+Runs the environment/integrity checks, always in this order: `git`, `git-exec-surfaces`, `node`, `config`,
 `hooks-guard`, `dirty-checkouts`, `config-drift`, `orphans`, `locks`, `skill`, `cli-update`, `ssh-auth` (the last one only runs
 when a configured ref uses an `ssh` transport URL). Every check runs to completion
 regardless of earlier failures.
@@ -459,6 +481,27 @@ Each check's `status` is `ok`, `warn`, or `fail`. As with `sync` (see
 reports `fail`
 — but the process exits `1` in that case.
 
+### The `git-exec-surfaces` check
+
+Reports what in the git configuration refs' own git invocations inherit can make git run a command
+by itself, beyond the hooks directory refs pins per checkout. Every git process refs starts runs
+with `core.fsmonitor` emptied and configured hooks switched off for each event refs causes
+(`hook.<event>.enabled=false`), so what is left to report is:
+
+- **Content filters** (`filter.<name>.clean`, `smudge`, `process`). They stay enabled: turning one
+  off changes what the checkout contains, and a required filter such as git-lfs's fails the
+  checkout outright.
+- **Configured hooks refs did not disable.** The event-level switch exists from git 2.55, but a
+  hook label named after an event takes it over. So on git 2.54 and later refs also disables
+  every label it finds in the configuration and its includes, conditional or not, and refuses to
+  start git when it cannot read them all; a hook is listed here only when no switch reached it,
+  such as when `git --version` cannot be read. Before 2.54 git has no configured hooks.
+
+It reports presence, not safety, and reads the configuration from the refs home, so an
+`includeIf "gitdir:…"` section that applies only inside a checkout is not in its listing. `refs add`
+gives the same finding as a `warnings` entry beginning `git-exec-surfaces:`, read before it clones —
+a warning, not protection.
+
 ### The `locks` check
 
 Lists what is in the locks directory and whether any of it needs attention. A held lock is not a
@@ -507,7 +550,7 @@ only thing that compares the two. Six outcomes:
 | No `SKILL.md` in any location it knows about               | `warn` | names the locations searched; install: `npx skills add kaisers-io/refs` |
 | The pinned version equals the running CLI                  | `ok`   | the skill matches this CLI                         |
 | The skill targets a **newer** CLI                          | `warn` | update the CLI: `npm i -g @kaisers-io/refs@latest` |
-| The skill targets an **older** CLI                         | `warn` | update the skill: `npx skills add kaisers-io/refs` |
+| The skill targets an **older** CLI                         | `warn` | update the skill: `npx skills add kaisers-io/refs`, or `codex plugin marketplace upgrade` for the Codex plugin |
 | The skill has no `cli_version` (installed before the gate) | `warn` | it predates the version gate — update the skill    |
 | Either version is not a plain `x.y.z` (a prerelease, say)  | `warn` | direction unknown — reinstall both                 |
 
@@ -516,7 +559,7 @@ a prerelease, a build-metadata suffix — lands in the last row, where the check
 neither side and asks you to reinstall both rather than guess an ordering. Exact string
 equality is checked first, though, so two identical non-plain versions still report `ok`.
 
-Five installation locations are checked, in this order:
+Six installation locations are checked, in this order:
 
 | Location                                                   | `detail` label      | What puts it there                                  |
 | ---------------------------------------------------------- | ------------------- | --------------------------------------------------- |
@@ -525,6 +568,7 @@ Five installation locations are checked, in this order:
 | `~/.codex/skills/refs/SKILL.md` (or `$CODEX_HOME`)         | `Codex`             | same; also where older `skills` versions installed  |
 | `<cwd>/.agents/skills/refs/SKILL.md`                       | `project ./.agents` | `skills add` without `-g` — the installer's default |
 | `<cwd>/.claude/skills/refs/SKILL.md`                       | `project ./.claude` | `skills add -a claude-code` without `-g` — a single-agent project install |
+| `~/.codex/plugins/cache/kaisers-io/refs/<version>/refs/SKILL.md` (or `$CODEX_HOME`) | `Codex plugin refs@kaisers-io (enabled state not checked)` | `codex plugin add refs@kaisers-io` — see [install](install.md#the-codex-plugin) |
 
 The `detail` names the one it is reporting on. A location that does not exist is skipped
 silently, and the locations are deduplicated by resolved real path — `skills add -g` keeps
@@ -540,9 +584,22 @@ global directory, the installer's project path is a literal relative `.claude/sk
 `$CLAUDE_CONFIG_DIR` does not move it. Codex needs no counterpart row — it is a universal
 agent, so its project install lands in `./.agents/skills` in every mode.
 
+The plugin row reads one copy: the version directory Codex loads, which is `local` when there is
+one and otherwise the greatest version. Leftover directories beside it are ignored, as Codex
+ignores them. Only the plugin this repository publishes, `refs@kaisers-io`, counts. Another
+marketplace can publish a plugin called `refs` too, and Codex shows its skill as `refs:refs` as
+well, but it is not this skill and the upgrade command would not fix it.
+
+The plugin row does not say whether Codex has the plugin enabled, and its label says so. Codex
+works that out from several configuration files, and a disabled plugin keeps its cache, so a
+disabled plugin's copy is still compared. A stale one still gets the upgrade command, because
+`codex plugin marketplace upgrade` refreshes a disabled plugin's files too. `codex plugin list`
+shows whether it is enabled.
+
 A problem in any of the surviving copies wins over an `ok` in the others: `doctor` cannot
 know which agent is about to read the skill, so a stale copy in `~/.claude` is never hidden
-by a current shared one.
+by a current shared one. With both the plugin and a standalone copy installed, both are
+checked, and the stale one is named with the command that updates it.
 
 **This list is best-effort, not exhaustive.** None of those paths is a documented, stable
 contract — they are the `skills` installer's implementation detail, the canonical directory
@@ -928,7 +985,9 @@ was reset back to clean), or `failed` (with an `error` message instead of a clea
 status). A ref skipped entirely by `--stale-only` (within its `sync_ttl` and with an
 existing checkout) produces no result item at all — it's filtered out before syncing, not
 reported as `fresh`. A branch-rename or partial-clone-fallback surfaces as a `warning`
-string on that item, not a failure. Up to 4 refs sync concurrently.
+string on that item, not a failure. Up to 4 refs sync concurrently; set
+`REFS_SYNC_CONCURRENCY` to change that (see
+[`docs/configuration.md`](configuration.md#other-environment-variables)).
 
 ### `structure` — config drift
 

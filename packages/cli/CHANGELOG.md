@@ -9,6 +9,137 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **`SECURITY.md` now describes the git processes refs starts.** A new section states which
+  inherited git variables refs removes and which it keeps (command-scope configuration, and
+  settings such as `GIT_SSH_COMMAND`), which commands pin refs' hooks directory above an inherited
+  `core.hooksPath` and which do not, how the time limit ends git and the processes it started and
+  where that cannot be confirmed, when a failed clone is removed and when it is kept but unmarked,
+  how refs' `core.fsmonitor` and configured-hook overrides work on git 2.54 and later and what they
+  cost, what still runs (content filters, during `refs add`'s clone too), and which git versions
+  the controls were measured on. refs enforces no minimum git version, and the section says so. The
+  section describes the controls of #249, #251 and #252 and holds only for a release that contains
+  them (#217).
+
+- **A program inside a checkout can no longer run in place of git.** refs starts git with its
+  working directory inside a checkout, and on Windows the process spawn looks in that directory
+  before `PATH`, so a `git.exe` or `git.com` tracked at a reference's root ran on the next
+  `refs sync` or `refs doctor`. On every platform, an empty or relative `PATH` entry pointed at the
+  same directory. refs now resolves every program it starts through absolute `PATH` entries only
+  and starts that absolute path; a program found nowhere else fails as not found.
+
+### Fixed
+
+- **git can no longer keep `refs add` or `refs sync` waiting forever.** git asks for a missing
+  HTTPS username or password on the terminal itself, so a remote that needed credentials, with no
+  credential helper set up, left refs at a prompt that an agent cannot answer, while refs held the
+  lock for that ref. refs now runs git with `GIT_TERMINAL_PROMPT=0` unless you set it yourself. git
+  then fails at that point with a message that names credential helpers. Set
+  `GIT_TERMINAL_PROMPT=1` to type credentials by hand again.
+- **A git command that stops making progress now ends.** Each git command refs runs gets a time
+  limit, `REFS_GIT_TIMEOUT` seconds (default 900, `0` for no limit). When it runs out, refs ends
+  git together with the helper processes git started. Before this, those helpers kept running
+  after git had exited and refs kept waiting for them. refs waits until the processes it found are
+  gone, and forces any that ignore the request to stop; git exiting first does not cut that
+  short. A clone that is cut off this way no longer leaves a half-made checkout that the next
+  `refs add` or `refs sync` would take for a working one. Only a clone refs itself started is
+  removed; anything else at that path is left alone. If refs cannot confirm that every process
+  the clone started has ended, it does not delete the checkout under a process that may still be
+  writing to it: it leaves it in place, marks it so that refs will not use it, and says so.
+
+### Security
+
+- **refs' own git no longer runs a configured fsmonitor command or configured hooks.** Every git
+  process refs starts now carries `-c core.fsmonitor=` and `-c hook.<event>.enabled=false` for
+  each event refs causes (`post-checkout`, `post-index-change`, `pre-auto-gc`,
+  `reference-transaction`). Both mechanisms come from the user's own git configuration and both
+  could run a script the checkout tracks, which `core.hooksPath` does not prevent. The fsmonitor
+  override uses the empty value because git 2.35.1 and older would run `false` as a program. The
+  event switch exists from git 2.55, but there a hook label named after an event turns it into
+  that label's switch and the event's other hooks still run; git 2.54 can disable a configured
+  hook only by its label. So on git 2.54 and later refs also reads every label from the
+  configuration and all of its includes, conditional ones included whether or not they apply yet,
+  and disables each one. When it cannot read the whole include graph, it refuses to start git
+  instead. It reads them once per refs process and again only when a file it read changes, so a
+  sync starts a handful of extra git processes rather than several per git command. Content
+  filters stay enabled, because turning one off changes what a checkout contains (#194).
+
+### Changed
+
+- **`refs add --dry-run` warns about what git will run before it clones.** A `warnings` entry
+  beginning `git-exec-surfaces:` repeats `refs doctor`'s check of that name: content filters, and
+  any configured hook refs did not disable. `refs doctor` no longer reports an fsmonitor command
+  or the configured hooks refs disables, because refs' own git no longer runs them.
+  refs' own `status`, `checkout` and `reset` also refresh the index without fsmonitor's help,
+  which is measurable on a very large tree (#194).
+
+- **refs' git commands no longer follow a `GIT_DIR` inherited from the caller.** refs names each
+  checkout by its working directory, but git lets `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and
+  their siblings override that, and git exports them to every hook. A `refs add` or `refs sync`
+  started from a hook, an alias or a wrapper therefore wrote refs' hooks path into the caller's
+  repository (blocking its commits) and could `reset --hard` and `clean -fd` the caller's working
+  tree, discarding uncommitted work. refs now removes git's repository-locating variables from
+  every process it starts, the same set git itself removes before running a command in another
+  repository. Command-scope configuration (`GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT` and its
+  pairs) and settings such as `GIT_SSH_COMMAND`, `GIT_ASKPASS` and proxies still pass through.
+- **An inherited `core.hooksPath` no longer runs a checkout's own hooks.** refs marks each
+  checkout with a repository-local `core.hooksPath`, but command-scope configuration outranks it,
+  and git exports `GIT_CONFIG_PARAMETERS` to every hook started under `git -c`. An inherited
+  relative `core.hooksPath=.githooks` therefore made `refs add` and `refs sync` run hooks the
+  cloned repository tracks itself. Every git command refs runs now passes refs' hooks directory at
+  command scope as well. This covers the clone, every git command of a sync, `refs doctor`'s
+  dirty-checkout check (whose `git status` refreshes the index and runs `post-index-change`) and
+  the `origin/HEAD` refresh that `add --dry-run` and a re-clone fall back to (which runs
+  `reference-transaction` from git 2.54). The pin is applied once, to the process runner every
+  command uses, so a git call added later cannot leave it out.
+
+### Added
+
+- **`REFS_SYNC_CONCURRENCY` sets how many refs `refs sync` works on at once.** The default is
+  still four. A whole number is clamped to 1–16, since every slot is a connection to a forge; any
+  other value is ignored.
+
+### Changed
+
+- **`refs doctor` runs at most 8 per-checkout `git` probes at a time.** The `hooks-guard` and
+  `dirty-checkouts` checks used to start one `git` process for every checkout at once, so a home
+  with hundreds of refs spawned hundreds of processes in one burst. Results are unchanged.
+
+### Documentation
+
+- **Preparing blobless checkouts for offline use.** `docs/configuration.md` now says that
+  `clone_mode` only takes effect when a checkout is cloned, and how to get the history's file
+  contents onto disk for an existing ref.
+
+### Fixed
+
+- **`refs remove` no longer fails when something appears in a parent directory while it prunes.**
+  If another process created an entry in an emptied parent between refs listing it and removing
+  it, such as a concurrent `refs add` of another ref under the same owner, the removal reported
+  `ENOTEMPTY` and kept the ref registered although its checkout was already deleted. A directory
+  that is in use is where pruning stops anyway, so the removal now succeeds and leaves that entry
+  alone.
+
+### Added
+
+- **The skill installs as a Codex plugin.** `codex plugin marketplace add kaisers-io/refs` and
+  `codex plugin add refs@kaisers-io` install the same skill `npx skills add` does, from the same
+  directory, with nothing else from the repository. In Codex it is `$refs:refs`. The plugin does
+  not install the CLI. `npx skills add`, the manual copy and the npm CLI work as before.
+- **`refs doctor` recognises a Codex plugin install.** The `skill` check looks in Codex's plugin
+  cache, so a plugin-only install no longer reads as missing, and a stale plugin is told to run
+  `codex plugin marketplace upgrade` rather than `npx skills add`, which would add a second copy.
+  The skill's own version gate gives the plugin copy the same advice. Doctor reads the copy
+  Codex loads, from `refs@kaisers-io` only, and says that it does not check whether the plugin
+  is enabled.
+
+### Changed
+
+- **The plugin manifest's version is a third release version site.** `pnpm versions --set` and
+  `--check` cover `skills/.codex-plugin/plugin.json` alongside the CLI package and the skill pin,
+  because Codex installs updates by that version.
+
+### Security
+
 - **Development installs refuse dependency versions published with weaker trust evidence.**
   `pnpm-workspace.yaml` sets pnpm's `trustPolicy: no-downgrade`: a version published without the
   trusted-publisher or provenance evidence an earlier release of the same package had now fails
@@ -18,6 +149,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reviewed exception pinned to an exact version stays possible. The release build installs through
   the same policy, so this also covers the libraries bundled into the published CLI; the CLI's
   runtime behaviour is unchanged.
+
+- **Every package in the lockfile is audited for advisories again.** Since the move to pnpm 12 the
+  lockfile holds two YAML documents, and GitHub's dependency graph sees only part of it: the
+  transitive packages bundled into the CLI, such as `brace-expansion` via `minimatch`, dropped out of
+  Dependabot alerts. A new CI workflow runs `pnpm audit` over the whole lockfile on every pull
+  request and weekly. It fails when the audit reports fewer packages than the lockfile holds
+  registry packages, so a scanner that reads one document cannot pass as a clean result; this
+  compares counts, a plausibility floor, and does not prove that each individual package was
+  audited. A report it cannot fully read, such as an advisory with an unknown severity, fails as an
+  incomplete audit rather than passing. Advisories listed in pnpm's `auditConfig.ignoreGhsas` are
+  honoured.
+
+### Fixed
+
+- **The skill's quoting example for `refs edit` names the ref first.** `COMMANDS.md` showed
+  `refs edit --package='<name>' path '<new-path>' '<ref>'`. Options may move but positional
+  arguments keep their order, so with real values substituted `path` became the ref query and the
+  command exited `4` with `no ref matches 'path'`. It now reads
+  `refs edit '<ref>' --package='<name>' path '<new-path>' --json`, the form `INVESTIGATE.md`
+  already used.
+- **The skill no longer says `refs add` cannot register a repository root.** A root is not one of
+  its own glob targets, but `refs add` probes a named root separately and proposes it at `.`. An
+  unregistered root now reads as what it is: a ref added before that probe, a root named upstream
+  later, or one left out or removed since — and not every root is registered, since a nameless root
+  has nothing to register and a member declaring the same name wins.
+
+### Changed
+
+- **The docs say which shell a printed command is for.** The repairs `refs doctor` and `refs sync`
+  suggest, and the next steps some errors name, are POSIX shell syntax: values are single-quoted
+  and an embedded quote is written as `'\''`. PowerShell and cmd.exe read that differently, so on
+  Windows the commands belong in Git Bash. The README and install page also claimed the full test
+  suite runs on Windows. It runs there, but some tests are skipped, mostly ones that need POSIX
+  file modes, a pseudo-terminal, a POSIX shell to run a printed command through, or a file name
+  Windows does not allow, and the docs now say so.
 
 ## [0.18.2] - 2026-10-13
 

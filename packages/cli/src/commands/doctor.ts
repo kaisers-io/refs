@@ -102,10 +102,23 @@ type DoctorLoad = {
 
 const buildCheckSteps = (load: DoctorLoad): CheckStep[] => {
   const { configLoad, ctx, home, state } = load;
+  // What `git` read, handed to `git-exec-surfaces`: whether a configured hook can still fire
+  // depends on the version. Safe to share because the steps run strictly in order.
+  const seen: { versionLine?: string } = {};
+  const gitStep = async (): Promise<CheckResult> => {
+    const check = await checkGit(ctx);
+    if (check.status === 'ok') {
+      seen.versionLine = check.detail;
+    }
+    return check;
+  };
   return [
-    { name: 'git', run: () => checkGit(ctx) },
+    { name: 'git', run: gitStep },
     // Right after the version, because it is about the same binary and reads no refs state.
-    { name: 'git-exec-surfaces', run: () => checkGitExecSurfaces(ctx, home.root) },
+    {
+      name: 'git-exec-surfaces',
+      run: () => checkGitExecSurfaces(ctx, home.root, seen.versionLine),
+    },
     { name: 'node', run: () => Promise.resolve(checkNode(ctx)) },
     { name: 'config', run: () => Promise.resolve(buildConfigCheck(configLoad.errorMessage)) },
     // Beside `config`, because both are about the home itself rather than about any ref.

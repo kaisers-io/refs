@@ -77,6 +77,34 @@ describe('probeRefStructure: a root the configuration never registered', () => {
   });
 });
 
+describe('probeRefStructure: a root someone already decided about', () => {
+  it('says nothing about a root declined at its own path, and names the decision', async () => {
+    expect.hasAssertions();
+    const repo = monorepo();
+    writeJson(join(repo, 'package.json'), {
+      name: '@fixture/toolkit',
+      private: true,
+      workspaces: ['packages/*'],
+    });
+
+    const report = await probeRefStructure(
+      repo,
+      {
+        declined_packages: [{ name: '@fixture/toolkit', path: '.' }],
+        packages: { '@fixture/a': entry('packages/a') },
+      },
+      ARRIVALS_NONE,
+    );
+
+    // The skill tells an agent a declined root stays quiet; the decline is matched by name AND
+    // path, and the root's path is `.`.
+    expect(report).toStrictEqual({
+      declined: [{ name: '@fixture/toolkit', path: '.' }],
+      status: 'ok',
+    });
+  });
+});
+
 describe('probeRefStructure: a root there is nothing to report about', () => {
   it('says nothing about a root that names nothing', async () => {
     expect.hasAssertions();

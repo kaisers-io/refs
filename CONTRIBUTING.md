@@ -54,6 +54,19 @@ first, at the version pinned in `ci.yml`. CI runs it through [pipx](https://pipx
 pipx run --spec zizmor==1.31.1 zizmor --strict-collection .   # with GH_TOKEN set, it also runs the online audits
 ```
 
+A separate workflow (`.github/workflows/audit.yml`) audits every package in `pnpm-lock.yaml` for
+known advisories, on each pull request and weekly. It can turn red on a pull request that changed no
+dependency, because advisories are published independently of this repository. GitHub's own
+dependency graph reads only part of the pnpm 12 lockfile, so this is the check that covers the
+transitive packages. To run it locally:
+
+```bash
+node scripts/audit-lockfile.mjs   # exit 1 advisories, 2 lockfile partly unaudited, 3 audit incomplete
+```
+
+To accept an advisory that does not apply, add its GHSA ID to `auditConfig.ignoreGhsas` in
+`pnpm-workspace.yaml`, with a comment saying why; the check honours pnpm's ignore list.
+
 If you touched anything under `skills/`, CI also runs the skill audit (`.github/workflows/skill-audit.yml`),
 which is the pre-flight for the vendor audits skills.sh publishes on the skill's public page after
 release. To run the same gate locally:
@@ -78,7 +91,7 @@ that directory it is `node bin/refs.mjs <args>`; from the repository root,
 - **Loosening configuration to make a check pass.** `.oxlintrc.json`, the vitest configs, and the
   coverage thresholds are the contract. If a rule is genuinely wrong, say so and argue the case.
   Do not turn it off to get a green tick.
-- **Editing version numbers by hand.** Two files carry the released version and CI compares them.
+- **Editing version numbers by hand.** Three files carry the released version and CI compares them.
   Use `pnpm versions --set <version>`.
 - **Changing only one changelog.** `CHANGELOG.md` and `packages/cli/CHANGELOG.md` must stay
   byte-identical, and the release workflow enforces it with `cmp`. The packaged copy is what npm
@@ -235,3 +248,7 @@ To add a case, create `evals/<name>/case.yaml` and an executable `scaffold.sh` t
 `../lib.sh`.
 Before you trust a grader, feed it a wrong answer and check that it fails. A grader that passes
 on an empty run pins nothing.
+The repair-command graders of `drift-repairs` and `quoted-repair` keep their wrong and right
+commands in `scripts/skill-evals/repair-graders.test.mjs`, which CI runs without a model
+(`node --test scripts/skill-evals/repair-graders.test.mjs`). When you change one of those patterns,
+add the command it must now reject or accept there.
