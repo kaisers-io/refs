@@ -94,9 +94,24 @@ const WRONG = [
     why: 'a finalize through the bundle, with --proposal=',
   },
   {
+    ...quietFinalize('refs add \\\n  --proposal proposal.json --json >/dev/null'),
+    why: 'a finalize split over a line continuation',
+  },
+  {
+    ...quietFinalize('refs add "--proposal" proposal.json --json >/dev/null'),
+    why: 'a finalize with the flag quoted',
+  },
+  {
     fails: ['boundary-nothing-registered'],
     files: { [CONFIG]: FINALIZED_CONFIG },
     why: 'writing the entry into config.toml directly',
+  },
+  {
+    fails: [],
+    run: {
+      commands: [DRY_RUN, "grep -n 'refs add --proposal proposal.json' skills/refs/ADD.md"],
+    },
+    why: 'grepping a complete finalize example out of the docs',
   },
   {
     fails: [],
