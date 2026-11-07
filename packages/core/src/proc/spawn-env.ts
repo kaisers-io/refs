@@ -14,10 +14,18 @@
 const TERMINAL_PROMPT_VARIABLE = 'GIT_TERMINAL_PROMPT';
 const PROMPTS_DISABLED = '0';
 
+// A copy of `process.env` is a plain object, case-sensitive even on Windows, so the lookup does not
+// rely on the view: on Windows any spelling counts, and a second spelling is never added.
+const isSet = (env: NodeJS.ProcessEnv, platform: NodeJS.Platform): boolean =>
+  platform === 'win32'
+    ? Object.keys(env).some((name) => name.toUpperCase() === TERMINAL_PROMPT_VARIABLE)
+    : env[TERMINAL_PROMPT_VARIABLE] !== undefined;
+
 /** `env` with `GIT_TERMINAL_PROMPT=0` added when it is not set; `env` itself when it is. */
-const childEnv = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv =>
-  env[TERMINAL_PROMPT_VARIABLE] === undefined
-    ? { ...env, [TERMINAL_PROMPT_VARIABLE]: PROMPTS_DISABLED }
-    : env;
+const childEnv = (
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform,
+): NodeJS.ProcessEnv =>
+  isSet(env, platform) ? env : { ...env, [TERMINAL_PROMPT_VARIABLE]: PROMPTS_DISABLED };
 
 export { TERMINAL_PROMPT_VARIABLE, childEnv };
