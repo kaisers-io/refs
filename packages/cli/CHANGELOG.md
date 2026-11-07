@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **A program inside a checkout can no longer run in place of git.** refs starts git with its
+  working directory inside a checkout, and on Windows the process spawn looks in that directory
+  before `PATH`, so a `git.exe` or `git.com` tracked at a reference's root ran on the next
+  `refs sync` or `refs doctor`. On every platform, an empty or relative `PATH` entry pointed at the
+  same directory. refs now resolves every program it starts through absolute `PATH` entries only
+  and starts that absolute path; a program found nowhere else fails as not found.
+
 ## [0.18.2] - 2026-10-13
 
 ### Security

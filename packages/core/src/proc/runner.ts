@@ -4,6 +4,7 @@ import type { ChildProcess } from 'node:child_process';
 import type { CollectedStream } from './spawn-collector.ts';
 import { armTimeout } from './spawn-timeout.ts';
 import { once } from 'node:events';
+import { resolveExecutable } from './executable-path.ts';
 import { spawn } from 'node:child_process';
 
 // Thin process-execution seam so `git/repo.ts` never calls `child_process` directly: production
@@ -133,6 +134,21 @@ const startChildSafely = (
   }
 };
 
+// Never spawn the bare name: on Windows that searches the child's cwd, a checkout, first
+// (executable-path.ts).
+const startResolved = async (
+  cmd: string,
+  args: readonly string[],
+  opts: RunOpts | undefined,
+): Promise<RunningChild | RunResult> => {
+  const file = await resolveExecutable(cmd, process.env);
+  if (file === undefined) {
+    const stderr = `spawn ${cmd} ENOENT: not in an absolute PATH directory (refs never runs a program from the working directory)`;
+    return { exitCode: SPAWN_ERROR_EXIT_CODE, stderr, stdout: '' };
+  }
+  return startChildSafely(file, args, opts);
+};
+
 const isRunResult = (value: RunningChild | RunResult): value is RunResult => !('child' in value);
 
 type CloseOutcome = {
@@ -232,7 +248,7 @@ const buildCloseResult = (ctx: CloseContext): RunResult => {
 class SpawnRunner implements Runner {
   async run(cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> {
     installCleanupOnce();
-    const running = startChildSafely(cmd, args, opts);
+    const running = await startResolved(cmd, args, opts);
     if (isRunResult(running)) {
       return running;
     }
