@@ -1,6 +1,7 @@
 import type { RunResult, Runner } from '../proc/runner.ts';
 import { gitSpec, runOrThrow } from './run-or-throw.ts';
-import { lstat, rm } from 'node:fs/promises';
+import { lstat, rename, rm } from 'node:fs/promises';
+import { assertManagedCheckout } from './managed-checkout.ts';
 import { join } from 'node:path';
 import { validationError } from '../errors.ts';
 
@@ -29,6 +30,11 @@ import { validationError } from '../errors.ts';
 // the removal. The leftover is then kept, and only its `core.hooksPath` marker is unset: every
 // reuse path compares that marker before adopting a checkout, so the next `refs add` or
 // `refs sync` refuses it instead of taking it for a healthy one.
+//
+// Unsetting can fail too: a survivor may still hold `.git/config.lock`. The outcome is checked
+// with the guard the reuse paths run (`assertManagedCheckout`), and when the leftover still passes
+// it, `.git` is renamed aside instead, which that guard refuses as well. Only when both fail does
+// the error say the leftover is still marked.
 
 type DiscardOpts = { dest: string; hooksDir: string };
 
@@ -64,17 +70,58 @@ const watchingCleanup = (runner: Runner): { runner: Runner; uncertain: () => boo
   };
 };
 
-/** Leaves the leftover at `dest` in place but unadoptable, and answers the error that says so. */
-const quarantine = async (runner: Runner, dest: string, error: unknown): Promise<Error> => {
+// Where `.git` goes when its marker cannot be unset; kept, never deleted, for the same reason.
+const QUARANTINED_GIT_DIR = '.git.refs-quarantined';
+
+/** Whether a reuse path would still adopt `dest` as a checkout refs manages. */
+const adoptable = async (runner: Runner, dest: string, hooksDir: string): Promise<boolean> => {
+  try {
+    await assertManagedCheckout(runner, dest, hooksDir);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** Makes `dest` unadoptable without removing anything; answers what it did, or `undefined`. */
+const unmark = async (
+  runner: Runner,
+  dest: string,
+  hooksDir: string,
+): Promise<string | undefined> => {
   await runner.run('git', ['config', '--local', '--unset', 'core.hooksPath'], { cwd: dest });
+  if (!(await adoptable(runner, dest, hooksDir))) {
+    return 'unmarked it';
+  }
+  try {
+    await rename(join(dest, '.git'), join(dest, QUARANTINED_GIT_DIR));
+  } catch {
+    return undefined;
+  }
+  return (await adoptable(runner, dest, hooksDir))
+    ? undefined
+    : `moved its .git to ${QUARANTINED_GIT_DIR}, because its marker could not be unset`;
+};
+
+/** Leaves the leftover at `dest` in place but unadoptable, and answers the error that says so. */
+const quarantine = async (failed: FailedClone, error: unknown): Promise<Error> => {
+  const done = await unmark(failed.runner, failed.dest, failed.hooksDir);
   const detail = error instanceof Error ? error.message : String(error);
+  const prefix = `${detail} — processes the clone started may still be running, so refs left ${failed.dest} in place`;
   return validationError(
-    `${detail} — processes the clone started may still be running, so refs left ${dest} in ` +
-      'place and unmarked it; refs will not use it, remove it once they have exited',
+    done === undefined
+      ? `${prefix}, but could not unmark it, so a later refs run may adopt it: remove it once they have exited`
+      : `${prefix} and ${done}; refs will not use it, remove it once they have exited`,
   );
 };
 
-type FailedClone = { dest: string; existed: boolean; runner: Runner; uncertain: boolean };
+type FailedClone = {
+  dest: string;
+  existed: boolean;
+  hooksDir: string;
+  runner: Runner;
+  uncertain: boolean;
+};
 
 /** Removes or quarantines what the failed clone left, if it left anything; answers the error to
  * throw. */
@@ -83,7 +130,7 @@ const afterFailure = async (failed: FailedClone, error: unknown): Promise<unknow
     return error;
   }
   if (failed.uncertain) {
-    return quarantine(failed.runner, failed.dest, error);
+    return quarantine(failed, error);
   }
   await rm(failed.dest, { force: true, maxRetries: CLEANUP_RETRIES, recursive: true });
   return error;
@@ -109,7 +156,13 @@ const cloneOrDiscard = async (
     );
     return result;
   } catch (error) {
-    const failed = { dest: opts.dest, existed, runner, uncertain: watched.uncertain() };
+    const failed = {
+      dest: opts.dest,
+      existed,
+      hooksDir: opts.hooksDir,
+      runner,
+      uncertain: watched.uncertain(),
+    };
     throw await afterFailure(failed, error);
   }
 };

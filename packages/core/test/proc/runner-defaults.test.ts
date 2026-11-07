@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { SpawnRunner } from '../../src/proc/runner.ts';
+import { childEnv } from '../../src/proc/spawn-env.ts';
 
 // What `SpawnRunner` adds to every child without being asked: the default `timeoutMs` the CLI
 // configures from `REFS_GIT_TIMEOUT`, and `GIT_TERMINAL_PROMPT=0` unless the user set it. Real
@@ -55,4 +56,22 @@ describe('the GIT_TERMINAL_PROMPT default', () => {
       ).resolves.toBe(value);
     },
   );
+});
+
+// A copy of `process.env` is case-sensitive on Windows too, so a lookup by the exact name would add
+// a second `GIT_TERMINAL_PROMPT` next to the user's `Git_Terminal_Prompt`.
+describe('the GIT_TERMINAL_PROMPT default on a plain env object', () => {
+  it('counts any spelling as set on Windows and adds nothing', () => {
+    expect.hasAssertions();
+    const env = { Git_Terminal_Prompt: '1' };
+    expect(childEnv(env, 'win32')).toBe(env);
+  });
+
+  it('adds the default on POSIX, where git reads only the exact name', () => {
+    expect.hasAssertions();
+    expect(childEnv({ git_terminal_prompt: '1' }, 'linux')).toStrictEqual({
+      GIT_TERMINAL_PROMPT: '0',
+      git_terminal_prompt: '1',
+    });
+  });
 });

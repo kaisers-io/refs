@@ -42,6 +42,21 @@ const killedAfterWriting = (uncertain = false): Runner => {
   };
 };
 
+/** `killedAfterWriting(true)`, with the clone's config lock left behind as a survivor still
+ * writing would hold it, so refs' own `git config` on the leftover fails. */
+const killedHoldingConfigLock = (dest: string): Runner => {
+  const killed = killedAfterWriting(true);
+  return {
+    run: async (cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> => {
+      const result = await killed.run(cmd, args, opts);
+      if (args[0] === 'clone') {
+        await writeFile(join(dest, '.git', 'config.lock'), '');
+      }
+      return result;
+    },
+  };
+};
+
 /** Real git, with `beforeClone` run just before the clone starts: another process's move. */
 const racedBy = (beforeClone: () => Promise<void>): Runner => {
   const real = new SpawnRunner();
@@ -108,6 +123,24 @@ describe('a timed-out clone whose processes may still run', SUITE_OPTS, () => {
     );
     await expect(exists(join(dest, '.git'))).resolves.toBe(true);
     // The guard every reuse path runs before touching a checkout.
+    await expect(assertManagedCheckout(new SpawnRunner(), dest, hooksDir)).rejects.toThrow(
+      /not a refs-managed checkout/u,
+    );
+  });
+});
+
+describe('a timed-out clone whose leftover refs cannot unmark', SUITE_OPTS, () => {
+  it('still leaves nothing a reuse path adopts', async () => {
+    expect.hasAssertions();
+    const dest = join(await scratchDir(), 'sources', 'repo');
+    const hooksDir = await scratchDir();
+    const fixture = await createFixtureRepo();
+    const opts = { cloneUrl: fixture.url, dest, hooksDir, mode: 'full' } as const;
+    await expect(cloneRepo(killedHoldingConfigLock(dest), opts)).rejects.toThrow(
+      /may still be running.*moved its \.git to \.git\.refs-quarantined/u,
+    );
+    // Kept, not removed: something may still be writing into it.
+    await expect(exists(join(dest, '.git.refs-quarantined', 'config.lock'))).resolves.toBe(true);
     await expect(assertManagedCheckout(new SpawnRunner(), dest, hooksDir)).rejects.toThrow(
       /not a refs-managed checkout/u,
     );
