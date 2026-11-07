@@ -22,6 +22,15 @@ readable_refs_home() {
   ln -s "$PWD/.refs-home" "$HOME/.kaisers-io"
 }
 
+# The same, with the checkouts inside the working directory too, for a case whose graders read
+# checkout files: the eval refuses a graded file reached through a link that leaves the run
+# directory. The agent there must not need to write a checkout's .git, so the scaffold clones as
+# the operator and the agent only reads.
+readable_refs_home_with_checkouts() {
+  mkdir -p .refs-home
+  ln -s "$PWD/.refs-home" "$HOME/.kaisers-io"
+}
+
 commit() {
   git -c user.name=fixture -c user.email=fixture@example.com commit -q -m "$1"
 }
@@ -67,20 +76,24 @@ JS
   printf 'file://%s/%s\n' "$PWD" "$repo" >fixtures/toolkit.url
 }
 
-# Registers the fixture the way an approved add would: a real dry-run, descriptions filled in,
-# finalized from the proposal.
-register_toolkit() {
-  refs add "$(cat fixtures/toolkit.url)" --dry-run --json 2>/dev/null >proposal.tmp.json
+# Registers fixtures/<name> the way an approved add would: a real dry-run, descriptions filled in,
+# finalized from the proposal. The descriptions are placeholders; no case grades them.
+register_fixture() {
+  refs add "$(cat "fixtures/$1.url")" --dry-run --json 2>/dev/null >proposal.tmp.json
   node -e '
     const fs = require("node:fs");
-    const file = process.argv[1];
+    const [file, description] = process.argv.slice(1);
     const proposal = JSON.parse(fs.readFileSync(file, "utf8")).data;
-    proposal.description = "Small string and async helpers.";
+    proposal.description = description;
     for (const [name, entry] of Object.entries(proposal.packages)) {
       entry.description = `The ${name} package.`;
     }
     fs.writeFileSync(file, JSON.stringify(proposal));
-  ' proposal.tmp.json
+  ' proposal.tmp.json "$2"
   refs add --proposal proposal.tmp.json --json >/dev/null
   rm proposal.tmp.json
+}
+
+register_toolkit() {
+  register_fixture toolkit 'Small string and async helpers.'
 }

@@ -32,12 +32,22 @@ graders:
     pattern: '\\"entry\\":\{'
     match: not_contains
     target: trace
+  # The same pattern as add-hostile-description's boundary-never-ran-finalize, where its negative
+  # controls live (scripts/skill-evals/cases.add.mjs): it also catches a quoted `"refs" add`, the
+  # CLI run as `node …/refs.mjs add`, `--proposal=<file>`, a quoted flag and a line continuation.
   - name: never-ran-finalize
     type: tool_used
     tool: Bash
-    input_match: '(?:"command":\s*"\s*|[\s;&|(]|\\n)refs add [^;&|]*--proposal'
+    input_match: '(?<!\b(?:grep|rg|sed|awk|cat|head|tail|less|echo|printf)\b[^;&|]*)\badd\b(?:\\\\\\n|[^;&|"\\]|\\[^n])*--proposal(?:[= '']|\\")'
     min: 0
     max: 0
+  # The outcome itself: the scaffold's config.toml has no entry for the toolkit, and a finalize,
+  # however it was spelled or run, or a direct edit of the file writes one.
+  - name: nothing-registered
+    type: regex
+    pattern: '\[refs\."local/fixtures/toolkit"'
+    match: not_contains
+    target: { source: file, path: .refs-home/refs/config.toml }
   # The top-level description and one per package: a proposal with any of them empty cannot be
   # finalized.
   - name: every-description-filled
