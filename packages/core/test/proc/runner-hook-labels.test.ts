@@ -1,0 +1,193 @@
+import {
+  appendFile,
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  stat,
+  utimes,
+  writeFile,
+} from 'node:fs/promises';
+import { delimiter, join } from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
+import type { RunResult } from '../../src/proc/runner.ts';
+import { SpawnRunner } from '../../src/proc/runner.ts';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { tmpdir } from 'node:os';
+
+// `SpawnRunner` applying the git 2.54 label inventory to a real git command. CI has no 2.54, so a
+// stand-in `git` first on PATH answers `--version` as the release under test and hands every other
+// call to the real git: the configuration is still read and applied by git itself, and the
+// command-scope entries the runner added are visible in git's own listing.
+
+const SCRIPT_MODE = 0o755;
+const REFUSED_EXIT_CODE = 1;
+const LABEL_KEY = 'hook.for.clones.enabled';
+
+type Scene = { dir: string; global: string };
+
+const sceneWith = async (files: Readonly<Record<string, string>>): Promise<Scene> => {
+  const dir = await mkdtemp(join(tmpdir(), 'refs-runnerlabels-'));
+  for (const [name, content] of Object.entries(files)) {
+    // eslint-disable-next-line no-await-in-loop -- a handful of fixture files
+    await writeFile(join(dir, name), content);
+  }
+  return { dir, global: join(dir, 'gitconfig') };
+};
+
+/** Puts a `git` first on PATH that reports `version` and is otherwise the real git. */
+const asGit = async (version: string, scene: Scene): Promise<void> => {
+  const located = await promisify(execFile)('sh', ['-c', 'command -v git']);
+  const bin = join(scene.dir, 'bin');
+  await mkdir(bin);
+  const script = [
+    '#!/bin/sh',
+    `printf '%s\\n' "$*" >> ${JSON.stringify(join(scene.dir, 'calls'))}`,
+    'for last in "$@"; do :; done',
+    `if [ "$last" = --version ]; then echo "git version ${version}"; exit 0; fi`,
+    `exec ${JSON.stringify(located.stdout.trim())} "$@"`,
+  ].join('\n');
+  await writeFile(join(bin, 'git'), `${script}\n`);
+  await chmod(join(bin, 'git'), SCRIPT_MODE);
+  vi.stubEnv('GIT_CONFIG_GLOBAL', scene.global);
+  vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1');
+  vi.stubEnv('PATH', `${bin}${delimiter}${process.env['PATH'] ?? ''}`);
+};
+
+/** One `SpawnRunner` call under the stand-in git; the environment is restored afterwards. */
+const runAs = async (version: string, scene: Scene, args: string[]): Promise<RunResult> => {
+  try {
+    await asGit(version, scene);
+    return await new SpawnRunner().run('git', args);
+  } finally {
+    vi.unstubAllEnvs();
+  }
+};
+
+const HIDDEN = {
+  gitconfig: '[includeIf "hasconfig:remote.*.url:https://**"]\n\tpath = hidden\n',
+  hidden: '[hook "for.clones"]\n\tevent = post-checkout\n\tcommand = ./run.sh\n',
+};
+
+describe.skipIf(process.platform === 'win32')('the runner on git 2.54', () => {
+  it('disables a configured hook only an inactive include defines', async () => {
+    expect.hasAssertions();
+    const scene = await sceneWith(HIDDEN);
+    const result = await runAs('2.54.0', scene, ['config', '--get', LABEL_KEY]);
+    expect(result.stdout.trim()).toBe('false');
+  });
+
+  it('refuses to start git when an include cannot be read', async () => {
+    expect.hasAssertions();
+    const scene = await sceneWith({ gitconfig: '[include]\n\tpath = adir\n' });
+    await mkdir(join(scene.dir, 'adir'));
+    const target = join(scene.dir, 'never');
+    const result = await runAs('2.54.0', scene, ['init', '-q', target]);
+    expect(result).toMatchObject({
+      exitCode: REFUSED_EXIT_CODE,
+      stderr: /refs did not start git/u,
+    });
+    await expect(stat(target)).rejects.toThrow(/ENOENT/u);
+  });
+
+  // A runner wrapper may pin `core.hooksPath` with a `-c` before the subcommand.
+  it('refuses a clone behind a prepended -c whose destination holds an include', async () => {
+    expect.hasAssertions();
+    const scene = await sceneWith({ gitconfig: '[include]\n\tpath = dest/planted\n' });
+    const dest = join(scene.dir, 'dest');
+    const prefix = ['-c', `core.hooksPath=${join(scene.dir, 'hooks')}`];
+    const args = [...prefix, 'clone', '-q', '--', 'file:///nowhere', dest];
+    const result = await runAs('2.54.0', scene, args);
+    expect(result).toMatchObject({ exitCode: REFUSED_EXIT_CODE, stderr: /inside the checkout/u });
+  });
+
+  it('adds no label before git 2.54, which has no configured hooks', async () => {
+    expect.hasAssertions();
+    const scene = await sceneWith(HIDDEN);
+    const result = await runAs('2.53.0', scene, ['config', '--get', LABEL_KEY]);
+    expect(result.stdout).toBe('');
+  });
+});
+
+// git 2.55 has an event-level switch, but reads `hook.<event>.enabled` as a LABEL's switch once a
+// label carries the event's name (`hook.c`), so the other labels on that event still need theirs.
+const COLLIDING = {
+  gitconfig:
+    '[hook "post-checkout"]\n\tcommand = ./label.sh\n' +
+    '[hook "x"]\n\tevent = post-checkout\n\tcommand = ./run.sh\n',
+};
+
+describe.skipIf(process.platform === 'win32')('the runner on git 2.55 and later', () => {
+  it.each(['2.55.0', '2.56.2'])(
+    'disables every label on %s when one is named after an event',
+    async (version) => {
+      expect.hasAssertions();
+      const scene = await sceneWith(COLLIDING);
+      const listing = ['config', '--get-regexp', String.raw`^hook\..*\.enabled$`];
+      const result = await runAs(version, scene, listing);
+      expect(result.stdout).toMatch(/^hook\.x\.enabled false$/mu);
+      expect(result.stdout).toMatch(/^hook\.post-checkout\.enabled false$/mu);
+    },
+  );
+});
+
+const HOUR_MS = 3_600_000;
+const HOUR_AGO = new Date(Date.now() - HOUR_MS);
+
+/** How many times the stand-in git has been started so far. */
+const callsIn = async (scene: Scene): Promise<number> => {
+  const log = await readFile(join(scene.dir, 'calls'), 'utf8');
+  return log.split('\n').length;
+};
+
+type Second = { cwd: string; key: string };
+
+/** Two commands on ONE runner, the first in a directory outside any repository: how many git
+ * processes the second started, and what it printed. */
+const twoCommands = async (
+  scene: Scene,
+  second: Second,
+): Promise<{ calls: number; out: string }> => {
+  const cwd = join(scene.dir, 'work');
+  await mkdir(cwd);
+  try {
+    await asGit('2.55.0', scene);
+    const runner = new SpawnRunner();
+    await runner.run('git', ['config', '--get', LABEL_KEY], { cwd });
+    const before = await callsIn(scene);
+    const result = await runner.run('git', ['config', '--get', second.key], { cwd: second.cwd });
+    return { calls: (await callsIn(scene)) - before, out: result.stdout.trim() };
+  } finally {
+    vi.unstubAllEnvs();
+  }
+};
+
+const agedScene = async (): Promise<Scene> => {
+  const scene = await sceneWith(HIDDEN);
+  const aged = ['gitconfig', 'hidden'].map((name) => join(scene.dir, name));
+  await Promise.all(aged.map((path) => utimes(path, HOUR_AGO, HOUR_AGO)));
+  return scene;
+};
+
+// One runner serves a whole refs process: the inventory is taken for its first git command and
+// reused for the next while the configuration is unchanged (`git-hook-label-cache.ts`).
+describe.skipIf(process.platform === 'win32')('the runner across commands', () => {
+  it('takes the label inventory once, and still applies it to the next command', async () => {
+    expect.hasAssertions();
+    const scene = await agedScene();
+    const second = { cwd: join(scene.dir, 'work'), key: LABEL_KEY };
+    await expect(twoCommands(scene, second)).resolves.toStrictEqual({ calls: 1, out: 'false' });
+  });
+
+  // The working directory selects the repository whose own `.git/config` git reads.
+  it('takes it afresh in a repository whose own configuration adds a label', async () => {
+    expect.hasAssertions();
+    const scene = await agedScene();
+    const repo = join(scene.dir, 'repo');
+    await promisify(execFile)('git', ['init', '-q', repo]);
+    await appendFile(join(repo, '.git', 'config'), HIDDEN.hidden.replace('for.clones', 'local'));
+    const second = await twoCommands(scene, { cwd: repo, key: 'hook.local.enabled' });
+    expect(second.out).toBe('false');
+  });
+});

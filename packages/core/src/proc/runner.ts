@@ -1,11 +1,14 @@
+import { REFUSED_EXIT_CODE, hookLabelPolicy, isVersionProbe } from './git-hook-label-policy.ts';
 import { activeChildren, installCleanupOnce } from './spawn-cleanup.ts';
 import { appendNote, createCollector, withTruncationNote } from './spawn-collector.ts';
 import type { ChildProcess } from 'node:child_process';
 import type { CollectedStream } from './spawn-collector.ts';
+import { HookLabelCache } from './git-hook-label-cache.ts';
 import { armTimeout } from './spawn-timeout.ts';
 import { childEnv } from './child-env.ts';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
+import { withGitExecPolicy } from './git-exec-policy.ts';
 
 // Thin process-execution seam so `git/repo.ts` never calls `child_process` directly: production
 // code depends on `Runner`, tests depend on `FakeRunner` (fake-runner.ts), and only `SpawnRunner`
@@ -40,6 +43,9 @@ type RunOpts = {
 type Runner = {
   run: (cmd: string, args: readonly string[], opts?: RunOpts) => Promise<RunResult>;
 };
+
+// Internal: the configuration inventory (`git-hook-labels.ts`) runs git with an adjusted env.
+type SpawnOpts = RunOpts & { env?: NodeJS.ProcessEnv };
 
 // A killed-by-signal result has no real exit code — fall back to a generic non-zero code so
 // `Runner.run`'s contract (`exitCode: number`, never throws) always holds.
@@ -87,7 +93,7 @@ type RunningChild = {
 const startChild = (
   cmd: string,
   args: readonly string[],
-  opts: RunOpts | undefined,
+  opts: SpawnOpts | undefined,
 ): RunningChild => {
   // `shell: false` is Node's default, so this changes nothing at runtime — it states the property
   // the rest of the codebase rests on. Every argument refs passes to git is built from values a
@@ -100,12 +106,14 @@ const startChild = (
   // its two siblings were raised again with the option spelled out. They are false positives on
   // this call and have to be handled as such, not argued with in code.
   //
-  // `env` is the parent's minus the repository-locating `GIT_*` variables (`child-env.ts`): `cwd`
-  // is how refs names the repository, and an inherited `GIT_DIR` would silently override it. Done
-  // here, the one place a process starts, so no direct `runner.run('git', …)` can miss it.
-  const child = spawn(cmd, args, {
+  // `env` is the parent's (or the caller's adjusted copy, as the hook inventory passes) minus the
+  // repository-locating `GIT_*` variables (`child-env.ts`): `cwd` is how refs names the
+  // repository, and an inherited `GIT_DIR` would silently override it. A git process also gets
+  // refs' execution policy prepended (`git-exec-policy.ts`). Both are done here, the one place a
+  // process starts, so no direct `runner.run('git', …)` can miss them.
+  const child = spawn(cmd, withGitExecPolicy(cmd, args), {
     ...cwdOpt(opts?.cwd),
-    env: childEnv(process.env, process.platform),
+    env: childEnv(opts?.env ?? process.env, process.platform),
     shell: false,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -130,7 +138,7 @@ const startChild = (
 const startChildSafely = (
   cmd: string,
   args: readonly string[],
-  opts: RunOpts | undefined,
+  opts: SpawnOpts | undefined,
 ): RunningChild | RunResult => {
   try {
     return startChild(cmd, args, opts);
@@ -235,24 +243,53 @@ const buildCloseResult = (ctx: CloseContext): RunResult => {
   );
 };
 
+const spawnAndCollect = async (
+  cmd: string,
+  args: readonly string[],
+  opts: SpawnOpts | undefined,
+): Promise<RunResult> => {
+  const running = startChildSafely(cmd, args, opts);
+  if (isRunResult(running)) {
+    return running;
+  }
+  const outcome = await waitForClose(running.child);
+  activeChildren.delete(running.child);
+  running.timeout.clear();
+  return buildCloseResult({
+    code: outcome.code,
+    errorMessage: outcome.errorMessage,
+    stderr: running.stderrCollector.finish(),
+    stdout: running.stdoutCollector.finish(),
+    timedOut: running.timeout.markedTimedOut(),
+    timeoutMs: opts?.timeoutMs,
+  });
+};
+
+const readGitVersion = async (): Promise<string> => {
+  const result = await spawnAndCollect('git', ['--version'], {});
+  return result.stdout;
+};
+
 class SpawnRunner implements Runner {
+  // `git --version`, read once per runner: only git 2.54 and later need the configured-hook
+  // inventory, which is then reused while nothing it read changes (`git-hook-label-cache.ts`).
+  #gitVersion: Promise<string> | undefined;
+  readonly #hookLabels = new HookLabelCache();
+
   async run(cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> {
     installCleanupOnce();
-    const running = startChildSafely(cmd, args, opts);
-    if (isRunResult(running)) {
-      return running;
+    if (cmd !== 'git' || isVersionProbe(args)) {
+      return spawnAndCollect(cmd, args, opts);
     }
-    const outcome = await waitForClose(running.child);
-    activeChildren.delete(running.child);
-    running.timeout.clear();
-    return buildCloseResult({
-      code: outcome.code,
-      errorMessage: outcome.errorMessage,
-      stderr: running.stderrCollector.finish(),
-      stdout: running.stdoutCollector.finish(),
-      timedOut: running.timeout.markedTimedOut(),
-      timeoutMs: opts?.timeoutMs,
-    });
+    this.#gitVersion ??= readGitVersion();
+    const labels = await hookLabelPolicy(
+      (inventoryArgs, env) => spawnAndCollect('git', inventoryArgs, { ...opts, env }),
+      { args, cache: this.#hookLabels, version: await this.#gitVersion, ...cwdOpt(opts?.cwd) },
+    );
+    if ('refusal' in labels) {
+      return { exitCode: REFUSED_EXIT_CODE, stderr: labels.refusal, stdout: '' };
+    }
+    return spawnAndCollect(cmd, [...labels.args, ...args], opts);
   }
 }
 
