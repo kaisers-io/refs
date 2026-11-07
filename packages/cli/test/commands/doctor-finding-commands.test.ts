@@ -66,7 +66,11 @@ const scriptCheckoutGit = (
     { stdout: setup.home.hooksDir },
     { cwd: dest },
   );
-  setup.runner.expect('git status --porcelain', { stdout: '' }, { cwd: dest });
+  setup.runner.expect(
+    `git -c core.hooksPath=${setup.home.hooksDir} status --porcelain`,
+    { stdout: '' },
+    { cwd: dest },
+  );
 };
 
 const seedCheckout = async (
