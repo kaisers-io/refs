@@ -112,6 +112,7 @@ describe('refs show: matchRefKey exact full-key match wins over an ambiguous suf
       const { ctx } = testContext();
       ctx.env['REFS_HOME'] = homeDir;
       const home = resolveHome(ctx.env);
+      // eslint-disable-next-line sort-keys -- the exact key first, then the key it is a suffix of
       const config = await seedConfig(home, {
         [NEXTJS_KEY]: NEXTJS_ENTRY,
         [MIRROR_NEXTJS_KEY]: MIRROR_NEXTJS_ENTRY,

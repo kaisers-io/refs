@@ -98,7 +98,7 @@ const decodeSubsection = (raw: string): Decoded => {
 // which git keeps. Only leading/trailing space and tab are layout.
 const CONFIG_SPACE_EDGES = /^[ \t]+|[ \t]+$/gu;
 
-const trimConfig = (line: string): string => line.replace(CONFIG_SPACE_EDGES, '');
+const trimConfig = (line: string): string => line.replaceAll(CONFIG_SPACE_EDGES, '');
 
 export { MALFORMED, decodeSubsection, decodeValue, trimConfig };
 export type { Decoded };
