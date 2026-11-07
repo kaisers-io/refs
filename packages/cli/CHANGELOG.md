@@ -54,6 +54,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   file modes, a pseudo-terminal, a POSIX shell to run a printed command through, or a file name
   Windows does not allow, and the docs now say so.
 
+### Fixed
+
+- **`refs remove` no longer fails when something appears in a parent directory while it prunes.**
+  If another process created an entry in an emptied parent between refs listing it and removing
+  it, such as a concurrent `refs add` of another ref under the same owner, the removal reported
+  `ENOTEMPTY` and kept the ref registered although its checkout was already deleted. A directory
+  that is in use is where pruning stops anyway, so the removal now succeeds and leaves that entry
+  alone.
+
 ## [0.18.2] - 2026-10-13
 
 ### Security
