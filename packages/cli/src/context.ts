@@ -1,5 +1,5 @@
 import type { Fetcher, Runner } from '@kaisers-io/refs-core';
-import { SpawnRunner } from '@kaisers-io/refs-core';
+import { SpawnRunner, commandTimeoutMs } from '@kaisers-io/refs-core';
 import type { Spinner } from './spinner.ts';
 import { createSpinner } from './spinner.ts';
 import { homedir } from 'node:os';
@@ -93,7 +93,7 @@ const realContext = (): CliContext => ({
     process.stdout.write(`${line}\n`);
   },
   readStdin: readRealStdin,
-  runner: new SpawnRunner(),
+  runner: new SpawnRunner({ defaultTimeoutMs: commandTimeoutMs(process.env), env: process.env }),
   spinner: () =>
     createSpinner({ env: process.env, platform: process.platform, stream: process.stderr }),
 });

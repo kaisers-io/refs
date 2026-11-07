@@ -7,6 +7,13 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # A release is not proposed until it is a week old (Dependabot's implicit default is three
+    # days). A compromised release is usually found and pulled within days, and in this repository
+    # it would not stop at a lockfile: it would be bundled into what users install. Security
+    # updates ignore cooldown, so a fix for a known vulnerability is not delayed. zizmor's
+    # `dependabot-cooldown` audit (ci.yml) holds this at seven days or more.
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     ignore:
       # `@types/node` tracks the Node major it describes, so it is pinned to the runtime we
@@ -49,6 +56,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Same reasoning as above: these actions run next to PR-controlled code and, in release.yml,
+    # next to the npm publish identity.
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns:

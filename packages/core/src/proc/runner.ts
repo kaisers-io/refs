@@ -1,11 +1,15 @@
+import type { RunOpts, RunResult, Runner } from './run-types.ts';
 import { activeChildren, installCleanupOnce } from './spawn-cleanup.ts';
 import { appendNote, createCollector, withTruncationNote } from './spawn-collector.ts';
+import { armTimeout, withCleanupUncertainty } from './spawn-timeout.ts';
 import type { ChildProcess } from 'node:child_process';
 import type { CollectedStream } from './spawn-collector.ts';
-import { armTimeout } from './spawn-timeout.ts';
+import type { Exec } from './spawn-tree.ts';
+import { GitDispatch } from './git-dispatch.ts';
 import { once } from 'node:events';
 import { resolveExecutable } from './executable-path.ts';
 import { spawn } from 'node:child_process';
+import { spawnEnv } from './spawn-env.ts';
 
 // Thin process-execution seam so `git/repo.ts` never calls `child_process` directly: production
 // code depends on `Runner`, tests depend on `FakeRunner` (fake-runner.ts), and only `SpawnRunner`
@@ -17,29 +21,32 @@ import { spawn } from 'node:child_process';
 // throw-on-everything semantics fight the never-throw contract above, and never `shell: true` —
 // every caller passes `cmd`/`args` as separate values, so there is never a shell to inject into).
 // Byte-capped stream collection lives in `spawn-collector.ts`, `timeoutMs` escalation in
-// `spawn-timeout.ts`, and parent-death child cleanup in `spawn-cleanup.ts`.
+// `spawn-timeout.ts` (process-tree signalling in `spawn-tree.ts`), the child environment in
+// `spawn-env.ts`, and parent-death child cleanup in `spawn-cleanup.ts`.
 
-type RunResult = {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-  timedOut?: boolean;
-  // Present-and-`true` only when the collector's byte cap cut `stdout` short (see
-  // `spawn-collector.ts`) — never an explicit `false`, so callers branch on `=== true`. Callers
-  // that parse `stdout` line-by-line MUST treat a byte-truncated result as incomplete: the last
-  // line may be a partial fragment, and counting lines no longer proves anything about how much
-  // output the child really produced.
-  stdoutTruncated?: true;
+type SpawnRunnerOpts = {
+  /** The `timeoutMs` a `run()` gets when it passes none. `undefined` leaves such runs unbounded. */
+  defaultTimeoutMs?: number | undefined;
+  /** The environment children start from, before `childEnv` adds its default. */
+  env?: NodeJS.ProcessEnv;
 };
 
-type RunOpts = {
-  cwd?: string;
-  timeoutMs?: number;
+/** One child to start, with the runner's defaults already applied. */
+type ChildSpec = {
+  /** The name refs asked for (`git`). */
+  cmd: string;
+  /** The absolute path `cmd` resolved to (executable-path.ts), which is what is started. */
+  file?: string;
+  args: readonly string[];
+  cwd: string | undefined;
+  env: NodeJS.ProcessEnv;
+  timeoutMs: number | undefined;
 };
 
-type Runner = {
-  run: (cmd: string, args: readonly string[], opts?: RunOpts) => Promise<RunResult>;
-};
+// The bound on the helper commands a timeout runs to walk and signal the process tree (`ps`,
+// `taskkill`). Both answer in milliseconds; this only stops a wedged helper from becoming the new
+// thing a timed-out run waits on.
+const HELPER_TIMEOUT_MS = 5000;
 
 // A killed-by-signal result has no real exit code — fall back to a generic non-zero code so
 // `Runner.run`'s contract (`exitCode: number`, never throws) always holds.
@@ -84,11 +91,7 @@ type RunningChild = {
   timeout: ReturnType<typeof armTimeout>;
 };
 
-const startChild = (
-  cmd: string,
-  args: readonly string[],
-  opts: RunOpts | undefined,
-): RunningChild => {
+const startChild = (spec: ChildSpec, exec: Exec): RunningChild => {
   // `shell: false` is Node's default, so this changes nothing at runtime — it states the property
   // the rest of the codebase rests on. Every argument refs passes to git is built from values a
   // tracked repository or the user supplied (a url, a ref key, a package path), and none of them is
@@ -99,8 +102,9 @@ const startChild = (
   // It does NOT change what code scanning reports: `js/shell-command-constructed-from-input` and
   // its two siblings were raised again with the option spelled out. They are false positives on
   // this call and have to be handled as such, not argued with in code.
-  const child = spawn(cmd, args, {
-    ...cwdOpt(opts?.cwd),
+  const child = spawn(spec.file ?? spec.cmd, spec.args, {
+    ...cwdOpt(spec.cwd),
+    env: spec.env,
     shell: false,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -113,7 +117,7 @@ const startChild = (
   child.stderr.on('data', (chunk: Buffer) => {
     stderrCollector.push(chunk);
   });
-  const timeout = armTimeout(child, opts?.timeoutMs);
+  const timeout = armTimeout({ child, exec, timeoutMs: spec.timeoutMs });
   return { child, stderrCollector, stdoutCollector, timeout };
 };
 
@@ -122,13 +126,9 @@ const startChild = (
 // could ever fire. Unreachable from today's call sites (all pass literal 'git'/'ssh'), but the
 // `Runner` contract is frozen: no input may escape `run()` as a rejection. Normalized to the same
 // `SPAWN_ERROR_EXIT_CODE` shape as the async `error`-event path (`waitForClose`'s catch below).
-const startChildSafely = (
-  cmd: string,
-  args: readonly string[],
-  opts: RunOpts | undefined,
-): RunningChild | RunResult => {
+const startChildSafely = (spec: ChildSpec, exec: Exec): RunningChild | RunResult => {
   try {
-    return startChild(cmd, args, opts);
+    return startChild(spec, exec);
   } catch (error) {
     return { exitCode: SPAWN_ERROR_EXIT_CODE, stderr: errorMessageOf(error), stdout: '' };
   }
@@ -136,17 +136,13 @@ const startChildSafely = (
 
 // Never spawn the bare name: on Windows that searches the child's cwd, a checkout, first
 // (executable-path.ts).
-const startResolved = async (
-  cmd: string,
-  args: readonly string[],
-  opts: RunOpts | undefined,
-): Promise<RunningChild | RunResult> => {
-  const file = await resolveExecutable(cmd, process.env);
+const startResolved = async (spec: ChildSpec, exec: Exec): Promise<RunningChild | RunResult> => {
+  const file = await resolveExecutable(spec.cmd, spec.env);
   if (file === undefined) {
-    const stderr = `spawn ${cmd} ENOENT: not in an absolute PATH directory (refs never runs a program from the working directory)`;
+    const stderr = `spawn ${spec.cmd} ENOENT: not in an absolute PATH directory (refs never runs a program from the working directory)`;
     return { exitCode: SPAWN_ERROR_EXIT_CODE, stderr, stdout: '' };
   }
-  return startChildSafely(file, args, opts);
+  return startChildSafely({ ...spec, file }, exec);
 };
 
 const isRunResult = (value: RunningChild | RunResult): value is RunResult => !('child' in value);
@@ -187,6 +183,7 @@ type CloseContext = {
   errorMessage: string | undefined;
   timedOut: boolean;
   timeoutMs: number | undefined;
+  treeEnded: boolean;
 };
 
 const resolveExitCode = (code: number | null): number => {
@@ -221,7 +218,10 @@ const buildCloseResult = (ctx: CloseContext): RunResult => {
     // showed. The flag is what callers are told to trust, so it has to be right wherever it is
     // computed.
     return withStdoutTruncation(
-      normalizeTimedOutResult(ctx.stderr.text, ctx.timeoutMs),
+      withCleanupUncertainty(
+        normalizeTimedOutResult(ctx.stderr.text, ctx.timeoutMs),
+        ctx.treeEnded,
+      ),
       ctx.stdout,
     );
   }
@@ -246,22 +246,41 @@ const buildCloseResult = (ctx: CloseContext): RunResult => {
 };
 
 class SpawnRunner implements Runner {
-  async run(cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> {
+  readonly #defaultTimeoutMs: number | undefined;
+  readonly #env: NodeJS.ProcessEnv;
+  readonly #git = new GitDispatch((cmd, args, opts) => this.#spawn(cmd, args, opts));
+
+  constructor(opts?: SpawnRunnerOpts) {
+    this.#defaultTimeoutMs = opts?.defaultTimeoutMs;
+    this.#env = spawnEnv(opts?.env ?? process.env, process.platform);
+  }
+
+  run(cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> {
     installCleanupOnce();
-    const running = await startResolved(cmd, args, opts);
+    return this.#git.run(cmd, args, opts);
+  }
+
+  async #spawn(cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> {
+    const timeoutMs = opts?.timeoutMs ?? this.#defaultTimeoutMs;
+    const spec = { args, cmd, cwd: opts?.cwd, env: this.#env, timeoutMs };
+    const running = await startResolved(spec, (helper, helperArgs) =>
+      this.#spawn(helper, helperArgs, { timeoutMs: HELPER_TIMEOUT_MS }),
+    );
     if (isRunResult(running)) {
       return running;
     }
     const outcome = await waitForClose(running.child);
     activeChildren.delete(running.child);
-    running.timeout.clear();
+    // After a timeout this waits for the escalation, not just for `close`: see spawn-confirm.ts.
+    const treeEnded = await running.timeout.settle();
     return buildCloseResult({
       code: outcome.code,
       errorMessage: outcome.errorMessage,
       stderr: running.stderrCollector.finish(),
       stdout: running.stdoutCollector.finish(),
       timedOut: running.timeout.markedTimedOut(),
-      timeoutMs: opts?.timeoutMs,
+      timeoutMs,
+      treeEnded,
     });
   }
 }
@@ -273,4 +292,5 @@ export {
   TIMEOUT_EXIT_CODE,
   isTruncated,
 };
-export type { Runner, RunOpts, RunResult };
+export type { Runner, RunOpts, RunResult } from './run-types.ts';
+export type { SpawnRunnerOpts };
