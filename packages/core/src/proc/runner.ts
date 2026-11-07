@@ -1,12 +1,14 @@
+import type { RunOpts, RunResult, Runner } from './run-types.ts';
 import { activeChildren, installCleanupOnce } from './spawn-cleanup.ts';
 import { appendNote, createCollector, withTruncationNote } from './spawn-collector.ts';
 import { armTimeout, withCleanupUncertainty } from './spawn-timeout.ts';
 import type { ChildProcess } from 'node:child_process';
 import type { CollectedStream } from './spawn-collector.ts';
 import type { Exec } from './spawn-tree.ts';
-import { childEnv } from './spawn-env.ts';
+import { GitDispatch } from './git-dispatch.ts';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
+import { spawnEnv } from './spawn-env.ts';
 
 // Thin process-execution seam so `git/repo.ts` never calls `child_process` directly: production
 // code depends on `Runner`, tests depend on `FakeRunner` (fake-runner.ts), and only `SpawnRunner`
@@ -20,33 +22,6 @@ import { spawn } from 'node:child_process';
 // Byte-capped stream collection lives in `spawn-collector.ts`, `timeoutMs` escalation in
 // `spawn-timeout.ts` (process-tree signalling in `spawn-tree.ts`), the child environment in
 // `spawn-env.ts`, and parent-death child cleanup in `spawn-cleanup.ts`.
-
-type RunResult = {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-  timedOut?: boolean;
-  // Present-and-`true` only on a timed-out result whose process tree could not be confirmed ended
-  // (spawn-confirm.ts): something the command started may still be running and writing. A caller
-  // must then not treat what the command was writing to as abandoned — not remove it, not reuse
-  // it. Never an explicit `false`.
-  cleanupUncertain?: true;
-  // Present-and-`true` only when the collector's byte cap cut `stdout` short (see
-  // `spawn-collector.ts`) — never an explicit `false`, so callers branch on `=== true`. Callers
-  // that parse `stdout` line-by-line MUST treat a byte-truncated result as incomplete: the last
-  // line may be a partial fragment, and counting lines no longer proves anything about how much
-  // output the child really produced.
-  stdoutTruncated?: true;
-};
-
-type RunOpts = {
-  cwd?: string;
-  timeoutMs?: number;
-};
-
-type Runner = {
-  run: (cmd: string, args: readonly string[], opts?: RunOpts) => Promise<RunResult>;
-};
 
 type SpawnRunnerOpts = {
   /** The `timeoutMs` a `run()` gets when it passes none. `undefined` leaves such runs unbounded. */
@@ -258,18 +233,23 @@ const buildCloseResult = (ctx: CloseContext): RunResult => {
 class SpawnRunner implements Runner {
   readonly #defaultTimeoutMs: number | undefined;
   readonly #env: NodeJS.ProcessEnv;
+  readonly #git = new GitDispatch((cmd, args, opts) => this.#spawn(cmd, args, opts));
 
   constructor(opts?: SpawnRunnerOpts) {
     this.#defaultTimeoutMs = opts?.defaultTimeoutMs;
-    this.#env = childEnv(opts?.env ?? process.env);
+    this.#env = spawnEnv(opts?.env ?? process.env, process.platform);
   }
 
-  async run(cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> {
+  run(cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> {
     installCleanupOnce();
+    return this.#git.run(cmd, args, opts);
+  }
+
+  async #spawn(cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> {
     const timeoutMs = opts?.timeoutMs ?? this.#defaultTimeoutMs;
     const spec = { args, cmd, cwd: opts?.cwd, env: this.#env, timeoutMs };
     const running = startChildSafely(spec, (helper, helperArgs) =>
-      this.run(helper, helperArgs, { timeoutMs: HELPER_TIMEOUT_MS }),
+      this.#spawn(helper, helperArgs, { timeoutMs: HELPER_TIMEOUT_MS }),
     );
     if (isRunResult(running)) {
       return running;
@@ -297,4 +277,5 @@ export {
   TIMEOUT_EXIT_CODE,
   isTruncated,
 };
-export type { Runner, RunOpts, RunResult, SpawnRunnerOpts };
+export type { Runner, RunOpts, RunResult } from './run-types.ts';
+export type { SpawnRunnerOpts };

@@ -3,13 +3,10 @@ import { gitSpec, runOrThrow } from './run-or-throw.ts';
 import type { BuiltSyncResult } from './sync-result.ts';
 import type { CloneMode } from '../schemas/primitives.ts';
 import type { CommandSpec } from './run-or-throw.ts';
-import type { RefsHome } from '../home.ts';
 import type { Runner } from '../proc/runner.ts';
 import { assertManagedCheckout } from './managed-checkout.ts';
 import { cloneOrDiscard } from './clone-discard.ts';
-import { join } from 'node:path';
-import { validationError } from '../errors.ts';
-import { writeFileAtomic } from '../fs-atomic.ts';
+import { readDefaultBranch } from './default-branch.ts';
 
 // Git operations for a "managed checkout": every function takes `runner: Runner` first (real git
 // via SpawnRunner in production, scripted via FakeRunner in unit tests). Implements the clone
@@ -40,7 +37,6 @@ type SyncOpts = {
 type SyncResult = BuiltSyncResult;
 
 const SUCCESS_EXIT_CODE = 0;
-const HOOK_MODE = 0o755;
 
 // Git's wording (git 2.50.1 / Apple Git-155, verified against a plain `file://` remote —
 // see repo.test.ts) when the server ignores `--filter=...` and performs a full clone instead.
@@ -56,7 +52,8 @@ const cloneRepo = async (runner: Runner, opts: CloneOpts): Promise<CloneResult> 
   // governed by the ambient config: a user-level RELATIVE `core.hooksPath` (`.githooks`, say)
   // resolves inside the tree being cloned, so an upstream-tracked hook of that name runs — during
   // `add --dry-run`, before anyone has approved the ref. `-c` also persists into the new repo's
-  // local config, which is what the `git config` call below then only re-affirms.
+  // local config, which the `git config` call below only re-affirms. The CLI ALSO pins it at command
+  // scope on every git call (`pinned-hooks.ts`): inherited `-c` config outranks the local value.
   // The interpolation is safe and both reasons are verified: there is no shell (`SpawnRunner`
   // always spawns an argv array), and a newline in a `-c` value cannot smuggle a second setting —
   // git 2.54 stores the whole string as ONE value. `hooksDir` is refs-owned in any case.
@@ -71,9 +68,7 @@ const cloneRepo = async (runner: Runner, opts: CloneOpts): Promise<CloneResult> 
   // hold at the call itself rather than resting on something having been checked earlier.
   args.push('--', opts.cloneUrl, opts.dest);
   const cloneResult = await cloneOrDiscard(runner, opts, args);
-  const filterIgnored =
-    opts.mode === 'blobless' && FILTER_NOT_HONOURED_PATTERN.test(cloneResult.stderr);
-  if (!filterIgnored) {
+  if (opts.mode !== 'blobless' || !FILTER_NOT_HONOURED_PATTERN.test(cloneResult.stderr)) {
     return { effectiveMode: opts.mode };
   }
   return {
@@ -81,38 +76,6 @@ const cloneRepo = async (runner: Runner, opts: CloneOpts): Promise<CloneResult> 
     warning:
       'server did not honour the partial-clone filter (blob:none); fell back to a full clone',
   };
-};
-
-// One attempt at resolving `origin/HEAD`; `undefined` if the ref doesn't exist (yet) — the caller
-// decides whether to refresh and retry.
-const tryReadOriginHead = async (runner: Runner, dir: string): Promise<string | undefined> => {
-  const result = await runner.run('git', ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], {
-    cwd: dir,
-  });
-  if (result.exitCode !== SUCCESS_EXIT_CODE) {
-    return undefined;
-  }
-  const branch = result.stdout.trim();
-  const ORIGIN_PREFIX = 'origin/';
-  if (branch.startsWith(ORIGIN_PREFIX)) {
-    return branch.slice(ORIGIN_PREFIX.length);
-  }
-  return branch;
-};
-
-// Resolves the remote's default branch via `refs/remotes/origin/HEAD`; if stale/absent, refreshes
-// with `git remote set-head origin --auto` and retries once. Throws if still undetectable.
-const detectDefaultBranch = async (runner: Runner, dir: string): Promise<string> => {
-  const direct = await tryReadOriginHead(runner, dir);
-  if (direct !== undefined) {
-    return direct;
-  }
-  await runner.run('git', ['remote', 'set-head', 'origin', '--auto'], { cwd: dir });
-  const retried = await tryReadOriginHead(runner, dir);
-  if (retried !== undefined) {
-    return retried;
-  }
-  throw validationError(`could not detect the default branch for checkout: ${dir}`);
 };
 
 const currentSha = async (runner: Runner, dir: string): Promise<string> => {
@@ -148,7 +111,7 @@ const resolveSyncBranch = async (
   const setHeadResult = await runner.run('git', ['remote', 'set-head', 'origin', '--auto'], {
     cwd: opts.dir,
   });
-  const branch = await detectDefaultBranch(runner, opts.dir);
+  const branch = await readDefaultBranch(runner, opts.dir);
   const result: { branch: string; branchRenamedTo?: string; warning?: string } = { branch };
   if (branch !== opts.defaultBranch) {
     result.branchRenamedTo = branch;
@@ -228,25 +191,10 @@ const tagExists = async (runner: Runner, dir: string, tag: string): Promise<bool
   return result.exitCode === SUCCESS_EXIT_CODE;
 };
 
-const GUARD_HOOK_SCRIPT = [
-  '#!/bin/sh',
-  'echo "refs: this checkout is a managed read-only reference — commits are blocked" >&2',
-  'exit 1',
-  '',
-].join('\n');
-
-// Writes `hooks/pre-commit` + `hooks/pre-push` (0o755) into the shared hooks dir: with
-// `core.hooksPath` pointed here per checkout (`cloneRepo`), git rejects any commit/push there.
-const installHooksGuard = async (home: RefsHome): Promise<void> => {
-  await Promise.all(
-    ['pre-commit', 'pre-push'].map(async (name) => {
-      await writeFileAtomic(join(home.hooksDir, name), GUARD_HOOK_SCRIPT, HOOK_MODE);
-    }),
-  );
-};
-
+export { readDefaultBranch as detectDefaultBranch } from './default-branch.ts';
+export { installHooksGuard } from './hooks-guard.ts';
 export { isGitCheckout } from './managed-checkout.ts';
 export type { SyncStatus } from './sync-result.ts';
 export { gitSpec, runOrThrow } from './run-or-throw.ts';
-export { cloneRepo, detectDefaultBranch, installHooksGuard, syncRef, tagExists };
+export { cloneRepo, syncRef, tagExists };
 export type { CloneResult, SyncResult };

@@ -44,8 +44,28 @@ pnpm check                 # lint + format check + typecheck + tests
 ```
 
 That is exactly what CI runs, on Linux, macOS and Windows, and once more on the Node 24.2 floor.
-CI adds a coverage gate, a version-consistency check, a bundle-determinism check, and a smoke test
-of the packaged CLI on Linux and Windows.
+CI adds a coverage gate, a version-consistency check, a bundle-determinism check, a smoke test
+of the packaged CLI on Linux and Windows, and a [zizmor](https://docs.zizmor.sh/) audit of the
+workflows and `dependabot.yml`. If you touched anything under `.github/`, run that audit locally
+first, at the version pinned in `ci.yml`. CI runs it through [pipx](https://pipx.pypa.io/);
+`uvx zizmor@1.31.1` runs the same release if you have uv instead:
+
+```bash
+pipx run --spec zizmor==1.31.1 zizmor --strict-collection .   # with GH_TOKEN set, it also runs the online audits
+```
+
+A separate workflow (`.github/workflows/audit.yml`) audits every package in `pnpm-lock.yaml` for
+known advisories, on each pull request and weekly. It can turn red on a pull request that changed no
+dependency, because advisories are published independently of this repository. GitHub's own
+dependency graph reads only part of the pnpm 12 lockfile, so this is the check that covers the
+transitive packages. To run it locally:
+
+```bash
+node scripts/audit-lockfile.mjs   # exit 1 advisories, 2 lockfile partly unaudited, 3 audit incomplete
+```
+
+To accept an advisory that does not apply, add its GHSA ID to `auditConfig.ignoreGhsas` in
+`pnpm-workspace.yaml`, with a comment saying why; the check honours pnpm's ignore list.
 
 If you touched anything under `skills/`, CI also runs the skill audit (`.github/workflows/skill-audit.yml`),
 which is the pre-flight for the vendor audits skills.sh publishes on the skill's public page after
@@ -71,7 +91,7 @@ that directory it is `node bin/refs.mjs <args>`; from the repository root,
 - **Loosening configuration to make a check pass.** `.oxlintrc.json`, the vitest configs, and the
   coverage thresholds are the contract. If a rule is genuinely wrong, say so and argue the case.
   Do not turn it off to get a green tick.
-- **Editing version numbers by hand.** Two files carry the released version and CI compares them.
+- **Editing version numbers by hand.** Three files carry the released version and CI compares them.
   Use `pnpm versions --set <version>`.
 - **Changing only one changelog.** `CHANGELOG.md` and `packages/cli/CHANGELOG.md` must stay
   byte-identical, and the release workflow enforces it with `cmp`. The packaged copy is what npm

@@ -19,7 +19,12 @@ const argvThroughShell = async (name: string, path: string): Promise<string[]> =
     "github.com/acme/o'brien",
   );
   const marker = 'To register it (replace the description first): ';
-  const command = (line ?? '').slice((line ?? '').indexOf(marker) + marker.length);
+  // Stop at the sentence that introduces the decline command. Taking the rest of the line ran
+  // both commands as one, and decline carries the same name, path and key — so it could supply
+  // the argument an assertion looked for while the register command split or lost it.
+  const [command = ''] = (line ?? '')
+    .slice((line ?? '').indexOf(marker) + marker.length)
+    .split('. If it should not be: ');
   // `printf` in place of `refs`, so the assertion is about what the shell PARSED into arguments.
   const result = await runner.run('sh', [
     '-c',

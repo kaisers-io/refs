@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { markCheckoutPresent, seedConfig, seedState } from '../helpers/ref-fixtures.ts';
 import { withResetExitCode, withTempHome } from '../helpers/add-support.ts';
 import { matchRefKey } from '../../src/commands/list.ts';
+import { pinnedGit } from '../helpers/pinned-git.ts';
 import { run } from '../../src/main.ts';
 import { testContext } from '../helpers/context.ts';
 
@@ -84,7 +85,7 @@ const seedNextjsWithTags = async (home: RefsHome, runner: FakeRunner): Promise<s
   await seedState(home, { [NEXTJS_KEY]: { head_sha: SAMPLE_SHA } });
   const dest = checkoutPath(home, zRefKey.parse(NEXTJS_KEY));
   await markCheckoutPresent(dest);
-  runner.expect('git tag', { stdout: TAGS.join('\n') });
+  runner.expect(`${pinnedGit(home)} tag`, { stdout: TAGS.join('\n') });
   return dest;
 };
 
@@ -198,7 +199,7 @@ const seedNextjsWithBrokenGitTag = async (home: RefsHome, runner: FakeRunner): P
   await seedConfig(home, { [NEXTJS_KEY]: NEXTJS_ENTRY });
   const dest = checkoutPath(home, zRefKey.parse(NEXTJS_KEY));
   await markCheckoutPresent(dest);
-  runner.expect('git tag', {
+  runner.expect(`${pinnedGit(home)} tag`, {
     exitCode: GIT_TAG_FAILURE_EXIT_CODE,
     stderr: 'fatal: not a git repository (or any of the parent directories): .git',
   });
