@@ -117,9 +117,10 @@ jobs:
       # failure paths. These do: node's built-in runner (not vitest — that would need an install,
       # and it only collects packages/*) over throwaway fixture trees, never the real five files.
       - run: node --test scripts/versions.test.mjs
-      # The Codex eval runner's grader adapter, which needs no install either. The eval suite itself
-      # never runs in CI: it needs a personal login, and every run costs money.
-      - run: node --test scripts/skill-evals/graders.test.mjs
+      # The Codex eval runner's grader adapter and the repair graders' negative controls, which need
+      # no install either. The eval suite itself never runs in CI: it needs a personal login, and
+      # every run costs money.
+      - run: node --test scripts/skill-evals/graders.test.mjs scripts/skill-evals/repair-graders.test.mjs
   # Static audit of this repository's GitHub Actions setup (workflows and dependabot.yml) with
   # zizmor at its default `regular` persona: https://docs.zizmor.sh/audits/. Any finding fails the
   # job (exit codes 11-14); `--format github` turns each one into an annotation on the diff. A

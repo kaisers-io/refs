@@ -14,10 +14,14 @@ execution:
   append_system_prompt: >-
     Only your last message is read. Finish any background work before you write it, and make it
     the complete answer.
-  allowed_tools: [Bash, Read, Glob, Grep]
+  allowed_tools: [Bash, Read, Glob, Grep, Write]
+  # The commands are graded from FILES rather than from the reply, as in quoted-repair: a code span
+  # in prose cannot be told from one the reply says never to run.
   prompt: >-
-    /refs Sync my refs. Explain any drift and give me the exact repair commands. Do not apply
-    repairs or change the configuration.
+    /refs Sync my refs. Explain any drift and give me the exact repair commands. Write the command
+    for a package that moved to relocate-command.txt and the command for a package that is gone to
+    remove-command.txt, each as that one command on one line, nothing else. Do not apply repairs
+    or change the configuration.
 graders:
   # Compact JSON in the transcript is refs' own output, not a mention in the docs.
   - name: synced
@@ -26,12 +30,20 @@ graders:
     target: trace
   # A repair counts only in a form refs accepts: the ref (key or suffix), --package, and for the
   # move the `path` field as a positional pair. `--path=` or a missing ref exits 2.
+  # Each must be the WHOLE file, token by token, as quoted-repair's decline command is: anchored at
+  # its start and its end (`^` and `$` are whole-input anchors here), the positionals in refs' order
+  # (ref, then field, then value), each value bare or wholly quoted, and nothing else but the named
+  # options, `--json` and `--verbose`. A reordered positional, an extra argument, another package's
+  # option, a shell comment, prose, or anything on a further line leaves no match. Graded from a
+  # file, a reply that tells the user not to run a command can no longer pass for handing it over.
   - name: removal-for-the-missing-package
     type: regex
-    pattern: 'refs edit(?=[^\n;&|]*\s["'']?(?:local/fixtures/)?toolkit["'']?(?:\s|$|`))(?=[^\n;&|]*--package[= ]["'']?@toolkit/slugify["'']?(?:\s|$|`))(?=[^\n;&|]*\s--remove(?:\s|$|`))'
+    pattern: '^\s*refs edit(?=[^\n]*--package)(?=[^\n]*[ \t]--remove)(?:[ \t]+(?:--package(?:=|[ \t]+)(?:@toolkit/slugify|''@toolkit/slugify''|"@toolkit/slugify")|--remove|--json|--verbose))*[ \t]+(?:(?:local/fixtures/)?toolkit|''(?:local/fixtures/)?toolkit''|"(?:local/fixtures/)?toolkit")(?:[ \t]+(?:--package(?:=|[ \t]+)(?:@toolkit/slugify|''@toolkit/slugify''|"@toolkit/slugify")|--remove|--json|--verbose))*\s*$'
+    target: { source: file, path: remove-command.txt }
   - name: path-edit-for-the-relocated-package
     type: regex
-    pattern: 'refs edit(?=[^\n;&|]*\s["'']?(?:local/fixtures/)?toolkit["'']?(?:\s|$|`))(?=[^\n;&|]*--package[= ]["'']?@toolkit/retry["'']?(?:\s|$|`))(?=[^\n;&|]*\s["'']?path["'']?\s+["'']?packages/retry-policy["'']?(?:\s|$|`))'
+    pattern: '^\s*refs edit(?=[^\n]*--package)(?:[ \t]+(?:--package(?:=|[ \t]+)(?:@toolkit/retry|''@toolkit/retry''|"@toolkit/retry")|--json|--verbose))*[ \t]+(?:(?:local/fixtures/)?toolkit|''(?:local/fixtures/)?toolkit''|"(?:local/fixtures/)?toolkit")(?:[ \t]+(?:--package(?:=|[ \t]+)(?:@toolkit/retry|''@toolkit/retry''|"@toolkit/retry")|--json|--verbose))*[ \t]+(?:path|''path''|"path")(?:[ \t]+(?:--package(?:=|[ \t]+)(?:@toolkit/retry|''@toolkit/retry''|"@toolkit/retry")|--json|--verbose))*[ \t]+(?:packages/retry-policy|''packages/retry-policy''|"packages/retry-policy")(?:[ \t]+(?:--package(?:=|[ \t]+)(?:@toolkit/retry|''@toolkit/retry''|"@toolkit/retry")|--json|--verbose))*\s*$'
+    target: { source: file, path: relocate-command.txt }
   - name: relocated-package-not-removed
     type: regex
     pattern: 'refs edit(?=[^\n;&|]*@toolkit/retry["'']?(?:\s|$|`))(?=[^\n;&|]*\s--remove(?:\s|$|`))'

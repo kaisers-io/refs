@@ -12,10 +12,13 @@ if [[ "$(command -v refs)" != */node_modules/.cache/skill-evals/bin/refs ]]; the
 fi
 
 # refs keeps its home under $HOME, which a grader cannot read. A case that grades config.toml calls
-# this first, and it points the home into the working directory. A case where the agent clones must
-# not: the sandbox refuses writes to .git/hooks and .git/config anywhere under the working directory.
+# this first, and it points the home into the working directory. The checkouts stay outside it:
+# the sandbox refuses writes to .git/hooks and .git/config anywhere under the working directory, so
+# a sync there fails at its `checkout -B`. `sources/` is a link out, and a grader never reads
+# through it; config.toml and state.json stay real files the graders can read.
 readable_refs_home() {
-  mkdir -p .refs-home
+  mkdir -p .refs-home/refs "$HOME/.refs-sources"
+  ln -s "$HOME/.refs-sources" .refs-home/refs/sources
   ln -s "$PWD/.refs-home" "$HOME/.kaisers-io"
 }
 
