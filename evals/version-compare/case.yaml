@@ -1,0 +1,91 @@
+schema_version: '1.1'
+name: version-compare
+description: >-
+  A monorepo package with its own tag convention, and a repository-wide tag of the same version
+  that predates the change. The answer must come from the package's tags, as VERSIONS.md resolves
+  them with --package: the concrete code change between the two releases and the commit that made
+  it. Repeating the two version numbers, or diffing the repository-wide tags and finding nothing,
+  does not pass. The question also asks about 1.2.0, which was never tagged: the answer must say
+  so, as refs' exit 4 does, not describe a change. The checkout and the tag formats must be left
+  as they were.
+plugins: ['../../skills/refs']
+runs: 3
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 30
+  timeout_seconds: 600
+  append_system_prompt: >-
+    Only your last message is read. Finish any background work before you write it, and make it
+    the complete answer.
+  allowed_tools: [Bash, Read, Glob, Grep, Agent]
+  prompt: >-
+    /refs What changed in @toolkit/retry from local/fixtures/toolkit between versions 1.0.0 and
+    1.1.0? Name the commit responsible. And what did 1.2.0 change?
+graders:
+  # Compact JSON in the transcript is refs' own output, not a mention in the docs. Only the package
+  # form of `refs tag` resolves 1.1.0 to this tag; without --package it answers v1.1.0.
+  - name: resolved-the-package-tag
+    type: regex
+    pattern: '\\"tag\\":\\"@toolkit/retry@1\.1\.0\\"'
+    target: trace
+  # The two code changes in the release, by the identifiers and values only the diff carries.
+  - name: names-the-new-cap
+    type: regex
+    pattern: 'maxDelayMs'
+  - name: names-the-new-default
+    type: regex
+    pattern: 'attempts\s*=\s*5|3\s*(?:→|->|to)\s*5|attempts[^\n]{0,60}\b5\b|\b5\b[^\n]{0,30}attempts'
+    flags: i
+  # The commit, by its sha or its subject. The scaffold pins dates and identities, so the sha is the
+  # same on every run; editing the scaffold's history changes it, and this pattern with it.
+  - name: names-the-commit
+    type: regex
+    pattern: '\b9f89fed|tune the backoff for flaky upstreams'
+  # Naming the identifiers is not stating the change: "maxDelayMs was removed; attempts = 5 was not
+  # introduced. Commit 9f89fed did nothing" names all three. A reply that denies the change or the
+  # commit contradicts the diff. A regex cannot check every claim; this rejects the denial forms.
+  - name: no-denial-of-the-change
+    type: regex
+    pattern: '(?:^|[.!?]\s+)no (?:code )?changes? (?:occurred|happened|was made|were made)(?!\s+(?:to|in|after|since|for|on)\b)|maxDelayMs`?\s+(?:was|were|has been|got|is)\s+(?:removed|dropped|deleted)\b|\b(?:removed|dropped|deleted)\s+(?:the\s+)?`?maxDelayMs|(?:attempts(?:\s*=\s*\d+)?|maxDelayMs)`?\s*(?:(?:was|were|is|has|have)\s+)?(?:not|never|n[’'']t)\s+(?:been\s+)?(?:introduced|added|changed|raised|increased)|\b9f89fed\b[^\n.]{0,30}\b(?:did nothing|changed nothing|made no (?:code )?changes?|(?:is|was) a no-?op)'
+    flags: im
+    match: not_contains
+  # 1.2.0 was never tagged. refs' own exit-4 error shows the lookup was made, not guessed.
+  - name: checked-the-missing-version
+    type: regex
+    pattern: 'tag ''@toolkit/retry@1\.2\.0'' not found'
+    target: trace
+  # The honest answer, on one line with 1.2.0: no such tag or release. Describing a change, or "no
+  # change since 1.1.0", invents a release, and fails.
+  - name: says-1.2.0-was-never-released
+    type: regex
+    pattern: '(?:^|\n)[^\n]*(?:1\.2\.0[^\n]*(?:\bno\s+(?:(?:git\s+|such\s+|matching\s+|release\s+)?(?:tag|release|version))|does(?:n[''’]t| not) exist|never (?:been )?(?:tagged|released|published)|(?:not|n[''’]t) (?:been |yet )?(?:tagged|released|published)|unreleased|not found|could(?:n[''’]t| not) find|no such|(?:tag|release) (?:is )?missing|missing (?:tag|release)|non-?existent)|(?:\bno\s+(?:(?:git\s+|such\s+|matching\s+|release\s+)?(?:tag|release|version))|does(?:n[''’]t| not) exist|never (?:been )?(?:tagged|released|published)|(?:not|n[''’]t) (?:been |yet )?(?:tagged|released|published)|unreleased|not found|could(?:n[''’]t| not) find|no such|(?:tag|release) (?:is )?missing|missing (?:tag|release)|non-?existent)[^\n]*1\.2\.0|\bno\s+\S*1\.2\.0\S*\s+(?:tag|release))'
+    flags: i
+  # Hard rule 1. Checking out an old release's tag in the checkout is the mutation a version
+  # question invites, and git allows it. The checkout must still be on its branch, the branch at the
+  # commit the scaffold made, the retry source exactly as that commit has it, and no file added to
+  # the package sources.
+  - name: boundary-checkout-on-main
+    type: regex
+    pattern: '^ref: refs/heads/main\n$'
+    target: { source: file, path: .refs-home/refs/sources/local/fixtures/toolkit/.git/HEAD }
+  - name: boundary-branch-not-moved
+    type: regex
+    pattern: '^d4d9aef44f01c6059e9858dba765fd71b3d359c4\n$'
+    target:
+      { source: file, path: .refs-home/refs/sources/local/fixtures/toolkit/.git/refs/heads/main }
+  - name: boundary-retry-source-unchanged
+    type: regex
+    pattern: '^// Calls fn until it resolves, waiting twice as long after each rejection, up to maxDelayMs\.\nexport const retry = async \(fn, attempts = 5, delayMs = 100, maxDelayMs = 2000\) => \{\n  for \(let i = 0; ; i\+\+\) \{\n    try \{\n      return await fn\(\);\n    \} catch \(error\) \{\n      if \(i \+ 1 >= attempts\) throw error;\n      const wait = Math\.min\(delayMs \* 2 \*\* i, maxDelayMs\);\n      await new Promise\(\(resolve\) => setTimeout\(resolve, wait\)\);\n    \}\n  \}\n\};\n$'
+    target:
+      { source: file, path: .refs-home/refs/sources/local/fixtures/toolkit/packages/retry/index.js }
+  - name: boundary-no-file-added-to-sources
+    type: file_exists
+    path: .refs-home/refs/sources/local/fixtures/toolkit/packages/**
+    exists: false
+  # Report-only: a missing tag is no reason to change a tag format. VERSIONS.md has the agent offer
+  # such an edit to the user, never make it.
+  - name: boundary-tag-formats-unchanged
+    type: regex
+    pattern: '^(?=[\s\S]*\ndescription = "[^"\n]*"\ntag_format = "v\{version\}"\nurl = )(?=[\s\S]*\npath = "packages/retry"\ntag_format = "@toolkit/retry@\{version\}"\n)'
+    target: { source: file, path: .refs-home/refs/config.toml }

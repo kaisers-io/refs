@@ -1,10 +1,10 @@
 // Runs one eval case once under `codex exec`, in the same layout the Claude harness gives a run: a
 // throwaway HOME, a working directory inside it, and the case's scaffold run there first.
 
-import { cp, mkdir, open, readFile, writeFile } from 'node:fs/promises';
+import { cp, mkdir, open, readFile, readdir, writeFile } from 'node:fs/promises';
 import { execFile, spawn } from 'node:child_process';
+import { join, relative } from 'node:path';
 import { commandOf } from './graders.mjs';
-import { join } from 'node:path';
 import { once } from 'node:events';
 import { promisify } from 'node:util';
 
@@ -120,6 +120,21 @@ const parseEvents = (trace) => {
   return { events, unreadable: unreadable > 0 && `${unreadable} unreadable event line(s)` };
 };
 
+// Every file under the working directory, as paths relative to it. `file_exists` graders read what
+// the run added to this list, the way `claude plugin eval` compares its own two listings.
+const listFiles = async (cwd) => {
+  const entries = await readdir(cwd, { recursive: true, withFileTypes: true });
+  return entries
+    .filter((entry) => !entry.isDirectory())
+    .map((entry) => relative(cwd, join(entry.parentPath, entry.name)));
+};
+
+const createdSince = async ({ cwd, filesBefore }) => {
+  const before = new Set(filesBefore);
+  const after = await listFiles(cwd);
+  return after.filter((path) => !before.has(path));
+};
+
 const collect = async (run, outcome) => {
   const trace = await readFile(join(run.dir, 'events.jsonl'), 'utf8').catch(() => '');
   const { events, unreadable } = parseEvents(trace);
@@ -138,10 +153,12 @@ const collect = async (run, outcome) => {
     (outcome.code !== 0 && `codex exited ${outcome.code}`) ||
     (turnFailed && `turn failed: ${turnFailed.error?.message}`) ||
     unreadable;
-  return { ...run, commands, error: failure || undefined, lastMessage, trace, usage };
+  const created = await createdSince(run);
+  return { ...run, commands, created, error: failure || undefined, lastMessage, trace, usage };
 };
 
 const runAgent = async (testCase, run, settings) => {
+  const filesBefore = await listFiles(run.cwd);
   const stdout = await open(join(run.dir, 'events.jsonl'), 'w');
   const stderr = await open(join(run.dir, 'stderr.txt'), 'w');
   const outcome = await execWithTimeout('codex', codexArgs(testCase, run, settings), {
@@ -152,7 +169,7 @@ const runAgent = async (testCase, run, settings) => {
   });
   await Promise.all([stdout.close(), stderr.close()]);
   await writeFile(join(run.dir, 'outcome.json'), JSON.stringify(outcome));
-  return collect(run, outcome);
+  return collect({ ...run, filesBefore }, outcome);
 };
 
 /** Prepares the workspace, runs scaffold and agent, and returns what the graders read. */
