@@ -2,6 +2,7 @@ import { REPOSITORY_LOCAL_GIT_VARIABLES, childEnv } from '../../src/proc/child-e
 import { describe, expect, it } from 'vitest';
 import { join, resolve } from 'node:path';
 import { mkdtemp, realpath } from 'node:fs/promises';
+import type { Runner } from '../../src/proc/runner.ts';
 import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { SpawnRunner } from '../../src/proc/runner.ts';
 import { tmpdir } from 'node:os';
@@ -58,7 +59,11 @@ describe('the environment refs hands its children', () => {
   });
 });
 
-const runner = new SpawnRunner();
+// A fresh runner per call: `SpawnRunner` reads the environment when it is built, and these tests
+// change `process.env` around single calls.
+const runner: Runner = {
+  run: (cmd, args, opts) => new SpawnRunner().run(cmd, args, opts),
+};
 
 const gitIn = async (dir: string, args: readonly string[]): Promise<string> => {
   const result = await runner.run('git', args, { cwd: dir });

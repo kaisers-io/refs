@@ -1,6 +1,7 @@
 import { chmod, mkdtemp, stat, writeFile } from 'node:fs/promises';
 import { cloneRepo, syncRef } from '../../src/git/repo.ts';
 import { describe, expect, it } from 'vitest';
+import type { Runner } from '../../src/proc/runner.ts';
 import { SLOW_IO_TIMEOUT_MS } from '../helpers/timeouts.ts';
 import { SpawnRunner } from '../../src/proc/runner.ts';
 import { join } from 'node:path';
@@ -12,7 +13,11 @@ import { tmpdir } from 'node:os';
 // program it names is a script the CLONED repository tracks — the shape that makes these settings
 // an execution surface. The developer's own git config is never read or written.
 
-const runner = new SpawnRunner();
+// A fresh runner per call: `SpawnRunner` reads the environment when it is built, and these tests
+// change `process.env` around single calls.
+const runner: Runner = {
+  run: (cmd, args, opts) => new SpawnRunner().run(cmd, args, opts),
+};
 const SUITE_OPTS = { timeout: SLOW_IO_TIMEOUT_MS };
 const SCRIPT_MODE = 0o755;
 const SUCCESS_EXIT_CODE = 0;
