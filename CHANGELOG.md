@@ -174,6 +174,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   section describes the controls of #249, #251 and #252 and holds only for a release that contains
   them (#217).
 
+- **A program inside a checkout can no longer run in place of git.** refs starts git with its
+  working directory inside a checkout, and on Windows the process spawn looks in that directory
+  before `PATH`, so a `git.exe` or `git.com` tracked at a reference's root ran on the next
+  `refs sync` or `refs doctor`. On every platform, an empty or relative `PATH` entry pointed at the
+  same directory. refs now resolves every program it starts through absolute `PATH` entries only
+  and starts that absolute path; a program found nowhere else fails as not found.
+
 ## [0.18.2] - 2026-10-13
 
 ### Security

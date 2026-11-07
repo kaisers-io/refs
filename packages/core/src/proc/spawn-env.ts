@@ -11,6 +11,8 @@
 // goes through the environment object itself, which on Windows is `process.env`'s
 // case-insensitive view, so a differently cased spelling counts as set there too.
 
+import { childEnv as withoutRepositoryLocal } from './child-env.ts';
+
 const TERMINAL_PROMPT_VARIABLE = 'GIT_TERMINAL_PROMPT';
 const PROMPTS_DISABLED = '0';
 
@@ -20,4 +22,10 @@ const childEnv = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv =>
     ? { ...env, [TERMINAL_PROMPT_VARIABLE]: PROMPTS_DISABLED }
     : env;
 
-export { TERMINAL_PROMPT_VARIABLE, childEnv };
+/** What a child actually starts with: the prompt default, looked up on `env` itself (see above),
+ * then without git's repository-locating variables (`child-env.ts`). `cwd` is how refs names the
+ * repository, and an inherited `GIT_DIR` would silently override it. */
+const spawnEnv = (env: NodeJS.ProcessEnv, platform: NodeJS.Platform): NodeJS.ProcessEnv =>
+  withoutRepositoryLocal(childEnv(env), platform);
+
+export { TERMINAL_PROMPT_VARIABLE, childEnv, spawnEnv };
