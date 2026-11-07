@@ -2,7 +2,7 @@
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 # Fixed dates make every commit sha the same on every run, so a grader can pin the checkout's branch.
 export GIT_AUTHOR_DATE=2026-01-05T10:00:00Z GIT_COMMITTER_DATE=2026-01-05T10:00:00Z
-readable_refs_home
+readable_refs_home_with_checkouts
 refs init --json >/dev/null
 
 # Two tracked repositories with the same relative file, src/size.js, line for line the same except

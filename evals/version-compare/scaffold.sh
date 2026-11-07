@@ -4,7 +4,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 # commit that made the change.
 at() { export GIT_AUTHOR_DATE="$1" GIT_COMMITTER_DATE="$1"; }
 at '2026-01-05T10:00:00Z'
-readable_refs_home
+readable_refs_home_with_checkouts
 toolkit_fixture
 register_toolkit
 repo=fixtures/toolkit

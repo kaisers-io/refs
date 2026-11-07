@@ -22,6 +22,15 @@ readable_refs_home() {
   ln -s "$PWD/.refs-home" "$HOME/.kaisers-io"
 }
 
+# The same, with the checkouts inside the working directory too, for a case whose graders read
+# checkout files: the eval refuses a graded file reached through a link that leaves the run
+# directory. The agent there must not need to write a checkout's .git, so the scaffold clones as
+# the operator and the agent only reads.
+readable_refs_home_with_checkouts() {
+  mkdir -p .refs-home
+  ln -s "$PWD/.refs-home" "$HOME/.kaisers-io"
+}
+
 commit() {
   git -c user.name=fixture -c user.email=fixture@example.com commit -q -m "$1"
 }
