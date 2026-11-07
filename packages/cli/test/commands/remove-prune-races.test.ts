@@ -114,33 +114,33 @@ const rmdirFailingWith = (code: string, target: string, sibling: string): (() =>
 };
 
 describe('refs remove: a sibling arrives in the owner directory before rmdir', () => {
-  it.each(['ENOTEMPTY', 'EEXIST'])(
-    'stops pruning there on %s, keeps the sibling, and drops the entry',
-    async (code) => {
-      expect.hasAssertions();
-      await withResetExitCode(() =>
-        withTempHome(async (homeDir) => {
-          const fixture = await setupRemoval(homeDir);
-          const sibling = join(fixture.ownerDir, 'turbo');
-          const arrived =
-            code === 'ENOTEMPTY'
-              ? interleaveAt('rmdir', fixture.ownerDir, () => mkdir(sibling))
-              : rmdirFailingWith(code, fixture.ownerDir, sibling);
+  it.each<[string, (fixture: RemoveFixture, sibling: string) => () => boolean]>([
+    [
+      'ENOTEMPTY',
+      (fixture, sibling) => interleaveAt('rmdir', fixture.ownerDir, () => mkdir(sibling)),
+    ],
+    ['EEXIST', (fixture, sibling) => rmdirFailingWith('EEXIST', fixture.ownerDir, sibling)],
+  ])('stops pruning there on %s, keeps the sibling, and drops the entry', async (_code, race) => {
+    expect.hasAssertions();
+    await withResetExitCode(() =>
+      withTempHome(async (homeDir) => {
+        const fixture = await setupRemoval(homeDir);
+        const sibling = join(fixture.ownerDir, 'turbo');
+        const arrived = race(fixture, sibling);
 
-          const envelope = await removeTarget(fixture);
+        const envelope = await removeTarget(fixture);
 
-          expect(arrived()).toBe(true);
-          expect(envelope).toMatchObject({
-            data: { removed_checkout: true },
-            ok: true,
-            warnings: [],
-          });
-          await expect(targetTracked(fixture.home)).resolves.toStrictEqual([false, false]);
-          await expect(pathExists(fixture.dest)).resolves.toBe(false);
-          await expect(pathExists(sibling)).resolves.toBe(true);
-          await expectUnrelatedUntouched(fixture);
-        }),
-      );
-    },
-  );
+        expect(arrived()).toBe(true);
+        expect(envelope).toMatchObject({
+          data: { removed_checkout: true },
+          ok: true,
+          warnings: [],
+        });
+        await expect(targetTracked(fixture.home)).resolves.toStrictEqual([false, false]);
+        await expect(pathExists(fixture.dest)).resolves.toBe(false);
+        await expect(pathExists(sibling)).resolves.toBe(true);
+        await expectUnrelatedUntouched(fixture);
+      }),
+    );
+  });
 });
