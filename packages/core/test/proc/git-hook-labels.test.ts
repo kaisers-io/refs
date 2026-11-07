@@ -162,6 +162,21 @@ describe('the label inventory refusing', () => {
   });
 });
 
+describe('the label inventory refusing a lookalike of a parent path', () => {
+  // `relative()` names an entry called `..hooks` inside the checkout `..hooks`, which starts with
+  // `..` without leaving it. Only `..` itself or `..` and a separator is outside.
+  it('an include inside the checkout under a directory whose name starts with ..', async () => {
+    expect.hasAssertions();
+    const scene = await sceneWith({
+      'checkout/..hooks/tracked': hook('tracked'),
+      gitconfig: '[include]\n\tpath = checkout/..hooks/tracked\n',
+    });
+    const ctx = { args: ['status'], cwd: join(scene.dir, 'checkout') };
+    const result = await hookLabelArgs(reader(scene, ctx.cwd), ctx);
+    expect(refusalOf(result)).toMatch(/inside the checkout/u);
+  });
+});
+
 describe('the label policy by git version', () => {
   it.each(['git version 2.53.0\n', 'git version 1.99.0\n', ''])(
     'reads nothing before git 2.54 or without a version: %j',
