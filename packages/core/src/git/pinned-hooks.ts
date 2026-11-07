@@ -13,9 +13,12 @@ import type { Runner } from '../proc/runner.ts';
 // clone and during `checkout -B`; with the top-level `-c` it ran in neither. A top-level `-c` is
 // appended after the inherited entries, so it is the value git applies, and it is not persisted.
 //
-// Only for commands that run inside, or create, a checkout refs manages. Not the guard that READS
-// the marker: it uses `config --local`, which no `-c` reaches, and stays unwrapped to keep it that
-// obvious.
+// The CLI applies this ONCE, to the runner every command receives (`pinned-runner.ts` in the CLI
+// package), not per call site: a call site that had to remember the wrap was a call site that could
+// forget it. Pinning every git call is safe. A command-scope `core.hooksPath` does not reach the
+// marker guard, which reads `config --local`, nor the marker the clone writes, which lands in the
+// new repository's local config. refs never commits, and a hooks directory that does not exist yet
+// only means that no hook runs.
 const pinHooksPath = (runner: Runner, hooksDir: string): Runner => ({
   run: (cmd, args, opts) =>
     runner.run(cmd, cmd === 'git' ? ['-c', `core.hooksPath=${hooksDir}`, ...args] : args, opts),
