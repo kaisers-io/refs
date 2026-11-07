@@ -26,12 +26,24 @@ graders:
     target: trace
   # A repair counts only in a form refs accepts: the ref (key or suffix), --package, and for the
   # move the `path` field as a positional pair. `--path=` or a missing ref exits 2.
+  # These two match the WHOLE command, token by token, rather than looking for its parts: the
+  # positionals in refs' order (ref, then field, then value), each value bare or wholly quoted, and
+  # nothing else on the line but the named options, `--json` and `--verbose`. A reordered
+  # positional, an extra argument or another package's option leaves no match. The command must
+  # also stand where a command stands: at the start of a line (after indentation, a list marker or
+  # a `$ ` prompt), running to the end of that line with no backtick in it, or as a whole code span
+  # from backtick to backtick. A backtick ending a bare line is a command substitution, not the end
+  # of a span. A code span on a line that opens with a lone `#` is inside a shell comment; `##` and
+  # deeper are Markdown headings and still count, while a level-one heading made of the command
+  # alone does not. The same words bare inside a sentence are not a command anyone was handed.
+  # A code span in prose that says NOT to run it still passes: no pattern can tell "run `x`" from
+  # "never run `x`" without failing correct replies such as "Do not remove it; run `x`".
   - name: removal-for-the-missing-package
     type: regex
-    pattern: 'refs edit(?=[^\n;&|]*\s["'']?(?:local/fixtures/)?toolkit["'']?(?:\s|$|`))(?=[^\n;&|]*--package[= ]["'']?@toolkit/slugify["'']?(?:\s|$|`))(?=[^\n;&|]*\s--remove(?:\s|$|`))'
+    pattern: '(?:(?:^|\n)[ \t]*(?:(?:[-*]|\d+\.)[ \t]+)?(?:\$[ \t]+)?(?=refs edit(?:[^\n`#]|\\\n)*(?:#|\n|$))|(?:^|\n)(?![ \t]*#(?!#))(?:[^\n`]|`[^\n`]*`)*?`(?=refs edit[^\n`]*`))refs edit(?=(?:[^\n`#]|\\\n)*--package)(?=(?:[^\n`#]|\\\n)*[ \t]--remove)(?:(?:[ \t]|\\\n)+(?:--package(?:=|(?:[ \t]|\\\n)+)(?:@toolkit/slugify|''@toolkit/slugify''|"@toolkit/slugify")|--remove|--json|--verbose))*(?:[ \t]|\\\n)+(?:(?:local/fixtures/)?toolkit|''(?:local/fixtures/)?toolkit''|"(?:local/fixtures/)?toolkit")(?:(?:[ \t]|\\\n)+(?:--package(?:=|(?:[ \t]|\\\n)+)(?:@toolkit/slugify|''@toolkit/slugify''|"@toolkit/slugify")|--remove|--json|--verbose))*[ \t]*(?:[ \t]#[^\n]*)?(?=\n|$|`)'
   - name: path-edit-for-the-relocated-package
     type: regex
-    pattern: 'refs edit(?=[^\n;&|]*\s["'']?(?:local/fixtures/)?toolkit["'']?(?:\s|$|`))(?=[^\n;&|]*--package[= ]["'']?@toolkit/retry["'']?(?:\s|$|`))(?=[^\n;&|]*\s["'']?path["'']?\s+["'']?packages/retry-policy["'']?(?:\s|$|`))'
+    pattern: '(?:(?:^|\n)[ \t]*(?:(?:[-*]|\d+\.)[ \t]+)?(?:\$[ \t]+)?(?=refs edit(?:[^\n`#]|\\\n)*(?:#|\n|$))|(?:^|\n)(?![ \t]*#(?!#))(?:[^\n`]|`[^\n`]*`)*?`(?=refs edit[^\n`]*`))refs edit(?=(?:[^\n`#]|\\\n)*--package)(?:(?:[ \t]|\\\n)+(?:--package(?:=|(?:[ \t]|\\\n)+)(?:@toolkit/retry|''@toolkit/retry''|"@toolkit/retry")|--json|--verbose))*(?:[ \t]|\\\n)+(?:(?:local/fixtures/)?toolkit|''(?:local/fixtures/)?toolkit''|"(?:local/fixtures/)?toolkit")(?:(?:[ \t]|\\\n)+(?:--package(?:=|(?:[ \t]|\\\n)+)(?:@toolkit/retry|''@toolkit/retry''|"@toolkit/retry")|--json|--verbose))*(?:[ \t]|\\\n)+(?:path|''path''|"path")(?:(?:[ \t]|\\\n)+(?:--package(?:=|(?:[ \t]|\\\n)+)(?:@toolkit/retry|''@toolkit/retry''|"@toolkit/retry")|--json|--verbose))*(?:[ \t]|\\\n)+(?:packages/retry-policy|''packages/retry-policy''|"packages/retry-policy")(?:(?:[ \t]|\\\n)+(?:--package(?:=|(?:[ \t]|\\\n)+)(?:@toolkit/retry|''@toolkit/retry''|"@toolkit/retry")|--json|--verbose))*[ \t]*(?:[ \t]#[^\n]*)?(?=\n|$|`)'
   - name: relocated-package-not-removed
     type: regex
     pattern: 'refs edit(?=[^\n;&|]*@toolkit/retry["'']?(?:\s|$|`))(?=[^\n;&|]*\s--remove(?:\s|$|`))'
