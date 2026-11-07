@@ -87,13 +87,13 @@ Similarly out of scope:
 
 ## The git processes `refs` starts
 
-This section describes the controls added by #249, #251 and #252. It holds for a release that
-contains all three, and not for an earlier one.
+This section describes the controls added by #249, #251, #252, #264 and #269. It holds for a
+release that contains all five, and not for an earlier one.
 
 Every process `refs` starts goes through one spawner. The environment, the configuration overrides
 and the time limit below are applied there, so no command and no call site opts out of them. The
-command-scope hooks path is the exception: it is added per call site, and its coverage is stated
-with it. All of this changes only what `refs` hands its own children. The invoking shell's
+command-scope hooks path is added one layer up, where the CLI hands every command its runner, and
+so reaches every git call a command makes in the same way. All of this changes only what `refs` hands its own children. The invoking shell's
 environment and the user's git configuration are left as they are, and an agent's own git commands
 inside a checkout are not `refs`' invocations: they keep the user's settings, hooks and fsmonitor
 included.
@@ -124,17 +124,24 @@ configuration is, with one exception `refs` enforces: the hooks directory. Comma
 configuration outranks the refs-owned `core.hooksPath` stored in a checkout, git exports
 `GIT_CONFIG_PARAMETERS` to every hook started under `git -c`, and a relative value such as
 `.githooks` resolves inside the checkout. A `refs` started from such a hook would run hooks the
-cloned repository tracks. So these commands also carry `-c core.hooksPath=<refs' hooks directory>`
-at top level, which git applies after the inherited value: the clone, every git command of a
-sync, `refs doctor`'s dirty-checkout check (`git status`, which refreshes the index and so runs
-`post-index-change` once a tracked file's timestamp has changed), and the `git remote set-head`
-that default-branch detection falls back to when a checkout has no `origin/HEAD` (from git 2.54
-that ref update runs `reference-transaction`). The other git commands `refs` runs against a
-checkout are not pinned: configuration reads and the marker write, `remote get-url`/`set-url`,
-`rev-parse`, `symbolic-ref`, `show-ref`, the tag listing, `ls-tree`, `show <rev>:<path>` and the
-tree-to-tree `diff --name-only`. Each was run under an inherited relative `core.hooksPath`, with a
-hook of every documented name tracked by the checkout, on git 2.43.0, 2.54.0 and 2.55.0, and none
-ran a hook.
+cloned repository tracks. So every git command a `refs` command runs carries
+`-c core.hooksPath=<refs' hooks directory>` at top level, which git applies after the inherited
+value. It is added where the CLI builds each command's context, not at the call sites, so a git
+call added later carries it too; a test drives every `refs` command against real git and fails on
+any git process started without it. That includes the clone, which has no checkout to key on: the
+clone still writes the marker into the new repository's local config, and a hooks directory that
+does not exist only means no hook runs. The one thing the pin deliberately does not change is the
+marker check itself. `refs` reads the marker with `git config --local --get core.hooksPath`, which a
+command-scope `-c` does not reach, so a checkout whose own config lacks the marker is still refused.
+
+**The program that runs as git.** `refs` runs git with its working directory inside a checkout,
+which is somebody else's repository. On Windows the process spawn looks for a bare program name in
+that directory before `PATH`, and on every platform an empty or relative `PATH` entry (`PATH=:…`,
+`.`) also names it, so a `git` or `git.exe` the checkout tracks would run in git's place. `refs`
+therefore never starts a bare name: it looks the program up in absolute `PATH` directories only
+(on Windows `<name>.com`, then `<name>.exe`, in each), starts the absolute path it found, and fails
+with `not in an absolute PATH directory` when there is none. This decides which executable starts,
+nothing more: a filter or other command git itself runs is not confined by it.
 
 Two more defaults bound how long git can hold `refs`, which matters because `refs` holds the ref's
 lock meanwhile. `GIT_TERMINAL_PROMPT` is `0` unless the user has set it, so git fails instead of
@@ -165,9 +172,12 @@ A clone that fails, by timeout or otherwise, is removed only when nothing was at
 before it (checked with `lstat`, so a dangling symlink counts as something), the destination holds
 a `.git` afterwards, and the clone did not report that its processes may still be running. When it
 did, `refs` does not delete the half-made clone, which a surviving process may still be writing
-into. It leaves it in place and unsets its `core.hooksPath` marker, so the next `refs add` or
-`refs sync` refuses it instead of adopting it, and the error names the path and tells the user to
-remove it once those processes have exited. A fetch that times out in an existing checkout only
+into. It leaves it in place and unsets its `core.hooksPath` marker, then checks the result with
+the same guard every reuse path runs. If the marker could not be unset (a surviving process may
+still hold `.git/config.lock`), it renames `.git` to `.git.refs-quarantined`, which that guard
+refuses too, and checks again. The error names the path, says which of the two it did, and tells
+the user to remove it once those processes have exited. Only when both fail does the error say the
+leftover is still marked and a later `refs` run may adopt it. A fetch that times out in an existing checkout only
 reports the uncertainty; nothing is removed or set aside. Anything else at the destination is left
 alone.
 
@@ -231,10 +241,6 @@ What each git version gets:
   git 2.43.0, 2.54.0 and 2.55.0. `refs add` warns before it clones (`git-exec-surfaces: …`) and
   `refs doctor`'s `git-exec-surfaces` check reports the definition. Neither stops it: a warning is
   not neutralisation, and nothing here claims otherwise.
-- **Hooks from an inherited `core.hooksPath` in a command that is not pinned.** None of today's
-  unpinned commands ran one (above). The pin is added per call site, so a git command `refs` adds
-  later, or an existing one that starts writing refs or the index, is covered only if its call
-  site adds it.
 
 Checked and not triggered by the commands `refs` runs, so not overridden: `diff.external` and
 textconv drivers (`refs`' only diff is `--name-only`, and its `git show <rev>:<path>` prints the
