@@ -10,6 +10,7 @@ import {
 import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
 import { join } from 'node:path';
+import { mapGated } from './sync-semaphore.ts';
 import { rmCommand } from '../shell-quote.ts';
 
 // `hooks-guard` and `dirty-checkouts` — the two checks that iterate configured refs whose checkout
@@ -18,6 +19,12 @@ import { rmCommand } from '../shell-quote.ts';
 // never work from two independently-derived (and potentially diverging) lists.
 
 const SUCCESS_EXIT_CODE = 0;
+
+// How many of those per-checkout `git` children may run at once. Unbounded, a home with hundreds
+// of refs spawned hundreds of processes in one burst, which is what runs into per-process fd and
+// process limits (and is slow to spawn on Windows). The probes are local and short, so the cap
+// costs a setup with few refs nothing. A bound, not a tuned number.
+const CHECKOUT_GIT_CONCURRENCY = 8;
 
 type ExistingCheckout = {
   dest: string;
@@ -166,7 +173,9 @@ const checkHooksGuard = async (
   const [missingHooks, unexpected, hooksPathFlags] = await Promise.all([
     missingGuardHooks(home),
     unexpectedHookEntries(home),
-    Promise.all(checkouts.map((item) => checkoutHooksPathOk(ctx, home, item.dest))),
+    mapGated(checkouts, CHECKOUT_GIT_CONCURRENCY, (item) =>
+      checkoutHooksPathOk(ctx, home, item.dest),
+    ),
   ]);
   const badKeys = checkouts
     .filter((_item, index) => !hooksPathFlags[index])
@@ -234,9 +243,11 @@ const checkDirtyCheckouts = async (
 ): Promise<CheckResult> => {
   const checkouts = existingCheckouts(home, config);
   const runner = pinHooksPath(ctx.runner, home.hooksDir);
-  const statuses = await Promise.all(checkouts.map((item) => checkoutStatusFor(runner, item)));
+  const statuses = await mapGated(checkouts, CHECKOUT_GIT_CONCURRENCY, (item) =>
+    checkoutStatusFor(runner, item),
+  );
   return buildDirtyCheckoutsResult(statuses);
 };
 
-export { checkDirtyCheckouts, checkHooksGuard, existingCheckouts };
+export { CHECKOUT_GIT_CONCURRENCY, checkDirtyCheckouts, checkHooksGuard, existingCheckouts };
 export type { ExistingCheckout };
