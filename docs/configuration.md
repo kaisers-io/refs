@@ -45,7 +45,7 @@ stuck with it.
 
 ## Other environment variables
 
-`REFS_HOME` is the only one meant for everyday use. Five others are read:
+`REFS_HOME` is the only one meant for everyday use. Six others are read:
 
 | Variable                | Read by                | Effect                                                                                                                                       |
 | ----------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -53,6 +53,7 @@ stuck with it.
 | `CODEX_HOME`            | `refs doctor` only     | The same, for Codex, replacing `~/.codex`.                                                                                                     |
 | `REFS_PROGRESS`         | `refs sync`, `refs doctor` | `0` turns off the progress spinner these commands draw on stderr while they work. It is already off with `--json`, when stderr is not a terminal, with `TERM=dumb`, and in CI. |
 | `REFS_UPDATE_CHECK`     | `refs sync`, `refs doctor` | `0` never contacts the npm registry, `1` always does. Overrides `[updates].check`; any other value is ignored. See [`[updates]`](#updates). |
+| `REFS_SYNC_CONCURRENCY` | `refs sync` only | How many refs one `refs sync` fetches or clones at once. Default `4`. A whole number is clamped to `1`–`16`, because every slot is a connection to a forge and a high value runs into its rate limits; any other value is ignored. |
 | `REFS_ALLOW_FILE_URLS`  | `refs add`, `refs sync` | Set to `1` to accept `file://` sources. **A test-only escape hatch** — real remotes are `https`/`ssh`, and this exists so the suite and the packaged-CLI smoke tests can work against a local fixture repository without a network. Do not set it in normal use. |
 
 ## Home directory layout
@@ -182,6 +183,33 @@ changes nothing. Set it globally under `[settings]`.
 Change a global setting with `refs edit settings <key> <value>`; change a per-ref override
 with `refs edit <ref> <field> <value>` (same field names — see
 [`docs/commands.md`](commands.md)).
+
+### Offline use and `clone_mode`
+
+A `blobless` checkout has the current version of every file on disk, so reading files,
+searching them, and history queries that touch no file content (`git log --oneline`,
+`git tag -l`) work offline. What it lacks is the content of older revisions: `git log -p`,
+`git diff`, `git show` and `git blame` fetch the blobs they need from the remote, and
+fail without a network unless an earlier command already fetched them. `refs sync` keeps
+the checkout a partial clone, so history that arrives later is fetched the same way.
+
+To have the whole history on disk before going offline:
+
+- **New refs:** set `clone_mode = "full"` (`refs edit settings clone_mode full`) before
+  `refs add`.
+- **An existing ref:** `clone_mode` is read only when a checkout is cloned, so changing it
+  does nothing to a checkout that is already there, although `refs show` and `refs list`
+  report the new value straight away. Set the override with `refs edit <ref> clone_mode full`,
+  delete the checkout (its path is `local_path` in `refs show <ref> --json`), and run
+  `refs sync <ref>`, which clones it again in full. `refs remove` followed by `refs add`
+  does the same when `clone_mode` is set globally.
+- **Without re-cloning, for the checked-out branch only:** with Git 2.49 or later,
+  `git backfill` inside the checkout downloads the blobs reachable from `HEAD`, which is
+  the history of the branch refs checked out. That is less than the whole history: what
+  only other branches or tags reach stays missing, and in a checkout where you enabled
+  sparse-checkout yourself it fetches only paths inside the sparse patterns unless given
+  `--no-sparse`. Git marks the command experimental. The checkout stays a partial clone,
+  so run it again after a `refs sync` that brought new history.
 
 ### `[updates]`
 

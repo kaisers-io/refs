@@ -5,6 +5,7 @@ import type { ChildProcess } from 'node:child_process';
 import type { CollectedStream } from './spawn-collector.ts';
 import { HookLabelCache } from './git-hook-label-cache.ts';
 import { armTimeout } from './spawn-timeout.ts';
+import { childEnv } from './child-env.ts';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
 import { withGitExecPolicy } from './git-exec-policy.ts';
@@ -105,11 +106,14 @@ const startChild = (
   // its two siblings were raised again with the option spelled out. They are false positives on
   // this call and have to be handled as such, not argued with in code.
   //
-  // A git process gets refs' execution policy prepended here, the one place every process starts —
-  // see `git-exec-policy.ts`.
+  // `env` is the parent's (or the caller's adjusted copy, as the hook inventory passes) minus the
+  // repository-locating `GIT_*` variables (`child-env.ts`): `cwd` is how refs names the
+  // repository, and an inherited `GIT_DIR` would silently override it. A git process also gets
+  // refs' execution policy prepended (`git-exec-policy.ts`). Both are done here, the one place a
+  // process starts, so no direct `runner.run('git', …)` can miss them.
   const child = spawn(cmd, withGitExecPolicy(cmd, args), {
     ...cwdOpt(opts?.cwd),
-    ...(opts?.env === undefined ? {} : { env: opts.env }),
+    env: childEnv(opts?.env ?? process.env, process.platform),
     shell: false,
     stdio: ['ignore', 'pipe', 'pipe'],
   });

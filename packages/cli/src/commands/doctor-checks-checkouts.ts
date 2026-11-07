@@ -1,9 +1,10 @@
-import type { Config, RefKey, RefsHome } from '@kaisers-io/refs-core';
+import type { Config, RefKey, RefsHome, Runner } from '@kaisers-io/refs-core';
 import { access, constants, readdir } from 'node:fs/promises';
 import { checkoutPath, isEnoent, isGitCheckout, zRefKey } from '@kaisers-io/refs-core';
 import type { CheckResult } from './doctor-types.ts';
 import type { CliContext } from '../context.ts';
 import { join } from 'node:path';
+import { mapGated } from './sync-semaphore.ts';
 import { rmCommand } from '../shell-quote.ts';
 
 // `hooks-guard` and `dirty-checkouts` — the two checks that iterate configured refs whose checkout
@@ -12,6 +13,12 @@ import { rmCommand } from '../shell-quote.ts';
 // never work from two independently-derived (and potentially diverging) lists.
 
 const SUCCESS_EXIT_CODE = 0;
+
+// How many of those per-checkout `git` children may run at once. Unbounded, a home with hundreds
+// of refs spawned hundreds of processes in one burst, which is what runs into per-process fd and
+// process limits (and is slow to spawn on Windows). The probes are local and short, so the cap
+// costs a setup with few refs nothing. A bound, not a tuned number.
+const CHECKOUT_GIT_CONCURRENCY = 8;
 
 type ExistingCheckout = {
   dest: string;
@@ -160,7 +167,9 @@ const checkHooksGuard = async (
   const [missingHooks, unexpected, hooksPathFlags] = await Promise.all([
     missingGuardHooks(home),
     unexpectedHookEntries(home),
-    Promise.all(checkouts.map((item) => checkoutHooksPathOk(ctx, home, item.dest))),
+    mapGated(checkouts, CHECKOUT_GIT_CONCURRENCY, (item) =>
+      checkoutHooksPathOk(ctx, home, item.dest),
+    ),
   ]);
   const badKeys = checkouts
     .filter((_item, index) => !hooksPathFlags[index])
@@ -185,12 +194,17 @@ type CheckoutStatus = {
  * denied on the working tree) means the checkout couldn't be inspected at all — that is a
  * `broken` checkout, distinct from (and reported instead of) a merely `dirty` one: an empty
  * `stdout` from a FAILED command is not the same fact as an empty `stdout` from a SUCCESSFUL one,
- * and treating them alike would silently report a broken checkout as clean. */
+ * and treating them alike would silently report a broken checkout as clean.
+ *
+ * `runner` carries refs' hooks pin (`pinned-runner.ts`). `status` refreshes the index when stat data
+ * went stale — a tracked file's mtime changing is enough — and that write runs
+ * `post-index-change`, from an inherited command-scope `core.hooksPath=.githooks` too: a hook the
+ * checkout tracks itself, run by a diagnostic. Measured on git 2.43, 2.54 and 2.55. */
 const checkoutStatusFor = async (
-  ctx: CliContext,
+  runner: Runner,
   item: ExistingCheckout,
 ): Promise<CheckoutStatus> => {
-  const result = await ctx.runner.run('git', ['status', '--porcelain'], { cwd: item.dest });
+  const result = await runner.run('git', ['status', '--porcelain'], { cwd: item.dest });
   if (result.exitCode !== SUCCESS_EXIT_CODE) {
     return { broken: true, detail: result.stderr.trim(), dirty: false, key: item.key };
   }
@@ -222,9 +236,11 @@ const checkDirtyCheckouts = async (
   config: Config,
 ): Promise<CheckResult> => {
   const checkouts = existingCheckouts(home, config);
-  const statuses = await Promise.all(checkouts.map((item) => checkoutStatusFor(ctx, item)));
+  const statuses = await mapGated(checkouts, CHECKOUT_GIT_CONCURRENCY, (item) =>
+    checkoutStatusFor(ctx.runner, item),
+  );
   return buildDirtyCheckoutsResult(statuses);
 };
 
-export { checkDirtyCheckouts, checkHooksGuard, existingCheckouts };
+export { CHECKOUT_GIT_CONCURRENCY, checkDirtyCheckouts, checkHooksGuard, existingCheckouts };
 export type { ExistingCheckout };
