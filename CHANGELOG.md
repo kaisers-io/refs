@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **Development installs refuse dependency versions published with weaker trust evidence.**
+  `pnpm-workspace.yaml` sets pnpm's `trustPolicy: no-downgrade`: a version published without the
+  trusted-publisher or provenance evidence an earlier release of the same package had now fails
+  `pnpm install`, including when it is already in the lockfile. Such a downgrade does not prove a
+  compromise, but it is what a publish with a leaked token would look like, so the version is held
+  back until someone reviews it. A test fails if the setting is removed or weakened, while a
+  reviewed exception pinned to an exact version stays possible. The release build installs through
+  the same policy, so this also covers the libraries bundled into the published CLI; the CLI's
+  runtime behaviour is unchanged.
+
+- **Every package in the lockfile is audited for advisories again.** Since the move to pnpm 12 the
+  lockfile holds two YAML documents, and GitHub's dependency graph sees only part of it: the
+  transitive packages bundled into the CLI, such as `brace-expansion` via `minimatch`, dropped out of
+  Dependabot alerts. A new CI workflow runs `pnpm audit` over the whole lockfile on every pull
+  request and weekly. It fails when the audit reports fewer packages than the lockfile holds
+  registry packages, so a scanner that reads one document cannot pass as a clean result; this
+  compares counts, a plausibility floor, and does not prove that each individual package was
+  audited. A report it cannot fully read, such as an advisory with an unknown severity, fails as an
+  incomplete audit rather than passing. Advisories listed in pnpm's `auditConfig.ignoreGhsas` are
+  honoured.
+
 ## [0.18.2] - 2026-10-13
 
 ### Security
