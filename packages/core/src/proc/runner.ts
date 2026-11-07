@@ -10,7 +10,6 @@ import { once } from 'node:events';
 import { resolveExecutable } from './executable-path.ts';
 import { spawn } from 'node:child_process';
 import { spawnEnv } from './spawn-env.ts';
-import { withGitExecPolicy } from './git-exec-policy.ts';
 
 // Thin process-execution seam so `git/repo.ts` never calls `child_process` directly: production
 // code depends on `Runner`, tests depend on `FakeRunner` (fake-runner.ts), and only `SpawnRunner`
@@ -34,7 +33,7 @@ type SpawnRunnerOpts = {
 
 /** One child to start, with the runner's defaults already applied. */
 type ChildSpec = {
-  /** The name refs asked for (`git`), which the execution policy keys on. */
+  /** The name refs asked for (`git`). */
   cmd: string;
   /** The absolute path `cmd` resolved to (executable-path.ts), which is what is started. */
   file?: string;
@@ -103,10 +102,7 @@ const startChild = (spec: ChildSpec, exec: Exec): RunningChild => {
   // It does NOT change what code scanning reports: `js/shell-command-constructed-from-input` and
   // its two siblings were raised again with the option spelled out. They are false positives on
   // this call and have to be handled as such, not argued with in code.
-  //
-  // A git process gets refs' execution policy prepended here, the one place every process starts —
-  // see `git-exec-policy.ts`.
-  const child = spawn(spec.file ?? spec.cmd, withGitExecPolicy(spec.cmd, spec.args), {
+  const child = spawn(spec.file ?? spec.cmd, spec.args, {
     ...cwdOpt(spec.cwd),
     env: spec.env,
     shell: false,

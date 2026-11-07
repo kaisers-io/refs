@@ -1,9 +1,12 @@
 import { REFUSED_EXIT_CODE, hookLabelPolicy, isVersionProbe } from './git-hook-label-policy.ts';
 import type { RunOpts, RunResult } from './run-types.ts';
 import { HookLabelCache } from './git-hook-label-cache.ts';
+import { withGitExecPolicy } from './git-exec-policy.ts';
 
-// The git-specific half of `SpawnRunner.run`: every git command except the version probe gets the
-// configured-hook label arguments `git-hook-label-policy.ts` computes for it, or is refused.
+// The git-specific half of `SpawnRunner.run`, the one path every process refs starts takes. Every
+// git process gets refs' execution policy prepended (`git-exec-policy.ts`), and every git command
+// except the version probe also gets the configured-hook label arguments `git-hook-label-policy.ts`
+// computes for it, or is refused.
 
 type Spawn = (cmd: string, args: readonly string[], opts?: RunOpts) => Promise<RunResult>;
 
@@ -15,7 +18,7 @@ class GitDispatch {
   readonly #hookLabels = new HookLabelCache();
 
   constructor(spawn: Spawn) {
-    this.#spawn = spawn;
+    this.#spawn = (cmd, args, opts) => spawn(cmd, withGitExecPolicy(cmd, args), opts);
   }
 
   async run(cmd: string, args: readonly string[], opts?: RunOpts): Promise<RunResult> {
