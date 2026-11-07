@@ -6,6 +6,17 @@ on:
 # job (which mints an npm OIDC token) is a tag push, and only after the `verify` job passes.
 permissions:
   contents: read
+# Deliberately no `concurrency` block: a release run is never superseded by a later push, and one
+# cancelled between `publish` and `announce` would leave a package on npm with no release entry.
+#
+# Every checkout sets `persist-credentials: false`. Nothing here authenticates to GitHub through
+# git: the one remote operation, the `origin/main` fetch in `verify`, is an anonymous read of this
+# public repository, and `announce` hands its token to `gh` explicitly. Leaving the checkout token
+# on the runner would only make it reachable by the repository-controlled code `verify` installs
+# and runs. It is unrelated to `publish`'s `id-token: write`, which this does not narrow.
+#
+# Every job has a `timeout-minutes` several times its observed duration (`verify`, the slowest,
+# has taken about 1.5 minutes), to stop a hung run long before GitHub's 360-minute default.
 jobs:
   # Gate: re-runs the full CI check suite against the exact tagged commit, plus release-only
   # guards (tag/version match, branch containment, tarball content allowlist) and a smoke test
@@ -16,17 +27,20 @@ jobs:
   # — see the `publish` job comment below for why that handoff is what keeps `id-token: write` safe.
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: { fetch-depth: 0 }
+        with: { fetch-depth: 0, persist-credentials: false }
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       # No `cache: pnpm` in this workflow (unlike ci.yml): a poisoned or stale restore-key cache
       # is a plausible supply-chain vector for the one workflow with publish reach, so the
-      # release pipeline always installs clean.
+      # release pipeline always installs clean. `package-manager-cache: false` says the same to
+      # setup-node, whose automatic cache only engages today when `packageManager` names npm (this
+      # repository names pnpm): the intent should not rest on that detection staying as it is.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with: { node-version-file: .node-version }
+        with: { node-version-file: .node-version, package-manager-cache: false }
       - name: Guard — tag matches packages/cli/package.json version
         # `github.ref_name` is attacker-controlled text once the repo is public (anyone who can
         # push a tag controls it) — it goes into env, never directly into the script body, so it
@@ -125,6 +139,8 @@ jobs:
           set -euo pipefail
           # No --depth here: a shallow fetch would write .git/shallow and narrow the ancestor
           # check to "tag is the exact current tip" — tagging an older main commit must stay legal.
+          # Unauthenticated (the checkout does not persist its token), which a public repository
+          # allows; `publish` refuses to run for a private one anyway.
           git fetch --no-tags origin main
           if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
             echo "::error::tagged commit $GITHUB_SHA is not reachable from origin/main — refusing to publish from a stray branch" >&2
@@ -143,7 +159,9 @@ jobs:
       - run: pnpm build
       - run: bash scripts/check-bundle-determinism.sh
       - name: Guard — pack the tarball, verify its contents, smoke-test the install
-        run: |
+        # The global install below is the tarball this step packs, which zizmor's adhoc-packages
+        # cannot tell from a registry fetch; installing it the way a user does is the guard.
+        run: | # zizmor: ignore[adhoc-packages] installs the locally packed tarball under test
           set -euo pipefail
           PACK_DIR="$(mktemp -d)"
           PACK_JSON="$(npm pack ./packages/cli --json --pack-destination "$PACK_DIR")"
@@ -187,6 +205,7 @@ jobs:
   publish:
     needs: verify
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # The one gate a tag's own tree cannot supply. Everything else authorizing this release —
     # every guard in `verify`, the `needs` edge above, this `permissions` block — is content of
     # the pushed ref, because GitHub resolves a push-triggered workflow from that ref. A tag whose
@@ -222,9 +241,13 @@ jobs:
             exit 1
           fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
+          # Nothing is installed in this job, so there is nothing to cache — and a cache restore
+          # is not something to allow next to `id-token: write`.
+          package-manager-cache: false
           # Required for npm's Trusted Publishing (OIDC) exchange to target the right registry —
           # npm CLI >= 11.5.1 is required, which is what ships with the pinned Node version above
           # (verified from the Node.js release metadata: node v24.21.0 bundles npm 11.19.0).
@@ -276,10 +299,14 @@ jobs:
   announce:
     needs: publish
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
+      # `persist-credentials: false` would matter most here, where the token can write: the
+      # release step below gets it through GH_TOKEN, not from the checkout.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
       - name: Extract this version's changelog section as the release notes
         # `verify` already proved the heading exists, so a missing section here means the two jobs
         # disagree about the tag — worth failing on rather than publishing an empty release body.
