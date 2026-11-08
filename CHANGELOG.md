@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **A re-run release job can no longer move the GitHub Latest release backwards.** The job that
+  creates the GitHub release used to leave Latest to the API, which makes every new release Latest.
+  Re-running a failed one for an older version after a newer release had shipped would therefore
+  have marked the older version Latest. It now compares the tag with the current Latest release
+  and always states the decision, and release entries for different tags are created one at a
+  time.
+
 ### Security
 
 - **Development installs resolve from the public npm registry, and stop on an unsupported Node.**
