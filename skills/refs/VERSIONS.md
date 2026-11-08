@@ -1,7 +1,8 @@
 # Versions — "what changed between vA and vB"
 
-Read [INVESTIGATE.md](INVESTIGATE.md) first. Its routing (§1), hard rules, blob-cost guidance
-(§2) and citation contract (§3) all apply here; this file is only the version-specific part.
+Read [INVESTIGATE.md](INVESTIGATE.md) first. Its routing (`INVESTIGATE.md` §1), hard rules,
+blob-cost guidance (`INVESTIGATE.md` §2) and citation contract (`INVESTIGATE.md` §3) all apply
+here; this file is only the version-specific part.
 
 ## 1. Which version is installed
 
@@ -86,6 +87,6 @@ monorepo cuts fetching rather than only noise — both follow from the cost mode
 
 ## 4. Synthesize
 
-As in `INVESTIGATE.md` §3. A worker returns only the compact output contract from §2 there —
+As in `INVESTIGATE.md` §3. A worker returns only the compact output contract from `INVESTIGATE.md` §2 —
 commit list plus `path:line` highlights, never a pasted raw diff; inline, hold yourself to the
 same discipline.

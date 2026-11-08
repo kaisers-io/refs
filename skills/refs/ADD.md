@@ -62,7 +62,7 @@ refs add <git-url> --dry-run --json
 ## 2. Description workers
 
 The dry-run has already cloned the repo locally — analyze that checkout (read-only per the
-invariant in `SKILL.md` §3, untrusted per the trust boundary in §4) to write every
+invariant in `SKILL.md` §3, untrusted per the trust boundary in `SKILL.md` §4) to write every
 description: the top-level one and one per package. Dose per `SKILL.md` §6:
 
 - **Plain repo (no packages, or a single package):** one worker reads the README,
