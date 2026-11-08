@@ -171,6 +171,7 @@ The hooks are a backstop against mistakes, not a security boundary. A determined
 - [`docs/configuration.md`](docs/configuration.md) explains `config.toml`, `state.json`, the per-ref settings and `REFS_HOME`.
 - [`docs/install.md`](docs/install.md) has the manual skill copy, the Codex plugin, the platform notes and what `refs doctor` checks.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) has the toolchain, the local development loop and what a pull request has to pass.
+- [`docs/security.md`](docs/security.md) is the security model: the git processes refs starts, what keeps a checkout's code from running, and how checkout content is treated.
 - [`SECURITY.md`](SECURITY.md) is what to read before reporting a vulnerability.
 
 MIT licensed. See [`LICENSE`](LICENSE).
