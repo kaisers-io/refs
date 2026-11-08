@@ -152,6 +152,10 @@ shape, an invalid `tag_format_candidate`, or `--description` for a source with p
 ```
 refs edit settings <key> <value>
 refs edit <ref> <field> <value> [--package <name>]
+refs edit <ref> --package <name> --create --path <path> --description <text>
+refs edit <ref> --package <name> --remove
+refs edit <ref> --package <name> --decline --path <path>
+refs edit <ref> --package <name> --undecline --path <path>
 ```
 
 Mutates exactly one field. `<ref>` is a full ref key or a unique suffix.
@@ -162,6 +166,12 @@ Mutates exactly one field. `<ref>` is a full ref key or a unique suffix.
   editable as a field — use `--package`.
 - `--package <name>` fields: `description`, `path`, `tag_format`. Discover `<name>` with
   `refs show <ref> --packages --json`.
+- `--remove` unregisters `--package` from the ref and leaves the checkout alone. It takes no
+  `<field> <value>`, `--path` or `--description`; a package the ref does not have exits `3`.
+  `data` carries `removed: true`, `new: null`, and the unregistered entry as `old`. It is the
+  `unregister` repair of a `missing` finding — run that, not a command you built.
+- `--create` and `--decline`/`--undecline` answer an `unregistered` finding; see the repairs
+  under `refs sync` below.
 
 ```json
 { "field": "sync_ttl", "key": "settings", "new": "2h", "old": "1h" }

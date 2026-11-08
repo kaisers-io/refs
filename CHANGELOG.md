@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Development installs resolve from the public npm registry, and stop on an unsupported Node.**
+  The root `.npmrc` now pins `registry=https://registry.npmjs.org/`, so a user-level default
+  registry such as a company mirror no longer decides where installs in this repository resolve,
+  which trust-policy evidence and advisories they see, or which tarball URLs reach the lockfile. A
+  user-level registry for a single scope (`@scope:registry=`) still applies to that scope.
+  Its two previous settings were not read by pnpm 12, which takes only auth, registry, TLS and
+  proxy settings from `.npmrc`. They now live in `pnpm-workspace.yaml` as `saveExact` and
+  `engineStrict`, so `pnpm add` writes exact versions again and `pnpm install --frozen-lockfile`
+  fails on a Node outside `engines.node`. The published CLI is unchanged.
+
 ### Changed
 
 - **A re-run release job can no longer move the GitHub Latest release backwards.** The job that
@@ -24,17 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   outcome checked. It runs after publication and cannot stop a release; `CONTRIBUTING.md` says what
   to do when it fails.
 
-### Security
+### Documentation
 
-- **Development installs resolve from the public npm registry, and stop on an unsupported Node.**
-  The root `.npmrc` now pins `registry=https://registry.npmjs.org/`, so a user-level default
-  registry such as a company mirror no longer decides where installs in this repository resolve,
-  which trust-policy evidence and advisories they see, or which tarball URLs reach the lockfile. A
-  user-level registry for a single scope (`@scope:registry=`) still applies to that scope.
-  Its two previous settings were not read by pnpm 12, which takes only auth, registry, TLS and
-  proxy settings from `.npmrc`. They now live in `pnpm-workspace.yaml` as `saveExact` and
-  `engineStrict`, so `pnpm add` writes exact versions again and `pnpm install --frozen-lockfile`
-  fails on a Node outside `engines.node`. The published CLI is unchanged.
+- **`refs edit --remove`, `--decline` and `--undecline` are in the command references.**
+  `docs/commands.md` lacked all three and the skill's `COMMANDS.md` lacked `--remove`, although
+  they shipped in 0.13.1 and 0.14.0. Both now give the synopsis, the `--json` data each mode
+  returns, and its exit codes. A test now fails when a registered command or option is missing
+  from either reference.
 
 ## [0.19.0] - 2026-11-07
 

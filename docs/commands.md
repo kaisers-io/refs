@@ -261,9 +261,12 @@ a source whose checkout is missing), `5` (the ref is already configured).
 refs edit settings <key> <value>
 refs edit <ref> <field> <value> [--package <name>]
 refs edit <ref> --package <name> --create --path <path> --description <text>
+refs edit <ref> --package <name> --remove
+refs edit <ref> --package <name> --decline --path <path>
+refs edit <ref> --package <name> --undecline --path <path>
 ```
 
-Mutates exactly one field, in one of three modes — or, with `--create`, registers a package:
+Mutates exactly one field, in one of three modes — or changes which packages a ref registers:
 
 - `refs edit settings <key> <value>` — a global setting (`clone_mode`, `git_transport`,
   `sync_ttl`).
@@ -274,6 +277,11 @@ Mutates exactly one field, in one of three modes — or, with `--create`, regist
 - `refs edit <ref> --package <name> --create --path <p> --description <d>` — adds a package
   the ref does not have. Both fields are required, the whole entry is validated, and an
   already-registered name is refused rather than overwritten.
+- `refs edit <ref> --package <name> --remove` — unregisters a package the ref has. It takes no
+  `<field> <value>`, no `--path` and no `--description`, and it leaves the checkout alone.
+- `refs edit <ref> --package <name> --decline --path <p>` — records that a package the checkout
+  declares at `<p>` is deliberately not registered, so `config-drift` stops reporting it as
+  `unregistered`. `--undecline` with the same name and path withdraws that decision.
 
 Editing `url` re-canonicalizes the value and rejects it if it would derive a _different_
 ref key (use `refs remove` + `refs add` to re-key a ref); if a checkout already exists, its
@@ -284,6 +292,19 @@ not registered still fails with `not_found`, so a typo in `--package` can never 
 entry. It is the repair for a `config-drift` `unregistered` finding — before it, that finding was
 the one no command could fix (`refs add` refuses an already-tracked ref).
 
+`--remove` is the repair for a `missing` finding: the package is gone from the repository's
+workspaces, or the user no longer wants to route to it. Naming a package the ref does not have
+fails with exit `3` rather than succeeding silently.
+
+`--decline` is the other answer to an `unregistered` finding, when the package should not be
+registered. A decline is stored on the ref as that name at that path, and `refs show <ref> --json`
+lists it under `declined_packages`. It suppresses the `unregistered` finding and nothing else: a
+configured entry that went `missing` or `relocated` is still reported, and so is the same name at
+another path, so the package comes back if it moves. A package the ref already registers cannot be
+declined (unregister it first with `--remove`), declining the same record twice is refused, and
+registering the package with `--create` clears its decline in the same write. Neither mode reads
+the checkout.
+
 ### Examples
 
 ```bash
@@ -292,6 +313,17 @@ refs edit zod description "TypeScript-first schema validation" --json
 refs edit zod clone_mode full --json          # per-ref settings override
 refs edit zod description "..." --package zod --json
 refs edit zod --package zod/v4 --create --path packages/v4 --description "Zod v4 core" --json
+refs edit zod --package @zod/mini --remove
+refs edit zod --package @zod/docs --decline --path packages/docs
+refs edit zod --package @zod/docs --undecline --path packages/docs
+```
+
+The last three print one line each:
+
+```
+github.com/colinhacks/zod: unregistered '@zod/mini' (was at packages/mini)
+github.com/colinhacks/zod: declined '@zod/docs' at packages/docs
+github.com/colinhacks/zod: no longer declining '@zod/docs' at packages/docs
 ```
 
 ### `--json` data shape
@@ -321,6 +353,54 @@ entry as `new`:
 }
 ```
 
+A `--remove` is its mirror: `removed: true`, a `null` `new`, and the entry that was unregistered
+as `old`:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "field": "packages",
+    "key": "github.com/colinhacks/zod",
+    "new": null,
+    "old": { "description": "Tree-shakable Zod variant.", "name": "@zod/mini", "path": "packages/mini" },
+    "removed": true
+  },
+  "warnings": []
+}
+```
+
+A `--decline` carries `declined: true`, `field: "declined_packages"`, and the record as `new`;
+an `--undecline` carries `declined: false` and the withdrawn record as `old`:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "declined": true,
+    "field": "declined_packages",
+    "key": "github.com/colinhacks/zod",
+    "new": { "name": "@zod/docs", "path": "packages/docs" },
+    "old": null
+  },
+  "warnings": []
+}
+```
+
+```json
+{
+  "ok": true,
+  "data": {
+    "declined": false,
+    "field": "declined_packages",
+    "key": "github.com/colinhacks/zod",
+    "new": null,
+    "old": { "name": "@zod/docs", "path": "packages/docs" }
+  },
+  "warnings": []
+}
+```
+
 ```json
 {
   "ok": true,
@@ -339,9 +419,11 @@ reachable by the literal suffix `settings` (e.g. `github.com/acme/settings`) can
 addressed via `refs edit settings ...` — that always dispatches to the global settings —
 so the response may carry a `note:` warning naming the shadowed ref.
 
-Exit codes: `2` (unknown setting/field name, `--package` combined with `settings` mode),
-`3` (value fails schema validation, new `url` derives a different key), `4` (ref/package
-not found).
+Exit codes: `2` (unknown setting/field name, `--package` combined with `settings` mode, a
+package mode given a flag or argument it does not take), `3` (value fails schema validation,
+new `url` derives a different key, `--remove` of a package the ref does not have, a decline
+that is already recorded or of a registered package, an `--undecline` with nothing to undo),
+`4` (ref/package not found).
 
 ---
 
