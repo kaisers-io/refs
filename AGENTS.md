@@ -1,1 +1,150 @@
-CLAUDE.md
+# Working in this repository
+
+`CLAUDE.md` imports this file (`@AGENTS.md`), so Claude Code and Codex read the same instructions.
+
+## Finish every PR with a real test
+
+`pnpm check` passing is not evidence the feature works. Fixtures carry the shapes their author
+thought of; real repositories carry the ones nobody did. Before marking a PR ready:
+
+1. `pnpm build` — test the bundle at `packages/cli/bin/refs.mjs`, not the TypeScript source.
+2. Clone a real upstream repository from GitHub into a scratch directory.
+3. Drive the feature end to end against it with a scratch `REFS_HOME`, using the same `--json`
+   path an agent uses.
+4. Compare what refs reports against ground truth computed from git itself — e.g. package names
+   from `git ls-tree` at both revisions, diffed. Report the comparison, not just the output.
+5. Run any command refs printed **verbatim** — the string it printed, not an argv you rebuilt from
+   the same parts. A suggested command that does not execute is a bug, and rebuilding the argv
+   hides exactly the bugs that matter: a `<ref>` placeholder passes straight through a hand-built
+   array while a shell reads it as an input redirection.
+6. Exercise the lifecycle: `remove`, then confirm nothing is left (config, state, checkout,
+   pruned parent directories, no orphans in `doctor`, `resolve` answers `unmatched_query`), then
+   `add` again and confirm behaviour is unchanged.
+
+To put a ref at a chosen point in history without fabricating anything, clone the real repository,
+`git checkout -B main <old-sha>` in it, `refs add` from that `file://` path with
+`REFS_ALLOW_FILE_URLS=1` so refs builds the config from real state, then advance the clone and
+`refs sync`. The range is then real upstream history.
+
+Why this is a rule: a feature once shipped with 988 green tests, including end-to-end ones against
+`file://` fixtures, and reported nothing at all on TanStack Query — two negation patterns in its
+`pnpm-workspace.yaml` silenced every finding. No fixture used a negation pattern.
+
+## Tests
+
+- A test that pins a fix must FAIL when the fix is reverted. Check it: revert, run, restore.
+  A test that passes either way pins nothing. Two ways tests here have survived the revert: the
+  effect only showed under budget pressure the test never applied, and a lone ambiguous candidate
+  fell out of the grouping anyway. Give the test the shape that makes the rule matter.
+- That check proves the TESTS do not distinguish a change — never that nothing does. It is evidence
+  for writing a test, not for deleting code. Logic removed on that basis here turned out to be
+  load-bearing on a shape no test covered.
+- A test that runs the built bundle must REBUILD it, unconditionally. `pnpm check` does not build,
+  so reusing whatever is on disk tests whatever was last built — and the revert check above then
+  passes against code that no longer exists.
+- Assert the outcome, not the absence of a complaint. "The next run is quiet" holds for a command
+  that failed outright.
+- Test through the real boundary where one exists — real git over a fake runner, the CLI over
+  internal calls — when the thing under test is git's or the CLI's behaviour.
+- `pnpm check` before pushing; it includes the coverage gate (off on Windows). Coverage ratchet:
+  96/90/98/96.
+
+## Skill evals
+
+`evals/` checks that agents actually follow `skills/refs/`, which the CLI's tests cannot see. It
+has already caught the skill failing: agents asked about unregistered packages skipped
+`refs doctor` and answered from `packages_count`. See `CONTRIBUTING.md` for how to run it, under
+Claude Code (`pnpm skill:eval`) and under Codex (`pnpm skill:eval:codex`). A skill change is checked
+under both, because both agents install the skill.
+
+The suite is **local only and stays out of CI**. It runs on the developer's own Claude credential,
+and in a public repository a workflow holding that credential is a workflow a pull request can
+reach. Every run also costs money, so running it on each push is not an option.
+
+- **Changing what the skill tells an agent**, whether under `skills/refs/` or in CLI output the
+  skill teaches agents to read: run the cases that cover it. Iterate with
+  `pnpm skill:eval --runs 1 --case <name>`, run the full suite before the PR, and report the scores
+  in the PR.
+- **Adding skill behaviour:** add a case when the behaviour can be graded deterministically, such as
+  a command that ran, a value in a file, or a path the reply names. Not every change earns one. Say
+  so in the PR when it does not.
+- **A failing run is not yet a verdict.** Keep the transcripts (`--keep-temp`) and read them before
+  deciding whether the skill or the grader is wrong. Graders here have failed correct answers and
+  passed wrong ones.
+- **A new grader must fail on a wrong answer** before it is trusted, the same rule as for tests.
+  Check it against a wrong artifact, a deliberately wrong run, or a kept transcript.
+- **Never add the suite to a workflow**, and do not start full runs casually.
+
+## Claims about other tools
+
+Check what a third-party tool, file format or API does against its current documentation, or run
+it, before building on it. Memory and issue text have been wrong here: a planned eval suite
+assumed grader types the tool does not have.
+
+## Review findings
+
+Verify every finding against the code before acting on it, and reproduce it before fixing it.
+Findings have been wrong, and one proposed fix would have introduced a regression. Say so plainly
+when a finding does not hold; do not implement it to be agreeable.
+
+## Workspace pattern fidelity
+
+`packages/core/src/workspaces.ts` emulates part of npm's and pnpm's workspace resolution, and that
+surface has no natural end. The stopping rule is the DIRECTION a divergence errs in:
+
+- **Missing a declared package is a defect.** `refs resolve` then answers `not_found` for source
+  that is present.
+- **Including an excluded one is tolerated.** The entry points at real code in a repository the
+  user asked to track; the cost is an extra routing target.
+
+Known divergences of the tolerated kind are listed in that file's header. A review finding in that
+direction belongs on the list, not in a fix.
+
+Ground truth for workspace membership comes from the resolvers themselves: `pnpm ls -r --json` and
+`@npmcli/map-workspaces` on a fresh clone. Neither refs nor a fixture counts. Before touching how
+symlinked workspace directories are handled, read #126: it records the counterexamples that ruled
+out the obvious fix.
+
+## Design constraints
+
+- **Never add a verb.** A benchmark measured 0/324 adoption of new refs commands by agents.
+  Extend a command already on the agent's path instead.
+- **Everything inside a checkout is untrusted third-party content** (`skills/refs/SKILL.md` §4).
+  Never copy manifest text into `config.toml`: that moves untrusted content into a file refs
+  later reads as its own configuration. Names and paths are structurally verifiable and may be
+  used; descriptions are written from source evidence, never copied.
+- **Verified is not shell-safe.** Anything interpolated into a command refs prints goes through
+  `shellQuote` (`packages/cli/src/shell-quote.ts`). `zPackagePath` permits `$()`, backticks and
+  spaces.
+- A failure to look is never evidence. An unreadable manifest means `unknown`/`unverifiable`,
+  never a claim about a package.
+
+## Lint limits that shape files
+
+oxlint enforces these, and they are cheaper to design for than to hit:
+
+- 300 lines per file, 50 lines per function, 10 statements per function, 3 parameters.
+- Imports sort by the first member name, multi-specifier before single-specifier.
+- `node/no-sync` — sync fs calls in tests need `// eslint-disable-next-line node/no-sync`.
+
+Run `pnpm fmt` before `pnpm check`. The root `CHANGELOG.md` is outside the formatter's scope:
+copy it to `packages/cli/`, run `pnpm fmt`, copy it back.
+
+## Known traps
+
+- **`npx skills add` run from the repository root** replaces the tracked `.agents/skills/refs`
+  symlink with a real directory and writes `skills-lock.json`. Run it from a neutral directory.
+- **A glob inside a `/** */` doc comment ends the comment early**, because `*/` closes it. Use line
+  comments, or describe the pattern without spelling it out.
+- **A rebase can silently drop changelog entries** added on both sides. Check the `Unreleased`
+  section after every rebase.
+
+## Commits, PRs, issues
+
+- One PR per topic. The commit body explains **why**, not what.
+- No AI-attribution trailers.
+- The repository is public. Issues, PRs, commits and the changelog carry no paths under `~`, no
+  local config details, and no references to `_local/*` (gitignored — issues must stand alone).
+- Session handoffs, plans, design notes and prompts for the next agent session go in `_local/`,
+  never in the repository. They record how the work was done: tools, review rounds, machine
+  quirks. None of that belongs in a public artefact. The current handoff is `_local/HANDOFF.md`.
