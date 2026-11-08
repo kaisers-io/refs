@@ -288,7 +288,11 @@ requires the environment and with one that ignores it. Two checks settle it:
   environment (must succeed) and once from an otherwise identical job that does not (must be
   refused during authentication).
 
-The negative test has not been run yet. When it is, record its date and outcome here.
+The negative test was run on 2026-11-08, from a private throwaway repository against a throwaway
+package whose single entry names an environment. The job that declared the environment published.
+The otherwise identical job without it was refused with `E404` on the publish request, and no
+version was created. npm enforces the environment on the entry, so a token minted outside
+`npm-publish` cannot publish `@kaisers-io/refs`. The package was unpublished afterwards.
 
 Binding the environment also means a commit whose `release.yml` predates it can no longer be
 released from, even though the ancestor check still allows tagging it.
