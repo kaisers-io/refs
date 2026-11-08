@@ -50,17 +50,39 @@ const killTree = async (pid) => {
   }
 };
 
-const execWithTimeout = async (command, args, options) => {
-  const child = spawn(command, args, options);
-  child.stderr?.on('data', (chunk) => options.stderr.push(chunk));
-  let timedOut = false;
-  const timer = setTimeout(async () => {
-    timedOut = true;
+// Resolves with the failure rather than rejecting: nothing awaits it until the child has exited,
+// and a rejection nobody handles until then ends the process. If the tree cannot be listed, the
+// child itself still has to go, or that exit never comes.
+const endTree = async (child) => {
+  try {
     await killTree(child.pid);
-  }, options.timeoutMs);
+    return { ok: true, timedOut: true };
+  } catch (error) {
+    child.kill('SIGKILL');
+    return { error, ok: false, timedOut: true };
+  }
+};
+
+// Waits for `child` to exit, ending its whole tree once `ms` have passed. A cleanup that failed is
+// rethrown, so the caller hears about it.
+const exitWithin = async (child, ms) => {
+  let cleanup = Promise.resolve({ ok: true, timedOut: false });
+  const timer = setTimeout(() => {
+    cleanup = endTree(child);
+  }, ms);
   const [code] = await once(child, 'exit');
   clearTimeout(timer);
-  return { code, timedOut };
+  const ended = await cleanup;
+  if (!ended.ok) {
+    throw ended.error;
+  }
+  return { code, timedOut: ended.timedOut };
+};
+
+const execWithTimeout = (command, args, options) => {
+  const child = spawn(command, args, options);
+  child.stderr?.on('data', (chunk) => options.stderr.push(chunk));
+  return exitWithin(child, options.timeoutMs);
 };
 
 const scaffold = async (root, testCase, run) => {

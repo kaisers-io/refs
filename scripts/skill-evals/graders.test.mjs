@@ -11,7 +11,9 @@ import { assertSupported, commandOf, grade } from './graders.mjs';
 import { collect, execWithTimeout, scaffold } from './codex-run.mjs';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { strictEqual, throws } from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { test } from 'node:test';
 import { tmpdir } from 'node:os';
 
@@ -174,6 +176,26 @@ test('a timeout kills commands running in a process group of their own', async (
   const grandchild = Number(await readFile(pidFile, 'utf8'));
   strictEqual(outcome.timedOut, true);
   strictEqual(isAlive(grandchild), false);
+});
+
+test('a timeout whose process tree cannot be listed still ends the run, and says why', async () => {
+  // No `ps` on PATH, so listing the descendants fails. The child must still be killed and the
+  // failure must reach the caller: before, it escaped from the timer as an unhandled rejection
+  // that took the whole eval runner down.
+  const emptyPath = await mkdtemp(join(tmpdir(), 'no-ps-'));
+  const runner = new URL('codex-run.mjs', import.meta.url).href;
+  const program = [
+    `const { execWithTimeout } = await import(${JSON.stringify(runner)});`,
+    `execWithTimeout('/bin/sleep', ['30'], { stderr: [], timeoutMs: 200 })`,
+    `  .then(() => console.log('resolved'), (error) => console.log('rejected', error.code));`,
+  ].join('\n');
+  // Rejects if the program crashes, which is what an unhandled rejection does.
+  const { stdout } = await promisify(execFile)(
+    process.execPath,
+    ['--input-type=module', '-e', program],
+    { env: { PATH: emptyPath } },
+  );
+  strictEqual(stdout.trim(), 'rejected ENOENT');
 });
 
 test('a scaffold that prints a lot does not block the suite', async () => {

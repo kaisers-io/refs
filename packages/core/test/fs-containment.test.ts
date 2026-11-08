@@ -20,7 +20,7 @@ describe('paths inside the root', () => {
     mkdirSync(join(root, 'pkg'));
     await expect(resolveInside(root, join(root, 'pkg'))).resolves.toStrictEqual({
       kind: 'inside',
-      real: expect.stringContaining('pkg') as unknown as string,
+      real: expect.stringContaining('pkg'),
     });
   });
 

@@ -64,7 +64,7 @@ const readConfigText = async (home: RefsHome): Promise<string> => {
 
 const parseConfigToml = (text: string, path: string): JsonRecord => {
   try {
-    return parse(text) as JsonRecord;
+    return parse(text);
   } catch (error) {
     if (error instanceof TomlError) {
       throw validationError(`invalid TOML in ${path}: ${tomlErrorSummary(error)}`);

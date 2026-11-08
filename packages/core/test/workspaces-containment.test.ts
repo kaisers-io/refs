@@ -12,10 +12,10 @@ vi.mock(import('node:fs/promises'), async (importOriginal) => {
   // `readdir`/`readFile` are heavily overloaded; vi.fn's inferred mock type can't reproduce
   // every overload, so the mocks are cast back to the original signature after wrapping them.
   const readdirSpy = vi.fn<typeof actual.readdir>(
-    actual.readdir as never,
+    actual.readdir,
   ) as unknown as typeof actual.readdir;
   const readFileSpy = vi.fn<typeof actual.readFile>(
-    actual.readFile as never,
+    actual.readFile,
   ) as unknown as typeof actual.readFile;
   return { ...actual, readFile: readFileSpy, readdir: readdirSpy };
 });

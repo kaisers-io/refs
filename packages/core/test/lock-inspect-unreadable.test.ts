@@ -18,9 +18,9 @@ vi.mock(import('node:fs/promises'), async (importOriginal) => {
   // `stat` is overloaded (its return type depends on `bigint`), and vi.fn's inferred mock type
   // cannot reproduce every overload — cast back to the original signature, as
   // `lock-steal-eperm.test.ts` does for `mkdir`.
-  const statSpy = vi.fn<typeof actual.stat>(actual.stat as never) as unknown as typeof actual.stat;
+  const statSpy = vi.fn<typeof actual.stat>(actual.stat) as unknown as typeof actual.stat;
   const readFileSpy = vi.fn<typeof actual.readFile>(
-    actual.readFile as never,
+    actual.readFile,
   ) as unknown as typeof actual.readFile;
   return { ...actual, readFile: readFileSpy, stat: statSpy };
 });

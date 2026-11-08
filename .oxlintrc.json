@@ -1,5 +1,8 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
+  // Type-aware rules (oxlint-tsgolint). Set here rather than as a CLI flag, so `pnpm lint`, CI and
+  // editor integrations run the same rule set. Root config only.
+  "options": { "typeAware": true },
   "plugins": ["typescript", "unicorn", "oxc", "import", "node", "promise"],
   "categories": {
     "correctness": "error",
@@ -31,6 +34,76 @@
     "no-duplicate-imports": ["error", { "allowSeparateTypeImports": true }],
     "import/no-nodejs-modules": "off",
     "import/prefer-default-export": "off",
-    "unicorn/require-module-specifiers": "off"
+    "unicorn/require-module-specifiers": "off",
+    // Type-aware rules, chosen: the ones that catch an unhandled rejection or a cast that hides
+    // nothing.
+    "typescript/no-floating-promises": [
+      "error",
+      {
+        // node:test's test()/describe() return a promise the runner tracks itself.
+        "allowForKnownSafeCalls": [
+          { "from": "package", "name": ["test", "describe", "it", "suite"], "package": "node:test" }
+        ]
+      }
+    ],
+    "typescript/no-misused-promises": "error",
+    "typescript/await-thenable": "error",
+    "typescript/require-await": "error",
+    // Replaced by the type-aware rule above, which also sees a returned promise.
+    "require-await": "off",
+    "typescript/no-unnecessary-type-assertion": "error",
+    "typescript/return-await": ["error", "error-handling-correctness-only"],
+    // Every other type-aware rule the categories above would switch on, off explicitly, with its
+    // finding count when this was set up, so each can be adopted on its own later.
+"typescript/prefer-readonly-parameter-types": "off",            // 1329
+    "typescript/no-unsafe-member-access": "off",                    // 217
+    "typescript/no-unsafe-type-assertion": "off",                   // 201
+    "typescript/no-unsafe-assignment": "off",                       // 121
+    "typescript/no-unsafe-argument": "off",                         // 78
+    "typescript/no-unsafe-call": "off",                             // 68
+    "typescript/no-unsafe-return": "off",                           // 50
+    "typescript/strict-boolean-expressions": "off",                 // 24
+    "typescript/no-confusing-void-expression": "off",               // 17
+    "typescript/strict-void-return": "off",                         // 14
+    "typescript/consistent-return": "off",                          // 10
+    "typescript/prefer-nullish-coalescing": "off",                  // 7
+    "typescript/no-deprecated": "off",                              // 2
+    "typescript/no-base-to-string": "off",                          // 1
+    "typescript/no-generated-empty-object-type": "off",             // 1
+    "typescript/no-misused-spread": "off",                          // 1
+    "typescript/no-redundant-type-constituents": "off",             // 1
+    "typescript/no-unnecessary-boolean-literal-compare": "off",     // 1
+    "typescript/no-unnecessary-type-conversion": "off",             // 1
+    "typescript/require-array-sort-compare": "off",                 // 1
+    "typescript/consistent-type-exports": "off",                    // 0
+    "typescript/dot-notation": "off",                               // 0
+    "typescript/no-array-delete": "off",                            // 0
+    "typescript/no-duplicate-type-constituents": "off",             // 0
+    "typescript/no-for-in-array": "off",                            // 0
+    "typescript/no-implied-eval": "off",                            // 0
+    "typescript/no-meaningless-void-operator": "off",               // 0
+    "typescript/no-mixed-enums": "off",                             // 0
+    "typescript/no-unnecessary-qualifier": "off",                   // 0
+    "typescript/no-unnecessary-template-expression": "off",         // 0
+    "typescript/no-unnecessary-type-arguments": "off",              // 0
+    "typescript/no-unnecessary-type-parameters": "off",             // 0
+    "typescript/no-unsafe-enum-assignment": "off",                  // 0
+    "typescript/no-unsafe-enum-comparison": "off",                  // 0
+    "typescript/no-unsafe-unary-minus": "off",                      // 0
+    "typescript/no-useless-default-assignment": "off",              // 0
+    "typescript/only-throw-error": "off",                           // 0
+    "typescript/prefer-find": "off",                                // 0
+    "typescript/prefer-includes": "off",                            // 0
+    "typescript/prefer-promise-reject-errors": "off",               // 0
+    "typescript/prefer-readonly": "off",                            // 0
+    "typescript/prefer-reduce-type-parameter": "off",               // 0
+    "typescript/prefer-regexp-exec": "off",                         // 0
+    "typescript/prefer-return-this-type": "off",                    // 0
+    "typescript/prefer-string-starts-ends-with": "off",             // 0
+    "typescript/related-getter-setter-pairs": "off",                // 0
+    "typescript/restrict-plus-operands": "off",                     // 0
+    "typescript/restrict-template-expressions": "off",              // 0
+    "typescript/switch-exhaustiveness-check": "off",                // 0
+    "typescript/unbound-method": "off"                              // 0
   }
 }

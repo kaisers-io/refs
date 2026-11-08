@@ -166,7 +166,7 @@ const findBestFormat = (formatCounts: Map<string, FormatCandidate>): string | nu
 const detectTagFormat = (tags: readonly string[]): TagFormat | null => {
   const formatCounts = buildFormatCounts(tags);
   const best = findBestFormat(formatCounts);
-  return best as TagFormat | null;
+  return best;
 };
 
 /**

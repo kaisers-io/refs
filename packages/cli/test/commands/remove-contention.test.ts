@@ -25,7 +25,7 @@ import { refLockName } from '../../src/commands/add-source.ts';
 vi.mock(import('node:fs/promises'), async (importOriginal) => {
   const actual = await importOriginal();
   // Overloaded signature; cast back as `lock-inspect-unreadable.test.ts` does for `stat`.
-  const mkdirSpy = vi.fn<typeof actual.mkdir>(actual.mkdir as never);
+  const mkdirSpy = vi.fn<typeof actual.mkdir>(actual.mkdir);
   return { ...actual, mkdir: mkdirSpy as unknown as typeof actual.mkdir };
 });
 

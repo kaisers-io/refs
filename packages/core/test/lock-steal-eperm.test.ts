@@ -23,9 +23,7 @@ vi.mock(import('node:fs/promises'), async (importOriginal) => {
   const actual = await importOriginal();
   // `mkdir` is overloaded (its return type depends on `recursive`); vi.fn's inferred mock type
   // can't reproduce every overload, so the mock is cast back to the original signature.
-  const mkdirSpy = vi.fn<typeof actual.mkdir>(
-    actual.mkdir as never,
-  ) as unknown as typeof actual.mkdir;
+  const mkdirSpy = vi.fn<typeof actual.mkdir>(actual.mkdir) as unknown as typeof actual.mkdir;
   return { ...actual, mkdir: mkdirSpy, rename: vi.fn<typeof actual.rename>(actual.rename) };
 });
 
