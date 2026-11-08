@@ -44,6 +44,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   returns, and its exit codes. A test now fails when a registered command or option is missing
   from either reference.
 
+- **The README says how to upgrade.** A new `Upgrading` section gives the commands that move the
+  CLI and the skill (or the Codex plugin) to a new release together, notes that a global skill
+  install needs `-g` again, and points at `refs doctor` and the changelog for what follows.
+  `docs/install.md` and the npm package README link to it.
+
 ## [0.19.0] - 2026-11-07
 
 ### Security
