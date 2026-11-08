@@ -5,13 +5,28 @@ name: audit
 # workflow restores that signal with `pnpm audit`, which reads both documents, and
 # scripts/audit-lockfile.mjs checks that it did.
 #
-# Its own workflow, not a job in ci.yml: an advisory published today turns this red on every open
-# PR whatever the PR changed, and the weekly run catches one on a quiet week with no PR at all. The
-# full lockfile is audited, not `--prod`: zod, commander and smol-toml are devDependencies of
-# packages/cli and still ship inside its bundle.
+# Its own workflow, not a job in ci.yml: an advisory published today would turn every open PR red
+# whatever the PR changed. So a PR runs it only when it touches the files below, the ones that can
+# change this result; the push to main and the weekly run catch an advisory against an unchanged
+# lockfile, the weekly one on a quiet week with no PR at all. The full lockfile is audited, not
+# `--prod`: zod, commander and smol-toml are devDependencies of packages/cli and still ship inside
+# its bundle.
+#
+# Must not be a required check while it is path-filtered: a workflow skipped by `paths` reports no
+# status, and a required check that never reports leaves the PR waiting forever. Making it required
+# means an unfiltered trigger with a job that skips its work, but still passes, on other changes.
 on:
   push: { branches: [main] }
   pull_request:
+    # .npmrc names the registry `pnpm audit` queries; the test file is run below.
+    paths:
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - "**/package.json"
+      - .npmrc
+      - .github/workflows/audit.yml
+      - scripts/audit-lockfile.mjs
+      - scripts/audit-lockfile.test.mjs
   schedule:
     # Mondays, 06:17 UTC; off the hour, where scheduled runs queue.
     - cron: "17 6 * * 1"
