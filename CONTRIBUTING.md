@@ -55,10 +55,11 @@ pipx run --spec zizmor==1.32.0 zizmor --strict-collection .   # with GH_TOKEN se
 ```
 
 A separate workflow (`.github/workflows/audit.yml`) audits every package in `pnpm-lock.yaml` for
-known advisories, on each pull request and weekly. It can turn red on a pull request that changed no
-dependency, because advisories are published independently of this repository. GitHub's own
-dependency graph reads only part of the pnpm 12 lockfile, so this is the check that covers the
-transitive packages. To run it locally:
+known advisories, on every push to `main`, weekly, and on pull requests that change the dependency
+set (`pnpm-lock.yaml`, `pnpm-workspace.yaml`, a `package.json`, `.npmrc`) or the audit itself. An
+advisory published against an unchanged lockfile shows up on `main`, not on unrelated pull
+requests. GitHub's own dependency graph reads only part of the pnpm 12 lockfile, so this is the
+check that covers the transitive packages. To run it locally:
 
 ```bash
 node scripts/audit-lockfile.mjs   # exit 1 advisories, 2 lockfile partly unaudited, 3 audit incomplete
