@@ -139,6 +139,19 @@ Now check the whole setup:
 refs doctor
 ```
 
+## Upgrading
+
+The CLI and the skill are released together and must stay on the same version: the skill checks the CLI's version before it does anything, and stops when the two have drifted apart. Upgrade both:
+
+```bash
+npm i -g @kaisers-io/refs@latest
+npx skills add kaisers-io/refs      # add -g if you installed the skill globally
+```
+
+Without `-g`, `skills add` installs a project copy and leaves a stale global one in place. With the Codex plugin, run `codex plugin marketplace upgrade kaisers-io` instead of `skills add`.
+
+Then run `refs doctor`. It reports a skill or plugin copy that is still behind, and a config written by an older release, with `refs migrate` as the fix. The [changelog](CHANGELOG.md) lists what changed. `refs sync` and `refs doctor` also tell you when npm has a newer release; [`docs/configuration.md`](docs/configuration.md#updates) explains that check and how to turn it off.
+
 ## What lives on your machine
 
 Checkouts sit under `~/.kaisers-io/refs/sources/` as ordinary git repositories, in one place rather than one per project, so every session reaches the same collection. You can open them in your editor, grep them, and read them without an agent. Set `REFS_HOME` to keep them somewhere else, on another disk for instance, and everything `refs` owns moves with it: see [`docs/configuration.md`](docs/configuration.md). No service holds a copy of your code. What the agent reads is handled under that agent's own model and data settings.

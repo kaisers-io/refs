@@ -61,7 +61,7 @@ The `npm:` prefix says which registry the name belongs to, so a package and a re
 
 ## Driving the CLI yourself
 
-The agent runs these. Typing one yourself is quicker for some of them, and `refs sync` is the one most people reach for. `refs doctor` is the one to run after updating refs: the CLI and the skill each carry a version, and it says when they have drifted apart.
+The agent runs these. Typing one yourself is quicker for some of them, and `refs sync` is the one most people reach for. `refs doctor` is the one to run after updating refs: the CLI and the skill each carry a version, and it says when they have drifted apart. [Upgrading](https://github.com/kaisers-io/refs#upgrading) has the commands that move both.
 
 ```bash
 # clones and proposes; nothing is configured yet

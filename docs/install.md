@@ -66,6 +66,10 @@ codex plugin marketplace remove kaisers-io
 
 Checked against Codex CLI 0.163.0. The manifest is `skills/.codex-plugin/plugin.json`, Codex's own plugin format. The newer portable format, a `plugin.json` at the plugin root with skills under `skills/<name>/`, would mean either making the repository root the plugin, which copies the whole repository into every install, or keeping a second copy of the skill. Codex does not follow symlinks when it installs a plugin, so a linked copy installs empty.
 
+## Upgrading
+
+Upgrade the CLI and the skill together; the [README](../README.md#upgrading) has the commands. For the Codex plugin, see [the Codex plugin](#the-codex-plugin) above.
+
 ## Checking it
 
 ```bash
