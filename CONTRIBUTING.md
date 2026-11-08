@@ -164,6 +164,26 @@ this is a stricter restatement that `--tag` and `--force` cannot bypass. It fail
 that errors stops the release, and only a lookup that succeeds and reports nothing is treated as a
 first publication.
 
+### When `verify-published` fails
+
+After `publish`, the `verify-published` job waits until npm serves the version, installs it from
+the registry on Linux, macOS and Windows, and runs `scripts/smoke-cli.sh` against it. The package
+is already public by then, so the job cannot stop or undo the release.
+
+- **Re-run it first** when the failure looks like registry lag, such as an install that cannot
+  find the version, rather than a broken CLI.
+- **On a real failure, deprecate the version and ship a fix.** Deprecate with your own npm login,
+  because trusted publishing does not cover `npm deprecate`:
+
+  ```bash
+  npm deprecate @kaisers-io/refs@x.y.z "broken on <platform>; use x.y.(z+1)"
+  ```
+
+  Then release a fixed patch version through the normal flow.
+- **Do not unpublish.** A version number can never be used again.
+- **Deprecation only warns.** While `latest` points at the broken version,
+  `npm i -g @kaisers-io/refs` still installs it. The fix release is what repairs installs.
+
 ## Commits
 
 Conventional commits (`feat:`, `fix:`, `chore:`, `docs:`, `test:`, `build:`, `ci:`). The subject
