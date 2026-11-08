@@ -280,7 +280,9 @@ environment, because a successful environment-bound publish is consistent both w
 requires the environment and with one that ignores it. Two checks settle it:
 
 - `npm trust list @kaisers-io/refs --json`, with the maintainer's login, shows that every entry on
-  the package names `npm-publish`. That is the configuration half.
+  the package names `npm-publish`. That is the configuration half. Checked on 2026-11-08: the
+  package has one entry, and it names `npm-publish`. The command needs a one-time password when
+  2FA is on; outside an interactive terminal, pass it with `--otp=<code>`.
 - A negative test of npm's matching on a throwaway package, never on `@kaisers-io/refs`: give it a
   trusted-publisher entry that names an environment, publish once from a job that declares the
   environment (must succeed) and once from an otherwise identical job that does not (must be
