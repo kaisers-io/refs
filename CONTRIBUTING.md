@@ -48,10 +48,10 @@ CI adds a coverage gate, a version-consistency check, a bundle-determinism check
 of the packaged CLI on Linux and Windows, and a [zizmor](https://docs.zizmor.sh/) audit of the
 workflows and `dependabot.yml`. If you touched anything under `.github/`, run that audit locally
 first, at the version pinned in `ci.yml`. CI runs it through [pipx](https://pipx.pypa.io/);
-`uvx zizmor@1.31.1` runs the same release if you have uv instead:
+`uvx zizmor@1.32.0` runs the same release if you have uv instead:
 
 ```bash
-pipx run --spec zizmor==1.31.1 zizmor --strict-collection .   # with GH_TOKEN set, it also runs the online audits
+pipx run --spec zizmor==1.32.0 zizmor --strict-collection .   # with GH_TOKEN set, it also runs the online audits
 ```
 
 A separate workflow (`.github/workflows/audit.yml`) audits every package in `pnpm-lock.yaml` for
@@ -78,6 +78,12 @@ pnpm skill:audit           # Snyk Agent Scan against skills/
 It needs [uv](https://docs.astral.sh/uv/getting-started/installation/) and a `SNYK_TOKEN` from a
 free Snyk account, because the analysis runs server-side. `.github/workflows/skill-audit.yml`
 documents every flag it passes and the one risk that is waived.
+
+Four tool pins live in `run:` steps or scripts, where Dependabot does not see them, and are bumped
+by hand: zizmor (`ci.yml`), uv and `cisco-ai-skill-scanner` (`skill-audit.yml`), and
+`snyk-agent-scan` (`skill:audit` in `package.json`). Each is an exact version, and a bump picks a
+release at least a week old, the cooldown Dependabot applies to everything else. Check them on each
+release pull request.
 
 If you changed what the skill tells an agent to do, run the skill evals as well. See
 [Skill evals](#skill-evals).
