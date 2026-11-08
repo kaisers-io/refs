@@ -85,7 +85,7 @@ jobs:
       #                                 the target holds skills and no MCP config.
       #   --ignore-risks                third_party_content_exposure — the scanner's risk name for
       #                                 the accurate observation that refs reads source selected by
-      #                                 the user. Argued in SECURITY.md. This is the whole waiver;
+      #                                 the user. Argued in docs/security.md. This is the whole waiver;
       #                                 every other risk or failure, known or new, fails the job.
       # The target is `skills/` rather than `skills/refs/` because discovery is one level deep
       # (`<path>/<name>/SKILL.md`), so the parent is the narrowest path that still finds everything.

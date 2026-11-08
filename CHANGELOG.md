@@ -49,6 +49,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   install needs `-g` again, and points at `refs doctor` and the changelog for what follows.
   `docs/install.md` and the npm package README link to it.
 
+- **`SECURITY.md` is the policy again, and the security model has its own page.** The reporting
+  process, supported versions and scope lists stay in `SECURITY.md`, which GitHub shows as the
+  repository's security policy. The account of the git processes refs starts, of configured hooks,
+  filters and `core.fsmonitor`, and of untrusted checkout content moved unchanged to
+  `docs/security.md`. A report now names what a useful one contains.
+
 ## [0.19.0] - 2026-11-07
 
 ### Security
