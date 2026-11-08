@@ -44,37 +44,30 @@ pnpm check                 # lint + format check + typecheck + tests with the co
 ```
 
 That is exactly what CI runs, on Linux, macOS and Windows, and once more each on the Node 24.2
-floor and on the newest Node LTS line (26).
+floor and on the newest Node LTS line (26). CI runs more jobs around it;
+[What CI runs](#what-ci-runs) lists every one.
+
 Lint is type-aware: `.oxlintrc.json` sets `options.typeAware`, which runs through the
 `oxlint-tsgolint` devDependency, so `pnpm install` is all it needs and editors pick up the same
 rules. Only the type-aware rules enabled there run; the others are off by name, each with the
 number of findings it had, so they can be adopted one at a time.
+
 The coverage gate (`vitest.config.ts`) is enforced everywhere except Windows, where coverage is
 collected but not gated. CI on Linux stays the authoritative gate: it has measured slightly below
-macOS, so a local pass right at a threshold can still fail there. CI adds a version-consistency
-check, a bundle-determinism check, a smoke test of the packaged CLI on Linux and Windows, and a
-[zizmor](https://docs.zizmor.sh/) audit of the workflows and `dependabot.yml`. If you touched
-anything under `.github/`, run that audit locally
-first, at the version pinned in `ci.yml`. CI runs it through [pipx](https://pipx.pypa.io/);
-`uvx zizmor@1.32.0` runs the same release if you have uv instead:
+macOS, so a local pass right at a threshold can still fail there.
+
+If you touched anything under `.github/`, run the [zizmor](https://docs.zizmor.sh/) audit of the
+workflows and `dependabot.yml` locally first, at the version the `zizmor` job in
+`.github/workflows/ci.yml` pins. CI runs it through [pipx](https://pipx.pypa.io/). Both commands
+below read the pin out of `ci.yml`, so they cannot fall behind it; the second runs the same release
+through uv:
 
 ```bash
-pipx run --spec zizmor==1.32.0 zizmor --strict-collection .   # with GH_TOKEN set, it also runs the online audits
+pipx run --spec "$(grep -o 'zizmor==[0-9.]*' .github/workflows/ci.yml)" zizmor --strict-collection .
+uvx --from "$(grep -o 'zizmor==[0-9.]*' .github/workflows/ci.yml)" zizmor --strict-collection .
 ```
 
-A separate workflow (`.github/workflows/audit.yml`) audits every package in `pnpm-lock.yaml` for
-known advisories, on every push to `main`, weekly, and on pull requests that change the dependency
-set (`pnpm-lock.yaml`, `pnpm-workspace.yaml`, a `package.json`, `.npmrc`) or the audit itself. An
-advisory published against an unchanged lockfile shows up on `main`, not on unrelated pull
-requests. GitHub's own dependency graph reads only part of the pnpm 12 lockfile, so this is the
-check that covers the transitive packages. To run it locally:
-
-```bash
-node scripts/audit-lockfile.mjs   # exit 1 advisories, 2 lockfile partly unaudited, 3 audit incomplete
-```
-
-To accept an advisory that does not apply, add its GHSA ID to `auditConfig.ignoreGhsas` in
-`pnpm-workspace.yaml`, with a comment saying why; the check honours pnpm's ignore list.
+With `GH_TOKEN` set, zizmor also runs its online audits, as CI does.
 
 If you touched anything under `skills/`, CI also runs the skill audit (`.github/workflows/skill-audit.yml`),
 which is the pre-flight for the vendor audits skills.sh publishes on the skill's public page after
@@ -100,6 +93,70 @@ If you changed what the skill tells an agent to do, run the skill evals as well.
 For a faster inner loop, run `pnpm dev` inside `packages/cli` and call the stub directly. From
 that directory it is `node bin/refs.mjs <args>`; from the repository root,
 `node packages/cli/bin/refs.mjs <args>`.
+
+## What CI runs
+
+| Workflow / job | When | What it does |
+| --- | --- | --- |
+| `ci` / `check` | pull request, push to `main` | `pnpm check`, coverage gate included except on Windows, and the eval graders' negative controls (`scripts/skill-evals/cases.test.mjs`) on Linux, macOS and Windows |
+| `ci` / `check (node floor)` | pull request, push to `main` | builds on the development Node, switches to Node 24.2.0, runs `pnpm check`, then smoke-tests the built `dist/refs.mjs`: `--version`, `init`, and `doctor --json` reporting its `node` check as `ok` |
+| `ci` / `check (node 26)` | pull request, push to `main` | `pnpm check` on the newest Node LTS line, then builds and runs the bundle's `--version` |
+| `ci` / `versions` | pull request, push to `main` | `node scripts/versions.mjs --check` (the files carrying the released version agree), its tests, and the tests of the Codex eval grader adapter and the repair graders, all without `pnpm install` |
+| `ci` / `zizmor` | pull request, push to `main` | audits the workflows and `dependabot.yml` with zizmor at the pinned version, online audits included |
+| `ci` / `bundle-determinism` | pull request, push to `main` | `scripts/check-bundle-determinism.sh`: two builds must be byte-identical |
+| `ci` / `smoke` | pull request, push to `main` | packs the CLI, installs the tarball globally on Linux, macOS and Windows (Git Bash), and runs `scripts/smoke-cli.sh`: `add` of a `file://` fixture, `list`, `sync`, `resolve` and `remove`, each outcome checked |
+| `ci` / `smoke-windows` | pull request, push to `main` | the same sequence in PowerShell on Windows, through npm's `.cmd` shim |
+| `audit` / `lockfile` | push to `main`, weekly, manual, and pull requests that change the dependency set or the audit | the [dependency audit](#dependency-audit): its own tests, then `scripts/audit-lockfile.mjs` |
+| `skill-audit` / `static` | pull request or push to `main` touching `skills/**`, the workflow or `package.json` | Cisco skill-scanner over `skills/`, failing on medium severity and above. It needs no credential, so it runs on pull requests from forks too |
+| `skill-audit` / `snyk` | the same paths, on pushes and on pull requests from this repository, not from Dependabot | `pnpm skill:audit` (Snyk Agent Scan) with the one waiver `skill-audit.yml` documents; it needs the `SNYK_TOKEN` secret, which a fork's pull request does not receive |
+| `release` / `verify`, `publish`, `verify-published`, `announce` | push of a `v*` tag | see [Releasing](#releasing) |
+
+Dependabot (`.github/dependabot.yml`) opens npm and GitHub Actions updates weekly, each held back
+seven days after its release; security updates are not held back. The skill evals never run in CI
+([Skill evals](#skill-evals)).
+
+## Dependency audit
+
+`.github/workflows/audit.yml` audits every package in `pnpm-lock.yaml` for known advisories, on each
+push to `main`, weekly, on demand, and on pull requests that change the dependency set
+(`pnpm-lock.yaml`, `pnpm-workspace.yaml`, a `package.json`, `.npmrc`) or the audit itself.
+GitHub's own dependency graph reads only part of the pnpm 12 lockfile, so this is the check that
+covers the transitive packages. The
+whole lockfile is audited, not only production dependencies: `zod`, `commander` and `smol-toml` are
+devDependencies of `packages/cli` and still ship inside its bundle.
+
+It is a workflow of its own, not a job in `ci.yml`, and it is not meant to be a required check.
+Advisories are published independently of this repository, so one published against an unchanged
+lockfile shows up on `main` and in the weekly run, and turns the audit red on any pull request that
+touches dependencies, whatever else it changed. A red audit on your pull request
+does not mean your pull request caused it, and the fix can go in a pull request of its own. To run it locally:
+
+```bash
+node scripts/audit-lockfile.mjs
+```
+
+The exit code says which failure it is, and each calls for a different response:
+
+- **`1`, advisories found.** Triage them as below.
+- **`2`, the lockfile was partly unaudited.** `pnpm audit` reported fewer packages than the
+  lockfile's registry packages. That is a regression in the tooling, not a clean result: the
+  script's header explains the failure it guards against.
+- **`3`, the audit did not complete**, from a registry or network error or a report the script
+  cannot read. Re-run it. Never read it as clean.
+
+To triage an advisory:
+
+1. **Read the advisory and decide whether the vulnerable code is reachable.** Is the package bundled
+   into `packages/cli/dist/refs.mjs`, which is what users install, or is it development tooling
+   only? `pnpm why <package>` shows what pulls it in.
+2. **Fix it by upgrading** the direct dependency that pulls it in. When no release of that
+   dependency has the fix yet, pin the patched version with an `overrides` entry in
+   `pnpm-workspace.yaml`. The pull request re-runs the audit.
+3. **Accept it only with a record.** Add the GHSA ID to `audit.ignore` in `pnpm-workspace.yaml`
+   (`auditConfig.ignoreGhsas` is the older, deprecated spelling, which pnpm still reads), with a
+   comment giving the reason it does not apply and a date by which to review it. Remove the entry
+   once a fix ships or the date passes. The audit honours pnpm's ignore list.
+4. **Reachable code in the shipped bundle blocks a release.** Fix it and cut a patch release.
 
 ## Things that will fail review
 
