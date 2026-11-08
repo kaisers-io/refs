@@ -184,9 +184,19 @@ jobs:
         with: { node-version-file: .node-version, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: bash scripts/check-bundle-determinism.sh
+  # scripts/smoke-cli.sh against the tarball packed from this tree, on every platform: the release
+  # workflow runs the same script on the same three platforms against the registry, so a release is
+  # never the first time it meets one. Under Git Bash on Windows; `smoke-windows` below keeps the
+  # PowerShell route, which this cannot cover.
   smoke:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix: { os: [ubuntu-latest, macos-latest, windows-latest] }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
@@ -194,23 +204,15 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .node-version, cache: pnpm }
       - run: pnpm install --frozen-lockfile && pnpm build
-      - name: smoke test against a file:// fixture
+      - name: smoke test the packed tarball
         # zizmor's adhoc-packages flags the global install below. It installs the tarball this job
         # just packed from the checked-out tree — installing it the way a user does is the test.
         run: | # zizmor: ignore[adhoc-packages] installs the locally packed tarball under test
           set -euo pipefail
-          npm pack ./packages/cli --pack-destination /tmp
-          npm install -g /tmp/kaisers-io-refs-*.tgz
-          export REFS_ALLOW_FILE_URLS=1
-          export REFS_HOME="$(mktemp -d)"
-          refs init --json
-          FIX="$(mktemp -d)"; git -C "$FIX" init -qb main
-          git -C "$FIX" -c user.email=ci@refs -c user.name=ci commit -qm init --allow-empty
-          git -C "$FIX" tag v1.0.0
-          refs add "file://$FIX" --description "smoke fixture" --json
-          refs list --json | grep -q '"ok":true'
-          refs sync --json
-          refs remove "$(refs list --json | node -e 'let d="";process.stdin.on("data",(c)=>d+=c).on("end",()=>console.log(JSON.parse(d).data[0].key))')" --json
+          PACK_DIR="$(mktemp -d)"
+          PACK_JSON="$(npm pack ./packages/cli --json --pack-destination "$PACK_DIR")"
+          npm install -g "$PACK_DIR/$(node -e 'console.log(JSON.parse(process.argv[1])[0].filename)' "$PACK_JSON")"
+          bash scripts/smoke-cli.sh "$(node -p "require('./packages/cli/package.json').version")"
   # PowerShell (not bash) on purpose: this exercises the npm-generated `.cmd` shims and real
   # Windows path handling — exactly what a Windows user hits first.
   smoke-windows:

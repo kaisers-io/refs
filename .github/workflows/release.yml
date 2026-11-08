@@ -160,7 +160,10 @@ jobs:
       - run: bash scripts/check-bundle-determinism.sh
       - name: Guard — pack the tarball, verify its contents, smoke-test the install
         # The global install below is the tarball this step packs, which zizmor's adhoc-packages
-        # cannot tell from a registry fetch; installing it the way a user does is the guard.
+        # cannot tell from a registry fetch; installing it the way a user does is the guard. The
+        # smoke test is scripts/smoke-cli.sh, the one ci.yml and `verify-published` run too.
+        env:
+          TAG: ${{ github.ref_name }}
         run: | # zizmor: ignore[adhoc-packages] installs the locally packed tarball under test
           set -euo pipefail
           PACK_DIR="$(mktemp -d)"
@@ -183,10 +186,7 @@ jobs:
           PREFIX="$(mktemp -d)"
           npm install -g --prefix "$PREFIX" "$TARBALL"
           export PATH="$PREFIX/bin:$PATH"
-          REFS_HOME="$(mktemp -d)"
-          export REFS_HOME
-          refs --version
-          refs init
+          bash scripts/smoke-cli.sh "${TAG#v}"
       - name: Upload the built CLI bundle for the publish job
         # This is the ONLY channel that gets `dist/refs.mjs` into `publish`: the artifact built,
         # determinism-checked, and shape-guarded above by this unprivileged (no id-token) job.
@@ -282,6 +282,99 @@ jobs:
         # It does not re-check repository visibility, so read it as an assertion about this
         # job, not as a guard against the repository going private again.
         run: npm publish --ignore-scripts --provenance
+
+  # The package as npm serves it, installed from the registry on every platform and smoke-tested.
+  # `verify` tests a tarball it packed itself; `publish` uploads one assembled differently (the
+  # bundle arrives as an artifact and gets its mode bit back by hand), and nothing else installs
+  # the result. This runs after the package is public, so it cannot stop or undo the release: a
+  # red leg means deprecate the version and ship a fixed patch release (CONTRIBUTING.md,
+  # Releasing). Re-run it first when the failure looks like registry lag rather than a broken CLI.
+  # Read-only, no secrets: only scripts/smoke-cli.sh is used from the checkout, nothing is built.
+  verify-published:
+    needs: publish
+    # The wait (20 minutes) plus the install retries (8, and one npm attempt past that deadline)
+    # plus setup and the smoke test.
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version-file: .node-version, package-manager-cache: false }
+      - name: Wait until the registry serves this version to npm install
+        # Polls the abbreviated package document, the one `npm install` reads. `npm view` reads the
+        # full one, which the registry's CDN caches separately (both for up to five minutes), so a
+        # version `npm view` sees can still be missing for `npm install`. 0.19.0 was visible about
+        # 75 seconds after its publish job ended. `TAG` goes through env, never into the script.
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          # A deadline rather than an attempt count: a slow response must not stretch the wait.
+          DEADLINE=$((SECONDS + 20 * 60))
+          attempt=0
+          while [ "$SECONDS" -lt "$DEADLINE" ]; do
+            attempt=$((attempt + 1))
+            if curl -fsS --max-time 30 -H 'Accept: application/vnd.npm.install-v1+json' \
+                https://registry.npmjs.org/@kaisers-io%2Frefs \
+              | node -e '
+                let raw = "";
+                process.stdin.on("data", (chunk) => { raw += chunk; });
+                process.stdin.on("end", () => {
+                  process.exit(Object.hasOwn(JSON.parse(raw).versions ?? {}, process.argv[1]) ? 0 : 1);
+                });
+              ' "$VERSION"; then
+              echo "the registry serves $VERSION (attempt $attempt)"
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "::error::the registry did not serve $VERSION within 20 minutes" >&2
+          exit 1
+      - name: Install the published package and smoke-test it
+        # The install is this release's own package, published by the job above.
+        # `--prefer-online` revalidates npm's local cache only, not the CDN, so retry for longer
+        # than one CDN cache lifetime (five minutes) before reporting lag as a broken release.
+        env:
+          TAG: ${{ github.ref_name }}
+        run: | # zizmor: ignore[adhoc-packages] installs the version this release just published
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          DEADLINE=$((SECONDS + 8 * 60))
+          until npm install -g --ignore-scripts --prefer-online "@kaisers-io/refs@$VERSION"; do
+            if [ "$SECONDS" -ge "$DEADLINE" ]; then
+              echo "::error::npm install of @kaisers-io/refs@$VERSION kept failing for 8 minutes" >&2
+              exit 1
+            fi
+            sleep 30
+          done
+          bash scripts/smoke-cli.sh "$VERSION"
+      - name: Run the installed refs from PowerShell
+        # The `.cmd` shim npm writes on Windows, started the way a Windows user starts it. The
+        # script above runs under Git Bash, which uses npm's sh shim instead.
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $expected = $env:TAG -replace '^v', ''
+          $version = refs --version
+          if ($version -ne $expected) {
+            Write-Error "refs --version printed '$version', expected '$expected'"
+          }
+          Write-Output "refs --version is $version"
 
   # The GitHub release entry. Separate from `publish` on purpose: creating one needs
   # `contents: write`, and the publish job is deliberately the narrowest thing in this repository —

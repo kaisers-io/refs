@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and always states the decision, and release entries for different tags are created one at a
   time.
 
+- **Every release is now installed from npm on Linux, macOS and Windows after it is published.**
+  The release workflow used to test only a tarball it packed itself, on Linux, while the package it
+  published was assembled separately and never installed. A new job waits until the registry serves
+  the version, installs it the way a user does, and runs the same smoke test that pull requests now
+  run on all three platforms: add, list, sync, resolve and remove of a local repository, each
+  outcome checked. It runs after publication and cannot stop a release; `CONTRIBUTING.md` says what
+  to do when it fails.
+
 ### Security
 
 - **Development installs resolve from the public npm registry, and stop on an unsupported Node.**
