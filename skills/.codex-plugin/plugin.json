@@ -1,6 +1,6 @@
 {
   "name": "refs",
-  "version": "0.19.0",
+  "version": "0.19.1",
   "description": "Answer questions about a dependency's real source, history, and releases from the local checkouts managed by the refs CLI.",
   "author": { "name": "kaisers.io", "url": "https://github.com/kaisers-io" },
   "homepage": "https://github.com/kaisers-io/refs",
