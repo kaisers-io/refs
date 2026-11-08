@@ -14,3 +14,12 @@ engineStrict: true
 # packages/cli/test/trust-policy-config.test.ts fails if these settings are weakened.
 # https://pnpm.io/settings/dependency-resolution#trustpolicy
 trustPolicy: no-downgrade
+
+# No dependency of this workspace needs a build script (native tools ship as prebuilt
+# optional packages). With strictDepBuilds, an install fails when a dependency update
+# brings one, so it is reviewed rather than run or silently skipped. CI installs do not
+# pass --ignore-scripts for that reason: the flag would hide this error. A script that is
+# not needed is accepted by review as an `allowBuilds` entry `name: false`; an entry set to
+# true would run it. packages/cli/test/trust-policy-config.test.ts fails if either is loosened.
+# https://pnpm.io/settings/build
+strictDepBuilds: true

@@ -19,6 +19,10 @@ concurrency:
 # code (install scripts, tests). Checkout v6+ keeps it under RUNNER_TEMP instead of .git/config,
 # which narrows the ways it leaks without removing it.
 #
+# Installs here do not pass --ignore-scripts. pnpm already blocks dependency build scripts
+# (strictDepBuilds in pnpm-workspace.yaml) and fails the install when one arrives; the flag would
+# turn that failure into a silent skip, so a new install script would merge green.
+#
 # Every job has a `timeout-minutes` several times its observed duration — the slowest, `check` on
 # Windows, has taken up to about 6.5 minutes. It exists to stop a hung run in minutes rather than
 # GitHub's 360-minute default, not to police speed, so a slow runner must never come near it.
