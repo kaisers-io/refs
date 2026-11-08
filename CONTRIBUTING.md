@@ -43,7 +43,8 @@ Run the full check. It must pass:
 pnpm check                 # lint + format check + typecheck + tests
 ```
 
-That is exactly what CI runs, on Linux, macOS and Windows, and once more on the Node 24.2 floor.
+That is exactly what CI runs, on Linux, macOS and Windows, and once more each on the Node 24.2
+floor and on the newest Node LTS line (26).
 CI adds a coverage gate, a version-consistency check, a bundle-determinism check, a smoke test
 of the packaged CLI on Linux and Windows, and a [zizmor](https://docs.zizmor.sh/) audit of the
 workflows and `dependabot.yml`. If you touched anything under `.github/`, run that audit locally
