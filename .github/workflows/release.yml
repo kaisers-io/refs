@@ -215,7 +215,8 @@ jobs:
     # rules (required reviewers, a deployment branch/tag restriction) are evaluated by GitHub
     # before the job starts. Deleting this key from a tag's tree does not evade it either, as long
     # as the npm Trusted Publisher entry names the same environment — npm then refuses a token
-    # minted without it. Both halves have to be configured outside this file; see RELEASING.md.
+    # minted without it. Both halves have to be configured outside this file; see the Releasing
+    # section of CONTRIBUTING.md.
     environment: npm-publish
     permissions:
       id-token: write

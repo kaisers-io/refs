@@ -116,6 +116,62 @@ that directory it is `node bin/refs.mjs <args>`; from the repository root,
 
 ## Releasing
 
+### Cutting a release
+
+Run every command from the repository root.
+
+1. **Pick the version.** `npm view @kaisers-io/refs version` prints the published one. The new
+   version must be a plain `x.y.z`, strictly greater than that. The release workflow refuses
+   anything else, and `pnpm versions --set` does not check it.
+2. **Branch from an up-to-date `main`:**
+
+   ```bash
+   git fetch origin main
+   git switch -c chore/release-x.y.z origin/main
+   ```
+
+3. **Set the version:** `pnpm versions --set x.y.z`. This writes `packages/cli/package.json`,
+   `skills/refs/SKILL.md` (`metadata.cli_version`) and `skills/.codex-plugin/plugin.json`. It
+   does not touch either changelog.
+4. **Date the changelog.** In `CHANGELOG.md`, rename `## [Unreleased]` to `## [x.y.z] - YYYY-MM-DD`
+   and check that the section is not empty. Then make the packaged copy identical. Keep this
+   order: the root file is outside the formatter's scope, and the packaged one is inside it.
+
+   ```bash
+   cp CHANGELOG.md packages/cli/CHANGELOG.md
+   pnpm fmt
+   cp packages/cli/CHANGELOG.md CHANGELOG.md
+   cmp CHANGELOG.md packages/cli/CHANGELOG.md
+   ```
+
+5. **Check locally:** `pnpm versions --check`, `pnpm check` and `pnpm build`. Then
+   `node packages/cli/bin/refs.mjs --version` must print `x.y.z`.
+6. **Open a pull request** titled `chore(release): x.y.z`. Its diff is exactly the five files
+   above: the three version sites and the two changelogs. Wait for CI, then squash-merge it.
+7. **Tag the merge commit on `main`:**
+
+   ```bash
+   git fetch origin main
+   git tag -a vx.y.z -m vx.y.z origin/main
+   git push origin vx.y.z
+   ```
+
+   If something else has landed on `main` since the merge, tag the release commit's SHA instead
+   of `origin/main`. The workflow's ancestor check allows that.
+
+8. **Approve the deployment.** The `release` run's `publish` job waits for approval in the
+   `npm-publish` environment. Check that `verify` is green, then open the run, choose _Review
+   deployments_, select `npm-publish` and approve it. The approval is the one gate a tag cannot
+   remove (see below).
+9. **Watch the rest of the run.** `publish` publishes with a provenance attestation. `announce`
+   creates the GitHub release from the version's changelog section. `verify-published` installs
+   the package from npm on Linux, macOS and Windows and smoke-tests it. A failure there cannot stop
+   the release (see [When `verify-published` fails](#when-verify-published-fails)).
+10. **Afterwards**, the next change that needs a changelog entry adds a fresh `## [Unreleased]`
+    heading above the released one.
+
+### What the release guards cover
+
 A `v*` tag push is the only trigger, and every guard authorizing the release — the tag/version
 match, the changelog checks, the version-regression check, the `origin/main` ancestor check, the
 `needs` edge and the `id-token` grant — is content of the tagged tree, because GitHub resolves a
