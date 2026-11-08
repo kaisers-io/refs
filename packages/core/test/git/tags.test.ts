@@ -28,7 +28,7 @@ type TagResolutionFixture = {
 
 const resolveTagForTest = async (fixture: TagResolutionFixture): Promise<unknown> => {
   try {
-    return await resolveTag(runner, fixture.dir, fixture.format as never, fixture.version);
+    return await resolveTag(runner, fixture.dir, fixture.format, fixture.version);
   } catch (error) {
     return error;
   }

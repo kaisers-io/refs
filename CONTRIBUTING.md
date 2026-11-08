@@ -45,6 +45,10 @@ pnpm check                 # lint + format check + typecheck + tests with the co
 
 That is exactly what CI runs, on Linux, macOS and Windows, and once more each on the Node 24.2
 floor and on the newest Node LTS line (26).
+Lint is type-aware: `.oxlintrc.json` sets `options.typeAware`, which runs through the
+`oxlint-tsgolint` devDependency, so `pnpm install` is all it needs and editors pick up the same
+rules. Only the type-aware rules enabled there run; the others are off by name, each with the
+number of findings it had, so they can be adopted one at a time.
 The coverage gate (`vitest.config.ts`) is enforced everywhere except Windows, where coverage is
 collected but not gated. CI on Linux stays the authoritative gate: it has measured slightly below
 macOS, so a local pass right at a threshold can still fail there. CI adds a version-consistency

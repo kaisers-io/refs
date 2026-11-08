@@ -18,7 +18,7 @@ const NO_FOLLOW = constants.O_NOFOLLOW ?? 0;
  * sniffing refs' own wording, and cannot tell an EACCES from an ENOENT at all. */
 const errnoCode = (err: unknown): string | undefined => {
   if (typeof err === 'object' && err !== null && 'code' in err) {
-    const { code } = err as { code: unknown };
+    const { code } = err;
     if (typeof code === 'string') {
       return code;
     }

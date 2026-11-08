@@ -15,7 +15,7 @@ const FIXED_UUID = '00000000-0000-4000-8000-000000000000';
 
 vi.mock(import('node:crypto'), async (importOriginal) => {
   const actual = await importOriginal();
-  return { ...actual, randomUUID: () => FIXED_UUID as ReturnType<typeof actual.randomUUID> };
+  return { ...actual, randomUUID: () => FIXED_UUID };
 });
 
 const { errnoCode, isEnoent, writeFileAtomic } = await import('../src/fs-atomic.ts');

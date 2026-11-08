@@ -31,10 +31,8 @@ vi.mock(import('node:fs/promises'), async (importOriginal) => {
   // Overloaded signatures; cast back as `lock-inspect-unreadable.test.ts` does for `stat`.
   return {
     ...actual,
-    lstat: vi.fn<typeof actual.lstat>(actual.lstat as never) as unknown as typeof actual.lstat,
-    readdir: vi.fn<typeof actual.readdir>(
-      actual.readdir as never,
-    ) as unknown as typeof actual.readdir,
+    lstat: vi.fn<typeof actual.lstat>(actual.lstat) as unknown as typeof actual.lstat,
+    readdir: vi.fn<typeof actual.readdir>(actual.readdir) as unknown as typeof actual.readdir,
     rmdir: vi.fn<typeof actual.rmdir>(actual.rmdir),
   };
 });
@@ -104,7 +102,7 @@ const rmdirFailingWith = (code: string, target: string, sibling: string): (() =>
   let fired = false;
   vi.mocked(rmdir).mockImplementation((async (path: unknown, ...rest: unknown[]) => {
     if (fired || path !== target) {
-      return real.rmdir?.(path as string, ...(rest as []));
+      return real.rmdir?.(path, ...(rest as []));
     }
     fired = true;
     await mkdir(sibling);

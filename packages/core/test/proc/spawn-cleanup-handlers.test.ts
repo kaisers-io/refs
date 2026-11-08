@@ -13,8 +13,7 @@ type SignalListener = (signal: NodeJS.Signals) => void;
 
 const CLEANUP_SIGNALS: readonly NodeJS.Signals[] = ['SIGINT', 'SIGTERM', 'SIGHUP'];
 
-const listenersFor = (signal: NodeJS.Signals): SignalListener[] =>
-  process.listeners(signal) as SignalListener[];
+const listenersFor = (signal: NodeJS.Signals): SignalListener[] => process.listeners(signal);
 
 // Install once at module scope and capture the listeners it added by diffing around the call —
 // the module deliberately does not export its handlers, and invoking them via a real signal (or

@@ -40,10 +40,8 @@ vi.mock(import('node:fs/promises'), async (importOriginal) => {
   // back to the original signature, as `lock-inspect-unreadable.test.ts` does for `stat`.
   return {
     ...actual,
-    lstat: vi.fn<typeof actual.lstat>(actual.lstat as never) as unknown as typeof actual.lstat,
-    readdir: vi.fn<typeof actual.readdir>(
-      actual.readdir as never,
-    ) as unknown as typeof actual.readdir,
+    lstat: vi.fn<typeof actual.lstat>(actual.lstat) as unknown as typeof actual.lstat,
+    readdir: vi.fn<typeof actual.readdir>(actual.readdir) as unknown as typeof actual.readdir,
     rm: vi.fn<typeof actual.rm>(actual.rm),
     rmdir: vi.fn<typeof actual.rmdir>(actual.rmdir),
   };

@@ -9,7 +9,7 @@ import { repairCommandsFor } from '../../src/commands/drift-commands.ts';
 const KEY = 'github.com/acme/alpha';
 
 const commandsFor = (issue: StructureIssue): Record<string, string> =>
-  repairCommandsFor(issue, KEY) as Record<string, string>;
+  repairCommandsFor(issue, KEY);
 
 describe('what a finding can offer', () => {
   it('offers both answers for an unregistered package', () => {
