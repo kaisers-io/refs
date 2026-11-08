@@ -1,6 +1,10 @@
 packages:
   - packages/*
 
+# Exact versions on `pnpm add`, and an install that fails on a Node outside engines.node.
+saveExact: true
+engineStrict: true
+
 # Refuse a dependency version published with weaker trust evidence (trusted publisher,
 # provenance) than an earlier release of the same package. That does not prove a compromise,
 # but it is what a publish with a leaked token would look like, so it waits for review.

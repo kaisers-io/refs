@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **Development installs resolve from the public npm registry, and stop on an unsupported Node.**
+  The root `.npmrc` now pins `registry=https://registry.npmjs.org/`, so a user-level default
+  registry such as a company mirror no longer decides where installs in this repository resolve,
+  which trust-policy evidence and advisories they see, or which tarball URLs reach the lockfile. A
+  user-level registry for a single scope (`@scope:registry=`) still applies to that scope.
+  Its two previous settings were not read by pnpm 12, which takes only auth, registry, TLS and
+  proxy settings from `.npmrc`. They now live in `pnpm-workspace.yaml` as `saveExact` and
+  `engineStrict`, so `pnpm add` writes exact versions again and `pnpm install --frozen-lockfile`
+  fails on a Node outside `engines.node`. The published CLI is unchanged.
+
 ## [0.19.0] - 2026-11-07
 
 ### Security
