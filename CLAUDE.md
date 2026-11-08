@@ -46,7 +46,8 @@ Why this is a rule: a feature once shipped with 988 green tests, including end-t
   that failed outright.
 - Test through the real boundary where one exists — real git over a fake runner, the CLI over
   internal calls — when the thing under test is git's or the CLI's behaviour.
-- `pnpm check` before pushing; `pnpm test:coverage` at the end. Coverage ratchet: 96/90/98/96.
+- `pnpm check` before pushing; it includes the coverage gate (off on Windows). Coverage ratchet:
+  96/90/98/96.
 
 ## Skill evals
 

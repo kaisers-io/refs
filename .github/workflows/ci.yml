@@ -49,10 +49,6 @@ jobs:
       # Negative controls for eval graders: crafted right and wrong runs, graded offline. It reads
       # case.yaml, so it needs the install the `versions` job does without. No eval runs here.
       - run: node --test scripts/skill-evals/cases.test.mjs
-      # Coverage thresholds (vitest.config.ts) act as a regression gate; one OS suffices — and
-      # keeping the gate off Windows means a justified platform skip can never flake the ratchet.
-      - run: pnpm test:coverage
-        if: matrix.os == 'ubuntu-latest'
   # Proves the supported floor (package.json engines.node, see the rationale comment in
   # packages/cli/bin/refs.mjs) actually runs the SHIPPED bundle, not just that the number was
   # typed somewhere and the source tests happen to pass on it.

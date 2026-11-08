@@ -12,7 +12,11 @@ export default defineConfig({
       // lock.ts steal re-diagnosis arms) — raise further only with tests that pin real behavior,
       // never with coverage-farming. Where such an arm guards destructive or locking code, pin it
       // with a one-path fs failure injected under a mock, as the remove-fs-failures suite does.
-      thresholds: { branches: 90, functions: 98, lines: 96, statements: 96 },
+      // Gated everywhere but Windows: a justified platform skip there must never flake the
+      // ratchet. Coverage is still collected on Windows, only nothing is enforced.
+      ...(process.platform === 'win32'
+        ? {}
+        : { thresholds: { branches: 90, functions: 98, lines: 96, statements: 96 } }),
     },
     globalSetup: './vitest.global-setup.ts',
     projects: ['packages/*'],

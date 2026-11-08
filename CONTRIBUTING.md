@@ -40,14 +40,17 @@ checkout by executing the TypeScript source through Node's own type stripping. W
 Run the full check. It must pass:
 
 ```bash
-pnpm check                 # lint + format check + typecheck + tests
+pnpm check                 # lint + format check + typecheck + tests with the coverage gate
 ```
 
 That is exactly what CI runs, on Linux, macOS and Windows, and once more each on the Node 24.2
 floor and on the newest Node LTS line (26).
-CI adds a coverage gate, a version-consistency check, a bundle-determinism check, a smoke test
-of the packaged CLI on Linux and Windows, and a [zizmor](https://docs.zizmor.sh/) audit of the
-workflows and `dependabot.yml`. If you touched anything under `.github/`, run that audit locally
+The coverage gate (`vitest.config.ts`) is enforced everywhere except Windows, where coverage is
+collected but not gated. CI on Linux stays the authoritative gate: it has measured slightly below
+macOS, so a local pass right at a threshold can still fail there. CI adds a version-consistency
+check, a bundle-determinism check, a smoke test of the packaged CLI on Linux and Windows, and a
+[zizmor](https://docs.zizmor.sh/) audit of the workflows and `dependabot.yml`. If you touched
+anything under `.github/`, run that audit locally
 first, at the version pinned in `ci.yml`. CI runs it through [pipx](https://pipx.pypa.io/);
 `uvx zizmor@1.32.0` runs the same release if you have uv instead:
 
