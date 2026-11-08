@@ -93,3 +93,71 @@ describe('the human summary', () => {
     expect(lines).toContain('entry points: 1 declared target(s) absent here, 1 not inspected');
   });
 });
+
+/** Writes each of `files` (relative to `packages/p`) into the checkout. */
+const withFiles = (dir: string, files: readonly string[]): string => {
+  for (const file of files) {
+    const path = join(dir, 'packages', 'p', file);
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    mkdirSync(join(path, '..'), { recursive: true });
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    writeFileSync(path, '');
+  }
+  return dir;
+};
+
+describe('the human summary of targets that are there', () => {
+  it('looks inside conditions and fallback arrays for what is present', async () => {
+    expect.hasAssertions();
+    // Conditional exports and fallback arrays are the shapes real packages ship. A summary that
+    // stopped at the top level would call every such package's targets absent.
+    const dir = withFiles(
+      checkoutWith({
+        exports: {
+          '.': { import: './esm/index.js', require: './cjs/index.js' },
+          './util': ['./util/index.js', './util/legacy.js'],
+        },
+        name: '@acme/p',
+      }),
+      ['esm/index.js', 'cjs/index.js', 'util/legacy.js'],
+    );
+
+    const lines = packageLines(await resolveIn(dir, '@acme/p'));
+
+    expect(lines).toContain(
+      'entry points present: ./esm/index.js, ./cjs/index.js, ./util/legacy.js',
+    );
+  });
+
+  it('names the first few and counts the rest', async () => {
+    expect.hasAssertions();
+    const files = ['a.js', 'b.js', 'c.js', 'd.js', 'e.js'];
+    const exports = Object.fromEntries(files.map((file) => [`./${file}`, `./${file}`]));
+    const dir = withFiles(checkoutWith({ exports, name: '@acme/p' }), files);
+
+    const lines = packageLines(await resolveIn(dir, '@acme/p'));
+
+    expect(lines).toContain('entry points present: ./a.js, ./b.js, ./c.js (+2 more)');
+  });
+});
+
+describe('the human summary of a declaration it could not read', () => {
+  it('says so rather than that the package declares nothing', () => {
+    expect.hasAssertions();
+
+    const lines = packageLines({
+      entry_points: {
+        entries: [],
+        manifest: 'package.json',
+        reason: 'EACCES',
+        status: 'unverifiable',
+      },
+      local_path: '/checkout/packages/p',
+      name: '@acme/p',
+      path: 'packages/p',
+      status: 'verified',
+    });
+
+    expect(lines).toContain('entry points: could not be read (EACCES)');
+  });
+});

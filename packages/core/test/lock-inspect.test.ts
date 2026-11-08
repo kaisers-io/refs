@@ -207,6 +207,21 @@ describe('inspectLocks malformed metadata', () => {
   });
 });
 
+describe('inspectLocks on a locks directory it cannot list', () => {
+  it('fails rather than reporting no locks', async () => {
+    expect.hasAssertions();
+    const home = makeHome();
+    // A file where the locks directory should be cannot be listed. "No locks held" would be a
+    // clean bill of health from a check that never looked, so the failure reaches doctor instead.
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    mkdirSync(join(home.locksDir, '..'), { recursive: true });
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    writeFileSync(home.locksDir, '');
+
+    await expect(inspectLocks(home)).rejects.toMatchObject({ code: 'ENOTDIR' });
+  });
+});
+
 describe('inspectLocks anomalous entries', () => {
   it('names a non-directory occupying a lock name', async () => {
     expect.hasAssertions();

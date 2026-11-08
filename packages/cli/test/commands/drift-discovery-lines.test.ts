@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { StructureIssue } from '../../src/commands/drift-report.ts';
+import { commonDir } from '../../src/commands/drift-group.ts';
 import { driftLines } from '../../src/commands/drift-lines.ts';
 
 // How discovery candidates read when a repository declares far more packages than a ref tracks.
@@ -59,6 +60,34 @@ describe('discovery, grouped by where the candidates sit', () => {
       `examples: ${MANY} unregistered package(s) the configuration does not have`,
       `packages/test: ${MANY} unregistered package(s) the configuration does not have`,
     ]);
+  });
+});
+
+describe('candidates at the repository root', () => {
+  it('names the root itself, since there is no directory above them', () => {
+    expect.hasAssertions();
+    // A root-level `*` declaration puts every package one level down, so its directory is the
+    // repository itself, not an empty name.
+    const discovery = ['tools', 'docs', 'site'].map((path) => ({
+      name: `@acme/${path}`,
+      path,
+      status: 'unregistered' as const,
+    }));
+
+    const lines = driftLines({ discovery, status: 'ok' }, KEY);
+
+    expect(lines).toStrictEqual([
+      `.: ${discovery.length} unregistered package(s) the configuration does not have`,
+    ]);
+  });
+});
+
+describe('the directory a group is named by', () => {
+  it('falls back to the root when the candidates share no directory', () => {
+    expect.hasAssertions();
+
+    expect(commonDir(['examples/a', 'packages/b'])).toBe('.');
+    expect(commonDir([])).toBe('.');
   });
 });
 
