@@ -7,7 +7,8 @@ import { parse } from 'yaml';
 // `concurrency-limits` pushes release.yml toward the cancellation group it must not have. These
 // are this repository's rules for its own workflows (#215), checked on every test run.
 
-type Job = { 'timeout-minutes'?: unknown };
+type Step = { name?: string; run?: string };
+type Job = { concurrency?: unknown; steps?: Step[]; 'timeout-minutes'?: unknown };
 type Workflow = { concurrency?: unknown; jobs: Record<string, Job> };
 
 const DIRECTORY = new URL('../../../.github/workflows/', import.meta.url);
@@ -58,5 +59,24 @@ describe('workflow hardening', () => {
     expect.hasAssertions();
     expect(workflows.get('release.yml')).toBeDefined();
     expect(workflows.get('release.yml')?.concurrency).toBeUndefined();
+  });
+
+  // The Latest decision reads, then creates, so two announce jobs must not run at once; a queue
+  // rather than the default single pending slot, so a burst of tags never cancels one.
+  it('serializes announce jobs without cancelling any', () => {
+    expect.hasAssertions();
+    const announce = workflows.get('release.yml')?.jobs['announce'];
+    expect(announce?.concurrency).toStrictEqual({
+      'cancel-in-progress': false,
+      group: 'release-announce',
+      queue: 'max',
+    });
+  });
+
+  it('never lets the API default which release is Latest', () => {
+    expect.hasAssertions();
+    const steps = workflows.get('release.yml')?.jobs['announce']?.steps;
+    const create = steps?.find((step) => step.name === 'Create the release');
+    expect(create?.run).toContain('--latest="$MAKE_LATEST"');
   });
 });
