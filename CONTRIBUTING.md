@@ -178,16 +178,28 @@ match, the changelog checks, the version-regression check, the `origin/main` anc
 push-triggered workflow from the pushed ref. **A tag whose tree deletes a guard is never subjected
 to it.** Every check in `release.yml` therefore constrains an honest release and nothing else.
 
-One gate can live outside the tagged tree, and it has two halves that must both be configured. A
-pull request cannot restore either:
+One gate can live outside the tagged tree, and it has two halves that must both be configured in
+settings. A pull request cannot restore either:
 
 1. **A GitHub Environment named `npm-publish`**, which the `publish` job declares, with a
-   **required reviewer who is not the principal that can push the tag**, and self-review disabled.
-   A deployment tag rule (`v*`) alone is not enough: it checks the ref's NAME, so an adversarial
-   tag keeps `environment: npm-publish`, deletes `verify`, and satisfies it. GitHub needs only one
-   listed reviewer to approve, so a reviewer list containing the tag pusher is no gate at all.
-   This holds even with a single maintainer: a credential that can push a tag is not the same
-   authority as that person approving a deployment interactively.
+   required reviewer and with "Allow administrators to bypass configured protection rules"
+   turned off. That setting is on by default and lets an admin credential skip the approval. A
+   deployment tag rule (`v*`) alone is not enough: it checks the ref's NAME, so an adversarial
+   tag keeps `environment: npm-publish`, deletes `verify`, and satisfies it.
+
+   This project has a single maintainer, who is the only required reviewer, with "Prevent
+   self-review" turned off. With it on, nobody could approve a tag that maintainer pushes
+   ([required reviewers](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments#required-reviewers)).
+   In that setup the gate guarantees that every release needs an explicit approval by the
+   maintainer, in the web UI or through the API. A workflow token, a collaborator who is not a
+   reviewer, or a tag pushed from a compromised workflow cannot publish on its own. The gate
+   does **not** protect against a stolen maintainer credential that can both push a tag and
+   approve the waiting deployment through the REST API
+   ([`pending_deployments`](https://docs.github.com/en/rest/actions/workflow-runs#review-pending-deployments-for-a-workflow-run)).
+   If more maintainers or release automation come later, the stronger setup is to push release
+   tags from a separate identity that is not a reviewer (a bot account or a GitHub App) and to
+   turn "Prevent self-review" on. Then the tag pusher and the approver are always different
+   identities.
 2. **The npm Trusted Publisher entry must name that environment**, alongside the repository and
    the workflow filename. npm's configuration binds the workflow's FILENAME — `npm trust github`
    takes `--file`, `--repository` and an optional `--environment`, and its API expresses the match
@@ -196,7 +208,7 @@ pull request cannot restore either:
 
 **Check both, separately.** A publish that fails proves nothing on its own — an already-published
 version fails too. What has to be established is: an environment-bearing job waits for an approval
-the tag pusher cannot give; a correctly configured, approved identity authenticates; and an
+that only the maintainer can give; a correctly configured, approved identity authenticates; and an
 otherwise identical identity WITHOUT the environment is refused during authentication.
 
 Also list every trusted-publisher entry on the package, not just the one you edited. npm supports
@@ -204,10 +216,20 @@ several independent entries, and an older environment-free entry left in place k
 open. When you replace one, allow direct `npm publish` explicitly — a newly created entry defaults
 to staged publishing.
 
-**Not yet established:** whether adding `environment:` to the job breaks an existing publisher
-entry configured WITHOUT one. The environment claim changes the token's `sub`, and npm documents
-the field as optional without stating what omission means for matching. Bind the environment on
-both sides before the next release rather than finding out during it.
+**What is and is not established.** Binding the environment did not break publishing: every
+release since the binding (0.18.0 to 0.19.0) was published by the environment-bound `publish` job.
+That does not show whether npm refuses an otherwise identical token minted without the
+environment, because a successful environment-bound publish is consistent both with an entry that
+requires the environment and with one that ignores it. Two checks settle it:
+
+- `npm trust list @kaisers-io/refs --json`, with the maintainer's login, shows that every entry on
+  the package names `npm-publish`. That is the configuration half.
+- A negative test of npm's matching on a throwaway package, never on `@kaisers-io/refs`: give it a
+  trusted-publisher entry that names an environment, publish once from a job that declares the
+  environment (must succeed) and once from an otherwise identical job that does not (must be
+  refused during authentication).
+
+The negative test has not been run yet. When it is, record its date and outcome here.
 
 Binding the environment also means a commit whose `release.yml` predates it can no longer be
 released from, even though the ancestor check still allows tagging it.
