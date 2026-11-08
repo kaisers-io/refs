@@ -1,8 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { join, sep } from 'node:path';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { inspectLocks } from '../src/lock-inspect.ts';
-import { join } from 'node:path';
 import { resolveHome } from '../src/home.ts';
 import { tmpdir } from 'node:os';
 // A locks directory that lists but cannot be searched — `readdir` succeeds, `stat` on its children
@@ -115,5 +115,44 @@ describe('inspectLocks on an unsearchable locks directory', () => {
       // ignorance.
       stale: false,
     });
+  });
+});
+
+const enoentError = (): NodeJS.ErrnoException => {
+  const error = new Error('ENOENT: no such file or directory') as NodeJS.ErrnoException;
+  error.code = 'ENOENT';
+  return error;
+};
+
+/** A `stat` that reports the lock called `name` as gone and every other path as it really is. */
+const statWithout = (name: string, realStat: typeof stat): typeof stat =>
+  ((path: Parameters<typeof stat>[0], options?: Parameters<typeof stat>[1]) =>
+    String(path).endsWith(`${sep}${name}`)
+      ? Promise.reject(enoentError())
+      : realStat(path, options)) as typeof stat;
+
+describe('inspectLocks on a lock released mid-walk', () => {
+  it('drops the lock that vanished and keeps the one still there', async () => {
+    expect.hasAssertions();
+    // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+    const dir = mkdtempSync(join(tmpdir(), 'refs-lock-vanish-'));
+    const home = resolveHome({ REFS_HOME: dir });
+    for (const name of ['gone', 'kept']) {
+      // eslint-disable-next-line node/no-sync -- test fixture setup, sync is fine
+      mkdirSync(join(home.locksDir, name), { recursive: true });
+    }
+    // `gone` is released between the directory listing and the read that judges it: the listing
+    // saw it, its `stat` does not. Releasing is the normal end of a lock's life, so it must not
+    // appear as an entry nobody can account for.
+    // The spy wraps the real `stat` (see the mock above); that is what every other path gets.
+    const realStat = vi.mocked(stat).getMockImplementation() as typeof stat;
+    vi.mocked(stat).mockImplementation(statWithout('gone', realStat));
+    onTestFinished(() => {
+      vi.mocked(stat).mockImplementation(realStat);
+    });
+
+    const locks = await inspectLocks(home);
+
+    expect(locks.map((lock) => lock.name)).toStrictEqual(['kept']);
   });
 });
