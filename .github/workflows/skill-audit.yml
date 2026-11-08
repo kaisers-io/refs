@@ -6,8 +6,8 @@ name: skill-audit
 # Path-filtered because the Snyk job uploads the skill's text to a hosted API, and Snyk asks callers
 # not to scan at scale.
 #
-# Both scanners are Python packages run through uvx, pinned to an exact version. pipx ships on
-# GitHub's Ubuntu images, so installing uv is one line and adds no third-party action.
+# Both scanners are Python packages run through uvx. pipx ships on GitHub's Ubuntu images, so
+# installing uv is one line and adds no third-party action.
 on:
   push:
     branches: [main]
@@ -22,6 +22,16 @@ permissions:
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: true
+# uv and both scanners are pinned to exact versions, each at least a week old (the cooldown
+# .github/dependabot.yml applies to everything else). Dependabot does not read versions in `run:`
+# steps, so these are bumped by hand: UV_VERSION here, the static scanner in its step, Snyk's in
+# package.json (`skill:audit`). UV_EXCLUDE_NEWER puts the same week on everything uvx resolves,
+# the scanners' transitive dependencies included, which their own pins do not fix; uv reads it for
+# every uvx call below, including the one `pnpm skill:audit` makes. It also refuses a scanner pin
+# younger than a week rather than letting it through.
+env:
+  UV_VERSION: 0.13.6
+  UV_EXCLUDE_NEWER: 7 days
 # Checkouts set `persist-credentials: false` (nothing here talks to the remote afterwards), and
 # each job's `timeout-minutes` is several times its observed duration — see ci.yml for both.
 jobs:
@@ -39,11 +49,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
-      - run: pipx install uv
+      - run: pipx install "uv==$UV_VERSION"
       # `scan-all skills`, not `scan skills/refs`: scan-all enumerates the children of the path, and
       # given a single skill's own directory it reports "No skills found to scan" and exits 0.
       - run: >
-          uvx --from cisco-ai-skill-scanner==2.2.2 skill-scanner scan-all skills
+          uvx --from cisco-ai-skill-scanner==2.3.2 skill-scanner scan-all skills
           --policy balanced --recursive --fail-on-severity medium --format summary
   # The engine behind the Snyk verdict skills.sh publishes. Analysis is server-side and needs
   # SNYK_TOKEN, which rules out two kinds of run: pull requests from forks get no secrets, and
@@ -63,7 +73,7 @@ jobs:
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .node-version, cache: pnpm }
-      - run: pipx install uv
+      - run: pipx install "uv==$UV_VERSION"
       # `pnpm skill:audit` keeps the scanner version pin in one place and runs here what a
       # contributor runs locally. Its flags:
       #   --ci                          exit non-zero on any finding, and also when no token is
