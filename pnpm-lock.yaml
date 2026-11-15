@@ -206,8 +206,8 @@ importers:
   packages/cli:
     devDependencies:
       '@commander-js/extra-typings':
-        specifier: 15.0.0
-        version: 15.0.0(commander@15.0.0)
+        specifier: 15.1.0
+        version: 15.1.0(commander@15.0.0)
       '@kaisers-io/refs-core':
         specifier: workspace:*
         version: link:../core
@@ -263,10 +263,10 @@ packages:
     resolution: {integrity: sha512-6zABk/ECA/QYSCQ1NGiVwwbQerUCZ+TQbp64Q3AgmfNvurHH0j8TtXa1qbShXA6qqkpAj4V5W8pP6mLe1mcMqA==}
     engines: {node: '>=18'}
 
-  '@commander-js/extra-typings@15.0.0':
-    resolution: {integrity: sha512-yeJlba62xqmkgELUsn7356MEnzLLu/fw2x4lofFqGnXh6YysRdEs2BaLeLtg1+KU0AXvMeqQvTTp+3hBEBK+EA==}
+  '@commander-js/extra-typings@15.1.0':
+    resolution: {integrity: sha512-FsI7l5tFON52RyyDKyCkvwFl+peHZuP5TZ7AhxbDFGo/5T6KQd4+KE48aJ8jrDSSAQDvZ8hYKX47fmwZ5bGFNw==}
     peerDependencies:
-      commander: ~15.0.0
+      commander: ~15.1.0
 
   '@emnapi/core@2.0.0-beta.2':
     resolution: {integrity: sha512-MzCVoWtcg4Pm2B3je5mMvYMvj3MmBKw+fU7vbsJc9/iT8ip6/eYIHo/Dsm/mr+wsHB6SEyJDuxB09Yy6r/8+4A==}
@@ -1451,7 +1451,7 @@ snapshots:
 
   '@bcoe/v8-coverage@1.0.2': {}
 
-  '@commander-js/extra-typings@15.0.0(commander@15.0.0)':
+  '@commander-js/extra-typings@15.1.0(commander@15.0.0)':
     dependencies:
       commander: 15.0.0
 
