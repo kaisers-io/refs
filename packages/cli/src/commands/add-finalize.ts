@@ -103,6 +103,7 @@ const finalizeRef = async (
     assertInsideSources(opts.home, opts.dest);
     return resolveCheckoutHead(ctx.runner, {
       allowFileUrls,
+      configured: false,
       dest: opts.dest,
       expectedUrl: opts.ref.url,
       hooksDir: opts.home.hooksDir,

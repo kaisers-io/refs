@@ -1,4 +1,5 @@
 import type { CloneMode, RefKey, RefsHome, Runner } from '@kaisers-io/refs-core';
+import { addDryRunCommand, rmCommand, shellQuote } from '../shell-quote.ts';
 import {
   assertInsideSources,
   canonicalizeGitUrl,
@@ -9,7 +10,6 @@ import {
   validationError,
   zRefState,
 } from '@kaisers-io/refs-core';
-import { rmCommand, shellQuote } from '../shell-quote.ts';
 import type { CliContext } from '../context.ts';
 import { dirname } from 'node:path';
 import { mkdir } from 'node:fs/promises';
@@ -161,9 +161,27 @@ const ensureClonedCheckout = async (
   return cloneFresh(ctx, opts);
 };
 
-const revParseFailedMessage = (key: RefKey, dest: string): string =>
-  `checkout for '${key}' at ${dest} is missing or corrupt (git rev-parse HEAD failed) — ` +
-  `run: refs remove ${shellQuote(key)}, then refs add <source> --dry-run again`;
+type HeadOpts = {
+  allowFileUrls: boolean;
+  /** Whether config already holds the ref (`sync`), so `refs remove` can clear it. A ref still
+   * being added is not configured, and `refs remove` answers `not_found` for it while leaving the
+   * checkout in place; only removing the directory clears the way for a new dry-run. */
+  configured: boolean;
+  dest: string;
+  expectedUrl: string;
+  hooksDir: string;
+  key: RefKey;
+};
+
+const revParseFailedMessage = (opts: HeadOpts): string => {
+  const clear = opts.configured ? `refs remove ${shellQuote(opts.key)}` : rmCommand(opts.dest);
+  const dryRun = addDryRunCommand(opts.expectedUrl);
+  const recovery =
+    clear === undefined || dryRun === undefined
+      ? 'remove it, then repeat the dry-run for its url'
+      : `run: ${clear}, then ${dryRun}`;
+  return `checkout for '${opts.key}' at ${opts.dest} is missing or corrupt (git rev-parse HEAD failed) — ${recovery}`;
+};
 
 const HEAD_SHA_HEX_LENGTH = 40;
 
@@ -185,21 +203,12 @@ const unsupportedHeadShaMessage = (key: RefKey, dest: string, sha: string): stri
  * fails before any document is built or written (see `finalizeRef` in `add-finalize.ts`). Called
  * under the per-ref lock, strictly before any config/state write, so any of these failures is
  * caught before anything is persisted. */
-const resolveCheckoutHead = async (
-  runner: Runner,
-  opts: {
-    allowFileUrls: boolean;
-    dest: string;
-    expectedUrl: string;
-    hooksDir: string;
-    key: RefKey;
-  },
-): Promise<string> => {
+const resolveCheckoutHead = async (runner: Runner, opts: HeadOpts): Promise<string> => {
   await ensureCheckoutOrigin(runner, opts);
   await ensureManagedCheckout(runner, { dest: opts.dest, hooksDir: opts.hooksDir });
   const headResult = await runner.run('git', ['rev-parse', 'HEAD'], { cwd: opts.dest });
   if (headResult.exitCode !== SUCCESS_EXIT_CODE) {
-    throw validationError(revParseFailedMessage(opts.key, opts.dest));
+    throw validationError(revParseFailedMessage(opts));
   }
   const sha = headResult.stdout.trim();
   const parsed = zRefState.shape.head_sha.safeParse(sha);

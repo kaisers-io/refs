@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`refs add --proposal` prints recovery commands that run as printed.** When the checkout a
+  dry-run created was missing, the message said `run: refs add <source> --dry-run first`, a
+  placeholder a shell reads as an input redirection. It now names the proposal's own url and the
+  proposal file. When that checkout was corrupt, it said to run `refs remove`, which answers
+  `not_found` for a ref that is not configured yet and leaves the checkout in place, followed by a
+  `<source>` placeholder. It now prints the `rm -rf` that clears the checkout and the dry-run that
+  recreates it. `refs sync`, where the ref is configured, keeps `refs remove`. A url that cannot be
+  printed safely, such as one with credentials in it, gets the advice in words instead of a command.
+
 ## [0.19.2] - 2026-11-21
 
 ### Changed
