@@ -53,7 +53,7 @@ const argvOf = (command: string): string[] =>
 const firstPositional = async (command: string): Promise<unknown> => {
   const program = buildProgram(testContext().ctx);
   const edit = program.commands.find((cmd) => cmd.name() === 'edit') as Command;
-  let first: unknown = undefined;
+  let first: unknown;
   edit.action((parsed: unknown) => {
     first = parsed;
   });

@@ -30,6 +30,9 @@
     "import/no-named-export": "off",
     "no-magic-numbers": ["error", { "ignore": [0, 1] }],
     "one-var": ["error", "never"],
+    // Contradicts `unicorn/no-useless-undefined`, which as of oxlint 1.94 rejects `= undefined`.
+    // TypeScript's definite-assignment analysis already catches a read before the first write.
+    "init-declarations": "off",
     "no-ternary": "off",
     "no-duplicate-imports": ["error", { "allowSeparateTypeImports": true }],
     "import/no-nodejs-modules": "off",

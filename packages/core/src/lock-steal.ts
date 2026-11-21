@@ -140,10 +140,9 @@ const stealStaleLock = async (ctx: LockCtx): Promise<boolean> => {
   }
   // Not `finally`: the cleanup must not be able to replace this result. `settled` is captured
   // first so a cleanup fault stays a cleanup fault.
-  const settled = await removeIfStillStale(ctx).then(
-    (stolen) => ({ ok: true as const, stolen }),
-    (error: unknown) => ({ error, ok: false as const }),
-  );
+  const settled = await removeIfStillStale(ctx)
+    .then((stolen) => ({ ok: true as const, stolen }))
+    .catch((error: unknown) => ({ error, ok: false as const }));
   await releaseStealClaim(claimPath);
   if (!settled.ok) {
     throw settled.error;

@@ -124,7 +124,7 @@ const assertOutsideCheckout = async (path: string, roots: readonly string[]): Pr
 /** Whether `path` exists, keeping what it holds for the cache: taken before git reads it, and only
  * the first time, so a change after any read leaves a snapshot that no longer matches. */
 const exists = async (inventory: Inventory, path: string): Promise<boolean> => {
-  let snapshot: Snapshot = undefined;
+  let snapshot: Snapshot;
   try {
     snapshot = await snapshotOf(path);
   } catch {
