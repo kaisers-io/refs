@@ -1,3 +1,4 @@
+import { redactUrlForDisplay } from '@kaisers-io/refs-core';
 // POSIX single-quoting for values that end up inside a command someone is meant to paste into a
 // shell.
 //
@@ -98,5 +99,14 @@ const rmCommand = (paths: string | readonly string[]): string | undefined => {
 const rmdirCommand = (path: string): string | undefined =>
   isPasteable(path) ? `rmdir -- ${shellQuote(path)}` : undefined;
 
-export { editCommand, isPasteable, rmCommand, rmdirCommand, shellQuote };
+/** `refs add <url> --dry-run --json`, or `undefined` when the url cannot be printed as one: it is
+ * not pasteable, it begins with `-` (refs' parser would read it as an option), or it carries
+ * userinfo, which a printed error must not repeat. A proposal file's url is only checked for being
+ * non-empty by the time a recovery message is composed, so any of these can reach here. */
+const addDryRunCommand = (url: string): string | undefined =>
+  isPasteable(url) && !url.startsWith('-') && redactUrlForDisplay(url) === url
+    ? `refs add ${shellQuote(url)} --dry-run --json`
+    : undefined;
+
+export { addDryRunCommand, editCommand, isPasteable, rmCommand, rmdirCommand, shellQuote };
 export type { CommandOption };

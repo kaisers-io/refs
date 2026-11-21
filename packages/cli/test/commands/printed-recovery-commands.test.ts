@@ -56,8 +56,9 @@ const entry = (packages: Record<string, { description: string; path: string }>):
 const configWith = (refs: Record<string, unknown>): Config =>
   ({ meta: { schema_version: 1 }, refs }) as unknown as Config;
 
-/** `resolveCheckoutHead` with its first two guards satisfied and `rev-parse HEAD` failing. */
-const corruptCheckoutMessage = async (key: RefKey): Promise<string> => {
+/** `resolveCheckoutHead` with its first two guards satisfied and `rev-parse HEAD` failing, for a
+ * ref config holds (`sync`) unless `configured` says otherwise (`add` finalizing). */
+const corruptCheckoutMessage = async (key: RefKey, configured = true): Promise<string> => {
   const hooksDir = '/refs-home/hooks';
   const fake = new FakeRunner();
   fake.expect('git remote get-url origin', { stdout: 'https://example.com/o/r\n' });
@@ -65,6 +66,7 @@ const corruptCheckoutMessage = async (key: RefKey): Promise<string> => {
   fake.expect('git rev-parse HEAD', { exitCode: 1, stderr: 'fatal: bad revision' });
   const failed: unknown = await resolveCheckoutHead(fake, {
     allowFileUrls: false,
+    configured,
     dest: '/refs-home/sources/x',
     expectedUrl: 'https://example.com/o/r',
     hooksDir,
@@ -107,6 +109,26 @@ describe('recovery commands naming a ref key', () => {
       '--packages',
       '--json',
     ]);
+  });
+});
+
+describe('the corrupt-checkout remedy', () => {
+  it('names the url in the dry-run that follows, not a <source> placeholder', async () => {
+    expect.hasAssertions();
+    const message = await corruptCheckoutMessage(HOSTILE_KEY);
+    await expect(argvFromShell(clauseAfter(message, ', then '))).resolves.toStrictEqual([
+      'add',
+      'https://example.com/o/r',
+      '--dry-run',
+      '--json',
+    ]);
+  });
+
+  it('clears a ref still being added by removing its checkout, which `refs remove` cannot', async () => {
+    expect.hasAssertions();
+    const message = await corruptCheckoutMessage(HOSTILE_KEY, false);
+    // Compared as text: run through a shell, this clause would delete the path.
+    expect(clauseAfter(message, 'run: ')).toBe("rm -rf -- '/refs-home/sources/x'");
   });
 });
 

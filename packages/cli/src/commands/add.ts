@@ -1,3 +1,4 @@
+import { addDryRunCommand, isPasteable, shellQuote } from '../shell-quote.ts';
 import {
   buildFinalPackages,
   finalProposalPackages,
@@ -79,12 +80,23 @@ const buildProposalRef = (finalProposal: FinalProposal): FinalizedRefInput => {
   return ref;
 };
 
+/** The dry-run's checkout is gone; repeating the dry-run recreates it, and the proposal already
+ * filled in can then be finalized as it is. */
+const missingCheckoutMessage = (dest: string, url: string, location: string): string => {
+  const dryRun = addDryRunCommand(url);
+  const finalize = isPasteable(location) ? `--proposal=${shellQuote(location)}` : undefined;
+  if (dryRun === undefined || finalize === undefined) {
+    return `no checkout found at ${dest} — repeat the dry-run for this proposal's url, then add the proposal again`;
+  }
+  return `no checkout found at ${dest} — run: ${dryRun}, then refs add ${finalize}`;
+};
+
 const runAddProposal = async (ctx: CliContext, location: string): Promise<AddOutcome> => {
   const finalProposal = await loadFinalProposal(ctx, location);
   const home = resolveHome(ctx.env);
   const dest = checkoutPath(home, finalProposal.key);
   if (!isGitCheckout(dest)) {
-    throw notFoundError(`no checkout found at ${dest} — run: refs add <source> --dry-run first`);
+    throw notFoundError(missingCheckoutMessage(dest, finalProposal.url, location));
   }
   const ref = buildProposalRef(finalProposal);
   const { entry, key } = await finalizeRef(ctx, { dest, home, ref });

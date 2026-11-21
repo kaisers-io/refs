@@ -1,5 +1,5 @@
+import { addDryRunCommand, isPasteable, rmCommand, shellQuote } from '../src/shell-quote.ts';
 import { describe, expect, it } from 'vitest';
-import { isPasteable, rmCommand, shellQuote } from '../src/shell-quote.ts';
 import { SpawnRunner } from '@kaisers-io/refs-core';
 
 // These helpers exist because refs prints commands for a person to paste. A ref key comes from a
@@ -86,5 +86,35 @@ describe('whether a value can go into a printed command', () => {
     const result = await new SpawnRunner().run('sh', ['-c', `printf %s ${quoted}`]);
 
     expect(result.stdout).toBe(value);
+  });
+});
+
+describe('building a dry-run command for a ref url', () => {
+  it('quotes the url', () => {
+    expect.hasAssertions();
+
+    expect(addDryRunCommand("https://example.com/a b/it's.git")).toBe(
+      String.raw`refs add 'https://example.com/a b/it'\''s.git' --dry-run --json`,
+    );
+  });
+
+  // A proposal file's url is checked only for being non-empty when this runs, so each of these
+  // can reach it. Withholding the command is the outcome; the error is still reported.
+  it.each([
+    ['userinfo, which would print a credential', 'https://token:sekrit@example.com/a.git'],
+    ['a leading dash, which refs would parse as an option', '-x'],
+    ['a control character', 'https://example.com/a\nb.git'],
+  ])('offers none for a url carrying %s', (_label, url) => {
+    expect.hasAssertions();
+
+    expect(addDryRunCommand(url)).toBeUndefined();
+  });
+
+  it('keeps the conventional git@ scp form, which carries no secret', () => {
+    expect.hasAssertions();
+
+    expect(addDryRunCommand('git@github.com:a/b.git')).toBe(
+      "refs add 'git@github.com:a/b.git' --dry-run --json",
+    );
   });
 });
