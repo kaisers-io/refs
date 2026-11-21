@@ -33,7 +33,7 @@ import { discoveryObstacle } from './workspace-diagnostics.ts';
 type ScanOnce = () => Promise<WorkspaceScan>;
 
 const scanOnceFor = (checkoutDir: string): ScanOnce => {
-  let pending: Promise<WorkspaceScan> | undefined = undefined;
+  let pending: Promise<WorkspaceScan> | undefined;
   return () => {
     pending ??= detectWorkspacePackagesDetailed(checkoutDir);
     return pending;

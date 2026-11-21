@@ -78,8 +78,8 @@ const armTimeout = (target: TimeoutTarget): TimeoutHandle => {
     return noopTimeout;
   }
   const tree = treeOf(target, child.pid);
-  let enforcement: Promise<boolean> | undefined = undefined;
-  let releaseTimer: NodeJS.Timeout | undefined = undefined;
+  let enforcement: Promise<boolean> | undefined;
+  let releaseTimer: NodeJS.Timeout | undefined;
   const termTimer = setTimeout(() => {
     enforcement = enforce(tree);
     releaseTimer = setTimeout(() => {

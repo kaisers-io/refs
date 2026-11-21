@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **The bundled `minimatch` moves from 11.0.5 to 11.0.9.** 11.0.7 removes a quadratic compile time
+  for long wildcard patterns, a regression introduced in 11.0.0; refs compiles the workspace
+  patterns read from a checkout, and a checkout is third-party content. No advisory was published
+  for it. The bundled `commander` moves from 15.0.0 to 15.1.0, a release of parser fixes.
+
 ## [0.19.1] - 2026-11-08
 
 ### Security
